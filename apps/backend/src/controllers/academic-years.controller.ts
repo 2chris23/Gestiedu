@@ -561,6 +561,8 @@ export const confirmAcademicYearClose = async (request: FastifyRequest, reply: F
         decisions: body.decisions || [],
         strategyKey: body.strategyKey,
         strategyMode: body.strategyMode,
+        autoCreateNextYear: body.autoCreateNextYear ?? true,
+        nextYearName: body.nextYearName,
       },
       getRequestInstituteId(request)
     );

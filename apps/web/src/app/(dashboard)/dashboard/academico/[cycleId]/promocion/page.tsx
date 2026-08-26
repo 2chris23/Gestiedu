@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
     ArrowLeft, GraduationCap, CheckCircle2, Users, Wand2, Loader2,
-    AlertTriangle, ChevronRight, Check, School,
+    AlertTriangle, ChevronRight, Check, School, UserMinus, Plus, Trash2, ShieldAlert
 } from 'lucide-react';
 import { academicYearService } from '@/services/academic-year.service';
 
@@ -15,16 +15,31 @@ interface Suggestion {
     gender: string | null;
     currentSection: string | null;
     gradeLevel: number;
+    isLastGrade: boolean;
+    defaultTargetGrade: number | null;
+    defaultTargetSection: string | null;
     subjectGrades: Array<{ subjectId: string; subjectName: string; average: number; approved: boolean }>;
+    failedSubjects: Array<{ name: string; average: number }>;
     pendingCount: number;
     finalAverage: number;
     suggestedStatus: 'PROMOVIDO' | 'PROMOVIDO_CON_PENDIENTES' | 'NO_PROMOVIDO';
 }
 
+interface DestSection {
+    id: string;
+    name: string;
+    section: string;
+    grade: number;
+    capacity: number | null;
+    totalStudents: number;
+    maleCount: number;
+    femaleCount: number;
+}
+
 interface DestYear {
     id: string;
     name: string;
-    sections: Array<{ id: string; name: string; section: string; grade: number }>;
+    sections: DestSection[];
 }
 
 interface StrategyInfo {
@@ -33,7 +48,13 @@ interface StrategyInfo {
     description: string;
 }
 
-/** Anillo de progreso SVG (0-100%). */
+interface StudentAssignment {
+    action: 'ENROLL' | 'GRADUATE' | 'RETIRE_KEEP_HISTORY' | 'RETIRE_DELETE';
+    targetGrade: number | null;
+    targetSectionLetter: string;
+    classroomId: string | null;
+}
+
 function ProgressRing({ pct, size = 64 }: { pct: number; size?: number }) {
     const r = (size - 8) / 2;
     const c = 2 * Math.PI * r;
@@ -69,7 +90,7 @@ function ProgressRing({ pct, size = 64 }: { pct: number; size?: number }) {
 const STATUS_LABEL: Record<string, string> = {
     PROMOVIDO: 'Promocionado limpio',
     PROMOVIDO_CON_PENDIENTES: 'Promocionado con pendientes',
-    NO_PROMOVIDO: 'No promocionado',
+    NO_PROMOVIDO: 'No promovido / Repite',
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -78,12 +99,6 @@ const STATUS_COLOR: Record<string, string> = {
     NO_PROMOVIDO: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
-/**
- * FASE 3.5 PARTE 2 — PÁGINA DEDICADA DE PROMOCIÓN
- * Navegación en cascada: Años → Secciones → Estudiantes, con anillos de
- * progreso, estrategias automáticas como punto de partida (siempre editables)
- * y confirmación bloqueada hasta el 100% de destinos asignados.
- */
 export default function PromotionPage() {
     const params = useParams();
     const router = useRouter();
@@ -92,22 +107,34 @@ export default function PromotionPage() {
     const [loading, setLoading] = useState(true);
     const [yearName, setYearName] = useState('');
     const [yearId, setYearId] = useState('');
+    const [suggestedNextYearName, setSuggestedNextYearName] = useState('2027-2028');
     const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
     const [destYears, setDestYears] = useState<DestYear[]>([]);
     const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
     const [applyingStrategy, setApplyingStrategy] = useState<string | null>(null);
 
-    // Navegación en cascada
+    // Navegación en cascada por Año y Sección
     const [selectedGrade, setSelectedGrade] = useState<number | null>(null);
     const [selectedSection, setSelectedSection] = useState<string | null>(null);
 
-    // Asignaciones: studentId → { yearId, classroomId }
-    const [assignments, setAssignments] = useState<Record<string, { yearId: string; classroomId: string | null }>>({});
+    // Asignaciones por estudiante
+    const [assignments, setAssignments] = useState<Record<string, StudentAssignment>>({});
     const [finalResults, setFinalResults] = useState<Record<string, string>>({});
 
+    // Modales
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [confirmText, setConfirmText] = useState('');
     const [confirming, setConfirming] = useState(false);
+
+    // Modal de Retiro
+    const [retireModalStudent, setRetireModalStudent] = useState<Suggestion | null>(null);
+    const [retireMode, setRetireMode] = useState<'RETIRE_KEEP_HISTORY' | 'RETIRE_DELETE'>('RETIRE_KEEP_HISTORY');
+
+    // Modal para crear nueva sección
+    const [newSectionModalOpen, setNewSectionModalOpen] = useState(false);
+    const [newSectionGrade, setNewSectionGrade] = useState<number>(1);
+    const [newSectionLetter, setNewSectionLetter] = useState<string>('C');
+    const [customSections, setCustomSections] = useState<Array<{ grade: number; section: string }>>([]);
 
     const [visibleLimit, setVisibleLimit] = useState(30);
 
@@ -117,7 +144,7 @@ export default function PromotionPage() {
             const years = await academicYearService.getAcademicYears();
             const found = years.find((y: any) => y.id === cycleIdParam || y.name === cycleIdParam);
             if (!found) {
-                toast.error('Ciclo no encontrado');
+                toast.error('Ciclo escolar no encontrado');
                 router.push('/dashboard/academico');
                 return;
             }
@@ -128,14 +155,45 @@ export default function PromotionPage() {
                 academicYearService.getPromotionContext(found.id),
                 academicYearService.getCloseStrategies(),
             ]);
-            setSuggestions(context.suggestions || []);
+
+            const loadedSuggestions: Suggestion[] = context.suggestions || [];
+            setSuggestions(loadedSuggestions);
             setDestYears(context.destinationYears || []);
+            setSuggestedNextYearName(context.suggestedNextYearName || '2027-2028');
             setStrategies(strat || []);
-            setFinalResults(Object.fromEntries(
-                (context.suggestions || []).map((s: Suggestion) => [s.studentId, s.suggestedStatus])
-            ));
+
+            // Inicializar asignaciones lógicas iniciales
+            const initialAssignments: Record<string, StudentAssignment> = {};
+            const initialResults: Record<string, string> = {};
+
+            loadedSuggestions.forEach((s: Suggestion) => {
+                initialResults[s.studentId] = s.suggestedStatus;
+                if (s.isLastGrade) {
+                    initialAssignments[s.studentId] = {
+                        action: 'GRADUATE',
+                        targetGrade: null,
+                        targetSectionLetter: '',
+                        classroomId: null,
+                    };
+                } else {
+                    initialAssignments[s.studentId] = {
+                        action: 'ENROLL',
+                        targetGrade: s.defaultTargetGrade,
+                        targetSectionLetter: s.currentSection || 'A',
+                        classroomId: null,
+                    };
+                }
+            });
+
+            setAssignments(initialAssignments);
+            setFinalResults(initialResults);
+
+            if (loadedSuggestions.length > 0) {
+                setSelectedGrade(loadedSuggestions[0].gradeLevel);
+                setSelectedSection(loadedSuggestions[0].currentSection || 'A');
+            }
         } catch (e: any) {
-            toast.error(e?.response?.data?.error || 'Error al cargar la promoción');
+            toast.error(e?.response?.data?.error || 'Error al cargar el panel de promoción');
         } finally {
             setLoading(false);
         }
@@ -154,7 +212,10 @@ export default function PromotionPage() {
             if (!map.has(g)) map.set(g, { sections: new Map(), total: 0, assigned: 0 });
             const entry = map.get(g)!;
             entry.total++;
-            if (assignments[s.studentId]?.classroomId) entry.assigned++;
+            const asg = assignments[s.studentId];
+            if (asg && (asg.action === 'GRADUATE' || asg.action === 'RETIRE_KEEP_HISTORY' || asg.action === 'RETIRE_DELETE' || asg.targetGrade !== null)) {
+                entry.assigned++;
+            }
             if (!entry.sections.has(sec)) entry.sections.set(sec, []);
             entry.sections.get(sec)!.push(s);
         });
@@ -168,12 +229,23 @@ export default function PromotionPage() {
     const sectionList = useMemo(() => {
         if (!selectedGradeEntry) return [];
         return [...selectedGradeEntry.sections.entries()]
-            .map(([section, students]) => ({
-                section,
-                students,
-                assigned: students.filter(s => assignments[s.studentId]?.classroomId).length,
-                total: students.length,
-            }))
+            .map(([section, students]) => {
+                const total = students.length;
+                const assigned = students.filter(s => {
+                    const asg = assignments[s.studentId];
+                    return asg && (asg.action === 'GRADUATE' || asg.action === 'RETIRE_KEEP_HISTORY' || asg.action === 'RETIRE_DELETE' || asg.targetGrade !== null);
+                }).length;
+                const males = students.filter(s => s.gender === 'MASCULINO').length;
+                const females = students.filter(s => s.gender === 'FEMENINO').length;
+                return {
+                    section,
+                    students,
+                    assigned,
+                    total,
+                    males,
+                    females,
+                };
+            })
             .sort((a, b) => a.section.localeCompare(b.section));
     }, [selectedGradeEntry, assignments]);
 
@@ -182,19 +254,45 @@ export default function PromotionPage() {
         return (selectedGradeEntry.sections.get(selectedSection) || []).slice(0, visibleLimit);
     }, [selectedGradeEntry, selectedSection, visibleLimit]);
 
-    const allAssignedCount = useMemo(() => suggestions.filter(s => assignments[s.studentId]?.classroomId).length, [suggestions, assignments]);
+    const allAssignedCount = useMemo(() => {
+        return suggestions.filter(s => {
+            const asg = assignments[s.studentId];
+            return asg && (asg.action === 'GRADUATE' || asg.action === 'RETIRE_KEEP_HISTORY' || asg.action === 'RETIRE_DELETE' || asg.targetGrade !== null);
+        }).length;
+    }, [suggestions, assignments]);
+
     const allComplete = suggestions.length > 0 && allAssignedCount === suggestions.length;
 
+    // Aplicar Estrategia Automática
     const applyStrategy = async (key: string) => {
         setApplyingStrategy(key);
         try {
             const res = await academicYearService.previewPromotionStrategy(yearId, key, key === 'by-performance' ? 'balanced' : undefined);
-            const next: Record<string, { yearId: string; classroomId: string | null }> = {};
+            const nextAssignments: Record<string, StudentAssignment> = { ...assignments };
+
             (res.assignments || []).forEach((a: any) => {
-                next[a.studentId] = { yearId: res.yearId || '', classroomId: a.sectionId };
+                const s = suggestions.find(st => st.studentId === a.studentId);
+                if (s) {
+                    if (s.isLastGrade) {
+                        nextAssignments[a.studentId] = {
+                            action: 'GRADUATE',
+                            targetGrade: null,
+                            targetSectionLetter: '',
+                            classroomId: null,
+                        };
+                    } else {
+                        nextAssignments[a.studentId] = {
+                            action: 'ENROLL',
+                            targetGrade: a.targetGrade ?? s.defaultTargetGrade,
+                            targetSectionLetter: a.targetSectionLetter || s.currentSection || 'A',
+                            classroomId: a.sectionId || null,
+                        };
+                    }
+                }
             });
-            setAssignments(prev => ({ ...prev, ...next }));
-            toast.success('Estrategia aplicada — revisa y ajusta casos puntuales');
+
+            setAssignments(nextAssignments);
+            toast.success('Estrategia aplicada — puedes revisar y ajustar cualquier alumno');
         } catch (e: any) {
             toast.error(e?.response?.data?.error || 'Error al aplicar la estrategia');
         } finally {
@@ -202,84 +300,139 @@ export default function PromotionPage() {
         }
     };
 
+    // Confirmar y Cerrar Ciclo
     const handleConfirm = async () => {
-        if (confirmText !== yearName) {
-            toast.error(`Escribe "${yearName}" para confirmar`);
+        if (confirmText.trim() !== yearName.trim()) {
+            toast.error(`Escribe "${yearName}" exactamente para confirmar`);
             return;
         }
         setConfirming(true);
         try {
-            const decisions = suggestions.map(s => ({
-                studentId: s.studentId,
-                finalResult: finalResults[s.studentId] || s.suggestedStatus,
-                assignedClassroomId: assignments[s.studentId]?.classroomId || null,
-            }));
-            await academicYearService.confirmClose(yearId, decisions, 'manual');
-            toast.success('Ciclo finalizado: estudiantes promocionados con sus destinos');
-            router.push(`/dashboard/academico/${yearName}`);
+            const decisions = suggestions.map(s => {
+                const asg = assignments[s.studentId] || {
+                    action: s.isLastGrade ? 'GRADUATE' : 'ENROLL',
+                    targetGrade: s.defaultTargetGrade,
+                    targetSectionLetter: s.currentSection || 'A',
+                    classroomId: null,
+                };
+                return {
+                    studentId: s.studentId,
+                    finalResult: finalResults[s.studentId] || s.suggestedStatus,
+                    action: asg.action,
+                    targetGrade: asg.targetGrade,
+                    targetSectionLetter: asg.targetSectionLetter,
+                    assignedClassroomId: asg.classroomId,
+                };
+            });
+
+            await academicYearService.confirmClose(
+                yearId,
+                decisions,
+                'manual',
+                undefined,
+                true, // autoCreateNextYear
+                suggestedNextYearName
+            );
+
+            toast.success(`¡Ciclo escolar ${yearName} finalizado exitosamente!`);
+            router.push(`/dashboard/academico`);
         } catch (e: any) {
-            toast.error(e?.response?.data?.error || 'Error al confirmar el cierre');
+            toast.error(e?.response?.data?.error || e?.message || 'Error al confirmar el cierre');
         } finally {
             setConfirming(false);
         }
     };
 
-    const assignStudent = (studentId: string, yearId: string, classroomId: string | null) => {
-        setAssignments(prev => ({ ...prev, [studentId]: { yearId, classroomId } }));
+    // Actualizar asignación individual de alumno
+    const updateStudentAssignment = (studentId: string, patch: Partial<StudentAssignment>) => {
+        setAssignments(prev => ({
+            ...prev,
+            [studentId]: {
+                ...(prev[studentId] || {
+                    action: 'ENROLL',
+                    targetGrade: 1,
+                    targetSectionLetter: 'A',
+                    classroomId: null,
+                }),
+                ...patch,
+            },
+        }));
+    };
+
+    // Confirmar retiro de estudiante
+    const confirmStudentRetire = () => {
+        if (!retireModalStudent) return;
+        updateStudentAssignment(retireModalStudent.studentId, {
+            action: retireMode,
+            targetGrade: null,
+            targetSectionLetter: '',
+            classroomId: null,
+        });
+        toast.info(`Estudiante marcado para ${retireMode === 'RETIRE_KEEP_HISTORY' ? 'Retiro con historial' : 'Eliminación completa'}`);
+        setRetireModalStudent(null);
+    };
+
+    // Crear nueva sección al vuelo
+    const handleCreateSection = () => {
+        if (!newSectionLetter.trim()) return;
+        setCustomSections(prev => [...prev, { grade: newSectionGrade, section: newSectionLetter.toUpperCase() }]);
+        toast.success(`Sección ${newSectionLetter.toUpperCase()} para ${newSectionGrade}º Año agregada a la lista`);
+        setNewSectionModalOpen(false);
     };
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-gray-50/50 flex items-center justify-center text-gray-400">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Cargando promoción...
+            <div className="min-h-screen bg-gray-50/50 flex items-center justify-center text-gray-500 font-medium">
+                <Loader2 className="w-6 h-6 animate-spin mr-2 text-indigo-600" /> Cargando panel de promoción...
             </div>
         );
     }
 
     return (
         <div className="min-h-screen bg-gray-50/50 pb-24">
-            {/* Header */}
-            <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
+            {/* Header Sticky */}
+            <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-xs">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                     <div className="flex items-center justify-between gap-4 flex-wrap">
                         <div className="flex items-center gap-3">
-                            <button onClick={() => router.push(`/dashboard/academico/${yearName}`)} className="p-2 -ml-2 hover:bg-gray-100 rounded-full text-gray-500">
+                            <button
+                                onClick={() => router.push(`/dashboard/academico/${yearName}`)}
+                                className="p-2 -ml-2 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
+                                title="Volver al panel académico"
+                            >
                                 <ArrowLeft className="w-5 h-5" />
                             </button>
                             <div>
                                 <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                                    <GraduationCap className="w-6 h-6 text-indigo-600" />
-                                    Promoción — {yearName}
+                                    <GraduationCap className="w-7 h-7 text-indigo-600" />
+                                    Promoción Escolar — Ciclo {yearName}
                                 </h1>
                                 <p className="text-sm text-gray-500">
-                                    {suggestions.length} estudiantes · {allAssignedCount} con destino asignado
+                                    {suggestions.length} estudiantes matriculados · <strong className="text-indigo-600">{allAssignedCount}</strong> con destino asignado
                                 </p>
                             </div>
                         </div>
+
                         <button
                             onClick={() => setConfirmOpen(true)}
-                            disabled={!allComplete}
-                            className={`px-4 py-2 text-sm font-bold rounded-xl shadow-xs transition-colors ${
-                                allComplete
-                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                            }`}
+                            className="px-5 py-2.5 text-sm font-bold rounded-xl shadow-sm transition-all flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
                         >
-                            Confirmar y Cerrar Ciclo {allComplete ? '✓' : `(${suggestions.length - allAssignedCount} pendientes)`}
+                            <CheckCircle2 className="w-4 h-4" />
+                            Confirmar y Cerrar Ciclo
                         </button>
                     </div>
 
-                    {/* Botones de estrategia automática (punto de partida, siempre editable) */}
-                    <div className="mt-4 flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1">
-                            <Wand2 className="w-3.5 h-3.5" /> Estrategia automática:
+                    {/* Barra de Estrategias Automáticas */}
+                    <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1">
+                            <Wand2 className="w-3.5 h-3.5 text-indigo-600" /> Estrategia Automática:
                         </span>
                         {strategies.map(s => (
                             <button
                                 key={s.key}
                                 onClick={() => applyStrategy(s.key)}
                                 disabled={applyingStrategy !== null}
-                                className="px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 transition-colors disabled:opacity-50"
+                                className="px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-indigo-400 hover:bg-indigo-50/50 hover:text-indigo-700 transition-colors disabled:opacity-50"
                                 title={s.description}
                             >
                                 {applyingStrategy === s.key ? 'Aplicando...' : s.name}
@@ -290,28 +443,35 @@ export default function PromotionPage() {
             </header>
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-                {/* NIVEL 1 — Años */}
+                {/* NIVEL 1 — Selector de Años */}
                 <section>
-                    <h2 className="text-sm font-bold text-gray-600 uppercase tracking-wider mb-3 flex items-center gap-2">
-                        <School className="w-4 h-4" /> Años
+                    <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <School className="w-4 h-4 text-indigo-600" /> Años Escolares
                     </h2>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                         {grades.map(g => {
                             const pct = g.total > 0 ? (g.assigned / g.total) * 100 : 0;
                             return (
                                 <button
                                     key={g.grade}
-                                    onClick={() => { setSelectedGrade(g.grade); setSelectedSection(null); setVisibleLimit(30); }}
-                                    className={`p-4 rounded-2xl border bg-white text-left transition-all ${
-                                        selectedGrade === g.grade ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-gray-200 hover:border-indigo-300'
+                                    onClick={() => {
+                                        setSelectedGrade(g.grade);
+                                        const firstSec = Array.from(g.sections.keys())[0] || 'A';
+                                        setSelectedSection(firstSec);
+                                        setVisibleLimit(30);
+                                    }}
+                                    className={`p-4 rounded-2xl border text-left transition-all ${
+                                        selectedGrade === g.grade
+                                            ? 'bg-indigo-50/30 border-indigo-500 ring-2 ring-indigo-200 shadow-xs'
+                                            : 'bg-white border-gray-200 hover:border-indigo-300'
                                     }`}
                                 >
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <div className="font-bold text-gray-900">{g.grade}º Año</div>
-                                            <div className="text-xs text-gray-400">{g.assigned}/{g.total} asignados</div>
+                                            <div className="font-bold text-gray-900 text-base">{g.grade}º Año</div>
+                                            <div className="text-xs text-gray-500 font-medium">{g.assigned}/{g.total} asignados</div>
                                         </div>
-                                        <ProgressRing pct={pct} />
+                                        <ProgressRing pct={pct} size={48} />
                                     </div>
                                 </button>
                             );
@@ -319,29 +479,50 @@ export default function PromotionPage() {
                     </div>
                 </section>
 
-                {/* NIVEL 2 — Secciones */}
+                {/* NIVEL 2 — Secciones del Año Seleccionado */}
                 {selectedGradeEntry && (
                     <section>
-                        <h2 className="text-sm font-bold text-gray-600 uppercase tracking-wider mb-3 flex items-center gap-2">
-                            <Users className="w-4 h-4" /> Secciones del {selectedGrade}º Año
+                        <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <Users className="w-4 h-4 text-indigo-600" /> Secciones de {selectedGrade}º Año
                         </h2>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                             {sectionList.map(s => {
                                 const pct = s.total > 0 ? (s.assigned / s.total) * 100 : 0;
+                                const malePct = s.total > 0 ? Math.round((s.males / s.total) * 100) : 0;
+                                const femalePct = s.total > 0 ? Math.round((s.females / s.total) * 100) : 0;
+
                                 return (
                                     <button
                                         key={s.section}
                                         onClick={() => { setSelectedSection(s.section); setVisibleLimit(30); }}
-                                        className={`p-4 rounded-2xl border bg-white text-left transition-all ${
-                                            selectedSection === s.section ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-gray-200 hover:border-indigo-300'
+                                        className={`p-4 rounded-2xl border text-left transition-all ${
+                                            selectedSection === s.section
+                                                ? 'bg-indigo-50/30 border-indigo-500 ring-2 ring-indigo-200 shadow-xs'
+                                                : 'bg-white border-gray-200 hover:border-indigo-300'
                                         }`}
                                     >
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex items-center justify-between mb-2">
                                             <div>
                                                 <div className="font-bold text-gray-900">Sección {s.section}</div>
-                                                <div className="text-xs text-gray-400">{s.assigned}/{s.total} asignados</div>
+                                                <div className="text-xs text-gray-500">{s.assigned}/{s.total} alumnos</div>
                                             </div>
-                                            <ProgressRing pct={pct} size={52} />
+                                            <ProgressRing pct={pct} size={42} />
+                                        </div>
+
+                                        {/* Barra de Balance de Género Azul / Rosa */}
+                                        <div className="mt-2 pt-2 border-t border-gray-100">
+                                            <div className="flex items-center justify-between text-[11px] font-bold mb-1">
+                                                <span className="text-blue-600 flex items-center gap-1">
+                                                    👦 {s.males} ({malePct}%)
+                                                </span>
+                                                <span className="text-pink-600 flex items-center gap-1">
+                                                    👧 {s.females} ({femalePct}%)
+                                                </span>
+                                            </div>
+                                            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden flex">
+                                                <div style={{ width: `${malePct}%` }} className="bg-blue-500 h-full" />
+                                                <div style={{ width: `${femalePct}%` }} className="bg-pink-500 h-full" />
+                                            </div>
                                         </div>
                                     </button>
                                 );
@@ -350,119 +531,313 @@ export default function PromotionPage() {
                     </section>
                 )}
 
-                {/* NIVEL 3 — Estudiantes */}
+                {/* NIVEL 3 — Lista de Estudiantes con Asignación Manual y Libertad Total */}
                 {selectedGradeEntry && selectedSection !== null && (
-                    <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-                            <h2 className="text-sm font-bold text-gray-700">
-                                Estudiantes — {selectedGrade}º Año · Sección {selectedSection}
+                    <section className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
+                        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                            <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                                <Users className="w-5 h-5 text-indigo-600" />
+                                Estudiantes de {selectedGrade}º Año · Sección {selectedSection}
                             </h2>
-                            <span className="text-xs text-gray-400">{level3Students.length} mostrados</span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => {
+                                        setNewSectionGrade(selectedGrade! >= 5 ? 5 : selectedGrade! + 1);
+                                        setNewSectionModalOpen(true);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-bold rounded-lg border border-indigo-200 text-indigo-600 bg-indigo-50/50 hover:bg-indigo-100 transition-colors flex items-center gap-1"
+                                >
+                                    <Plus className="w-3.5 h-3.5" /> Crear Sección para {selectedGrade! >= 5 ? 5 : selectedGrade! + 1}º Año
+                                </button>
+                                <span className="text-xs text-gray-400 font-medium">({level3Students.length} mostrados)</span>
+                            </div>
                         </div>
+
                         <div className="divide-y divide-gray-100">
                             {level3Students.map(s => {
-                                const current = assignments[s.studentId];
-                                const chosenYear = destYears.find(y => y.id === current?.yearId);
-                                const chosenSection = chosenYear?.sections.find(c => c.id === current?.classroomId);
+                                const currentAsg = assignments[s.studentId] || {
+                                    action: s.isLastGrade ? 'GRADUATE' : 'ENROLL',
+                                    targetGrade: s.defaultTargetGrade,
+                                    targetSectionLetter: s.currentSection || 'A',
+                                    classroomId: null,
+                                };
+
+                                const isMale = s.gender === 'MASCULINO';
+                                const isRetired = currentAsg.action === 'RETIRE_KEEP_HISTORY' || currentAsg.action === 'RETIRE_DELETE';
+                                const isGraduate = s.isLastGrade || currentAsg.action === 'GRADUATE';
+
+                                // Secciones disponibles para el año destino elegido
+                                const availableSections = [
+                                    'A', 'B',
+                                    ...customSections.filter(cs => cs.grade === currentAsg.targetGrade).map(cs => cs.section)
+                                ];
+                                const uniqueSectionLetters = Array.from(new Set(availableSections));
+
                                 return (
-                                    <div key={s.studentId} className="px-5 py-4 flex flex-col md:flex-row md:items-center gap-3">
+                                    <div
+                                        key={s.studentId}
+                                        className={`px-5 py-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-colors ${
+                                            isRetired ? 'bg-red-50/30 opacity-80' : 'hover:bg-gray-50/70'
+                                        }`}
+                                    >
+                                        {/* Info del Estudiante */}
                                         <div className="flex-1 min-w-0">
-                                            <div className="font-semibold text-gray-900 truncate">{s.name}</div>
-                                            <div className="text-xs text-gray-500">
-                                                Promedio <span className="font-bold text-indigo-700">{s.finalAverage.toFixed(1)}</span>
-                                                {' · '}
-                                                {s.pendingCount > 0 ? (
-                                                    <span className="text-amber-700 font-semibold">{s.pendingCount} pendientes</span>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${isMale ? 'bg-blue-50 text-blue-700' : 'bg-pink-50 text-pink-700'}`}>
+                                                    {isMale ? '👦 Varón' : '👧 Hembra'}
+                                                </span>
+                                                <span className="font-bold text-gray-900 text-sm truncate">{s.name}</span>
+                                            </div>
+
+                                            <div className="mt-1 text-xs text-gray-500 flex items-center gap-2 flex-wrap">
+                                                <span>
+                                                    Promedio: <strong className="text-indigo-700">{s.finalAverage.toFixed(1)} / 20</strong>
+                                                </span>
+                                                {s.failedSubjects.length > 0 ? (
+                                                    <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md font-semibold">
+                                                        <AlertTriangle className="w-3 h-3 text-amber-500" />
+                                                        Reprobado en: {s.failedSubjects.map(f => `${f.name} (${f.average} pts)`).join(', ')}
+                                                    </span>
                                                 ) : (
-                                                    <span className="text-emerald-600">Sin pendientes</span>
+                                                    <span className="text-emerald-600 font-medium">✓ Todas las materias aprobadas</span>
                                                 )}
                                             </div>
                                         </div>
 
-                                        <div className="flex-1 min-w-0">
-                                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${STATUS_COLOR[s.suggestedStatus]}`}>
-                                                {STATUS_LABEL[s.suggestedStatus]}
-                                            </span>
-                                            <select
-                                                className="ml-2 text-[11px] font-bold border border-gray-200 rounded-lg px-1.5 py-1"
-                                                value={finalResults[s.studentId] || s.suggestedStatus}
-                                                onChange={e => setFinalResults(prev => ({ ...prev, [s.studentId]: e.target.value }))}
-                                                title="Resultado final (editable)"
-                                            >
-                                                {Object.entries(STATUS_LABEL).map(([k, v]) => (
-                                                    <option key={k} value={k}>{v}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            {/* Selector AÑO destino (cualquier año, no solo el inmediato) */}
-                                            <select
-                                                className="text-xs font-semibold border border-gray-200 rounded-lg px-2 py-1.5"
-                                                value={current?.yearId || ''}
-                                                onChange={e => assignStudent(s.studentId, e.target.value, null)}
-                                            >
-                                                <option value="">Año destino...</option>
-                                                {destYears.map(y => (
-                                                    <option key={y.id} value={y.id}>{y.name}</option>
-                                                ))}
-                                            </select>
-                                            {/* Selector SECCIÓN destino */}
-                                            <select
-                                                className="text-xs font-semibold border border-gray-200 rounded-lg px-2 py-1.5 disabled:opacity-40"
-                                                disabled={!current?.yearId}
-                                                value={current?.classroomId || ''}
-                                                onChange={e => assignStudent(s.studentId, current!.yearId, e.target.value || null)}
-                                            >
-                                                <option value="">Sección...</option>
-                                                {(chosenYear?.sections || []).map(c => (
-                                                    <option key={c.id} value={c.id}>{c.grade}º · Sección {c.section}</option>
-                                                ))}
-                                            </select>
-                                            {chosenSection && (
-                                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">
-                                                    <Check className="w-3.5 h-3.5" />
-                                                    Asignado: {chosenYear!.name} · {chosenSection.section}
+                                        {/* Selector de Estado Sugerido */}
+                                        {!isRetired && !isGraduate && (
+                                            <div className="flex items-center gap-2">
+                                                <span className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${STATUS_COLOR[s.suggestedStatus]}`}>
+                                                    {STATUS_LABEL[s.suggestedStatus]}
                                                 </span>
+                                                <select
+                                                    className="text-xs font-semibold border border-gray-200 rounded-lg px-2 py-1 bg-white"
+                                                    value={finalResults[s.studentId] || s.suggestedStatus}
+                                                    onChange={e => setFinalResults(prev => ({ ...prev, [s.studentId]: e.target.value }))}
+                                                    title="Resultado evaluativo final"
+                                                >
+                                                    {Object.entries(STATUS_LABEL).map(([k, v]) => (
+                                                        <option key={k} value={k}>{v}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
+
+                                        {/* Destino y Asignación */}
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            {isGraduate ? (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 text-xs font-bold">
+                                                    <GraduationCap className="w-4 h-4" />
+                                                    🎓 5to Año — Egresado del Liceo
+                                                </span>
+                                            ) : isRetired ? (
+                                                <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-red-50 text-red-700 border border-red-200 text-xs font-bold">
+                                                    <UserMinus className="w-4 h-4" />
+                                                    {currentAsg.action === 'RETIRE_KEEP_HISTORY' ? 'Retirado (Guarda Historial)' : 'Eliminado de BD'}
+                                                </span>
+                                            ) : (
+                                                <>
+                                                    {/* Selector de Año Destino */}
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-xs text-gray-500 font-medium">Pasa a:</span>
+                                                        <select
+                                                            className="text-xs font-bold border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-800"
+                                                            value={currentAsg.targetGrade || 1}
+                                                            onChange={e => updateStudentAssignment(s.studentId, { targetGrade: parseInt(e.target.value) })}
+                                                        >
+                                                            <option value={1}>1º Año</option>
+                                                            <option value={2}>2º Año</option>
+                                                            <option value={3}>3º Año</option>
+                                                            <option value={4}>4º Año</option>
+                                                            <option value={5}>5º Año</option>
+                                                        </select>
+                                                    </div>
+
+                                                    {/* Selector de Sección Destino */}
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-xs text-gray-500 font-medium">Sección:</span>
+                                                        <select
+                                                            className="text-xs font-bold border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-800"
+                                                            value={currentAsg.targetSectionLetter || 'A'}
+                                                            onChange={e => updateStudentAssignment(s.studentId, { targetSectionLetter: e.target.value })}
+                                                        >
+                                                            {uniqueSectionLetters.map(sec => (
+                                                                <option key={sec} value={sec}>Sección {sec}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+
+                                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">
+                                                        <Check className="w-3.5 h-3.5" />
+                                                        Destino: {currentAsg.targetGrade}º {currentAsg.targetSectionLetter}
+                                                    </span>
+                                                </>
                                             )}
+
+                                            {/* Botón Retirar / Restaurar */}
+                                            {isRetired ? (
+                                                <button
+                                                    onClick={() => updateStudentAssignment(s.studentId, { action: 'ENROLL', targetGrade: s.defaultTargetGrade, targetSectionLetter: s.currentSection || 'A' })}
+                                                    className="px-2.5 py-1 text-xs font-bold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+                                                >
+                                                    Restaurar
+                                                </button>
+                                            ) : !isGraduate ? (
+                                                <button
+                                                    onClick={() => {
+                                                        setRetireModalStudent(s);
+                                                        setRetireMode('RETIRE_KEEP_HISTORY');
+                                                    }}
+                                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                    title="Retirar estudiante"
+                                                >
+                                                    <UserMinus className="w-4 h-4" />
+                                                </button>
+                                            ) : null}
                                         </div>
                                     </div>
                                 );
                             })}
                         </div>
-                        {selectedGradeEntry.sections.get(selectedSection)!.length > visibleLimit && (
-                            <div className="px-5 py-3 text-center">
-                                <button
-                                    onClick={() => setVisibleLimit(v => v + 30)}
-                                    className="text-xs font-bold text-indigo-600 hover:underline"
-                                >
-                                    Cargar más estudiantes
-                                </button>
-                            </div>
-                        )}
                     </section>
                 )}
             </main>
 
-            {/* Modal de confirmación final */}
-            {confirmOpen && (
+            {/* Modal de Retiro de Estudiante */}
+            {retireModalStudent && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
                     <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                        <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3 bg-gradient-to-r from-emerald-50/70 to-transparent">
-                            <AlertTriangle className="w-5 h-5 text-amber-500" />
-                            <h3 className="text-base font-bold text-gray-900">Confirmar cierre del ciclo</h3>
+                        <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3 bg-red-50/50">
+                            <ShieldAlert className="w-5 h-5 text-red-600" />
+                            <h3 className="text-base font-bold text-gray-900">Retirar Estudiante</h3>
                         </div>
                         <div className="p-6 space-y-4">
                             <p className="text-sm text-gray-600">
-                                Se crearán los registros académicos y se matriculará a los {suggestions.length} estudiantes
-                                en sus destinos asignados. Esta acción es <strong>irreversible</strong>.
+                                ¿Cómo deseas gestionar el retiro de <strong>{retireModalStudent.name}</strong>?
                             </p>
+
+                            <div className="space-y-3">
+                                <label className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-colors ${retireMode === 'RETIRE_KEEP_HISTORY' ? 'border-indigo-500 bg-indigo-50/40' : 'border-gray-200'}`}>
+                                    <input
+                                        type="radio"
+                                        name="retireMode"
+                                        checked={retireMode === 'RETIRE_KEEP_HISTORY'}
+                                        onChange={() => setRetireMode('RETIRE_KEEP_HISTORY')}
+                                        className="mt-1"
+                                    />
+                                    <div>
+                                        <div className="text-sm font-bold text-gray-900">Mantener información histórica (Recomendado)</div>
+                                        <div className="text-xs text-gray-500">Conserva su récord académico y notas de este ciclo escolar, pero no lo matricula para el ciclo siguiente.</div>
+                                    </div>
+                                </label>
+
+                                <label className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-colors ${retireMode === 'RETIRE_DELETE' ? 'border-red-500 bg-red-50/40' : 'border-gray-200'}`}>
+                                    <input
+                                        type="radio"
+                                        name="retireMode"
+                                        checked={retireMode === 'RETIRE_DELETE'}
+                                        onChange={() => setRetireMode('RETIRE_DELETE')}
+                                        className="mt-1"
+                                    />
+                                    <div>
+                                        <div className="text-sm font-bold text-red-700">Eliminar completamente del sistema</div>
+                                        <div className="text-xs text-gray-500">Borra de la base de datos al estudiante y todo su historial (usar si fue registrado por error).</div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-2">
+                            <button onClick={() => setRetireModalStudent(null)} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-200 rounded-xl">
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={confirmStudentRetire}
+                                className="px-5 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-xs"
+                            >
+                                Confirmar Retiro
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal para Crear Nueva Sección al Vuelo */}
+            {newSectionModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+                    <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2 bg-indigo-50/50">
+                            <Plus className="w-5 h-5 text-indigo-600" />
+                            <h3 className="text-base font-bold text-gray-900">Crear Sección para el Siguiente Ciclo</h3>
+                        </div>
+                        <div className="p-6 space-y-4">
                             <div>
-                                <label className="block text-xs font-bold text-gray-600 mb-1.5">
-                                    Escribe el nombre del ciclo para confirmar: <span className="font-mono">{yearName}</span>
+                                <label className="block text-xs font-bold text-gray-600 mb-1">Año Escolar Destino</label>
+                                <select
+                                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-bold"
+                                    value={newSectionGrade}
+                                    onChange={e => setNewSectionGrade(parseInt(e.target.value))}
+                                >
+                                    <option value={1}>1º Año</option>
+                                    <option value={2}>2º Año</option>
+                                    <option value={3}>3º Año</option>
+                                    <option value={4}>4º Año</option>
+                                    <option value={5}>5º Año</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-600 mb-1">Letra de la Sección (ej. C, D)</label>
+                                <input
+                                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-bold uppercase"
+                                    value={newSectionLetter}
+                                    onChange={e => setNewSectionLetter(e.target.value.toUpperCase())}
+                                    maxLength={2}
+                                    placeholder="C"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-2">
+                            <button onClick={() => setNewSectionModalOpen(false)} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-200 rounded-xl">
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleCreateSection}
+                                className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs"
+                            >
+                                Crear Sección
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Confirmación y Cierre de Ciclo */}
+            {confirmOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+                    <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3 bg-gradient-to-r from-emerald-50/80 to-transparent">
+                            <AlertTriangle className="w-6 h-6 text-amber-500" />
+                            <h3 className="text-base font-bold text-gray-900">Confirmar Cierre de Ciclo Escolar</h3>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-gray-600">
+                                Al confirmar, el sistema:
+                            </p>
+                            <ul className="text-xs text-gray-600 space-y-1.5 list-disc list-inside bg-gray-50 p-3.5 rounded-xl border border-gray-100 font-medium">
+                                <li>Creará automáticamente el ciclo escolar siguiente (<strong>{suggestedNextYearName}</strong>) y las secciones destino.</li>
+                                <li>Promocionará a los estudiantes a sus años respectivos (1º → 2º, 2º → 3º).</li>
+                                <li>Registrará a los estudiantes de 5to año como <strong>Egresados</strong> y sellará su récord histórico.</li>
+                                <li>Marcará el ciclo <strong>{yearName}</strong> como finalizado.</li>
+                            </ul>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                                    Escribe el nombre del ciclo para confirmar: <span className="font-mono text-indigo-700 font-black">{yearName}</span>
                                 </label>
                                 <input
-                                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm"
+                                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-semibold"
                                     value={confirmText}
                                     onChange={e => setConfirmText(e.target.value)}
                                     placeholder={yearName}
@@ -475,10 +850,17 @@ export default function PromotionPage() {
                             </button>
                             <button
                                 onClick={handleConfirm}
-                                disabled={confirming || confirmText !== yearName}
-                                className="px-5 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs disabled:opacity-50"
+                                disabled={confirming || confirmText.trim() !== yearName.trim()}
+                                className="px-5 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs disabled:opacity-50 flex items-center gap-2"
                             >
-                                {confirming ? 'Cerrando...' : 'Confirmar y Cerrar Ciclo'}
+                                {confirming ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Cerrando ciclo...
+                                    </>
+                                ) : (
+                                    'Aceptar y Finalizar Ciclo'
+                                )}
                             </button>
                         </div>
                     </div>

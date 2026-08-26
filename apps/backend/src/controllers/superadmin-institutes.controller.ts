@@ -91,11 +91,7 @@ export class SuperAdminInstitutesController {
                         status: true,
                         plan: true,
                         maxStudents: true,
-                        currentStudents: true,
                         maxTeachers: true,
-                        currentTeachers: true,
-                        billingStatus: true,
-                        monthlyPrice: true,
                         createdAt: true,
                     },
                 }),
@@ -235,14 +231,6 @@ export class SuperAdminInstitutesController {
                     plan: planName,
                     maxStudents: planConfig.maxStudents,
                     maxTeachers: planConfig.maxTeachers,
-                    maxStorage: planConfig.maxStorage,
-                    currentStudents: 0,
-                    currentTeachers: 0,
-                    currentStorage: 0,
-                    // Facturación
-                    monthlyPrice: planConfig.monthlyPrice,
-                    billingStatus: 'ACTIVE',
-                    nextBillingDate,
                 },
             });
 

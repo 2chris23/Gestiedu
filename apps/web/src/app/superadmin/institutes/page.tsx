@@ -52,13 +52,17 @@ export default function SuperAdminInstitutesPage() {
                 ...(statusFilter && { status: statusFilter }),
             });
 
+            const clientToken = typeof document !== 'undefined' ? document.cookie.split('superadmin_access_token=')[1]?.split(';')[0] : '';
+            const headers: Record<string, string> = {};
+            if (clientToken) {
+                headers['Authorization'] = `Bearer ${clientToken}`;
+            }
+
             const response = await fetch(
                 `/api/superadmin/institutes?${params}`,
                 {
                     credentials: 'include',
-                    headers: {
-                        'Authorization': `Bearer ${document.cookie.split('superadmin_access_token=')[1]?.split(';')[0]}`,
-                    },
+                    headers,
                 }
             );
 

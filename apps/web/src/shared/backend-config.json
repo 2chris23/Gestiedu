@@ -4,6 +4,6 @@
   "protocol": "http",
   "apiUrl": "http://localhost:3001/api",
   "status": "running",
-  "lastStarted": "2026-08-26T20:35:39.706Z",
+  "lastStarted": "2026-08-26T23:03:06.552Z",
   "version": "1.0.0"
 }

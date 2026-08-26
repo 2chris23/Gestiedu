@@ -113,14 +113,25 @@ export const academicYearService = {
 
     confirmClose: async (
         yearId: string,
-        decisions: Array<{ studentId: string; finalResult: string; assignedClassroomId?: string | null }>,
+        decisions: Array<{
+            studentId: string;
+            finalResult: string;
+            action?: 'ENROLL' | 'GRADUATE' | 'RETIRE_KEEP_HISTORY' | 'RETIRE_DELETE';
+            targetGrade?: number | null;
+            assignedClassroomId?: string | null;
+            targetSectionLetter?: string | null;
+        }>,
         strategyKey?: string,
-        strategyMode?: string
+        strategyMode?: string,
+        autoCreateNextYear?: boolean,
+        nextYearName?: string
     ): Promise<any> => {
         const response = await api.post(`/academic-years/${yearId}/close`, {
             decisions,
             strategyKey,
             strategyMode,
+            autoCreateNextYear,
+            nextYearName,
         });
         return response.data;
     },
