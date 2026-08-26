@@ -143,7 +143,14 @@ export const getClassrooms = async (request: FastifyRequest, reply: FastifyReply
       },
     });
 
-    return reply.send(classrooms);
+    const formatted = classrooms.map(c => ({
+      ...c,
+      _count: {
+        students: (c._count as any)?.studentClassrooms ?? c._count?.students ?? 0,
+      }
+    }));
+
+    return reply.send(formatted);
   } catch (error) {
     request.log.error(error);
     return reply.status(500).send({ error: 'Error al obtener aulas' });
@@ -163,17 +170,22 @@ export const getClassroom = async (request: FastifyRequest, reply: FastifyReply)
           select: { id: true, name: true, status: true }
         },
         _count: {
-          select: { students: true },
+          select: {
+            students: true,
+            studentClassrooms: { where: { isActive: true } }
+          },
         },
       },
     });
 
     if (!classroom) return reply.status(404).send({ error: 'Aula no encontrada' });
 
-    // Agregar academicYearId directamente al objeto para facilitar acceso en frontend
     return reply.send({
       ...classroom,
-      academicYearId: classroom.academicYearId // Ya existe en el modelo, asegurar que se incluya
+      _count: {
+        students: (classroom._count as any)?.studentClassrooms ?? classroom._count?.students ?? 0
+      },
+      academicYearId: classroom.academicYearId
     });
   } catch (error) {
     request.log.error(error);
@@ -193,7 +205,10 @@ export const getClassroomBySlug = async (request: FastifyRequest, reply: Fastify
         select: { id: true, name: true, status: true }
       },
       _count: {
-        select: { students: true },
+        select: {
+          students: true,
+          studentClassrooms: { where: { isActive: true } }
+        },
       },
     };
 
@@ -227,6 +242,9 @@ export const getClassroomBySlug = async (request: FastifyRequest, reply: Fastify
 
     return reply.send({
       ...classroom,
+      _count: {
+        students: (classroom._count as any)?.studentClassrooms ?? classroom._count?.students ?? 0
+      },
       academicYearId: classroom.academicYearId
     });
   } catch (error) {

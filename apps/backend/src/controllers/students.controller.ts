@@ -166,7 +166,10 @@ export async function getStudents(
     }
 
     if (classroomId) {
-      where.classroomId = classroomId;
+      where.OR = [
+        { classroomId },
+        { studentClassrooms: { some: { classroomId, isActive: true } } }
+      ];
     }
 
     // OPTIMIZACIÓN: Obtener solo los campos necesarios sin includes pesados

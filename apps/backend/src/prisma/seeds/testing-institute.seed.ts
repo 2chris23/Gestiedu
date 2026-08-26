@@ -271,12 +271,20 @@ async function seedTestingInstitute() {
         await tenantPrisma.studentClassroom.create({
             data: { studentId: s.id, classroomId: aula1B.id, academicYearId: ay2026.id, isActive: true }
         });
+        await tenantPrisma.user.update({
+            where: { id: s.id },
+            data: { classroomId: aula1B.id }
+        });
     }
 
     // Matricular en 1er Año A: Carlos (V-20000003), Maria (V-20000004), Pedro (V-20000005)
     for (const s of [students[2], students[3], students[4]]) {
         await tenantPrisma.studentClassroom.create({
             data: { studentId: s.id, classroomId: aula1A.id, academicYearId: ay2026.id, isActive: true }
+        });
+        await tenantPrisma.user.update({
+            where: { id: s.id },
+            data: { classroomId: aula1A.id }
         });
     }
 
@@ -285,11 +293,19 @@ async function seedTestingInstitute() {
         await tenantPrisma.studentClassroom.create({
             data: { studentId: s.id, classroomId: aula2A.id, academicYearId: ay2026.id, isActive: true }
         });
+        await tenantPrisma.user.update({
+            where: { id: s.id },
+            data: { classroomId: aula2A.id }
+        });
     }
 
     // Matricular en 5to Año A: Andrés (V-20000008)
     await tenantPrisma.studentClassroom.create({
         data: { studentId: students[7].id, classroomId: aula5A.id, academicYearId: ay2026.id, isActive: true }
+    });
+    await tenantPrisma.user.update({
+        where: { id: students[7].id },
+        data: { classroomId: aula5A.id }
     });
 
     // Crear Actividades y Calificaciones

@@ -410,6 +410,11 @@ export async function confirmClose(
                         isActive: true,
                     },
                 });
+
+                await tx.user.update({
+                    where: { id: s.studentId },
+                    data: { classroomId: targetClassroomId },
+                }).catch(() => {});
             }
 
             records.push({ studentId: s.studentId, finalResult: decision.finalResult, assignedClassroomId: targetClassroomId });
