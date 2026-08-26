@@ -1,0 +1,84 @@
+
+src/controllers/classroomSubjects.controller.ts(806,65): error TS18047: 'g.score' is possibly 'null'.
+src/controllers/grades.controller.ts(137,7): error TS2353: Object literal may only specify known properties, and 'instituteId' does not exist in type 'GetGradesQuery'.
+src/controllers/reports.controller.ts(273,21): error TS2531: Object is possibly 'null'.
+src/controllers/reports.controller.ts(273,49): error TS18047: 'sum' is possibly 'null'.
+src/controllers/reports.controller.ts(273,55): error TS18047: 'val' is possibly 'null'.
+src/controllers/reports.controller.ts(274,30): error TS2345: Argument of type 'number | null' is not assignable to parameter of type 'number'.
+src/controllers/reports.controller.ts(275,29): error TS2345: Argument of type 'number | null' is not assignable to parameter of type 'number'.
+src/controllers/reports.controller.ts(279,37): error TS18047: 'v' is possibly 'null'.
+src/controllers/reports.controller.ts(280,32): error TS18047: 'v' is possibly 'null'.
+src/controllers/reports.controller.ts(280,43): error TS18047: 'v' is possibly 'null'.
+src/controllers/reports.controller.ts(281,35): error TS18047: 'v' is possibly 'null'.
+src/controllers/reports.controller.ts(281,46): error TS18047: 'v' is possibly 'null'.
+src/controllers/reports.controller.ts(282,32): error TS18047: 'v' is possibly 'null'.
+src/controllers/reports.controller.ts(293,27): error TS2345: Argument of type 'number | null' is not assignable to parameter of type 'number'.
+src/controllers/reports.controller.ts(433,49): error TS18047: 'grade.score' is possibly 'null'.
+src/controllers/students.controller.ts(484,65): error TS2554: Expected 1 arguments, but got 2.
+src/controllers/superadmin-institutes.controller.ts(213,25): error TS2322: Type '"BASIC" | "PREMIUM" | "ENTERPRISE"' is not assignable to type 'PlanType | undefined'.
+src/controllers/superadmin-institutes.controller.ts(247,17): error TS2322: Type 'UpdateInstituteBody' is not assignable to type '(Without<InstituteUpdateInput, InstituteUncheckedUpdateInput> & InstituteUncheckedUpdateInput) | (Without<...> & InstituteUpdateInput)'.
+src/middleware/auth.middleware.ts(69,7): error TS2322: Type 'string | null' is not assignable to type 'string'.
+src/middleware/auth.middleware.ts(111,11): error TS2322: Type 'string | null' is not assignable to type 'string'.
+src/middleware/tenant.middleware.ts(40,5): error TS2717: Subsequent property declarations must have the same type.  Property 'institute' must be of type 'RequestInstitute | undefined', but here has type 'TenantInfo | undefined'.
+src/middleware/tenant.middleware.ts(41,5): error TS2687: All declarations of 'tenantPrisma' must have identical modifiers.
+src/middleware/tenant.middleware.ts(41,5): error TS2717: Subsequent property declarations must have the same type.  Property 'tenantPrisma' must be of type 'PrismaClient<PrismaClientOptions, never, DefaultArgs>', but here has type 'PrismaClient<PrismaClientOptions, never, DefaultArgs> | undefined'.
+src/middleware/tenant.middleware.ts(101,9): error TS2741: Property 'code' is missing in type 'TenantInfo' but required in type 'RequestInstitute'.
+src/migration/scripts/2-migrate-data.ts(144,15): error TS2322: Type 'unknown' is not assignable to type 'any[]'.
+src/migration/scripts/test-local.ts(51,21): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'Without<UserCreateInput, UserUncheckedCreateInput> & UserUncheckedCreateInput'.
+src/migration/scripts/test-local.ts(62,21): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'Without<UserCreateInput, UserUncheckedCreateInput> & UserUncheckedCreateInput'.
+src/plugins/prisma.ts(3,18): error TS2724: '"../config/database"' has no exported member named 'connectDatabase'. Did you mean 'disconnectDatabase'?
+src/services/activities.service.ts(464,7): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/activities.service.ts(508,7): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/attendance.service.ts(87,9): error TS2353: Object literal may only specify known properties, and 'studentId_classroomId_date' does not exist in type 'DailyAttendanceWhereUniqueInput'.
+src/services/attendance.service.ts(136,38): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/attendance.service.ts(249,38): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/attendance.service.ts(291,38): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/attendance.service.ts(415,38): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/attendance.service.ts(453,7): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/attendance.service.ts(487,7): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/attendance.service.ts(510,38): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/attendance.service.ts(608,40): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/attendance.service.ts(681,40): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/audit.service.ts(62,17): error TS2353: Object literal may only specify known properties, and 'userIdaction' does not exist in type 'AuditLogData'.
+src/services/audit.service.ts(87,17): error TS2353: Object literal may only specify known properties, and 'userIdaction' does not exist in type 'AuditLogData'.
+src/services/audit.service.ts(113,17): error TS2353: Object literal may only specify known properties, and 'userIdaction' does not exist in type 'AuditLogData'.
+src/services/audit.service.ts(136,17): error TS2353: Object literal may only specify known properties, and 'userIdaction' does not exist in type 'AuditLogData'.
+src/services/audit.service.ts(159,17): error TS2353: Object literal may only specify known properties, and 'userIdaction' does not exist in type 'AuditLogData'.
+src/services/audit.service.ts(182,17): error TS2353: Object literal may only specify known properties, and 'userIdaction' does not exist in type 'AuditLogData'.
+src/services/auth.service.ts(97,9): error TS2322: Type 'string | null' is not assignable to type 'string'.
+src/services/auth.service.ts(140,9): error TS2322: Type '{ code: string; id: string; name: string; } | null' is not assignable to type '{ id: string; name: string; code: string; }'.
+src/services/auth.service.ts(200,9): error TS2322: Type 'string | null' is not assignable to type 'string'.
+src/services/cycle-statistics.service.ts(327,45): error TS2554: Expected 2 arguments, but got 1.
+src/services/cycle-statistics.service.ts(385,56): error TS2345: Argument of type 'number | null' is not assignable to parameter of type 'number'.
+src/services/cycle-statistics.service.ts(455,60): error TS2345: Argument of type 'number | null' is not assignable to parameter of type 'number'.
+src/services/cycle-statistics.service.ts(615,60): error TS2345: Argument of type 'number | null' is not assignable to parameter of type 'number'.
+src/services/cycle-statistics.service.ts(744,51): error TS2345: Argument of type 'number | null' is not assignable to parameter of type 'number'.
+src/services/grades.service.ts(630,42): error TS2345: Argument of type '(number | null)[]' is not assignable to parameter of type 'number[]'.
+src/services/grades.service.ts(1087,55): error TS2345: Argument of type '(number | null)[]' is not assignable to parameter of type 'number[]'.
+src/services/grades.service.ts(1088,41): error TS2345: Argument of type 'number | null' is not assignable to parameter of type 'number'.
+src/services/grades.service.ts(1089,40): error TS2345: Argument of type 'number | null' is not assignable to parameter of type 'number'.
+src/services/grades.service.ts(1090,54): error TS18047: 'score' is possibly 'null'.
+src/services/grades.service.ts(1105,50): error TS18047: 'score' is possibly 'null'.
+src/services/grades.service.ts(1105,72): error TS18047: 'score' is possibly 'null'.
+src/services/grades.service.ts(1262,11): error TS2322: Type '{ id: string; score: number | null; }' is not assignable to type '{ id: string; score: number; }'.
+src/services/reports.service.ts(593,17): error TS2531: Object is possibly 'null'.
+src/services/reports.service.ts(593,51): error TS18047: 'sum' is possibly 'null'.
+src/services/reports.service.ts(593,57): error TS18047: 'v' is possibly 'null'.
+src/services/schedules.service.ts(102,33): error TS2322: Type 'string | null' is not assignable to type 'string'.
+src/services/schedules.service.ts(131,36): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/schedules.service.ts(172,36): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/schedules.service.ts(195,7): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+src/services/schedules.service.ts(282,36): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/schedules.service.ts(321,7): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ LUNES: never[]; MARTES: never[]; MIERCOLES: never[]; JUEVES: never[]; VIERNES: never[]; SABADO: never[]; DOMINGO: never[]; }'.
+src/services/schedules.service.ts(388,12): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+src/services/schedules.service.ts(389,9): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+src/services/schedules.service.ts(394,7): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+src/services/schedules.service.ts(429,36): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/schedules.service.ts(513,36): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/schedules.service.ts(537,36): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/schedules.service.ts(544,36): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/schedules.service.ts(571,36): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/socket/handlers/auth.handler.ts(35,33): error TS2339: Property 'user' does not exist on type '{ platformPrisma: PrismaClient<{ datasources: { db: { url: string | undefined; }; }; log: ("error" | "warn" | "query")[]; }, "error" | "warn" | "query", DefaultArgs>; getTenantPrisma: (instituteId: string) => Promise<...>; disconnectAll: () => Promise<...>; healthCheck: () => Promise<...>; }'.
+src/socket/handlers/auth.handler.ts(107,33): error TS2339: Property 'user' does not exist on type '{ platformPrisma: PrismaClient<{ datasources: { db: { url: string | undefined; }; }; log: ("error" | "warn" | "query")[]; }, "error" | "warn" | "query", DefaultArgs>; getTenantPrisma: (instituteId: string) => Promise<...>; disconnectAll: () => Promise<...>; healthCheck: () => Promise<...>; }'.
+
+

@@ -1,0 +1,7 @@
+[
+  {
+    "field": "dayOfWeek",
+    "message": "Invalid enum value. Expected 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY' | 'LUNES' | 'MARTES' | 'MIERCOLES' | 'JUEVES' | 'VIERNES' | 'SABADO' | 'DOMINGO', received 'Lunes'",
+    "code": "invalid_enum_value"
+  }
+]

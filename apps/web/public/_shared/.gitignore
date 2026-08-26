@@ -1,0 +1,3 @@
+# Archivos de configuración compartidos
+# El backend escribe aquí su configuración al iniciar
+backend-config.json

@@ -1,0 +1,20 @@
+
+src/controllers/superadmin-institutes.controller.ts(213,25): error TS2322: Type '"BASIC" | "PREMIUM" | "ENTERPRISE"' is not assignable to type 'PlanType | undefined'.
+src/controllers/superadmin-institutes.controller.ts(247,17): error TS2322: Type 'UpdateInstituteBody' is not assignable to type '(Without<InstituteUpdateInput, InstituteUncheckedUpdateInput> & InstituteUncheckedUpdateInput) | (Without<...> & InstituteUpdateInput)'.
+src/middleware/tenant.middleware.ts(169,9): error TS2741: Property 'code' is missing in type '{ id: string; name: string; slug: string; status: $Enums.InstituteStatus; plan: $Enums.PlanType; maxStudents: number; maxTeachers: number; }' but required in type 'TenantInfo'.
+src/migration/scripts/2-migrate-data.ts(144,15): error TS2322: Type 'unknown' is not assignable to type 'any[]'.
+src/migration/scripts/test-local.ts(51,21): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'Without<UserCreateInput, UserUncheckedCreateInput> & UserUncheckedCreateInput'.
+src/migration/scripts/test-local.ts(62,21): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'Without<UserCreateInput, UserUncheckedCreateInput> & UserUncheckedCreateInput'.
+src/services/activities.service.ts(464,7): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/activities.service.ts(508,7): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+src/services/auth.service.ts(97,9): error TS2322: Type 'string | null' is not assignable to type 'string'.
+src/services/auth.service.ts(140,9): error TS2322: Type '{ code: string; id: string; name: string; } | undefined' is not assignable to type '{ id: string; name: string; code: string; }'.
+src/services/auth.service.ts(200,9): error TS2322: Type 'string | null' is not assignable to type 'string'.
+src/services/cycle-statistics.service.ts(340,45): error TS2554: Expected 2 arguments, but got 1.
+src/services/cycle-statistics.service.ts(648,60): error TS2345: Argument of type 'number | null' is not assignable to parameter of type 'number'.
+src/services/cycle-statistics.service.ts(782,51): error TS2345: Argument of type 'number | null' is not assignable to parameter of type 'number'.
+src/services/reports.service.ts(593,17): error TS2531: Object is possibly 'null'.
+src/services/reports.service.ts(593,51): error TS18047: 'sum' is possibly 'null'.
+src/services/reports.service.ts(593,57): error TS18047: 'v' is possibly 'null'.
+src/services/schedules.service.ts(282,36): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+

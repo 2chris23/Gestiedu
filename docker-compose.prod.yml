@@ -1,0 +1,30 @@
+version: '3.8'
+services:
+  web:
+    build: ./docker/web
+    ports:
+      - '80:80'
+    env_file:
+      - .env.example
+  backend:
+    build: ./docker/backend
+    ports:
+      - '4000:4000'
+    env_file:
+      - .env.example
+  mobile:
+    build: ./docker/mobile
+    ports:
+      - '8081:8081'
+  postgres:
+    build: ./docker/postgres
+    ports:
+      - '5432:5432'
+  redis:
+    build: ./docker/redis
+    ports:
+      - '6379:6379'
+  nginx:
+    build: ./docker/nginx
+    ports:
+      - '80:80'

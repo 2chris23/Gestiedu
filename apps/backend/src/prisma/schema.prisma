@@ -1,0 +1,1128 @@
+// apps/backend/src/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================
+// ENUMS (PostgreSQL nativo)
+// =====================================================
+
+enum UserRole {
+  ADMIN
+  TEACHER
+  STUDENT
+  TUTOR
+}
+
+enum Gender {
+  MASCULINO
+  FEMENINO
+  OTRO
+}
+
+enum AcademicYearStatus {
+  ACTIVE
+  COMPLETED
+  UPCOMING
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum InstituteStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+  INACTIVE
+}
+
+enum PlanType {
+  BASIC
+  STANDARD
+  PREMIUM
+}
+
+// =====================================================
+// SUPERADMIN — Tabla completamente separada
+// =====================================================
+
+model SuperAdmin {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  password  String
+  name      String
+  isActive  Boolean   @default(true)
+  lastLogin DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  refreshTokens SuperAdminRefreshToken[]
+
+  @@index([email])
+  @@index([isActive])
+  @@map("super_admins")
+}
+
+model SuperAdminRefreshToken {
+  id           String     @id @default(cuid())
+  token        String     @unique
+  superAdminId String
+  superAdmin   SuperAdmin @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
+  expiresAt    DateTime
+  createdAt    DateTime   @default(now())
+
+  @@index([superAdminId])
+  @@index([expiresAt])
+  @@map("super_admin_refresh_tokens")
+}
+
+// =====================================================
+// CONFIGURACIÓN GLOBAL DE PLATAFORMA (Singleton)
+// =====================================================
+
+model PlatformConfig {
+  id              String   @id @default("platform")
+  maintenanceMode Boolean  @default(false)
+  defaultPlan     PlanType @default(BASIC)
+  maxFreeStudents Int      @default(100)
+  supportEmail    String   @default("soporte@tuapp.com")
+  platformName    String   @default("GestiEdu")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("platform_config")
+}
+
+// =====================================================
+// MODELO DE INSTITUTO (MULTI-TENANT)
+// =====================================================
+
+model Institute {
+  id        String  @id @default(cuid())
+  name      String
+  code      String
+  email     String
+  phone     String?
+  address   String?
+  slug      String  @unique
+  domain    String? @unique
+  subdomain String? @unique
+
+  // Estado y plan
+  status      InstituteStatus @default(PENDING)
+  plan        PlanType        @default(BASIC)
+  maxStudents Int             @default(500)
+  maxTeachers Int             @default(50)
+  trialEndsAt DateTime?
+  notes       String?
+
+  // Conexión a base de datos del tenant
+  databaseName     String? @unique
+  databaseHost     String?
+  databasePort     Int?    @default(5432)
+  databaseUser     String?
+  databasePassword String?
+
+  // Ubicación
+  timezone String  @default("America/Caracas")
+  country  String  @default("VE")
+  city     String?
+
+  // Logos y branding
+  logo           String?
+  favicon        String?
+  primaryColor   String? @default("#4F46E5")
+  secondaryColor String? @default("#3B82F6")
+  subjectPalette String?
+  ministryLogo   String?
+  ministryText   String?  @default("República Bolivariana de Venezuela\nMinisterio del Poder Popular para la Educación")
+
+  // Configuración académica
+  customDomain   String?  @unique
+  environment    String   @default("production")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  users         User[]
+  classrooms    Classroom[]
+  subjects      Subject[]
+  academicYears AcademicYear[]
+  activities    Activity[]
+  schedules     Schedule[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  enrollments   Enrollment[]
+  observations  Observation[]
+  invitations   InstituteInvitation[]
+  webhookLogs   WebhookLog[]
+
+  @@index([status])
+  @@index([plan])
+  @@index([slug])
+  @@map("institutes")
+}
+
+model InstituteInvitation {
+  id         String    @id @default(cuid())
+  email      String
+  token      String    @unique
+  expiresAt  DateTime
+  acceptedAt DateTime?
+
+  createdAt   DateTime   @default(now())
+  institute   Institute? @relation(fields: [instituteId], references: [id])
+  instituteId String?
+
+  @@index([token])
+  @@map("institute_invitations")
+}
+
+// =====================================================
+// MODELOS DE USUARIOS Y AUTENTICACIÓN
+// =====================================================
+
+model User {
+  id        String    @id // Cédula de identidad (CI) - definida por administrador
+  email     String    @unique
+  password  String
+  firstName String
+  lastName  String
+  phone     String?
+  birthDate DateTime?
+  address   String?
+  gender    Gender?
+  avatar    String?
+  role      UserRole
+  isActive  Boolean   @default(true)
+  joinDate  DateTime  @default(now())
+  lastLogin DateTime?
+
+  // Campos específicos para profesores
+  specialization String?
+
+  // Campos específicos para estudiantes
+  studentCode String?
+  classroomId String?
+
+  // Relación con instituto
+  // Configuraciones del usuario
+  preferences Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones específicas por rol
+  // Como Profesor
+  teacherClassrooms     TeacherClassroom[]
+  createdActivities     Activity[]
+  gradesGiven           Grade[]
+  attendanceRecords     DailyAttendance[]
+  classroomsAsTeacher   Classroom[]             @relation("ClassroomTeacher")
+  subjectTeachings      ClassroomSubject[]      @relation("SubjectTeacher")
+  subjectTeacherHistory SubjectTeacherHistory[] @relation("SubjectTeacherHistory")
+  schedules             Schedule[]              @relation("ScheduleTeacher")
+
+  // Como Estudiante
+  classroom           Classroom?         @relation(fields: [classroomId], references: [id], onDelete: SetNull)
+  studentClassrooms   StudentClassroom[]
+  grades              Grade[]            @relation("StudentGrades")
+  attendance          DailyAttendance[]  @relation("StudentAttendance")
+  academicHistory     AcademicRecord[]
+  studentTutorings    StudentTutor[]     @relation("StudentTutorStudent")
+  enrollments         Enrollment[]
+  observations        Observation[]
+  createdObservations Observation[]      @relation("CreatedObservations")
+
+  // Como Tutor
+  children StudentTutor[] @relation("StudentTutorTutor")
+
+  // Auditoría
+  auditLogs AuditLog[]
+
+  // Sesiones y tokens
+  refreshTokens RefreshToken[]
+
+  // Notificaciones
+  notifications Notification[]
+  institute     Institute?     @relation(fields: [instituteId], references: [id])
+  instituteId   String?
+
+  // Índices
+  @@index([email])
+  @@index([role])
+  @@index([isActive])
+  @@index([classroomId])
+  @@index([studentCode])
+  @@index([classroomId, role])
+  @@index([role, isActive])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  // Datos de sesión de dispositivo
+  userAgent    String?
+  ip           String?  // IP con la que se creó la sesión
+  lastUsedAt   DateTime @default(now()) // último uso actualizado en cada refresh
+  rememberMe   Boolean  @default(false) // sliding expiration activa
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// =====================================================
+// MODELOS ACADÉMICOS
+// =====================================================
+
+model AcademicYear {
+  id        String             @id @default(cuid())
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean            @default(false)
+  status    AcademicYearStatus @default(UPCOMING)
+
+  // Instituto
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  periods          Period[]
+  classrooms       Classroom[]
+  academicRecords  AcademicRecord[]
+  enrollments      StudentClassroom[]
+  subjectResources SubjectResource[]
+  institute        Institute?         @relation(fields: [instituteId], references: [id])
+  instituteId      String?
+
+  @@unique([name])
+  @@map("academic_years")
+}
+
+model Period {
+  id        String   @id @default(cuid())
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean  @default(false)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  grades     Grade[]
+  activities Activity[]
+
+  @@unique([academicYearId, name])
+  @@map("periods")
+}
+
+model Subject {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  code        String?
+  description String?
+  color       String?
+
+  // Instituto
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  classroomSubjects  ClassroomSubject[]
+  activities         Activity[]
+  grades             Grade[]
+  schedules          Schedule[]
+  enrollments        Enrollment[]
+  classSessions      ClassSession[]
+  classActivities    ClassActivity[]
+  resources          SubjectResource[]
+  evaluationPlanRows EvaluationPlanRow[]
+  institute          Institute?         @relation(fields: [instituteId], references: [id])
+  instituteId        String?
+
+  @@unique([name])
+  @@map("subjects")
+}
+
+model SubjectResource {
+  id   String @id @default(cuid())
+  name String
+  url  String
+  type String @default("SYLLABUS")
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([subjectId, academicYearId])
+  @@map("subject_resources")
+}
+
+model Classroom {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String?
+  section     String
+  grade       Int
+  capacity    Int?
+  isActive    Boolean @default(true)
+
+  // Instituto
+  // Profesor principal asignado
+  teacherId String?
+  teacher   User?   @relation("ClassroomTeacher", fields: [teacherId], references: [id], onDelete: SetNull)
+
+  academicYearId String?
+  academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  students           User[]
+  teachers           TeacherClassroom[]
+  studentClassrooms  StudentClassroom[]
+  subjects           ClassroomSubject[]
+  activities         Activity[]
+  schedules          Schedule[]
+  attendanceRecords  DailyAttendance[]
+  scheduleBlocks     ScheduleBlock[]    @relation("ClassroomScheduleBlocks")
+  classSessions      ClassSession[]
+  classActivities    ClassActivity[]
+  evaluationPlanRows EvaluationPlanRow[]
+  institute          Institute?         @relation(fields: [instituteId], references: [id])
+  instituteId        String?
+
+  @@unique([academicYearId, name, section])
+  @@index([academicYearId])
+  @@index([teacherId])
+  @@index([grade])
+  @@map("classrooms")
+}
+
+// =====================================================
+// MODELOS DE RELACIONES MANY-TO-MANY
+// =====================================================
+
+model TeacherClassroom {
+  id String @id @default(cuid())
+
+  teacherId String
+  teacher   User   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  isMainTeacher Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([teacherId, classroomId])
+  @@index([teacherId])
+  @@index([classroomId])
+  @@map("teacher_classrooms")
+}
+
+model StudentClassroom {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  enrollmentDate DateTime @default(now())
+  isActive       Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, academicYearId])
+  @@index([studentId, isActive])
+  @@index([academicYearId, isActive])
+  @@index([classroomId, academicYearId, isActive])
+  @@map("student_classrooms")
+}
+
+model ClassroomSubject {
+  id String @id @default(cuid())
+
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  teacherId String?
+  teacher   User?   @relation("SubjectTeacher", fields: [teacherId], references: [id], onDelete: SetNull)
+
+  weeklyBlocks Int   @default(0)
+  hoursPerWeek Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teacherHistory SubjectTeacherHistory[]
+  scheduleBlocks ScheduleBlock[]
+
+  @@unique([classroomId, subjectId])
+  @@index([teacherId])
+  @@index([subjectId])
+  @@map("classroom_subjects")
+}
+
+model SubjectTeacherHistory {
+  id String @id @default(cuid())
+
+  classroomSubjectId String
+  classroomSubject   ClassroomSubject @relation(fields: [classroomSubjectId], references: [id], onDelete: Cascade)
+
+  teacherId String
+  teacher   User   @relation("SubjectTeacherHistory", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  startDate DateTime  @default(now())
+  endDate   DateTime?
+  isActive  Boolean   @default(true)
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([classroomSubjectId, isActive])
+  @@map("subject_teacher_history")
+}
+
+model ScheduleBlock {
+  id String @id @default(cuid())
+
+  classroomId String
+  classroom   Classroom @relation("ClassroomScheduleBlocks", fields: [classroomId], references: [id], onDelete: Cascade)
+
+  classroomSubjectId String?
+  classroomSubject   ClassroomSubject? @relation(fields: [classroomSubjectId], references: [id], onDelete: SetNull)
+
+  dayOfWeek Int
+  startTime String
+  endTime   String
+  blockType String  @default("CLASS")
+  location  String?
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([classroomId, dayOfWeek])
+  @@index([classroomSubjectId])
+  @@index([classroomId, dayOfWeek, startTime])
+  @@map("schedule_blocks")
+}
+
+model StudentTutor {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("StudentTutorStudent", fields: [studentId], references: [id], onDelete: Cascade)
+
+  tutorId String
+  tutor   User   @relation("StudentTutorTutor", fields: [tutorId], references: [id], onDelete: Cascade)
+
+  relationship String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, tutorId])
+  @@index([tutorId])
+  @@map("student_tutors")
+}
+
+// =====================================================
+// MODELOS DE ACTIVIDADES Y CALENDARIO
+// =====================================================
+
+model Activity {
+  id          String  @id @default(cuid())
+  title       String
+  name        String?
+  description String?
+  type        String
+  scope       String
+
+  startDate DateTime
+  endDate   DateTime?
+  dueDate   DateTime?
+
+  maxGrade  Float   @default(20)
+  weight    Float   @default(1)
+  isActive  Boolean @default(true)
+  isVisible Boolean @default(true)
+
+  // Campos del Plan de Evaluación Venezolano
+  temaGenerador  String?
+  tejidoTematico String?
+  referentes     String?
+  tecnicas       String?
+  instrumentos   String?
+  criterios      String?
+  lapso          String? @default("1")
+
+  // Instituto
+  // Relaciones académicas
+  periodId    String?
+  period      Period?    @relation(fields: [periodId], references: [id], onDelete: SetNull)
+  subjectId   String?
+  subject     Subject?   @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  classroomId String?
+  classroom   Classroom? @relation(fields: [classroomId], references: [id], onDelete: SetNull)
+
+  createdBy String
+  creator   User   @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  grades      Grade[]
+  planRow     EvaluationPlanRow?
+  institute   Institute? @relation(fields: [instituteId], references: [id])
+  instituteId String?
+
+  orderIndex  Int @default(0)
+
+  @@index([classroomId])
+  @@index([subjectId])
+  @@index([periodId])
+  @@index([createdBy])
+  @@index([startDate])
+  @@index([classroomId, periodId])
+  @@index([subjectId, periodId])
+  @@index([isActive, dueDate])
+  @@map("activities")
+}
+
+model EvaluationPlanMetadata {
+  id                 String   @id @default(cuid())
+  classroomId        String
+  subjectId          String
+  lapso              String
+  
+  // Membrete (auto-llenado, editable)
+  nombreDocente      String?
+  cedulaDocente      String?
+  telefonoDocente    String?
+  correoDocente      String?
+  areaFormacion      String?
+  annoSeccion        String?
+  periodoEscolar     String?
+  totalSemanas       Int?
+  fechaDesde         DateTime?
+  fechaHasta         DateTime?
+  
+  // Campos del plan
+  peic               String?
+  enfasisCurricular  String?
+  referentesEticos   String?
+  intencionalidad    String?
+  temaIndispensable  String?
+  
+  // Observaciones y firmas
+  observaciones      String?
+
+  // Nombres de columnas personalizadas (JSON o texto plano separado por comas)
+  customColumns      String?
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([classroomId, subjectId, lapso])
+  @@map("evaluation_plan_metadata")
+}
+
+model EvaluationPlanRow {
+  id          String @id @default(cuid())
+  
+  // Identificación del plan
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  subjectId   String
+  subject     Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  lapso       String
+  
+  // Estructura
+  rowType      String   // "HEADER" | "FIELD" | "EVALUATION" | "TEXT" | "INDICATORS"
+  weekNumber   Int
+  endWeekNumber Int?    // Para permitir que una fila abarque desde weekNumber hasta endWeekNumber
+  orderIndex   Int      @default(0)
+  
+  // HEADER fields
+  title        String?
+  headingLevel Int?     // 1, 2, 3
+  
+  // FIELD fields
+  label        String?
+  content      String?
+  
+  // TEXT fields
+  textContent  String?
+  
+  // EVALUATION fields (campos fijos)
+  actividadEval    String?
+  tecnicas         String?
+  instrumentos     String?
+  criterios        String?
+  ponderacion      Float?    // % del total
+  puntos           Float?    // Puntos
+  tipoEvaluacion   String?   // "FORMATIVA" | "SUMATIVA" | "DIAGNOSTICA"
+  
+  // INDICATORS fields (JSON desglose)
+  indicadores      String?   // JSON: {"SER": 1, "HACER": 2, ...}
+
+  // Datos extra para columnas personalizadas (JSON)
+  extraData   String?
+
+  // Actividades de Clase en Vivo vinculadas a este criterio/bloque
+  classActivities ClassActivity[]
+  
+  // Link a Activity para calificaciones
+  activityId  String?  @unique
+  activity    Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([classroomId, subjectId, lapso])
+  @@index([classroomId, subjectId, lapso, weekNumber])
+  @@map("evaluation_plan_rows")
+}
+
+// =====================================================
+// MODELOS DE CALIFICACIONES
+// =====================================================
+
+model Grade {
+  id       String  @id @default(cuid())
+  score    Float? // Opcional para actividades consolidadas
+  scores   Json? // Para múltiples actividades consolidadas
+  comments String?
+  metadata Json? // feedback largo, attachments, historial
+
+  studentId  String
+  student    User     @relation("StudentGrades", fields: [studentId], references: [id], onDelete: Cascade)
+  activityId String
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  periodId   String
+  period     Period   @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  subjectId  String
+  subject    Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacherId  String
+  teacher    User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, activityId])
+  @@index([studentId, subjectId, periodId])
+  @@index([subjectId, periodId])
+  @@index([activityId])
+  @@index([teacherId])
+  @@index([teacherId, createdAt(sort: Desc)])
+  @@map("grades")
+}
+
+// =====================================================
+// MODELOS DE ASISTENCIA
+// =====================================================
+
+model DailyAttendance {
+  id      String           @id @default(cuid())
+  date    DateTime         @db.Date // Solo fecha, sin hora
+  status  AttendanceStatus @default(PRESENT)
+  periods Int              @default(0) // Bitfield para 8 períodos (0-255)
+
+  // Campos opcionales para detalles
+  lateArrival Int? // Minutos de retraso
+  earlyLeave  Int? // Minutos de salida temprana
+  excuseNote  String? // Nota de justificación
+  comments    String?
+
+  studentId   String
+  student     User      @relation("StudentAttendance", fields: [studentId], references: [id], onDelete: Cascade)
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  teacherId   String
+  teacher     User      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  classSessionId String?
+  classSession   ClassSession? @relation(fields: [classSessionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, date])
+  @@index([studentId, classroomId])
+  @@index([classroomId, date])
+  @@index([studentId, date(sort: Desc)])
+  @@index([teacherId])
+  @@index([classSessionId])
+  @@map("daily_attendance")
+}
+
+// =====================================================
+// MODELOS DE HORARIOS
+// =====================================================
+
+model Schedule {
+  id        String  @id @default(cuid())
+  dayOfWeek String
+  startTime String
+  endTime   String
+  room      String?
+  notes     String?
+
+  // Instituto
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  subjectId   String
+  subject     Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacherId   String
+  teacher     User      @relation("ScheduleTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  institute   Institute? @relation(fields: [instituteId], references: [id])
+  instituteId String?
+
+  @@unique([classroomId, subjectId, dayOfWeek, startTime])
+  @@map("schedules")
+}
+
+// =====================================================
+// MODELOS DE AUDITORÍA Y LOGS
+// =====================================================
+
+model AuditLog {
+  id         String  @id @default(cuid())
+  action     String
+  entity     String
+  entityType String
+  entityId   String
+  oldValues  Json?
+  newValues  Json?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  level      String  @default("NORMAL") // CRITICAL, SECURITY, NORMAL
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Instituto (FK real)
+  createdAt   DateTime   @default(now())
+  institute   Institute? @relation(fields: [instituteId], references: [id])
+  instituteId String?
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([level, createdAt(sort: Desc)])
+  @@index([entityType, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+// =====================================================
+// MODELOS DE NOTIFICACIONES
+// =====================================================
+
+model Notification {
+  id       String @id @default(cuid())
+  title    String
+  message  String
+  type     String
+  priority String
+
+  recipientId String
+  recipient   User   @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  senderId  String?
+  data      Json?
+  actionUrl String?
+  readAt    DateTime?
+  emailSent Boolean   @default(false)
+
+  // TTL para limpieza automática
+  expiresAt  DateTime? // Null = sin expiración
+  persistent Boolean   @default(false) // true = nunca expira
+
+  // Instituto
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  institute   Institute? @relation(fields: [instituteId], references: [id])
+  instituteId String?
+
+  @@index([recipientId, readAt])
+  @@index([type])
+  @@index([createdAt(sort: Desc)])
+  @@index([recipientId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+// =====================================================
+// MODELOS DE DASHBOARD DE ESTUDIANTE
+// =====================================================
+
+model Enrollment {
+  id        String @id @default(cuid())
+  studentId String
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  currentAverage Float  @default(0)
+  status         String @default("ACTIVE")
+
+  // Instituto
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  institute   Institute? @relation(fields: [instituteId], references: [id])
+  instituteId String?
+
+  @@unique([studentId, subjectId])
+  @@index([studentId])
+  @@index([subjectId])
+  @@index([status])
+  @@index([studentId, status])
+  @@map("enrollments")
+}
+
+model Observation {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  type        String
+  date        DateTime @default(now())
+
+  studentId String
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User   @relation("CreatedObservations", fields: [createdById], references: [id], onDelete: Cascade)
+
+  // Instituto
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  institute   Institute? @relation(fields: [instituteId], references: [id])
+  instituteId String?
+
+  @@index([studentId])
+  @@index([createdById])
+  @@index([date])
+  @@map("observations")
+}
+
+model AcademicRecord {
+  id        String @id @default(cuid())
+  studentId String
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  sectionSnapshot String
+  finalAverage    Float
+  status          String
+
+  // Fase 3.5-C — cierre de ciclo:
+  //  - finalResult: PROMOVIDO | PROMOVIDO_CON_PENDIENTES | NO_PROMOVIDO (lo que
+  //    dejó el admin tras la revisión, no la sugerencia automática)
+  //  - pendingSubjects: materias pendientes (JSON array)
+  //  - subjectGrades: desglose de promedio final por materia (JSON)
+  //  - assignedClassroomId: sección asignada en el año siguiente (si aplica)
+  finalResult         String?
+  pendingSubjects     Json?
+  subjectGrades       Json?
+  assignedClassroomId String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, academicYearId])
+  @@map("academic_records")
+}
+
+// =====================================================
+// MODELOS DE MONITOREO Y PERFORMANCE
+// =====================================================
+
+model QueryMetric {
+  id        String   @id @default(cuid())
+  model     String
+  operation String
+  duration  Int
+  timestamp DateTime @default(now())
+  severity  String
+
+  totalQueries     Int?
+  averageDuration  Int?
+  slowQueriesCount Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([severity])
+  @@index([model, operation])
+  @@map("query_metrics")
+}
+
+model SystemAlert {
+  id         String    @id @default(cuid())
+  type       String
+  severity   String
+  message    String
+  data       Json?
+  resolved   Boolean   @default(false)
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([type, resolved])
+  @@index([createdAt])
+  @@index([severity, resolved])
+  @@map("system_alerts")
+}
+
+// =====================================================
+// MODELOS DE CLASES (SESIONES)
+// =====================================================
+
+model ClassSession {
+  id           String   @id @default(cuid())
+  publicId     String   @unique @default(cuid())
+  date         DateTime
+  startTime    String?
+  endTime      String?
+  topic        String?
+  observations String?
+  observationsTitle  String?
+  involvedStudentIds String[] @default([])
+
+  // Estado de la clase: ACTIVE | SUSPENDED
+  status          String  @default("ACTIVE")
+  suspendedReason String?
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  attendanceRecords DailyAttendance[]
+  activities        ClassActivity[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([classroomId, subjectId])
+  @@index([date])
+  @@index([classroomId, date])
+  @@index([subjectId, date])
+  @@map("class_sessions")
+}
+
+// =====================================================
+// ACTIVIDADES / TAREAS POR CLASE
+// =====================================================
+
+model ClassActivity {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  type        String    @default("TAREA") // TAREA | EXAMEN | ACTIVIDAD
+  target      String    @default("NEXT")  // CURRENT (esta clase) | NEXT (próxima clase)
+  tag         String?   // Etiqueta personalizada (ej: Examen, Taller, Tarea, Proyecto...)
+  dueDate     DateTime? // Fecha asignada o fecha límite
+  maxScore    Float?    @default(20)
+  scores      Json?     // Mapa de puntajes por estudiante: { "studentId": score }
+  isDone      Boolean   @default(false)
+  carriedOver Boolean   @default(false) // true si fue movida por suspensión
+
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  // Vinculación de la actividad al criterio/bloque del plan de evaluación
+  // (fila EVALUATION de la semana). Cada actividad de la Clase en Vivo pertenece
+  // a un criterio del plan y participa en su cálculo ponderado.
+  planRowId String?
+  planRow   EvaluationPlanRow? @relation(fields: [planRowId], references: [id], onDelete: SetNull)
+
+  classSessionId String?
+  classSession   ClassSession? @relation(fields: [classSessionId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([classroomId, subjectId])
+  @@index([classSessionId])
+  @@index([classroomId, subjectId, target])
+  @@map("class_activities")
+}
+
+// =====================================================
+// WEBHOOK LOGS (Eventos del sistema)
+// =====================================================
+
+model WebhookLog {
+  id          String     @id @default(cuid())
+  event       String // INSTITUTE_CREATED, INSTITUTE_SUSPENDED, LIMIT_REACHED, etc.
+  data        Json?
+  createdAt   DateTime   @default(now())
+  institute   Institute? @relation(fields: [instituteId], references: [id])
+  instituteId String?
+
+  @@index([event])
+  @@index([createdAt])
+  @@map("webhook_logs")
+}

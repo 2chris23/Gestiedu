@@ -1,0 +1,371 @@
+src/controllers/classrooms.controller.ts(432,15): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/controllers/classrooms.controller.ts(474,11): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/controllers/classrooms.controller.ts(522,36): error TS2551: Property 'student' does not exist on type '{ id: string; createdAt: Date; classroomId: string; isActive: boolean; updatedAt: Date; academicYearId: string; studentId: string; enrollmentDate: Date; }'. Did you mean 'studentId'?
+src/controllers/classrooms.controller.ts(522,68): error TS2551: Property 'student' does not exist on type '{ id: string; createdAt: Date; classroomId: string; isActive: boolean; updatedAt: Date; academicYearId: string; studentId: string; enrollmentDate: Date; }'. Did you mean 'studentId'?
+src/controllers/classrooms.controller.ts(523,33): error TS2551: Property 'student' does not exist on type '{ id: string; createdAt: Date; classroomId: string; isActive: boolean; updatedAt: Date; academicYearId: string; studentId: string; enrollmentDate: Date; }'. Did you mean 'studentId'?
+src/controllers/classrooms.controller.ts(525,35): error TS2551: Property 'classroom' does not exist on type '{ id: string; createdAt: Date; classroomId: string; isActive: boolean; updatedAt: Date; academicYearId: string; studentId: string; enrollmentDate: Date; }'. Did you mean 'classroomId'?
+src/controllers/classrooms.controller.ts(526,27): error TS2551: Property 'classroom' does not exist on type '{ id: string; createdAt: Date; classroomId: string; isActive: boolean; updatedAt: Date; academicYearId: string; studentId: string; enrollmentDate: Date; }'. Did you mean 'classroomId'?
+src/controllers/classrooms.controller.ts(527,29): error TS2551: Property 'classroom' does not exist on type '{ id: string; createdAt: Date; classroomId: string; isActive: boolean; updatedAt: Date; academicYearId: string; studentId: string; enrollmentDate: Date; }'. Did you mean 'classroomId'?
+src/controllers/classrooms.controller.ts(529,38): error TS2551: Property 'academicYear' does not exist on type '{ id: string; createdAt: Date; classroomId: string; isActive: boolean; updatedAt: Date; academicYearId: string; studentId: string; enrollmentDate: Date; }'. Did you mean 'academicYearId'?
+src/controllers/grades.controller.ts(461,20): error TS18046: 'error' is of type 'unknown'.
+src/controllers/grades.controller.ts(603,12): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/controllers/grades.controller.ts(604,9): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/controllers/grades.controller.ts(610,7): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/controllers/grades.controller.ts(616,29): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/controllers/grades.controller.ts(617,7): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/controllers/grades.controller.ts(618,31): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+src/controllers/grades.controller.ts(618,36): error TS7006: Parameter 'grade' implicitly has an 'any' type.
+src/dto/attendance.dto.ts(7,3): error TS2564: Property 'studentId' has no initializer and is not definitely assigned in the constructor.
+src/dto/attendance.dto.ts(10,3): error TS2564: Property 'subjectId' has no initializer and is not definitely assigned in the constructor.
+src/dto/attendance.dto.ts(13,3): error TS2564: Property 'classroomId' has no initializer and is not definitely assigned in the constructor.
+src/dto/attendance.dto.ts(16,3): error TS2564: Property 'date' has no initializer and is not definitely assigned in the constructor.
+src/dto/attendance.dto.ts(19,3): error TS2564: Property 'status' has no initializer and is not definitely assigned in the constructor.
+src/dto/attendance.dto.ts(90,3): error TS2564: Property 'attendances' has no initializer and is not definitely assigned in the constructor.
+src/dto/attendance.dto.ts(121,3): error TS2564: Property 'classroomId' has no initializer and is not definitely assigned in the constructor.
+src/dto/attendance.dto.ts(124,3): error TS2564: Property 'subjectId' has no initializer and is not definitely assigned in the constructor.
+src/dto/attendance.dto.ts(127,3): error TS2564: Property 'date' has no initializer and is not definitely assigned in the constructor.
+src/dto/attendance.dto.ts(132,3): error TS2564: Property 'students' has no initializer and is not definitely assigned in the constructor.
+src/dto/attendance.dto.ts(137,3): error TS2564: Property 'attendances' has no initializer and is not definitely assigned in the constructor.
+src/dto/attendance.dto.ts(142,3): error TS2564: Property 'studentId' has no initializer and is not definitely assigned in the constructor.
+src/dto/attendance.dto.ts(145,3): error TS2564: Property 'status' has no initializer and is not definitely assigned in the constructor.
+src/dto/auth.dto.ts(5,3): error TS2564: Property 'email' has no initializer and is not definitely assigned in the constructor.
+src/dto/auth.dto.ts(9,3): error TS2564: Property 'password' has no initializer and is not definitely assigned in the constructor.
+src/dto/auth.dto.ts(14,3): error TS2564: Property 'refreshToken' has no initializer and is not definitely assigned in the constructor.
+src/dto/auth.dto.ts(19,3): error TS2564: Property 'email' has no initializer and is not definitely assigned in the constructor.
+src/dto/auth.dto.ts(24,3): error TS2564: Property 'token' has no initializer and is not definitely assigned in the constructor.
+src/dto/auth.dto.ts(28,3): error TS2564: Property 'newPassword' has no initializer and is not definitely assigned in the constructor.
+src/dto/classroom.dto.ts(6,3): error TS2564: Property 'name' has no initializer and is not definitely assigned in the constructor.
+src/dto/classroom.dto.ts(13,3): error TS2564: Property 'section' has no initializer and is not definitely assigned in the constructor.
+src/dto/classroom.dto.ts(19,3): error TS2564: Property 'grade' has no initializer and is not definitely assigned in the constructor.
+src/dto/classroom.dto.ts(28,3): error TS2564: Property 'instituteId' has no initializer and is not definitely assigned in the constructor.
+src/dto/grade.dto.ts(9,3): error TS2564: Property 'score' has no initializer and is not definitely assigned in the constructor.
+src/dto/grade.dto.ts(16,3): error TS2564: Property 'studentId' has no initializer and is not definitely assigned in the constructor.
+src/dto/grade.dto.ts(19,3): error TS2564: Property 'activityId' has no initializer and is not definitely assigned in the constructor.
+src/dto/grade.dto.ts(22,3): error TS2564: Property 'periodId' has no initializer and is not definitely assigned in the constructor.
+src/dto/grade.dto.ts(25,3): error TS2564: Property 'subjectId' has no initializer and is not definitely assigned in the constructor.
+src/dto/institute.dto.ts(8,3): error TS2564: Property 'name' has no initializer and is not definitely assigned in the constructor.
+src/dto/institute.dto.ts(21,18): error TS2345: Argument of type 'null' is not assignable to parameter of type 'CountryCode | undefined'.
+src/dto/institute.dto.ts(70,18): error TS2345: Argument of type 'null' is not assignable to parameter of type 'CountryCode | undefined'.
+src/dto/notification.dto.ts(24,3): error TS2564: Property 'title' has no initializer and is not definitely assigned in the constructor.
+src/dto/notification.dto.ts(29,3): error TS2564: Property 'message' has no initializer and is not definitely assigned in the constructor.
+src/dto/notification.dto.ts(32,3): error TS2564: Property 'type' has no initializer and is not definitely assigned in the constructor.
+src/dto/notification.dto.ts(39,3): error TS2564: Property 'recipientId' has no initializer and is not definitely assigned in the constructor.
+src/dto/notification.dto.ts(111,3): error TS2564: Property 'title' has no initializer and is not definitely assigned in the constructor.
+src/dto/notification.dto.ts(116,3): error TS2564: Property 'message' has no initializer and is not definitely assigned in the constructor.
+src/dto/notification.dto.ts(119,3): error TS2564: Property 'type' has no initializer and is not definitely assigned in the constructor.
+src/dto/notification.dto.ts(127,3): error TS2564: Property 'recipientIds' has no initializer and is not definitely assigned in the constructor.
+src/dto/notification.dto.ts(140,3): error TS2564: Property 'notificationIds' has no initializer and is not definitely assigned in the constructor.
+src/dto/period.dto.ts(8,3): error TS2564: Property 'name' has no initializer and is not definitely assigned in the constructor.
+src/dto/period.dto.ts(16,3): error TS2564: Property 'startDate' has no initializer and is not definitely assigned in the constructor.
+src/dto/period.dto.ts(19,3): error TS2564: Property 'endDate' has no initializer and is not definitely assigned in the constructor.
+src/dto/period.dto.ts(27,3): error TS2564: Property 'instituteId' has no initializer and is not definitely assigned in the constructor.
+src/dto/student.dto.ts(7,3): error TS2564: Property 'id' has no initializer and is not definitely assigned in the constructor.
+src/dto/student.dto.ts(10,3): error TS2564: Property 'firstName' has no initializer and is not definitely assigned in the constructor.
+src/dto/student.dto.ts(13,3): error TS2564: Property 'lastName' has no initializer and is not definitely assigned in the constructor.
+src/dto/student.dto.ts(16,3): error TS2564: Property 'email' has no initializer and is not definitely assigned in the constructor.
+src/dto/student.dto.ts(19,3): error TS2564: Property 'password' has no initializer and is not definitely assigned in the constructor.
+src/dto/student.dto.ts(158,3): error TS2564: Property 'students' has no initializer and is not definitely assigned in the constructor.
+src/dto/student.dto.ts(163,3): error TS2564: Property 'classroomId' has no initializer and is not definitely assigned in the constructor.
+src/dto/subject.dto.ts(8,3): error TS2564: Property 'name' has no initializer and is not definitely assigned in the constructor.
+src/dto/teacher.dto.ts(7,3): error TS2564: Property 'id' has no initializer and is not definitely assigned in the constructor.
+src/dto/teacher.dto.ts(10,3): error TS2564: Property 'firstName' has no initializer and is not definitely assigned in the constructor.
+src/dto/teacher.dto.ts(13,3): error TS2564: Property 'lastName' has no initializer and is not definitely assigned in the constructor.
+src/dto/teacher.dto.ts(16,3): error TS2564: Property 'email' has no initializer and is not definitely assigned in the constructor.
+src/dto/teacher.dto.ts(19,3): error TS2564: Property 'password' has no initializer and is not definitely assigned in the constructor.
+src/dto/teacher.dto.ts(133,3): error TS2564: Property 'subjectIds' has no initializer and is not definitely assigned in the constructor.
+src/dto/teacher.dto.ts(138,3): error TS2564: Property 'classroomId' has no initializer and is not definitely assigned in the constructor.
+src/dto/teacher.dto.ts(145,3): error TS2564: Property 'teachers' has no initializer and is not definitely assigned in the constructor.
+src/dto/user.dto.ts(6,3): error TS2564: Property 'id' has no initializer and is not definitely assigned in the constructor.
+src/dto/user.dto.ts(9,3): error TS2564: Property 'email' has no initializer and is not definitely assigned in the constructor.
+src/dto/user.dto.ts(13,3): error TS2564: Property 'password' has no initializer and is not definitely assigned in the constructor.
+src/dto/user.dto.ts(16,3): error TS2564: Property 'firstName' has no initializer and is not definitely assigned in the constructor.
+src/dto/user.dto.ts(19,3): error TS2564: Property 'lastName' has no initializer and is not definitely assigned in the constructor.
+src/dto/user.dto.ts(22,3): error TS2564: Property 'role' has no initializer and is not definitely assigned in the constructor.
+src/dto/user.dto.ts(83,3): error TS2564: Property 'currentPassword' has no initializer and is not definitely assigned in the constructor.
+src/dto/user.dto.ts(87,3): error TS2564: Property 'newPassword' has no initializer and is not definitely assigned in the constructor.
+src/middleware/auth.middleware.ts(117,45): error TS18046: 'error' is of type 'unknown'.
+src/middleware/auth.middleware.ts(182,5): error TS7053: Element implicitly has an 'any' type because expression of type '"instituteId"' can't be used to index type '{}'.
+  Property 'instituteId' does not exist on type '{}'.
+src/middleware/auth.middleware.ts(183,5): error TS7053: Element implicitly has an 'any' type because expression of type '"instituteId"' can't be used to index type '{}'.
+  Property 'instituteId' does not exist on type '{}'.
+src/middleware/auth.middleware.ts(205,26): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/middleware/auth.middleware.ts(274,25): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/middleware/upload.middleware.ts(19,5): error TS2322: Type '(req: FastifyRequest, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => void' is not assignable to type 'string | GetDestination | undefined'.
+  Type '(req: FastifyRequest, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => void' is not assignable to type 'GetDestination'.
+    Types of parameters 'file' and 'file' are incompatible.
+      Type 'import("C:/Users/Windows/Cristian/SISTEMA-DE-GESTION-ESCOLAR/node_modules/fastify-multer/lib/interfaces").File' is not assignable to type 'Express.Multer.File'.
+        Types of property 'size' are incompatible.
+          Type 'number | undefined' is not assignable to type 'number'.
+            Type 'undefined' is not assignable to type 'number'.
+src/middleware/upload.middleware.ts(24,5): error TS2322: Type '(req: FastifyRequest, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => void' is not assignable to type 'GetFileName'.
+  Types of parameters 'file' and 'file' are incompatible.
+    Type 'import("C:/Users/Windows/Cristian/SISTEMA-DE-GESTION-ESCOLAR/node_modules/fastify-multer/lib/interfaces").File' is not assignable to type 'Express.Multer.File'.
+      Types of property 'size' are incompatible.
+        Type 'number | undefined' is not assignable to type 'number'.
+          Type 'undefined' is not assignable to type 'number'.
+src/middleware/upload.middleware.ts(57,5): error TS2322: Type '(req: FastifyRequest, file: Express.Multer.File, cb: (error: Error | null, acceptFile: boolean) => void) => void' is not assignable to type 'FileFilter'.
+  Types of parameters 'file' and 'file' are incompatible.
+    Type 'import("C:/Users/Windows/Cristian/SISTEMA-DE-GESTION-ESCOLAR/node_modules/fastify-multer/lib/interfaces").File' is not assignable to type 'Express.Multer.File'.
+      Types of property 'size' are incompatible.
+        Type 'number | undefined' is not assignable to type 'number'.
+          Type 'undefined' is not assignable to type 'number'.
+src/plugins/rate-limit.ts(27,28): error TS7006: Parameter 'request' implicitly has an 'any' type.
+src/plugins/rate-limit.ts(27,37): error TS7006: Parameter 'context' implicitly has an 'any' type.
+src/plugins/rate-limit.ts(37,12): error TS7006: Parameter 'request' implicitly has an 'any' type.
+src/routes/attendance.routes.ts(66,5): error TS2345: Argument of type '(request: FastifyRequest<CreateAttendanceRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, { ...; }, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly body: { type: string; properties: { status: { type: string; enum: string[]; }; comment: { ...; }; date: { ...; }; studentId: { ...; }; classroomId: { ...; }; }; required: string[]; }; readonly response: { ...; }; }, FastifyTypeProvid...' is not assignable to type 'FastifyRequest<CreateAttendanceRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type 'CreateAttendanceRequest'.
+        Types of property 'Body' are incompatible.
+          Type 'unknown' is not assignable to type 'CreateAttendanceDto'.
+src/routes/attendance.routes.ts(98,5): error TS2345: Argument of type '(request: FastifyRequest<UpdateAttendanceRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, { ...; }, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly params: { readonly type: "object"; readonly properties: { readonly id: { ...; }; }; readonly required: readonly [...]; }; readonly body: { ...; }; readonly response: { ...; }; }, FastifyTypeProviderDefault, unknown, FastifyBaseLogger...' is not assignable to type 'FastifyRequest<UpdateAttendanceRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type 'UpdateAttendanceRequest'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ id: string; }'.
+src/routes/attendance.routes.ts(121,5): error TS2345: Argument of type '(request: FastifyRequest<DeleteAttendanceRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, { ...; }, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly params: { readonly type: "object"; readonly properties: { readonly id: { ...; }; }; readonly required: readonly [...]; }; readonly response: { ...; }; }, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestTy...' is not assignable to type 'FastifyRequest<DeleteAttendanceRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type 'DeleteAttendanceRequest'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ id: string; }'.
+src/routes/attendance.routes.ts(142,5): error TS2345: Argument of type '(request: FastifyRequest<GetAttendanceRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, { ...; }, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly params: { readonly type: "object"; readonly properties: { readonly id: { ...; }; }; readonly required: readonly [...]; }; readonly response: { ...; }; }, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestTy...' is not assignable to type 'FastifyRequest<GetAttendanceRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type 'GetAttendanceRequest'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ id: string; }'.
+src/routes/attendance.routes.ts(198,5): error TS2345: Argument of type '(request: FastifyRequest<StudentAttendanceRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, { ...; }, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly params: { readonly type: "object"; readonly properties: { readonly studentId: { ...; }; }; readonly required: readonly [...]; }; readonly querystring: { ...; }; readonly response: { ...; }; }, FastifyTypeProviderDefault, unknown, Fas...' is not assignable to type 'FastifyRequest<StudentAttendanceRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type 'StudentAttendanceRequest'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ studentId: string; }'.
+src/routes/attendance.routes.ts(274,5): error TS2345: Argument of type '(request: FastifyRequest<StudentAttendanceRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, { ...; }, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly params: { readonly type: "object"; readonly properties: { readonly studentId: { ...; }; }; readonly required: readonly [...]; }; readonly querystring: { ...; }; readonly response: { ...; }; }, FastifyTypeProviderDefault, unknown, Fas...' is not assignable to type 'FastifyRequest<StudentAttendanceRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type 'StudentAttendanceRequest'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ studentId: string; }'.
+src/routes/attendance.routes.ts(381,5): error TS2345: Argument of type '(request: FastifyRequest<MarkClassAttendanceRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, { ...; }, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly body: { readonly type: "object"; readonly properties: { readonly classroomId: { ...; }; readonly date: { ...; }; readonly attendances: { ...; }; }; readonly required: readonly [...]; }; readonly response: { ...; }; }, FastifyTypeProv...' is not assignable to type 'FastifyRequest<MarkClassAttendanceRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type 'MarkClassAttendanceRequest'.
+        Types of property 'Body' are incompatible.
+          Type 'unknown' is not assignable to type 'MarkClassAttendanceDto'.
+src/routes/auth.routes.ts(103,57): error TS2345: Argument of type '(request: FastifyRequest<{ Body: { refreshToken?: string | undefined; }; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, FastifySchema, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to type 'FastifyRequest<{ Body: { refreshToken?: string | undefined; }; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Body: { refreshToken?: string | undefined; }; }'.
+        Types of property 'Body' are incompatible.
+          Type 'unknown' is not assignable to type '{ refreshToken?: string | undefined; }'.
+src/routes/classroomSubjects.routes.ts(26,13): error TS2345: Argument of type '(request: FastifyRequest<GetAvailableSubjectsRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, FastifySchema, FastifyTypeProvider, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProvider, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to type 'FastifyRequest<GetAvailableSubjectsRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type 'GetAvailableSubjectsRequest'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ classroomId: string; }'.
+src/routes/classroomSubjects.routes.ts(47,13): error TS2345: Argument of type '(request: FastifyRequest<GetTeacherHistoryRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, FastifySchema, FastifyTypeProvider, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProvider, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to type 'FastifyRequest<GetTeacherHistoryRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type 'GetTeacherHistoryRequest'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ classroomId: string; subjectId: string; }'.
+src/routes/classroomSubjects.routes.ts(54,13): error TS2345: Argument of type '(request: FastifyRequest<UpdateClassroomSubjectRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, FastifySchema, FastifyTypeProvider, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProvider, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to type 'FastifyRequest<UpdateClassroomSubjectRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type 'UpdateClassroomSubjectRequest'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ classroomId: string; subjectId: string; }'.
+src/routes/classroomSubjects.routes.ts(61,13): error TS2345: Argument of type '(request: FastifyRequest<AssignSubjectToClassroomRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, FastifySchema, FastifyTypeProvider, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProvider, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to type 'FastifyRequest<AssignSubjectToClassroomRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type 'AssignSubjectToClassroomRequest'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ classroomId: string; }'.
+src/routes/cycle-statistics.routes.ts(22,9): error TS2345: Argument of type '(request: FastifyRequest<{ Params: SubjectAverageParams; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, FastifySchema, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to type 'FastifyRequest<{ Params: SubjectAverageParams; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Params: SubjectAverageParams; }'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type 'SubjectAverageParams'.
+src/routes/cycle-statistics.routes.ts(29,9): error TS2345: Argument of type '(request: FastifyRequest<{ Params: SectionAverageParams; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, FastifySchema, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to type 'FastifyRequest<{ Params: SectionAverageParams; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Params: SectionAverageParams; }'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type 'SectionAverageParams'.
+src/routes/cycle-statistics.routes.ts(36,9): error TS2345: Argument of type '(request: FastifyRequest<{ Params: GradeAverageParams; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, FastifySchema, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to type 'FastifyRequest<{ Params: GradeAverageParams; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Params: GradeAverageParams; }'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type 'GradeAverageParams'.
+src/routes/cycle-statistics.routes.ts(43,9): error TS2345: Argument of type '(request: FastifyRequest<{ Params: CycleAverageParams; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, FastifySchema, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to type 'FastifyRequest<{ Params: CycleAverageParams; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Params: CycleAverageParams; }'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type 'CycleAverageParams'.
+src/routes/cycle-statistics.routes.ts(50,9): error TS2345: Argument of type '(request: FastifyRequest<{ Params: SectionAverageParams; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, FastifySchema, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to type 'FastifyRequest<{ Params: SectionAverageParams; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Params: SectionAverageParams; }'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type 'SectionAverageParams'.
+src/routes/cycle-statistics.routes.ts(56,9): error TS2345: Argument of type '(request: FastifyRequest<{ Params: CycleAverageParams; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, FastifySchema, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to type 'FastifyRequest<{ Params: CycleAverageParams; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Params: CycleAverageParams; }'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type 'CycleAverageParams'.
+src/routes/grades.routes.ts(118,6): error TS2345: Argument of type '(request: FastifyRequest<GetGradesRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, { ...; }, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, { readonly querystring: { type: string; properties: { page: { type: string; minimum: number; default: number; }; ... 10 more ...; dateTo: { ...; }; }; }; }, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to type 'FastifyRequest<GetGradesRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type 'GetGradesRequest'.
+        Types of property 'Querystring' are incompatible.
+          Type 'unknown' is not assignable to type 'GradeFiltersDto & PaginationDto'.
+            Type 'unknown' is not assignable to type 'GradeFiltersDto'.
+src/routes/monitoring.routes.ts(16,8): error TS2345: Argument of type '(request: FastifyRequest<{ Querystring: { period?: string | undefined; }; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, FastifySchema, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to type 'FastifyRequest<{ Querystring: { period?: string | undefined; }; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Querystring: { period?: string | undefined; }; }'.
+        Types of property 'Querystring' are incompatible.
+          Type 'unknown' is not assignable to type '{ period?: string | undefined; }'.
+src/routes/monitoring.routes.ts(26,8): error TS2345: Argument of type '(request: FastifyRequest<{ Params: { id: string; }; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, FastifySchema, FastifyTypeProviderDefault, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to type 'FastifyRequest<{ Params: { id: string; }; }, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type '{ Params: { id: string; }; }'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ id: string; }'.
+src/routes/scheduleBlocks.routes.ts(21,13): error TS2345: Argument of type '(request: FastifyRequest<GetScheduleRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>, reply: FastifyReply<...>) => Promise<...>' is not assignable to parameter of type 'RouteHandlerMethod<RawServerDefault, IncomingMessage, ServerResponse<IncomingMessage>, RouteGenericInterface, unknown, FastifySchema, FastifyTypeProvider, FastifyBaseLogger>'.
+  Types of parameters 'request' and 'request' are incompatible.
+    Type 'FastifyRequest<RouteGenericInterface, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProvider, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>' is not assignable to type 'FastifyRequest<GetScheduleRequest, RawServerDefault, IncomingMessage, FastifySchema, FastifyTypeProviderDefault, unknown, FastifyBaseLogger, ResolveFastifyRequestType<...>>'.
+      Type 'RouteGenericInterface' is not assignable to type 'GetScheduleRequest'.
+        Types of property 'Params' are incompatible.
+          Type 'unknown' is not assignable to type '{ classroomId: string; }'.
+src/services/activities.service.ts(465,7): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/services/activities.service.ts(509,7): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/services/alert.service.ts(34,21): error TS2322: Type 'string | null' is not assignable to type 'NullableJsonNullValueInput | InputJsonValue | undefined'.
+  Type 'null' is not assignable to type 'NullableJsonNullValueInput | InputJsonValue | undefined'.
+src/services/attendance.service.ts(354,16): error TS18048: 'pagination.page' is possibly 'undefined'.
+src/services/attendance.service.ts(354,39): error TS18048: 'pagination.limit' is possibly 'undefined'.
+src/services/attendance.service.ts(366,39): error TS18048: 'pagination.limit' is possibly 'undefined'.
+src/services/auth.service.ts(139,9): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/services/email.service.ts(12,11): error TS2564: Property 'transporter' has no initializer and is not definitely assigned in the constructor.
+src/services/email.service.ts(161,18): error TS18046: 'error' is of type 'unknown'.
+src/services/email.service.ts(323,19): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ INFO: string; WARNING: string; SUCCESS: string; ERROR: string; REMINDER: string; }'.
+  No index signature with a parameter of type 'string' was found on type '{ INFO: string; WARNING: string; SUCCESS: string; ERROR: string; REMINDER: string; }'.
+src/services/grades.service.ts(258,5): error TS2322: Type '{ period: { id: string; name: string; }; subject: { code: string | null; id: string; name: string; }; activity: { type: string; id: string; title: string; maxGrade: number; weight: number; }; teacher: { id: string; firstName: string; lastName: string; }; student: { ...; }; } & { ...; }' is not assignable to type 'GradeWithRelations'.
+  Types of property 'comments' are incompatible.
+    Type 'string | null' is not assignable to type 'string | undefined'.
+      Type 'null' is not assignable to type 'string | undefined'.
+src/services/grades.service.ts(751,13): error TS7034: Variable 'studentAverages' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/services/grades.service.ts(769,34): error TS7005: Variable 'studentAverages' implicitly has an 'any[]' type.
+src/services/grades.service.ts(772,30): error TS7005: Variable 'studentAverages' implicitly has an 'any[]' type.
+src/services/grades.service.ts(774,51): error TS7005: Variable 'studentAverages' implicitly has an 'any[]' type.
+src/services/grades.service.ts(981,7): error TS2322: Type '{ subject: { code: string | null; id: string; name: string; }; average: number; scale: string; grades: { id: string; score: number; activity: { type: string; title: string; }; createdAt: Date; }[]; }[]' is not assignable to type '{ subject: { id: string; name: string; code: string; }; average: number; scale: string; grades: { id: string; score: number; activity: { title: string; type: string; }; createdAt: Date; }[]; }[]'.
+  Type '{ subject: { code: string | null; id: string; name: string; }; average: number; scale: string; grades: { id: string; score: number; activity: { type: string; title: string; }; createdAt: Date; }[]; }' is not assignable to type '{ subject: { id: string; name: string; code: string; }; average: number; scale: string; grades: { id: string; score: number; activity: { title: string; type: string; }; createdAt: Date; }[]; }'.
+    The types of 'subject.code' are incompatible between these types.
+      Type 'string | null' is not assignable to type 'string'.
+        Type 'null' is not assignable to type 'string'.
+src/services/grades.service.ts(1178,9): error TS2322: Type '({ period: { id: string; name: string; }; subject: { code: string | null; id: string; name: string; }; activity: { type: string; id: string; title: string; maxGrade: number; weight: number; }; teacher: { id: string; firstName: string; lastName: string; }; student: { ...; }; } & { ...; })[]' is not assignable to type 'GradeWithRelations[]'.
+  Type '{ period: { id: string; name: string; }; subject: { code: string | null; id: string; name: string; }; activity: { type: string; id: string; title: string; maxGrade: number; weight: number; }; teacher: { id: string; firstName: string; lastName: string; }; student: { ...; }; } & { ...; }' is not assignable to type 'GradeWithRelations'.
+    Types of property 'comments' are incompatible.
+      Type 'string | null' is not assignable to type 'string | undefined'.
+        Type 'null' is not assignable to type 'string | undefined'.
+src/services/grades.service.ts(1227,7): error TS2322: Type 'GradeWithRelations[] | null' is not assignable to type 'GradeWithRelations[]'.
+  Type 'null' is not assignable to type 'GradeWithRelations[]'.
+src/services/notifications.service.ts(165,9): error TS2322: Type 'string | null' is not assignable to type 'NullableJsonNullValueInput | InputJsonValue | undefined'.
+  Type 'null' is not assignable to type 'NullableJsonNullValueInput | InputJsonValue | undefined'.
+src/services/notifications.service.ts(223,9): error TS2322: Type '{ title: string; message: string; type: string; priority: string; recipientId: string; senderId: string | undefined; data: string | null; instituteId: string; actionUrl: any; }[]' is not assignable to type 'NotificationCreateManyInput | NotificationCreateManyInput[]'.
+  Type '{ title: string; message: string; type: string; priority: string; recipientId: string; senderId: string | undefined; data: string | null; instituteId: string; actionUrl: any; }[]' is not assignable to type 'NotificationCreateManyInput[]'.
+    Type '{ title: string; message: string; type: string; priority: string; recipientId: string; senderId: string | undefined; data: string | null; instituteId: string; actionUrl: any; }' is not assignable to type 'NotificationCreateManyInput'.
+      Types of property 'data' are incompatible.
+        Type 'string | null' is not assignable to type 'NullableJsonNullValueInput | InputJsonValue | undefined'.
+          Type 'null' is not assignable to type 'NullableJsonNullValueInput | InputJsonValue | undefined'.
+src/services/reports.service.ts(264,12): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(265,9): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(271,12): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(272,9): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(279,7): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(291,19): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(292,31): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(293,47): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+src/services/reports.service.ts(293,52): error TS7006: Parameter 'g' implicitly has an 'any' type.
+src/services/reports.service.ts(294,9): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(304,52): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(396,12): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(397,9): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(411,7): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(417,7): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(418,7): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(425,21): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(452,53): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(561,12): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(562,9): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(571,7): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(584,27): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/reports.service.ts(585,45): error TS7006: Parameter 'g' implicitly has an 'any' type.
+src/services/reports.service.ts(587,52): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+src/services/reports.service.ts(587,57): error TS7006: Parameter 'v' implicitly has an 'any' type.
+src/services/reports.service.ts(712,34): error TS7006: Parameter 'cell' implicitly has an 'any' type.
+src/services/reports.service.ts(730,31): error TS7006: Parameter 'column' implicitly has an 'any' type.
+src/services/reports.service.ts(743,34): error TS7006: Parameter 'cell' implicitly has an 'any' type.
+src/services/reports.service.ts(760,31): error TS7006: Parameter 'column' implicitly has an 'any' type.
+src/services/reports.service.ts(783,34): error TS7006: Parameter 'cell' implicitly has an 'any' type.
+src/services/reports.service.ts(797,31): error TS7006: Parameter 'column' implicitly has an 'any' type.
+src/services/schedules.service.ts(252,16): error TS18048: 'pagination.page' is possibly 'undefined'.
+src/services/schedules.service.ts(252,39): error TS18048: 'pagination.limit' is possibly 'undefined'.
+src/services/schedules.service.ts(264,39): error TS18048: 'pagination.limit' is possibly 'undefined'.
+src/services/schedules.service.ts(321,7): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ LUNES: never[]; MARTES: never[]; MIERCOLES: never[]; JUEVES: never[]; VIERNES: never[]; SABADO: never[]; DOMINGO: never[]; }'.
+  No index signature with a parameter of type 'string' was found on type '{ LUNES: never[]; MARTES: never[]; MIERCOLES: never[]; JUEVES: never[]; VIERNES: never[]; SABADO: never[]; DOMINGO: never[]; }'.
+src/services/schedules.service.ts(388,12): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/schedules.service.ts(389,9): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/schedules.service.ts(394,7): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{}'.
+  No index signature with a parameter of type 'string' was found on type '{}'.
+src/services/students.service.ts(43,24): error TS18048: 'pagination.page' is possibly 'undefined'.
+src/services/students.service.ts(43,47): error TS18048: 'pagination.limit' is possibly 'undefined'.
+src/services/students.service.ts(54,47): error TS18048: 'pagination.limit' is possibly 'undefined'.
+src/services/students.service.ts(169,49): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/services/students.service.ts(316,33): error TS18047: 'stat._avg.score' is possibly 'null'.
+src/socket/handlers/activities.handler.ts(24,20): error TS18048: 'socket.user' is possibly 'undefined'.
+src/socket/handlers/activities.handler.ts(25,22): error TS18048: 'socket.user' is possibly 'undefined'.
+src/utils/logger.ts(217,3): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type 'Logger'.
+  No index signature with a parameter of type 'string' was found on type 'Logger'.

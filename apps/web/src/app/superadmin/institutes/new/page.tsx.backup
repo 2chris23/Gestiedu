@@ -1,0 +1,371 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import SuperAdminLayout from '../../layout';
+
+export default function NewInstitutePage() {
+    const router = useRouter();
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [step, setStep] = useState(1);
+    const [portValidation, setPortValidation] = useState<{ checking: boolean; available: boolean; message: string }>({
+        checking: false,
+        available: true,
+        message: ''
+    });
+    const [createdInstitute, setCreatedInstitute] = useState<any>(null);
+
+    // Form data
+    const [formData, setFormData] = useState({
+        // Instituto
+        name: '',
+        code: '',
+        email: '',
+        phone: '',
+        address: '',
+        isLocal: true,
+        port: '',
+        // Admin
+        adminName: '',
+        adminEmail: '',
+        adminPassword: '',
+    });
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+        const { name, value, type } = e.target;
+        const checked = (e.target as HTMLInputElement).checked;
+
+        setFormData(prev => ({
+            ...prev,
+            [name]: type === 'checkbox' ? checked : value
+        }));
+    };
+
+    // Validar puerto en tiempo real
+    useEffect(() => {
+        if (formData.isLocal && formData.port && formData.port.length > 0) {
+            const port = parseInt(formData.port);
+            if (isNaN(port) || port < 3100 || port > 3200) {
+                setPortValidation({
+                    checking: false,
+                    available: false,
+                    message: 'El puerto debe estar entre 3100 y 3200'
+                });
+                return;
+            }
+
+            setPortValidation({ checking: true, available: true, message: 'Verificando...' });
+
+            const timeoutId = setTimeout(async () => {
+                try {
+                    const response = await fetch(
+                        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/superadmin/institutes/ports/check?port=${port}`,
+                        {
+                            credentials: 'include',
+                            headers: {
+                                'Authorization': `Bearer ${document.cookie.split('superadmin_access_token=')[1]?.split(';')[0]}`,
+                            },
+                        }
+                    );
+                    const data = await response.json();
+                    setPortValidation({
+                        checking: false,
+                        available: data.available,
+                        message: data.available ? '✓ Puerto disponible' : (data.reason || 'Puerto no disponible')
+                    });
+                } catch (err) {
+                    setPortValidation({
+                        checking: false,
+                        available: false,
+                        message: 'Error al verificar puerto'
+                    });
+                }
+            }, 500);
+
+            return () => clearTimeout(timeoutId);
+        } else {
+            setPortValidation({ checking: false, available: true, message: '' });
+        }
+    }, [formData.port, formData.isLocal]);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+
+        // Validar puerto si es local
+        if (formData.isLocal && !portValidation.available) {
+            setError('Por favor selecciona un puerto válido y disponible');
+            setLoading(false);
+            return;
+        }
+
+        try {
+            const submitData: any = {
+                ...formData,
+                port: formData.isLocal && formData.port ? parseInt(formData.port) : undefined,
+            };
+
+            const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/superadmin/institutes`,
+                {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${document.cookie.split('superadmin_access_token=')[1]?.split(';')[0]}`,
+                    },
+                    body: JSON.stringify(submitData),
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                setError(data.error || data.details || 'Error al crear instituto');
+                setLoading(false);
+                return;
+            }
+
+            // Guardar instituto creado para mostrar URL
+            setCreatedInstitute(data);
+            setLoading(false);
+        } catch (err) {
+            setError('Error de conexión');
+            setLoading(false);
+        }
+    };
+
+    return (
+        <SuperAdminLayout>
+            <div className="p-8 max-w-4xl mx-auto">
+                {/* Header */}
+                <div className="mb-8">
+                    <h1 className="text-3xl font-bold text-white mb-2">Crear Nuevo Instituto</h1>
+                    <p className="text-gray-400">Complete la información del instituto y su administrador</p>
+                </div>
+
+                {/* Progress Steps */}
+                <div className="mb-8">
+                    <div className="flex items-center justify-center space-x-4">
+                        <div className={`flex items-center ${step >= 1 ? 'text-violet-400' : 'text-gray-500'}`}>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 1 ? 'bg-violet-600' : 'bg-gray-700'}`}>
+                                1
+                            </div>
+                            <span className="ml-2 text-sm font-medium">Datos del Instituto</span>
+                        </div>
+                        <div className="w-16 h-0.5 bg-gray-700"></div>
+                        <div className={`flex items-center ${step >= 2 ? 'text-violet-400' : 'text-gray-500'}`}>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 2 ? 'bg-violet-600' : 'bg-gray-700'}`}>
+                                2
+                            </div>
+                            <span className="ml-2 text-sm font-medium">Administrador</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Form */}
+                <form onSubmit={handleSubmit} className="bg-gray-800 rounded-lg p-8 border border-gray-700">
+                    {step === 1 && (
+                        <div className="space-y-6">
+                            <h2 className="text-xl font-bold text-white mb-4">Información del Instituto</h2>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">Nombre *</label>
+                                    <input
+                                        type="text"
+                                        name="name"
+                                        value={formData.name}
+                                        onChange={handleChange}
+                                        required
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">Código *</label>
+                                    <input
+                                        type="text"
+                                        name="code"
+                                        value={formData.code}
+                                        onChange={handleChange}
+                                        required
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">Email *</label>
+                                    <input
+                                        type="email"
+                                        name="email"
+                                        value={formData.email}
+                                        onChange={handleChange}
+                                        required
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">Teléfono</label>
+                                    <input
+                                        type="tel"
+                                        name="phone"
+                                        value={formData.phone}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">Dirección</label>
+                                <textarea
+                                    name="address"
+                                    value={formData.address}
+                                    onChange={handleChange}
+                                    rows={3}
+                                    className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                                />
+                            </div>
+
+                            {/* Desarrollo Local */}
+                            <div className="border-t border-gray-700 pt-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300">Desarrollo Local</label>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            Habilita esta opción para desarrollo en localhost
+                                        </p>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            name="isLocal"
+                                            checked={formData.isLocal}
+                                            onChange={handleChange}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-violet-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600"></div>
+                                    </label>
+                                </div>
+
+                                {formData.isLocal && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                                            Puerto *
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type="number"
+                                                name="port"
+                                                value={formData.port}
+                                                onChange={handleChange}
+                                                placeholder="3100-3200"
+                                                min="3100"
+                                                max="3200"
+                                                required={formData.isLocal}
+                                                className={`w-full px-4 py-2 bg-gray-700 border rounded-lg text-white focus:outline-none focus:ring-2 ${portValidation.checking
+                                                    ? 'border-yellow-500 focus:ring-yellow-500'
+                                                    : portValidation.available
+                                                        ? 'border-green-500 focus:ring-green-500'
+                                                        : formData.port
+                                                            ? 'border-red-500 focus:ring-red-500'
+                                                            : 'border-gray-600 focus:ring-violet-500'
+                                                    }`}
+                                            />
+                                            {formData.port && (
+                                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                    {portValidation.checking ? (
+                                                        <div className="animate-spin h-4 w-4 border-2 border-yellow-500 border-t-transparent rounded-full"></div>
+                                                    ) : portValidation.available ? (
+                                                        <svg className="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg className="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                        </svg>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                        {portValidation.message && (
+                                            <p className={`text-xs mt-1 ${portValidation.checking
+                                                ? 'text-yellow-400'
+                                                : portValidation.available
+                                                    ? 'text-green-400'
+                                                    : 'text-red-400'
+                                                }`}>
+                                                {portValidation.message}
+                                            </p>
+                                        )}
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            El instituto estará disponible en http://localhost:{formData.port || 'XXXX'}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => setStep(2)}
+                                    className="px-6 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-colors"
+                                >
+                                    Siguiente
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {step === 2 && (
+                        <div className="space-y-6">
+                            <h2 className="text-xl font-bold text-white mb-4">Datos del Administrador</h2>
+
+                            <div className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">Nombre Completo *</label>
+                                    <input
+                                        type="text"
+                                        name="adminName"
+                                        value={formData.adminName}
+                                        onChange={handleChange}
+                                        required
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">Email *</label>
+                                    <input
+                                        type="email"
+                                        name="adminEmail"
+                                        value={formData.adminEmail}
+                                        onChange={handleChange}
+                                        required
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">Contraseña *</label>
+                                    <input
+                                        type="password"
+                                        name="adminPassword"
+                                        value={formData.adminPassword}
+                                        onChange={handleChange}
+                                        required
+                                        minLength={8}
+                                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                                    />
+                                    <p className="mt-1 text-xs text-gray-400">Mínimo 8 caracteres</p>
+                                </div>
+                            </div>
+
+                            {error && (
+                                <div className="p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-sm">
+                                    {error}\r\n                                </div>\r\n                            )}\r\n\r\n                            <div className="flex justify-between">\r\n                                <button\r\n                                    type="button"\r\n                                    onClick={() => setStep(1)}\r\n                                    className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"\r\n                                >\r\n                                    Atrás\r\n                                </button>\r\n                                <button\r\n                                    type="submit"\r\n                                    disabled={loading}\r\n                                    className="px-6 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"\r\n                                >\r\n                                    {loading ? 'Creando...' : 'Crear Instituto'}\r\n                                </button>\r\n                            </div>\r\n                        </div>\r\n                    )
+} \r\n                </form >\r\n\r\n                {/* Success Modal */ } \r\n                { createdInstitute && (\r\n < div className = "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" >\r\n < div className = "bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4 border border-gray-700" >\r\n < div className = "text-center" >\r\n                                {/* Success Icon */ } \r\n < div className = "mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-900/20 mb-4" >\r\n < svg className = "h-10 w-10 text-green-500" fill = "none" viewBox = "0 0 24 24" stroke = "currentColor" >\r\n < path strokeLinecap = "round" strokeLinejoin = "round" strokeWidth = { 2} d = "M5 13l4 4L19 7" />\r\n                                    </svg >\r\n                                </div >\r\n\r\n < h3 className = "text-2xl font-bold text-white mb-2" >\r\n                                    ¡Instituto Creado!\r\n                                </h3 >\r\n < p className = "text-gray-400 mb-6" >\r\n                                    El instituto < span className = "text-violet-400 font-semibold" > { createdInstitute.name }</span > ha sido provisionado exitosamente.\r\n                                </p >\r\n\r\n                                {/* Access URL */ } \r\n                                { createdInstitute.accessUrl && (\r\n < div className = "bg-gray-900 rounded-lg p-4 mb-6" >\r\n < p className = "text-sm text-gray-400 mb-2" > URL de Acceso:</p >\r\n < a \r\n                                            href = { createdInstitute.accessUrl }\r\n                                            target = "_blank"\r\n                                            rel = "noopener noreferrer"\r\n                                            className = "text-violet-400 hover:text-violet-300 font-mono text-sm break-all"\r\n >\r\n                                            { createdInstitute.accessUrl } \r\n                                        </a >\r\n                                    </div >\r\n                                ) } \r\n\r\n                                {/* Actions */ } \r\n < div className = "flex flex-col sm:flex-row gap-3" >\r\n                                    { createdInstitute.accessUrl && (\r\n < a\r\n                                            href = { createdInstitute.accessUrl }\r\n                                            target = "_blank"\r\n                                            rel = "noopener noreferrer"\r\n                                            className = "flex-1 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-colors text-center"\r\n >\r\n                                            Abrir Instituto\r\n                                        </a >\r\n                                    ) } \r\n < button\r\n                                        onClick = {() => router.push('/superadmin/institutes') } \r\n                                        className = "flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"\r\n >\r\n                                        Volver al Dashboard\r\n                                    </button >\r\n                                </div >\r\n                            </div >\r\n                        </div >\r\n                    </div >\r\n                )}\r\n            </div >\r\n        </SuperAdminLayout >\r\n    ); \r\n}\r\n

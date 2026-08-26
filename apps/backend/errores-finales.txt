@@ -1,0 +1,10 @@
+
+src/migration/scripts/2-migrate-data.ts(144,15): error TS2322: Type 'unknown' is not assignable to type 'any[]'.
+src/migration/scripts/test-local.ts(51,21): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'Without<UserCreateInput, UserUncheckedCreateInput> & UserUncheckedCreateInput'.
+src/migration/scripts/test-local.ts(62,21): error TS2353: Object literal may only specify known properties, and 'name' does not exist in type 'Without<UserCreateInput, UserUncheckedCreateInput> & UserUncheckedCreateInput'.
+src/plugins/socket.ts(63,36): error TS2345: Argument of type 'AuthenticatedSocket' is not assignable to parameter of type 'AuthenticatedSocket'.
+src/plugins/socket.ts(64,36): error TS2345: Argument of type 'AuthenticatedSocket' is not assignable to parameter of type 'AuthenticatedSocket'.
+src/plugins/socket.ts(65,32): error TS2345: Argument of type 'AuthenticatedSocket' is not assignable to parameter of type 'AuthenticatedSocket'.
+src/plugins/socket.ts(66,30): error TS2345: Argument of type 'AuthenticatedSocket' is not assignable to parameter of type 'AuthenticatedSocket'.
+src/services/cycle-statistics.service.ts(340,84): error TS2345: Argument of type 'PrismaClient<{ log: ("error" | "warn" | "query")[]; }, "error" | "warn" | "query", DefaultArgs>' is not assignable to parameter of type 'string'.
+

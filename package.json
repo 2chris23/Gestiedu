@@ -1,0 +1,37 @@
+{
+  "name": "sistema-de-gestion-escolar",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "packageManager": "npm@10.2.4",
+  "scripts": {
+    "test:seed": "npx tsx apps/backend/src/scripts/seed-load-test.ts",
+    "test:seed:clean": "npx tsx apps/backend/src/scripts/seed-load-test.ts --clean",
+    "test:load:basic:5k": "k6 run load-tests/basic-test-5k.js",
+    "test:load:write": "k6 run load-tests/write-operations-test.js",
+    "test:load:completo": "k6 run load-tests/instituto-completo-5k.js",
+    "test:load:stress": "k6 run load-tests/stress-extreme-5k.js",
+    "test:load:basic:5k:report": "k6 run --out json=load-tests/reports/basic-5k-latest.json --summary-export=load-tests/reports/basic-5k-summary.json load-tests/basic-test-5k.js && node load-tests/generate-report.js load-tests/reports/basic-5k-latest.json",
+    "test:load:write:report": "k6 run --out json=load-tests/reports/write-latest.json --summary-export=load-tests/reports/write-summary.json load-tests/write-operations-test.js && node load-tests/generate-report.js load-tests/reports/write-latest.json",
+    "test:load:completo:report": "k6 run --out json=load-tests/reports/completo-latest.json --summary-export=load-tests/reports/completo-summary.json load-tests/instituto-completo-5k.js && node load-tests/generate-report.js load-tests/reports/completo-latest.json",
+    "test:load:stress:report": "k6 run --out json=load-tests/reports/stress-latest.json --summary-export=load-tests/reports/stress-summary.json load-tests/stress-extreme-5k.js && node load-tests/generate-report.js load-tests/reports/stress-latest.json",
+    "test:load:compare": "node load-tests/compare-results.js",
+    "test:load:all": "npm run test:load:basic:5k && npm run test:load:write && npm run test:load:completo",
+    "test:load:basic": "k6 run load-tests/basic-test.js",
+    "test:load:instituto": "k6 run load-tests/instituto-real.js",
+    "test:load:cache": "k6 run load-tests/cache-test.js"
+  },
+  "dependencies": {
+    "motion-dom": "^12.29.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-is": "^19.2.0"
+  },
+  "overrides": {
+    "@types/react": "~19.1.0",
+    "@types/react-dom": "~19.1.0",
+    "uuid": "^11.1.1"
+  }
+}
