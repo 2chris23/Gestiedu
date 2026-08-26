@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useInstituteConfig } from '@/hooks/useInstitute';
+import { useSessionKeepAlive } from '@/hooks/useSessionKeepAlive';
 import { BACKEND_URL } from '@/config/env';
 import Image from 'next/image';
 
@@ -45,6 +46,9 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
     const { logout: zustandLogout } = useAuthStore();
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const { data: instituteConfig } = useInstituteConfig();
+
+    // Mantener la sesión activa de forma transparente mientras la pestaña esté abierta
+    useSessionKeepAlive();
 
     const handleLogout = async () => {
         // Clear cookies via API route

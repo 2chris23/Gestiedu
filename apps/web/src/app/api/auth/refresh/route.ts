@@ -3,6 +3,7 @@ import { getRefreshToken, setAccessTokenCookie } from '@/lib/auth-cookies';
 import { API_URL } from '@/config/env';
 import { cookies } from 'next/headers';
 
+export const dynamic = 'force-dynamic';
 
 export async function POST(_request: NextRequest) {
     try {
@@ -42,10 +43,24 @@ export async function POST(_request: NextRequest) {
 
         const data = await backendResponse.json();
 
-        // Update access token cookie
+        // Update access token cookie in cookieStore
         await setAccessTokenCookie(data.accessToken);
 
-        return NextResponse.json({ success: true });
+        const responseNext = NextResponse.json({
+            success: true,
+            accessToken: data.accessToken,
+        });
+
+        // Setear cookie directamente en la respuesta HTTP
+        responseNext.cookies.set('access_token', data.accessToken, {
+            httpOnly: false,
+            secure: false,
+            sameSite: 'lax',
+            path: '/',
+            maxAge: 15 * 60,
+        });
+
+        return responseNext;
     } catch (error) {
         console.error('Refresh token error:', error);
         return NextResponse.json(

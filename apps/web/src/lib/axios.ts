@@ -51,10 +51,10 @@ let isRefreshing = false;
 // Cola de peticiones que llegaron mientras se refrescaba el token.
 // Sin esta cola, las peticiones paralelas a un 401 caían directo al logout
 // aunque el refresh fuera exitoso (race condition).
-let refreshQueue: Array<(success: boolean) => void> = [];
+let refreshQueue: Array<(success: boolean, token?: string) => void> = [];
 
-function flushRefreshQueue(success: boolean) {
-    refreshQueue.forEach((cb) => cb(success));
+function flushRefreshQueue(success: boolean, token?: string) {
+    refreshQueue.forEach((cb) => cb(success, token));
     refreshQueue = [];
 }
 
@@ -71,9 +71,12 @@ api.interceptors.response.use(
         // Si ya hay un refresh en curso, encolar y esperar su resultado
         if (isRefreshing) {
             return new Promise((resolve, reject) => {
-                refreshQueue.push((success: boolean) => {
+                refreshQueue.push((success: boolean, token?: string) => {
                     if (success) {
                         originalRequest._retry = true;
+                        if (token && originalRequest.headers) {
+                            originalRequest.headers.Authorization = `Bearer ${token}`;
+                        }
                         resolve(api.request(originalRequest));
                     } else {
                         reject(error);
@@ -89,7 +92,19 @@ api.interceptors.response.use(
             const refreshResponse = await fetch('/api/auth/refresh', { method: 'POST' });
 
             if (refreshResponse.ok) {
-                flushRefreshQueue(true);
+                const refreshData = await refreshResponse.json().catch(() => ({}));
+                const newAccessToken = refreshData.accessToken;
+
+                // Actualizar token en document.cookie y en la cabecera
+                if (newAccessToken && typeof document !== 'undefined') {
+                    document.cookie = `access_token=${newAccessToken}; path=/; max-age=900; SameSite=Lax`;
+                }
+
+                if (newAccessToken && originalRequest.headers) {
+                    originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                }
+
+                flushRefreshQueue(true, newAccessToken);
                 return api.request(originalRequest);
             }
 
