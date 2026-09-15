@@ -12,6 +12,16 @@
  * EJECUTAR:
  *   k6 run --env API_URL=http://localhost:3001 --env INSTITUTE_SLUG=test-load-5k basic-test-5k.js
  *
+ * CADUCIDAD DE LAS CREDENCIALES (ojo al leer los resultados):
+ *
+ *   Las credenciales se piden UNA vez en setup() y no se renuevan. Con
+ *   JWT_EXPIRES_IN=15m y una prueba de 20 minutos, a partir del minuto 15 TODAS
+ *   las peticiones vuelven 401 y la tasa de error se dispara al 30% sin que al
+ *   sistema le pase nada. En el navegador real la sesión se renueva sola.
+ *
+ *   Para medir el pico de carga de verdad, arrancar el servidor con una caducidad
+ *   más larga que la prueba:  JWT_EXPIRES_IN=45m npm run start:prod
+ *
  * ARQUITECTURA:
  *   setup()  → Pre-login de TODOS los usuarios antes del test (1 vez total, sin VUs activos)
  *   default  → VUs usan tokens pre-obtenidos, NUNCA llaman a bcrypt durante el test

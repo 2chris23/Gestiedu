@@ -232,23 +232,26 @@ export class ReportsService {
           { subject: { name: 'asc' } }
         ]
       }),
-      prisma.user.findMany({
+      prisma.studentClassroom.findMany({
         where: {
           classroomId,
-          role: UserRole.STUDENT,
           isActive: true
         },
         select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          studentCode: true
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              studentCode: true
+            }
+          }
         },
         orderBy: [
-          { lastName: 'asc' },
-          { firstName: 'asc' }
+          { student: { lastName: 'asc' } },
+          { student: { firstName: 'asc' } }
         ]
-      })
+      }).then(sc => sc.map(item => item.student).filter(Boolean))
     ]);
 
     // Agrupar calificaciones por estudiante y materia
@@ -363,23 +366,26 @@ export class ReportsService {
           { student: { lastName: 'asc' } }
         ]
       }),
-      prisma.user.findMany({
+      prisma.studentClassroom.findMany({
         where: {
           classroomId,
-          role: UserRole.STUDENT,
           isActive: true
         },
         select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          studentCode: true
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              studentCode: true
+            }
+          }
         },
         orderBy: [
-          { lastName: 'asc' },
-          { firstName: 'asc' }
+          { student: { lastName: 'asc' } },
+          { student: { firstName: 'asc' } }
         ]
-      })
+      }).then(sc => sc.map(item => item.student).filter(Boolean))
     ]);
 
     // Estadísticas por estudiante
@@ -465,15 +471,20 @@ export class ReportsService {
         firstName: true,
         lastName: true,
         studentCode: true,
-        classroomId: true,
         role: true,
         isActive: true,
-        classroom: {
+        studentClassrooms: {
+          where: { isActive: true },
+          take: 1,
           select: {
-            id: true,
-            name: true,
-            grade: true,
-            section: true
+            classroom: {
+              select: {
+                id: true,
+                name: true,
+                grade: true,
+                section: true
+              }
+            }
           }
         }
       }
@@ -600,10 +611,12 @@ export class ReportsService {
       ? Number((allGradeValues.reduce((sum, v) => sum + v, 0) / allGradeValues.length).toFixed(2))
       : 0;
 
+    const activeClassroom = student?.studentClassrooms?.[0]?.classroom || null;
+
     const report = {
       student: {
         ...student,
-        classroom: student.classroom
+        classroom: activeClassroom
       },
       period: periodId,
       academic: {

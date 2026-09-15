@@ -91,9 +91,6 @@ async function main() {
                 if (moved.length > 0) {
                     await tx.studentClassroom.deleteMany({ where: { id: { in: moved.map(m => m.id) } } });
                 }
-                for (const [sid, classroomId] of originalByStudent.entries()) {
-                    await tx.user.update({ where: { id: sid }, data: { classroomId } });
-                }
             }
             await tx.academicYear.update({
                 where: { id: year.id },

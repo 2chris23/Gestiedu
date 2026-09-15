@@ -104,8 +104,11 @@ export async function generateAttendanceReport(
     const where: any = {
     };
 
+    // La asistencia guarda su propia sección. Antes se filtraba por un campo
+    // `classroomId` del alumno que no existe, y el informe reventaba con 500
+    // justo cuando se usaba como se usa: filtrando por sección.
     if (classroomId) {
-      where.student = { classroomId };
+      where.classroomId = classroomId;
     }
 
     if (studentId) {
@@ -134,12 +137,18 @@ export async function generateAttendanceReport(
               firstName: true,
               lastName: true,
               studentCode: true,
-              classroom: {
+              studentClassrooms: {
+                where: { isActive: true },
+                take: 1,
                 select: {
-                  id: true,
-                  name: true,
-                  grade: true,
-                  section: true,
+                  classroom: {
+                    select: {
+                      id: true,
+                      name: true,
+                      grade: true,
+                      section: true,
+                    },
+                  },
                 },
               },
             },
@@ -221,31 +230,40 @@ export async function getGradeAnalytics(
       where.subjectId = subjectId;
     }
 
+    // El alumno pertenece a una sección por su inscripción, no por un campo
+    // suyo. Igual que arriba: así era un 500 seguro.
     if (classroomId) {
-      where.student = { classroomId };
+      where.student = { studentClassrooms: { some: { classroomId, isActive: true } } };
     }
 
     const grades = await request.tenantPrisma.grade.findMany({
       where,
       select: {
         score: true,
-        subject: {
-          select: {
-            name: true,
-          },
-        },
         student: {
           select: {
             firstName: true,
             lastName: true,
-            classroom: {
+            studentClassrooms: {
+              where: { isActive: true },
+              take: 1,
               select: {
-                name: true,
-                grade: true,
+                classroom: {
+                  select: {
+                    name: true,
+                    grade: true,
+                  },
+                },
               },
             },
           },
         },
+        subject: {
+          select: {
+            id: true,
+            name: true,
+          }
+        }
       },
     });
 
@@ -274,7 +292,7 @@ export async function getGradeAnalytics(
     let subjectAnalysis = null;
     if (!subjectId) {
       const subjectGroups = grades.reduce((acc, grade) => {
-        const subject = grade.subject.name;
+        const subject = (grade as any).subject?.name || 'Materia';
         if (!acc[subject]) {
           acc[subject] = [];
         }
@@ -345,16 +363,22 @@ export async function generateStudentReport(
         address: true,
         phone: true,
         isActive: true,
-        classroom: {
+        studentClassrooms: {
+          where: { isActive: true },
+          take: 1,
           select: {
-            id: true,
-            name: true,
-            grade: true,
-            section: true,
-            teacher: {
+            classroom: {
               select: {
-                firstName: true,
-                lastName: true,
+                id: true,
+                name: true,
+                grade: true,
+                section: true,
+                teacher: {
+                  select: {
+                    firstName: true,
+                    lastName: true,
+                  },
+                },
               },
             },
           },

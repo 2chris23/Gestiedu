@@ -6,6 +6,7 @@ interface PaginationOptions {
     limit?: number;
     search?: string;
     periodId?: string;
+    subjectId?: string;
 }
 
 interface PaginatedResponse<T> {
@@ -27,6 +28,8 @@ export interface SectionStudent {
     studentCode?: string;
     isActive: boolean;
     average?: number;
+    failedSubjectsCount?: number;
+    failedSubjects?: Array<{ subjectId: string; average: number }>;
     attendancePercentage?: number;
 }
 
@@ -36,9 +39,10 @@ export const studentsService = {
         return response.data;
     },
 
-    getStudentDashboardStatsById: async (studentId: string, periodId?: string): Promise<StudentDashboardStats> => {
+    getStudentDashboardStatsById: async (studentId: string, periodId?: string, academicYearId?: string): Promise<StudentDashboardStats> => {
         const params = new URLSearchParams();
         if (periodId) params.append('periodId', periodId);
+        if (academicYearId) params.append('academicYearId', academicYearId);
         const response = await api.get(`/students/${studentId}/dashboard?${params.toString()}`);
         return response.data;
     },
@@ -78,6 +82,7 @@ export const studentsService = {
         if (options?.limit) params.append('limit', options.limit.toString());
         if (options?.search) params.append('search', options.search);
         if (options?.periodId) params.append('periodId', options.periodId);
+        if (options?.subjectId) params.append('subjectId', options.subjectId);
 
         const response = await api.get(`/students?${params.toString()}`);
 

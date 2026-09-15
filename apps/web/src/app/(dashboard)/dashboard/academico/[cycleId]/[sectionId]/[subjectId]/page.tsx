@@ -1,16 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
     ArrowLeft, Users, BookOpen, GraduationCap, Calendar,
     Bell, Search, Plus, MoreVertical, TrendingUp, Clock,
     FileText, CheckCircle, AlertTriangle, MapPin, Settings,
-    ChevronRight, Home, UserCircle, ArrowUpDown, ArrowUp, ArrowDown
+    ChevronRight, Home, UserCircle, ArrowUpDown, ArrowUp, ArrowDown,
+    ListTodo
 } from 'lucide-react';
 import { useClassroomBySlug } from '@/hooks/useClassrooms';
-import { useClassroomSubjectDetail } from '@/hooks/useClassroomSubjects';
+import { useClassroomSubjectDetail, useClassroomSubjectsStats } from '@/hooks/useClassroomSubjects';
+import AcademicStats from '@/components/academic/AcademicStats';
 import { AssignSubjectTeacherModal } from '@/components/subject/AssignSubjectTeacherModal';
 import { useStudents } from '@/hooks/useStudents';
 import { SectionStudent } from '@/services/students.service';
@@ -18,15 +20,22 @@ import { Pagination } from '@/components/ui';
 import { useAuthStore } from '@/store/auth.store';
 import EvaluationPlanSection from '@/components/evaluation/EvaluationPlanSection';
 import CalendarDayView from '@/components/evaluation/CalendarDayView';
+import { useAcademicConfig } from '@/hooks/useAcademicConfig';
+import { getAcademicRisk } from '@/utils/academicRisk';
+import SubjectActivitiesTab from '@/components/subject/SubjectActivitiesTab';
+import SubjectObservationsTab from '@/components/subject/SubjectObservationsTab';
+import StudentObservationsModal from '@/components/observations/StudentObservationsModal';
+import LapsoSelector from '@/components/academic/LapsoSelector';
+import SubjectScheduleSection from '@/components/schedule/SubjectScheduleSection';
 
-const DAY_NAMES: Record<number, string> = {
-    0: 'Domingo',
-    1: 'Lunes',
-    2: 'Martes',
-    3: 'Miércoles',
-    4: 'Jueves',
-    5: 'Viernes',
-    6: 'Sábado',
+const DAY_ABBR: Record<number, string> = {
+    0: 'Dom',
+    1: 'Lun',
+    2: 'Mar',
+    3: 'Mié',
+    4: 'Jue',
+    5: 'Vie',
+    6: 'Sáb',
 };
 
 const SCHEDULE_COLORS = ['#4F46E5', '#7C3AED', '#0891B2', '#059669', '#D97706'];
@@ -38,7 +47,11 @@ export default function SectionSubjectDashboard() {
     const [searchTerm, setSearchTerm] = useState('');
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [selectedLapso, setSelectedLapso] = useState('1');
+    const [selectedStudentForObs, setSelectedStudentForObs] = useState<any | null>(null);
     
+    // Filtro por lapso/momento (undefined = "Todo el ciclo")
+    const [lapsoId, setLapsoId] = useState<string | undefined>(undefined);
+
     // Paginación y ordenamiento
     const [page, setPage] = useState(1);
     const [limit] = useState(20);
@@ -49,15 +62,75 @@ export default function SectionSubjectDashboard() {
     const { data: classroom, isLoading: isLoadingClassroom } = useClassroomBySlug(sectionId, cycleId);
     const classroomId = classroom?.id || '';
 
+    const periods = useMemo(() => {
+        return ((classroom as any)?.academicYear?.periods || []).map((p: any) => ({
+            id: p.id as string,
+            name: p.name as string,
+        }));
+    }, [classroom]);
+
+    const { data: academicConfig } = useAcademicConfig();
+    const passingGrade = academicConfig?.notaMinimaAprobatoria ?? academicConfig?.passingGrade ?? 10;
+
     // Obtener detalle de materia real
     const { data: classroomSubject, isLoading: isLoadingSubject } = useClassroomSubjectDetail(classroomId, subjectId);
+    const realSubjectId = classroomSubject?.subject?.id || classroomSubject?.subjectId;
 
-    // Obtener estudiantes
-    const { data: studentsData, isLoading: isLoadingStudents } = useStudents(classroomId || '', { page, limit });
+    // Obtener estudiantes filtrados por lapso y materia específica
+    const { data: studentsData, isLoading: isLoadingStudents } = useStudents(classroomId || '', {
+        page,
+        limit,
+        periodId: lapsoId,
+        subjectId: realSubjectId
+    });
     const students = studentsData?.students || studentsData?.users || [];
     const pagination = studentsData?.pagination;
     
     const { user } = useAuthStore();
+
+    // Obtener estadísticas de materias de la sección filtradas por lapso
+    const { data: subjectsWithStats } = useClassroomSubjectsStats(classroomId, lapsoId);
+
+    const currentSubjectStats = useMemo(() => {
+        if (!subjectsWithStats || subjectsWithStats.length === 0) return null;
+        return subjectsWithStats.find(
+            (s: any) => s.id === subjectId || s.code === classroomSubject?.subject?.code || s.slug === subjectId || s.id === classroomSubject?.subjectId
+        );
+    }, [subjectsWithStats, subjectId, classroomSubject]);
+
+    const subjectAcademicStats = useMemo(() => {
+        const capacity = classroom?.capacity || 35;
+        const count = (classroom as any)?.studentCount || (classroom as any)?._count?.students || students.length || 0;
+
+        const validAverages = students
+            .map((s: SectionStudent) => s.average)
+            .filter((a): a is number => a !== undefined && a !== null && !isNaN(a) && a > 0);
+
+        const minScore = validAverages.length > 0 ? Math.min(...validAverages) : 0;
+        const maxScore = validAverages.length > 0 ? Math.max(...validAverages) : 0;
+
+        const calculatedAvg = validAverages.length > 0
+            ? Math.round((validAverages.reduce((acc, curr) => acc + curr, 0) / validAverages.length) * 10) / 10
+            : 0;
+
+        const avg = currentSubjectStats?.stats?.average ?? calculatedAvg;
+        const attendance = currentSubjectStats?.stats?.attendance ?? 0;
+        const localAtRisk = students.filter((s: SectionStudent) => typeof s.average === 'number' && s.average > 0 && s.average < passingGrade).length;
+        const atRisk = typeof currentSubjectStats?.stats?.atRiskStudents === 'number'
+            ? currentSubjectStats.stats.atRiskStudents
+            : localAtRisk;
+        const obs = currentSubjectStats?.stats?.observations ?? 0;
+
+        return {
+            average: avg || 0,
+            minAverage: minScore > 0 ? Math.round(minScore * 10) / 10 : undefined,
+            maxAverage: maxScore > 0 ? Math.round(maxScore * 10) / 10 : undefined,
+            riskCount: atRisk,
+            occupancy: `${count}/${capacity}`,
+            attendance: `${attendance}%`,
+            observations: obs
+        };
+    }, [currentSubjectStats, students, classroom, passingGrade]);
 
     const isLoading = isLoadingClassroom || isLoadingSubject;
 
@@ -100,12 +173,14 @@ export default function SectionSubjectDashboard() {
     const studentCount = (classroom as any)?.studentCount || (classroom as any)?._count?.students || 0;
 
     // Formatear horario
-    const schedule = scheduleBlocks.map((block: any, index: number) => ({
+    const schedule: any[] = scheduleBlocks.map((block: any, index: number) => ({
         id: block.id,
-        day: DAY_NAMES[block.dayOfWeek] || `Día ${block.dayOfWeek}`,
+        day: DAY_ABBR[block.dayOfWeek] || 'Lun',
         startTime: block.startTime,
         endTime: block.endTime,
-        classroom: block.location || 'Sin asignar',
+        subject: subject.name,
+        subjectId: subject.id,
+        classroom: block.location || '',
         content: block.notes || '',
         color: SCHEDULE_COLORS[index % SCHEDULE_COLORS.length],
     }));
@@ -137,32 +212,79 @@ export default function SectionSubjectDashboard() {
 
     const sortedStudents = [...filteredStudents].sort((a: SectionStudent, b: SectionStudent) => {
         if (!sortColumn) return 0;
-        let aValue: string, bValue: string;
+        let comparison = 0;
 
         switch (sortColumn) {
-            case 'nombre':
-                aValue = `${a.firstName} ${a.lastName}`.toLowerCase();
-                bValue = `${b.firstName} ${b.lastName}`.toLowerCase();
+            case 'nombre': {
+                const aName = `${a.firstName || ''} ${a.lastName || ''}`.trim().toLowerCase();
+                const bName = `${b.firstName || ''} ${b.lastName || ''}`.trim().toLowerCase();
+                comparison = aName.localeCompare(bName, 'es', { sensitivity: 'base' });
                 break;
-            case 'cedula':
-                aValue = a.id || '';
-                bValue = b.id || '';
+            }
+            case 'cedula': {
+                const aCode = (a.studentCode || a.id || '').toLowerCase();
+                const bCode = (b.studentCode || b.id || '').toLowerCase();
+                comparison = aCode.localeCompare(bCode, 'es', { numeric: true, sensitivity: 'base' });
                 break;
+            }
+            case 'riesgo': {
+                const getRiskWeight = (s: SectionStudent) => {
+                    const risk = getAcademicRisk(s.average, passingGrade);
+                    switch (risk.level) {
+                        case 'ALTO': return 3;
+                        case 'MEDIO': return 2;
+                        case 'BAJO': return 1;
+                        case 'SIN_CALIFICAR': return 0;
+                        default: return 0;
+                    }
+                };
+                const aRisk = getRiskWeight(a);
+                const bRisk = getRiskWeight(b);
+                comparison = aRisk - bRisk;
+                if (comparison === 0) {
+                    const aAvg = typeof a.average === 'number' && !isNaN(a.average) ? a.average : 0;
+                    const bAvg = typeof b.average === 'number' && !isNaN(b.average) ? b.average : 0;
+                    comparison = aAvg - bAvg;
+                }
+                break;
+            }
+            case 'promedio': {
+                const aAvg = typeof a.average === 'number' && !isNaN(a.average) ? a.average : -1;
+                const bAvg = typeof b.average === 'number' && !isNaN(b.average) ? b.average : -1;
+                comparison = aAvg - bAvg;
+                break;
+            }
+            case 'asistencia': {
+                const aAtt = typeof a.attendancePercentage === 'number' && !isNaN(a.attendancePercentage) ? a.attendancePercentage : 0;
+                const bAtt = typeof b.attendancePercentage === 'number' && !isNaN(b.attendancePercentage) ? b.attendancePercentage : 0;
+                comparison = aAtt - bAtt;
+                break;
+            }
+            case 'observaciones': {
+                const aObs = typeof (a as any).observationsCount === 'number' && !isNaN((a as any).observationsCount) ? (a as any).observationsCount : 0;
+                const bObs = typeof (b as any).observationsCount === 'number' && !isNaN((b as any).observationsCount) ? (b as any).observationsCount : 0;
+                comparison = aObs - bObs;
+                break;
+            }
             default:
                 return 0;
         }
 
-        if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-        if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-        return 0;
+        if (comparison === 0) {
+            const aName = `${a.firstName || ''} ${a.lastName || ''}`.trim().toLowerCase();
+            const bName = `${b.firstName || ''} ${b.lastName || ''}`.trim().toLowerCase();
+            return aName.localeCompare(bName, 'es', { sensitivity: 'base' });
+        }
+
+        return sortDirection === 'asc' ? comparison : -comparison;
     });
 
     const handleSort = (column: string) => {
         if (sortColumn === column) {
-            setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+            setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
         } else {
             setSortColumn(column);
-            setSortDirection('asc');
+            setSortDirection(column === 'nombre' || column === 'cedula' ? 'asc' : 'desc');
         }
     };
 
@@ -220,6 +342,16 @@ export default function SectionSubjectDashboard() {
                                     <span className="flex items-center gap-1 text-sm text-gray-500">
                                         <Users className="w-4 h-4" /> {studentCount} Estudiantes
                                     </span>
+                                    {periods.length > 0 && (
+                                        <span className="ml-1">
+                                            <LapsoSelector
+                                                periods={periods}
+                                                value={lapsoId}
+                                                onChange={setLapsoId}
+                                                compact
+                                            />
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -263,57 +395,26 @@ export default function SectionSubjectDashboard() {
             </header>
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-                {/* Schedule Cards */}
-                {schedule.length > 0 && (
-                    <div className="mb-8">
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-2">
-                                    <Clock className="w-5 h-5 text-gray-400" />
-                                    <h2 className="font-semibold text-gray-900">Horario de Clases</h2>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {schedule.map((block: any) => (
-                                    <div
-                                        key={block.id}
-                                        className="rounded-xl p-4 text-white shadow-lg"
-                                        style={{ background: `linear-gradient(135deg, ${block.color} 0%, ${block.color}dd 100%)` }}
-                                    >
-                                        <div className="flex items-center justify-between mb-3">
-                                            <h3 className="font-bold text-lg">{block.day}</h3>
-                                            <span className="px-2 py-0.5 bg-white/20 rounded text-xs font-medium flex items-center gap-1">
-                                                <MapPin className="w-3 h-3" /> {block.classroom}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-2 mb-3 bg-white/10 rounded-lg px-3 py-2 w-fit">
-                                            <Clock className="w-4 h-4" />
-                                            <span className="font-medium text-sm">{block.startTime} - {block.endTime}</span>
-                                        </div>
-                                        {block.content && (
-                                            <div className="mt-3 pt-3 border-t border-white/20">
-                                                <p className="text-[10px] uppercase tracking-wide opacity-80 flex items-center gap-1">
-                                                    <BookOpen className="w-3 h-3" /> Contenido
-                                                </p>
-                                                <p className="font-medium text-sm mt-1">{block.content}</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                )}
+                {/* Estadísticas de la Materia (Ancho Completo como en Secciones) */}
+                <div className="mb-6">
+                    <AcademicStats
+                        stats={subjectAcademicStats}
+                        averageTitle="Promedio Materia"
+                        riskSubtext="Alumnos con promedio < 10 pts"
+                    />
+                </div>
 
-                {schedule.length === 0 && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-8 text-center">
-                        <Clock className="mx-auto h-10 w-10 text-gray-300" />
-                        <h3 className="mt-2 text-sm font-medium text-gray-900">Sin horario configurado</h3>
-                        <p className="mt-1 text-sm text-gray-500">
-                            Configura el horario desde la sección para agregar bloques de clase.
-                        </p>
-                    </div>
-                )}
+                {/* Horario en Vivo de la Materia */}
+                <div className="mb-8">
+                    <SubjectScheduleSection
+                        schedule={schedule}
+                        subject={subject}
+                        role={user?.role === 'TEACHER' || user?.role === 'ADMIN' ? 'teacher' : 'student'}
+                        showActions={true}
+                        classroomId={classroomId}
+                        editUrl={`/dashboard/horario/${cycleId}/${sectionId}`}
+                    />
+                </div>
 
                 {/* Tabs */}
                 <div className="border-b border-gray-200 mb-6">
@@ -321,8 +422,7 @@ export default function SectionSubjectDashboard() {
                         {[
                             { id: 'estudiantes', label: 'Estudiantes', icon: Users },
                             { id: 'calificaciones', label: 'Plan de Evaluación / Calificaciones', icon: GraduationCap },
-                            { id: 'calendario', label: 'Calendario en Vivo', icon: Calendar },
-                            { id: 'clases', label: 'Historial de Clases', icon: Clock },
+                            { id: 'actividades', label: 'Actividades', icon: ListTodo },
                             { id: 'observaciones', label: 'Observaciones', icon: Bell },
                         ].map((tab) => {
                             const Icon = tab.icon;
@@ -407,9 +507,14 @@ export default function SectionSubjectDashboard() {
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.studentCode || student.id}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${student.average ? (student.average >= 14 ? 'bg-green-100 text-green-700' : student.average >= 10 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700') : 'bg-gray-100 text-gray-600'}`}>
-                                                        {student.average ? (student.average >= 14 ? 'Riesgo Bajo' : student.average >= 10 ? 'Riesgo Medio' : 'Riesgo Alto') : 'Sin Calificar'}
-                                                    </span>
+                                                    {(() => {
+                                                        const risk = getAcademicRisk(student.average, passingGrade);
+                                                        return (
+                                                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${risk.className}`}>
+                                                                {risk.label}
+                                                            </span>
+                                                        );
+                                                    })()}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     {student.average ? (
@@ -427,7 +532,15 @@ export default function SectionSubjectDashboard() {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                    <span className="text-xs text-gray-400 italic">Sin observaciones</span>
+                                                    {((student as any).observationsCount || 0) > 0 ? (
+                                                        <button type="button" onClick={() => setSelectedStudentForObs(student)} className="text-indigo-600 hover:text-indigo-800 font-medium">
+                                                            {(student as any).observationsCount} observacione(s)
+                                                        </button>
+                                                    ) : (
+                                                        <button type="button" onClick={() => setSelectedStudentForObs(student)} className="text-gray-400 hover:text-gray-600 italic">
+                                                            Agregar observación
+                                                        </button>
+                                                    )}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                     <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200">
@@ -483,22 +596,35 @@ export default function SectionSubjectDashboard() {
                     </div>
                 )}
 
-                {/* Calendario en Vivo Tab */}
-                {activeTab === 'calendario' && (
-                    <CalendarDayView classroomId={classroomId} />
+                {/* Actividades Tab */}
+                {activeTab === 'actividades' && (
+                    <SubjectActivitiesTab
+                        classroomId={classroomId}
+                        subjectId={subject.id}
+                        cycleId={cycleId}
+                        sectionId={sectionId}
+                        totalStudents={studentCount || students.length}
+                    />
                 )}
 
-                {/* Placeholder for other tabs */}
-                {(activeTab === 'clases' || activeTab === 'observaciones') && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <FileText className="w-8 h-8 text-gray-400" />
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-900 mb-2">Próximamente</h3>
-                        <p className="text-gray-500">Esta sección está en desarrollo.</p>
-                    </div>
+                {/* Observaciones Tab */}
+                {activeTab === 'observaciones' && (
+                    <SubjectObservationsTab
+                        classroomId={classroomId}
+                        subjectId={subject.id}
+                        periodId={lapsoId}
+                        onPeriodChange={setLapsoId}
+                        periods={periods}
+                    />
                 )}
             </main>
+
+            {/* Modal de Detalle de Observaciones del Estudiante */}
+            <StudentObservationsModal
+                isOpen={Boolean(selectedStudentForObs)}
+                onClose={() => setSelectedStudentForObs(null)}
+                student={selectedStudentForObs}
+            />
 
             {isAssignModalOpen && classroomId && (
                 <AssignSubjectTeacherModal

@@ -45,7 +45,8 @@ export async function getSubjectAverage(
         const result = await cycleStatisticsService.getSubjectAverage(
             request.tenantPrisma,
             sectionId,
-            subjectId
+            subjectId,
+            (request.user as RequestUser)?.instituteId ?? undefined
         );
 
         logger.info('Subject average retrieved', {
@@ -86,7 +87,8 @@ export async function getSectionGlobalAverage(
 
         const result = await cycleStatisticsService.getSectionGlobalAverage(
             request.tenantPrisma,
-            sectionId
+            sectionId,
+            (request.user as RequestUser)?.instituteId ?? undefined
         );
 
         logger.info('Section global average retrieved', {
@@ -137,7 +139,8 @@ export async function getGradeAverage(
         const result = await cycleStatisticsService.getGradeAverage(
             request.tenantPrisma,
             academicYearId,
-            gradeLevelNum
+            gradeLevelNum,
+            (request.user as RequestUser)?.instituteId ?? undefined
         );
 
         logger.info('Grade average retrieved', {
@@ -178,7 +181,8 @@ export async function getCycleGlobalAverage(
 
         const result = await cycleStatisticsService.getCycleGlobalAverage(
             request.tenantPrisma,
-            academicYearId
+            academicYearId,
+            (request.user as RequestUser)?.instituteId ?? undefined
         );
 
         logger.info('Cycle global average retrieved', {

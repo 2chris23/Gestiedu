@@ -6,7 +6,27 @@ import {
   getGradeAnalytics,
 } from '../controllers/reports.controller';
 import { authenticate, requireTeacher } from '../middleware/auth.middleware';
-import { validateCUID } from '../middleware/validation.middleware';
+import { validateCUID, validateUserId } from '../middleware/validation.middleware';
+import { marcarGuardia } from '../middleware/guardias';
+import { assertCanSeeStudent } from '../services/authorization.service';
+
+/**
+ * Solo lo ve quien puede ver a ese alumno: el admin, los profesores que le
+ * dan clase, su tutor, y el propio alumno.
+ */
+async function exigirVerAlumno(request: any, reply: any) {
+  const { studentId } = request.params as { studentId: string };
+  try {
+    await assertCanSeeStudent(request.tenantPrisma, request.user, studentId);
+  } catch (error: any) {
+    return reply.status(error?.statusCode ?? 403).send({
+      error: error?.message || 'No puedes ver la información de este estudiante',
+      code: error?.code || 'FORBIDDEN',
+    });
+  }
+}
+// Mira el alumno de la dirección, no el formulario: va antes de revisarlo.
+marcarGuardia(exigirVerAlumno);
 
 const reportsRoutes: FastifyPluginAsync = async (fastify) => {
   // Esquemas para validación
@@ -76,7 +96,9 @@ const reportsRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
     },
-    preHandler: [authenticate, validateCUID('studentId')]
+    // El expediente lleva datos personales, notas y asistencia. Antes solo
+    // pedía tener sesión: cualquier alumno sacaba el de cualquier otro.
+    preHandler: [authenticate, validateUserId('studentId'), exigirVerAlumno]
   }, generateStudentReport as any);
 
   // Nota: Rutas de plantillas y otros reportes especializados se eliminan por falta de controladores exportados

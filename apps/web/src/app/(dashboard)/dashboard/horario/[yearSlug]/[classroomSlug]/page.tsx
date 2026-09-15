@@ -10,8 +10,7 @@ import ClassroomScheduleEditor from '@/components/schedule/ClassroomScheduleEdit
 
 export default function ScheduleEditorPage({ params }: { params: Promise<{ yearSlug: string, classroomSlug: string }> }) {
     const { yearSlug, classroomSlug } = use(params);
-    const slug = `${classroomSlug}-${yearSlug}`;
-    const { data: classroom, isLoading: isLoadingClassroom } = useClassroomBySlug(slug);
+    const { data: classroom, isLoading: isLoadingClassroom } = useClassroomBySlug(classroomSlug, yearSlug);
     
     const classroomId = classroom?.id || '';
     const { data: subjectsData, isLoading: isLoadingSubjects } = useClassroomSubjects(classroomId);

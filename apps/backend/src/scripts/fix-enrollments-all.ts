@@ -15,52 +15,18 @@ async function fixAllEnrollments() {
       const tenantPrisma = await getTenantPrisma(institute.id);
 
       const students = await tenantPrisma.user.findMany({
-        where: { role: 'STUDENT', classroomId: { not: null } },
-        include: { classroom: true, studentClassrooms: true }
+        where: { role: 'STUDENT', isActive: true },
+        include: { studentClassrooms: { include: { classroom: true } } }
       });
 
-      console.log(`  Found ${students.length} students with a classroom assigned.`);
+      console.log(`  Found ${students.length} students.`);
       
       let fixedCount = 0;
 
       for (const student of students) {
-        const classroomId = student.classroomId;
-        const classroom = student.classroom;
-        if (!classroomId || !classroom) continue;
-
-        const activeEnrollment = student.studentClassrooms.find(e => e.classroomId === classroomId && e.isActive);
-
+        const activeEnrollment = student.studentClassrooms.find(e => e.isActive);
         if (!activeEnrollment) {
-          console.log(`  Fixing student ${student.email} (${student.id}) -> Section ${classroom.name}`);
-          
-          await tenantPrisma.$transaction(async (tx) => {
-            // Desactivar todas las actuales
-            await tx.studentClassroom.updateMany({
-              where: { studentId: student.id, isActive: true },
-              data: { isActive: false }
-            });
-
-            // Reactivar o crear
-            const existing = await tx.studentClassroom.findFirst({
-              where: { studentId: student.id, classroomId }
-            });
-
-            if (existing) {
-              await tx.studentClassroom.update({
-                where: { id: existing.id },
-                data: { isActive: true }
-              });
-            } else {
-              await tx.studentClassroom.create({
-                data: {
-                  studentId: student.id,
-                  classroomId,
-                  academicYearId: classroom.academicYearId!,
-                  isActive: true
-                }
-              });
-            }
-          });
+          console.log(`  Student ${student.email} has no active enrollment.`);
           fixedCount++;
         }
       }

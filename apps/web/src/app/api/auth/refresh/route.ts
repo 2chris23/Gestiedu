@@ -3,6 +3,19 @@ import { getRefreshToken, setAccessTokenCookie } from '@/lib/auth-cookies';
 import { API_URL } from '@/config/env';
 import { cookies } from 'next/headers';
 
+/**
+ * `secure` manda la cookie SOLO por conexión cifrada (https).
+ *
+ * Estaba en `false` fijo, así que en producción la sesión podía viajar en claro:
+ * quien estuviera en la misma red —el wifi del liceo, por ejemplo— podía leerla
+ * y entrar como esa persona.
+ *
+ * En desarrollo se sigue usando http://localhost, donde `secure` impediría
+ * guardar la cookie; por eso depende del entorno y no es fijo.
+ */
+const SOLO_POR_CONEXION_CIFRADA = process.env.NODE_ENV === 'production';
+
+
 export const dynamic = 'force-dynamic';
 
 export async function POST(_request: NextRequest) {
@@ -53,8 +66,11 @@ export async function POST(_request: NextRequest) {
 
         // Setear cookie directamente en la respuesta HTTP
         responseNext.cookies.set('access_token', data.accessToken, {
-            httpOnly: false,
-            secure: false,
+            // Cerrada a la página: la llave corta vive en memoria
+            // (`lib/credencial-en-memoria.ts`). La cookie la lee el guardián de
+            // pantallas, que corre en el servidor.
+            httpOnly: true,
+            secure: SOLO_POR_CONEXION_CIFRADA,
             sameSite: 'lax',
             path: '/',
             maxAge: 15 * 60,

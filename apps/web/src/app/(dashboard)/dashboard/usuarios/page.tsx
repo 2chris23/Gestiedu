@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, Search, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { Plus, Search, ChevronLeft, ChevronRight, Filter, FolderArchive, Users, RotateCcw, AlertTriangle } from 'lucide-react';
 import { Input, Button } from '@/components/ui';
 import { UsersTable } from '@/components/users/UsersTable';
 import { UserForm } from '@/components/users/UserForm';
@@ -23,7 +23,8 @@ export default function UsersPage() {
     const [isSaving, setIsSaving] = useState(false);
 
     const [editingUser, setEditingUser] = useState<User | null>(null);
-    // const [viewingUserId, setViewingUserId] = useState<string | null>(null);
+    const [viewMode, setViewMode] = useState<'active' | 'archived'>('active');
+    const [archivedCount, setArchivedCount] = useState<number>(0);
 
     // Pagination & Filter States
     const [page, setPage] = useState(1);
@@ -43,22 +44,29 @@ export default function UsersPage() {
                 page,
                 limit: 10,
                 search: searchTerm,
-                role: roleFilter
+                role: roleFilter,
+                status: viewMode === 'archived' ? 'ARCHIVED' : 'ACTIVE'
             });
             setUsers(data.users);
             setTotalPages(data.pagination.totalPages);
             setTotalUsers(data.pagination.total);
+
+            if (viewMode === 'active') {
+                userService.getUsers({ limit: 1, status: 'ARCHIVED' })
+                    .then(res => setArchivedCount(res.pagination.total))
+                    .catch(() => {});
+            }
         } catch (error) {
             console.error('Error loading users:', error);
             toast.error('Error al cargar usuarios');
         } finally {
             setIsLoading(false);
         }
-    }, [page, searchTerm, roleFilter]);
+    }, [page, searchTerm, roleFilter, viewMode]);
 
     useEffect(() => {
         loadUsers();
-    }, [page, roleFilter, loadUsers]); // Reload when page or role changes
+    }, [page, roleFilter, viewMode, loadUsers]);
 
     // Debounce search could be added here, for now using a search button or confirm
     // Or simple effect on search term if we want instant search
@@ -100,15 +108,47 @@ export default function UsersPage() {
         setIsModalOpen(true);
     }
 
-    const [userToDelete, setUserToDelete] = useState<string | null>(null);
+    const [userToDelete, setUserToDelete] = useState<User | null>(null);
+    const [userToArchive, setUserToArchive] = useState<User | null>(null);
+
+    const handleArchiveUser = async () => {
+        if (!userToArchive) return;
+
+        try {
+            await userService.archiveUser(userToArchive.id);
+            setUsers((prev) => prev.filter(u => u.id !== userToArchive.id));
+            setArchivedCount((prev) => prev + 1);
+            toast.success(`Usuario ${userToArchive.firstName} ${userToArchive.lastName} archivado correctamente`);
+        } catch (error) {
+            console.error('Error archiving user:', error);
+            toast.error(error instanceof Error ? error.message : 'Error al archivar usuario');
+        } finally {
+            setUserToArchive(null);
+        }
+    };
+
+    const handleUnarchiveUser = async (user: User) => {
+        try {
+            await userService.unarchiveUser(user.id);
+            setUsers((prev) => prev.filter(u => u.id !== user.id));
+            setArchivedCount((prev) => Math.max(0, prev - 1));
+            toast.success(`Usuario ${user.firstName} ${user.lastName} restaurado a Activo`);
+        } catch (error) {
+            console.error('Error unarchiving user:', error);
+            toast.error(error instanceof Error ? error.message : 'Error al restaurar usuario');
+        }
+    };
 
     const handleDeleteUser = async () => {
         if (!userToDelete) return;
 
         try {
-            await userService.deleteUser(userToDelete);
-            setUsers((prev) => prev.filter(u => u.id !== userToDelete));
-            toast.success('Usuario eliminado correctamente');
+            await userService.deleteUser(userToDelete.id);
+            setUsers((prev) => prev.filter(u => u.id !== userToDelete.id));
+            if (viewMode === 'archived') {
+                setArchivedCount((prev) => Math.max(0, prev - 1));
+            }
+            toast.success(`Usuario ${userToDelete.firstName} ${userToDelete.lastName} eliminado correctamente`);
         } catch (error) {
             console.error('Error deleting user:', error);
             toast.error(error instanceof Error ? error.message : 'Error al eliminar usuario');
@@ -154,8 +194,6 @@ export default function UsersPage() {
         });
     }, [users, sortField, sortDirection]);
 
-
-    // ... inside component ...
     const router = useRouter();
 
     const handleViewUser = (user: User) => {
@@ -164,18 +202,59 @@ export default function UsersPage() {
 
     return (
         <div className="space-y-6">
-            {/* ... header ... */}
-            <div className="flex justify-between items-center px-4 sm:px-0">
+            {/* Header con botón de carpeta para Usuarios Archivados */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-4 sm:px-0">
                 <div>
-                    <h1 className="text-2xl font-semibold text-gray-900">Usuarios</h1>
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-2xl font-bold text-gray-900">
+                            {viewMode === 'archived' ? 'Carpeta de Usuarios Archivados' : 'Usuarios'}
+                        </h1>
+                        {viewMode === 'archived' && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                                <FolderArchive className="h-3.5 w-3.5 text-amber-600" />
+                                Vista Archivados
+                            </span>
+                        )}
+                    </div>
                     <p className="mt-1 text-sm text-gray-500">
-                        Gestiona administradores, profesores y personal.
+                        {viewMode === 'archived'
+                            ? 'Usuarios en pausa o retirados temporalmente. No pueden iniciar sesión y no aparecen en listas activas.'
+                            : 'Gestiona administradores, profesores, estudiantes y personal.'}
                     </p>
                 </div>
-                <Button onClick={() => { setEditingUser(null); setIsModalOpen(true); }} className="w-auto">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Nuevo Usuario
-                </Button>
+                <div className="flex items-center gap-2">
+                    {viewMode === 'active' ? (
+                        <Button
+                            variant="outline"
+                            onClick={() => { setViewMode('archived'); setPage(1); }}
+                            className="inline-flex items-center gap-2 border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100 transition-colors shadow-sm"
+                            title="Abrir carpeta de usuarios archivados"
+                        >
+                            <FolderArchive className="h-4 w-4 text-amber-600" />
+                            <span>Archivados</span>
+                            {archivedCount > 0 && (
+                                <span className="ml-1 bg-amber-200 text-amber-900 text-xs px-2 py-0.5 rounded-full font-bold">
+                                    {archivedCount}
+                                </span>
+                            )}
+                        </Button>
+                    ) : (
+                        <Button
+                            variant="outline"
+                            onClick={() => { setViewMode('active'); setPage(1); }}
+                            className="inline-flex items-center gap-2 border-indigo-300 text-indigo-900 bg-indigo-50 hover:bg-indigo-100 transition-colors shadow-sm"
+                        >
+                            <Users className="h-4 w-4 text-indigo-600" />
+                            <span>Ver Usuarios Activos</span>
+                        </Button>
+                    )}
+                    {viewMode === 'active' && (
+                        <Button onClick={() => { setEditingUser(null); setIsModalOpen(true); }} className="w-auto">
+                            <Plus className="mr-2 h-4 w-4" />
+                            Nuevo Usuario
+                        </Button>
+                    )}
+                </div>
             </div>
 
             {/* Filters */}
@@ -217,11 +296,14 @@ export default function UsersPage() {
                 users={sortedUsers}
                 isLoading={isLoading}
                 onEdit={handleEditUser}
-                onDelete={(id) => setUserToDelete(id)}
+                onDelete={(user) => setUserToDelete(user)}
+                onArchive={(user) => setUserToArchive(user)}
+                onUnarchive={handleUnarchiveUser}
                 onView={handleViewUser}
                 sortField={sortField}
                 sortDirection={sortDirection}
                 onSort={handleSort}
+                viewMode={viewMode}
             />
 
             {/* Pagination */}
@@ -266,17 +348,70 @@ export default function UsersPage() {
                 />
             </Modal>
 
-            {/* Modal de confirmación de eliminación */}
+            {/* Modal de confirmación de archivo */}
+            <Modal
+                isOpen={!!userToArchive}
+                onClose={() => setUserToArchive(null)}
+                title="Archivar Usuario"
+            >
+                <div className="space-y-4">
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                        <FolderArchive className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+                        <div className="text-sm text-amber-900">
+                            <p className="font-semibold">
+                                ¿Deseas archivar a {userToArchive?.firstName} {userToArchive?.lastName}?
+                            </p>
+                            <p className="mt-1 text-xs text-amber-800 leading-relaxed">
+                                El usuario no podrá iniciar sesión y se ocultará de las listas activas. Permanecerá guardado en la <strong>Carpeta de Archivados</strong> y podrás restaurarlo en cualquier momento.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-3 pt-2">
+                        <Button
+                            variant="outline"
+                            onClick={() => setUserToArchive(null)}
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            onClick={handleArchiveUser}
+                            className="bg-amber-600 hover:bg-amber-700 text-white font-medium"
+                        >
+                            Archivar Usuario
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Modal de confirmación de eliminación diferenciada */}
             <Modal
                 isOpen={!!userToDelete}
                 onClose={() => setUserToDelete(null)}
-                title="Confirmar Eliminación"
+                title="Confirmar Eliminación Definitiva"
             >
                 <div className="space-y-4">
-                    <p className="text-sm text-gray-600">
-                        ¿Estás seguro de que deseas eliminar este usuario? Esta acción no se puede deshacer.
-                    </p>
-                    <div className="flex justify-end gap-3">
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-red-50 border border-red-200">
+                        <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5 shrink-0" />
+                        <div className="text-sm text-red-900">
+                            <p className="font-semibold">
+                                ¿Eliminar definitivamente a {userToDelete?.firstName} {userToDelete?.lastName} ({userToDelete?.id})?
+                            </p>
+                            {userToDelete?.role === 'STUDENT' ? (
+                                <p className="mt-2 text-xs text-red-800 leading-relaxed">
+                                    <strong>Eliminación en Cascada:</strong> Se eliminarán todas sus notas, asistencias, matrículas e historial académico para no dejar datos huérfanos. Su cédula y correo quedarán completamente liberados para volver a registrarse.
+                                </p>
+                            ) : userToDelete?.role === 'TEACHER' ? (
+                                <p className="mt-2 text-xs text-red-800 leading-relaxed">
+                                    <strong>Preservación Histórica:</strong> Se conservará su nombre y apellido en el historial de actividades y notas que impartió en el plantel. Se desvinculará de las aulas y horarios activos. Su cédula y correo quedarán liberados para volver a registrarse.
+                                </p>
+                            ) : (
+                                <p className="mt-2 text-xs text-red-800 leading-relaxed">
+                                    Esta acción eliminará permanentemente al usuario y liberará su cédula y correo.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-3 pt-2">
                         <Button
                             variant="outline"
                             onClick={() => setUserToDelete(null)}
@@ -285,9 +420,9 @@ export default function UsersPage() {
                         </Button>
                         <Button
                             onClick={handleDeleteUser}
-                            className="bg-red-600 hover:bg-red-700 text-white"
+                            className="bg-red-600 hover:bg-red-700 text-white font-semibold"
                         >
-                            Eliminar
+                            Eliminar Definitivamente
                         </Button>
                     </div>
                 </div>

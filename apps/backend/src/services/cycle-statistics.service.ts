@@ -15,6 +15,7 @@ import {
     yearGradeAverage,
     cycleAverage,
 } from './aggregation.service';
+import { getAcademicConfig } from './promotion/close-cycle.service';
 
 /**
  * SERVICIO UNIFICADO DE ESTADÍSTICAS - "The Unified Stats Engine"
@@ -35,9 +36,35 @@ import {
  * Utiliza detección automática de ciclo actual por fechas.
  */
 
-// Constantes
-const PASSING_GRADE = 9.5;      // Nota mínima de aprobación (0-20)
-const MIN_ATTENDANCE = 80;      // Asistencia mínima aceptable (%)
+/**
+ * LA NOTA MÍNIMA PARA APROBAR LA PONE EL LICEO, NO EL CÓDIGO
+ *
+ * Aquí había una constante fija, `PASSING_GRADE = 9.5`, y con ella se decidía
+ * quién estaba en riesgo en las pantallas de materia, sección, grado y ciclo.
+ *
+ * Dos problemas, los dos reales:
+ *
+ *  1. **El resto del sistema usa la nota del instituto** (`notaMinimaAprobatoria`,
+ *     10 por defecto). Así que el MISMO alumno con 9,7 salía "aprobado" en estas
+ *     pantallas y "reprobado" en su perfil, en el panel y en la promoción. Dos
+ *     respuestas distintas del mismo liceo a la misma familia.
+ *  2. Un liceo que ponga su mínima en 12 (o en 8) no cambiaba nada aquí: la
+ *     regla estaba escrita en el código, que es justo lo que no puede pasar
+ *     (`CLAUDE.md`, regla 2, y `docs/MAPA_DE_CALCULOS.md`, sección 3).
+ *
+ * Lo vigilan CAL-01 a CAL-04.
+ */
+const NOTA_MINIMA_POR_DEFECTO = 10;
+
+/**
+ * Asistencia mínima aceptable (%), solo como valor de partida.
+ *
+ * Estaba fija en el código y la auditoría lo tenía anotado como pendiente de
+ * decisión del dueño. Decidido: es configurable por liceo
+ * (`AcademicConfig.asistenciaMinima`). Este 80 es lo que se usa cuando el liceo
+ * no ha puesto el suyo, que es el mismo número de antes.
+ */
+const ASISTENCIA_MINIMA_POR_DEFECTO = 80;
 
 /**
  * ========================================
@@ -174,6 +201,40 @@ export interface CycleGlobalAverageResult {
 }
 
 class CycleStatisticsService {
+    /**
+     * La nota mínima para aprobar de ESTE liceo. Si no se sabe de qué liceo se
+     * habla, o su configuración no se puede leer, se usa la del MPPE (10), que
+     * es solo el valor por defecto.
+     */
+    private async notaMinima(instituteId?: string): Promise<number> {
+        if (!instituteId) return NOTA_MINIMA_POR_DEFECTO;
+        try {
+            const config = await getAcademicConfig(instituteId);
+            return typeof config.notaMinimaAprobatoria === 'number'
+                ? config.notaMinimaAprobatoria
+                : NOTA_MINIMA_POR_DEFECTO;
+        } catch {
+            return NOTA_MINIMA_POR_DEFECTO;
+        }
+    }
+
+    /**
+     * La asistencia mínima de ESTE liceo, por debajo de la cual un alumno cuenta
+     * como "asistencia baja" en los medidores de la sección. Misma regla que la
+     * nota mínima: si no se sabe de qué liceo se habla, el valor de partida.
+     */
+    private async asistenciaMinima(instituteId?: string): Promise<number> {
+        if (!instituteId) return ASISTENCIA_MINIMA_POR_DEFECTO;
+        try {
+            const config = await getAcademicConfig(instituteId);
+            return typeof config.asistenciaMinima === 'number'
+                ? config.asistenciaMinima
+                : ASISTENCIA_MINIMA_POR_DEFECTO;
+        } catch {
+            return ASISTENCIA_MINIMA_POR_DEFECTO;
+        }
+    }
+
     /**
      * ========================================
      * HELPERS INTERNOS: CÁLCULO DE ASISTENCIA
@@ -326,8 +387,15 @@ class CycleStatisticsService {
      * ========================================
      */
 
-    async getStudentStatistics(prisma: PrismaClient, studentId: string): Promise<StudentStatisticsResult> {
-        const cacheKey = `stats:student:${studentId}:full`;
+    async getStudentStatistics(
+        prisma: PrismaClient,
+        studentId: string,
+        instituteId?: string
+    ): Promise<StudentStatisticsResult> {
+        const minAprobatoria = await this.notaMinima(instituteId);
+        // La nota mínima va en la clave: si el liceo la cambia, lo guardado con
+        // la anterior no puede seguir contestando.
+        const cacheKey = `stats:student:${studentId}:full:min${minAprobatoria}`;
 
         try {
             const cached = await RedisCache.get<StudentStatisticsResult>(cacheKey);
@@ -505,14 +573,14 @@ class CycleStatisticsService {
                     if (scores.length > 0) {
                         totalAverage += avg;
                         subjectsWithGrades++;
-                        if (avg < PASSING_GRADE) failingSubjects++;
+                        if (avg < minAprobatoria) failingSubjects++;
                     }
 
                     subjectDetails.push({
                         subjectId: cs.subjectId,
                         subjectName: cs.subject.name,
                         average: Math.round(avg * 100) / 100,
-                        isAtRisk: avg > 0 && avg < PASSING_GRADE,
+                        isAtRisk: avg > 0 && avg < minAprobatoria,
                         attendanceRate: globalAttendanceRate,
                         gradeCount: scores.length
                     });
@@ -528,7 +596,7 @@ class CycleStatisticsService {
                     academicStatus = 'EXCELENTE';
                 } else if (failingSubjects >= 2) {
                     academicStatus = 'CRITICO';
-                } else if (globalAverage < PASSING_GRADE || failingSubjects >= 1) {
+                } else if (globalAverage < minAprobatoria || failingSubjects >= 1) {
                     academicStatus = 'EN_RIESGO';
                 } else {
                     academicStatus = 'REGULAR';
@@ -607,9 +675,11 @@ class CycleStatisticsService {
     async getSubjectAverage(
         prisma: PrismaClient,
         sectionId: string,
-        subjectId: string
+        subjectId: string,
+        instituteId?: string
     ): Promise<SubjectAverageResult> {
-        const cacheKey = `stats:subject:${sectionId}:${subjectId}`;
+        const minAprobatoria = await this.notaMinima(instituteId);
+        const cacheKey = `stats:subject:${sectionId}:${subjectId}:min${minAprobatoria}`;
 
         try {
             const cached = await RedisCache.get<SubjectAverageResult>(cacheKey);
@@ -658,7 +728,7 @@ class CycleStatisticsService {
                 const avg = await gradesService.calculateWeightedSubjectAverage(prisma, studentId, subjectId);
                 totalAverage += avg;
                 studentsWithGrades++;
-                if (avg < PASSING_GRADE) {
+                if (avg < minAprobatoria) {
                     studentsAtRisk++;
                 } else {
                     studentsPassing++;
@@ -707,9 +777,16 @@ class CycleStatisticsService {
 
     async getSectionGlobalAverage(
         prisma: PrismaClient,
-        sectionId: string
+        sectionId: string,
+        instituteId?: string
     ): Promise<SectionGlobalAverageResult> {
-        const cacheKey = `stats:section:${sectionId}:global`;
+        const [minAprobatoria, minAsistencia] = await Promise.all([
+            this.notaMinima(instituteId),
+            this.asistenciaMinima(instituteId),
+        ]);
+        // Los dos umbrales van en el nombre de la copia guardada: si el liceo
+        // cambia uno, lo guardado con el anterior deja de usarse solo.
+        const cacheKey = `stats:section:${sectionId}:global:min${minAprobatoria}:asis${minAsistencia}`;
 
         try {
             const cached = await RedisCache.get<SectionGlobalAverageResult>(cacheKey);
@@ -791,7 +868,7 @@ class CycleStatisticsService {
                 let subjectStudentsAtRisk = 0;
                 for (const studentId of studentsWithData) {
                     const avg2 = await gradesService.calculateWeightedSubjectAverage(prisma, studentId, cs.subjectId);
-                    if (avg2 !== 0 && avg2 < PASSING_GRADE) subjectStudentsAtRisk++;
+                    if (avg2 !== 0 && avg2 < minAprobatoria) subjectStudentsAtRisk++;
                 }
 
                 ssa.push({
@@ -833,7 +910,7 @@ class CycleStatisticsService {
                     }
                 }
                 const sAvg = sCount > 0 ? sSum / sCount : 0;
-                if (sCount > 0 && sAvg < PASSING_GRADE) {
+                if (sCount > 0 && sAvg < minAprobatoria) {
                     studentsAtRisk++;
                 }
             }
@@ -854,13 +931,18 @@ class CycleStatisticsService {
                 const stats = studentAttendanceStats.get(sId);
                 if (stats && stats.total > 0) {
                     const rate = (stats.present / stats.total) * 100;
-                    if (rate < MIN_ATTENDANCE) studentsWithLowAttendance++;
-                } else if (!stats || stats.total === 0) {
-                    // No data or total 0 => Low? Assuming 0 records is bad or neutral?
-                    // Consistent with original which returned 0 rate for empty records.
-                    // 0 < 80 => Low.
-                    studentsWithLowAttendance++;
+                    if (rate < minAsistencia) studentsWithLowAttendance++;
                 }
+                // Un alumno del que NO hay ni un registro de asistencia no cuenta
+                // como "asistencia baja". Antes sí, con este comentario al lado:
+                // "No data or total 0 => Low? Assuming 0 records is bad or neutral?".
+                // El código no lo tenía claro y elegía lo peor.
+                //
+                // Efecto en el liceo: el primer día del curso, antes de que nadie
+                // pasara lista, la sección salía con "30 de 30 alumnos con
+                // asistencia baja". `docs/MAPA_DE_CALCULOS.md` (sección 4) ya
+                // decía lo contrario: "Días sin toma de asistencia no penalizan
+                // el porcentaje". Lo vigila CAL-05.
             });
 
             const result: SectionGlobalAverageResult = {
@@ -898,9 +980,11 @@ class CycleStatisticsService {
     async getGradeAverage(
         prisma: PrismaClient,
         academicYearId: string,
-        gradeLevel: number
+        gradeLevel: number,
+        instituteId?: string
     ): Promise<GradeAverageResult> {
-        const cacheKey = `stats:grade:${academicYearId}:${gradeLevel}`;
+        const minAprobatoria = await this.notaMinima(instituteId);
+        const cacheKey = `stats:grade:${academicYearId}:${gradeLevel}:min${minAprobatoria}`;
 
         try {
             const cached = await RedisCache.get<GradeAverageResult>(cacheKey);
@@ -944,8 +1028,11 @@ class CycleStatisticsService {
             let sectionsWithData = 0;
 
             // ✅ OPTIMIZADO: Calcular estadísticas de todas las secciones en paralelo
+            // El liceo se pasa hacia abajo. Sin él, cada sección se calculaba
+            // con la nota mínima por defecto (10) aunque el liceo tuviera otra,
+            // así que el resumen del grado no cuadraba con el de sus secciones.
             const sectionStatsPromises = sections.map(section =>
-                this.getSectionGlobalAverage(prisma, section.id).then(stats => ({
+                this.getSectionGlobalAverage(prisma, section.id, instituteId).then(stats => ({
                     section,
                     stats
                 }))
@@ -1049,9 +1136,11 @@ class CycleStatisticsService {
 
     async getCycleGlobalAverage(
         prisma: PrismaClient,
-        academicYearId: string
+        academicYearId: string,
+        instituteId?: string
     ): Promise<CycleGlobalAverageResult> {
-        const cacheKey = `stats:cycle:${academicYearId}:global`;
+        const minAprobatoria = await this.notaMinima(instituteId);
+        const cacheKey = `stats:cycle:${academicYearId}:global:min${minAprobatoria}`;
 
         try {
             const cached = await RedisCache.get<CycleGlobalAverageResult>(cacheKey);
@@ -1187,12 +1276,26 @@ class CycleStatisticsService {
                 select: { subjectId: true }
             });
 
-            const keys = [
-                `stats:section:${sectionId}:global`,
-                ...classroomSubjects.map(cs => `stats:subject:${sectionId}:${cs.subjectId}`)
+            /**
+             * SE BORRA POR PATRÓN, PORQUE LA CLAVE LLEVA MÁS COSAS
+             *
+             * Esto borraba `stats:section:<id>:global`. Y lo que se guarda es
+             * `stats:section:<id>:global:min10:asis80` — con la nota mínima y la
+             * asistencia mínima del instituto pegadas al final, porque el mismo
+             * dato con otra nota mínima es otro dato.
+             *
+             * O sea: **no coincidía ninguna**. El botón de «limpiar caché»
+             * respondía «listo» y no limpiaba nada, y las estadísticas de la
+             * sección seguían enseñando los números viejos hasta que caducaban
+             * solas. Nadie lo notaba porque el botón no miente: dice que lo hizo.
+             */
+            const patrones = [
+                `stats:section:${sectionId}:global*`,
+                ...classroomSubjects.map(cs => `stats:subject:${sectionId}:${cs.subjectId}*`)
             ];
 
-            await Promise.all(keys.map(key => RedisCache.del(key)));
+            await RedisCache.clearPatterns(patrones);
+            const keys = patrones;
 
             logger.info('Section cache cleared', { sectionId, keysCleared: keys.length });
         } catch (error) {
@@ -1206,15 +1309,18 @@ class CycleStatisticsService {
 
     async clearCycleCache(prisma: PrismaClient, academicYearId: string): Promise<void> {
         try {
-            // Limpiar cache de todo el ciclo
-            const keys = [
-                `stats:cycle:${academicYearId}:global`
+            /**
+             * Mismo caso que en la sección: la clave guardada lleva la nota
+             * mínima pegada al final, así que se borra por patrón.
+             *
+             * Y los grados no se recorren del 1 al 5 a mano: un liceo puede
+             * tener seis años, y el sexto se quedaba sin limpiar para siempre.
+             * `stats:grade:<año>:*` los coge todos, existan los que existan.
+             */
+            const patrones = [
+                `stats:cycle:${academicYearId}:global*`,
+                `stats:grade:${academicYearId}:*`,
             ];
-
-            // Limpiar cache de todos los grados
-            for (let gradeLevel = 1; gradeLevel <= 5; gradeLevel++) {
-                keys.push(`stats:grade:${academicYearId}:${gradeLevel}`);
-            }
 
             // Limpiar cache de todas las secciones
             const sections = await prisma.classroom.findMany({
@@ -1226,7 +1332,8 @@ class CycleStatisticsService {
                 await this.clearSectionCache(prisma, section.id);
             }
 
-            await Promise.all(keys.map(key => RedisCache.del(key)));
+            await RedisCache.clearPatterns(patrones);
+            const keys = patrones;
 
             logger.info('Cycle cache cleared', { academicYearId, keysCleared: keys.length });
         } catch (error) {

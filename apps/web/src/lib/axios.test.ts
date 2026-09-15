@@ -91,7 +91,11 @@ describe('lib/axios — refresh queue (race condition 401)', () => {
     });
 
     it('refresca el token y reintenta la request original cuando el refresh es exitoso', async () => {
-        (global as any).fetch = jest.fn().mockResolvedValue({ ok: true });
+        // Una respuesta de fetch de verdad trae json(); sin él, el código que lee el
+        // token nuevo se rompe y la prueba fallaba por el simulacro, no por el código.
+        (global as any).fetch = jest
+            .fn()
+            .mockResolvedValue({ ok: true, json: async () => ({ accessToken: 'token-nuevo' }) });
         const err = makeError(401, '/api/data');
         const result = onRejected(err);
         await expect(result).resolves.toEqual(expect.objectContaining({ status: 200 }));
@@ -101,7 +105,11 @@ describe('lib/axios — refresh queue (race condition 401)', () => {
     });
 
     it('REGRESIÓN: peticiones paralelas con 401 → UN solo refresh y todas reintentadas', async () => {
-        (global as any).fetch = jest.fn().mockResolvedValue({ ok: true });
+        // Una respuesta de fetch de verdad trae json(); sin él, el código que lee el
+        // token nuevo se rompe y la prueba fallaba por el simulacro, no por el código.
+        (global as any).fetch = jest
+            .fn()
+            .mockResolvedValue({ ok: true, json: async () => ({ accessToken: 'token-nuevo' }) });
         const errA = makeError(401, '/api/a');
         const errB = makeError(401, '/api/b');
         const errC = makeError(401, '/api/c');

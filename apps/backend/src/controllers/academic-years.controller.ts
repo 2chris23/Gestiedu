@@ -2,28 +2,48 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import * as aggregationService from '../services/aggregation.service';
 import * as closeCycleService from '../services/promotion/close-cycle.service';
+import { isValidCalendarDate } from '../utils/validators';
+
+const validDateSchema = z.union([
+  z.string().refine(isValidCalendarDate, { message: 'Fecha de calendario inválida para el mes' }),
+  z.date(),
+]).transform((val) => new Date(val));
 
 // Esquema de validación para Periodo (Lapso)
 const periodSchema = z.object({
   id: z.string().optional(),
   name: z.string(),
-  startDate: z.string().or(z.date()).transform((val) => new Date(val)),
-  endDate: z.string().or(z.date()).transform((val) => new Date(val)),
+  startDate: validDateSchema,
+  endDate: validDateSchema,
   isActive: z.boolean().optional().default(false),
 });
 
 // Esquema de validación para crear/actualizar Año Escolar
 const academicYearSchema = z.object({
   name: z.string().min(4, 'El nombre debe tener al menos 4 caracteres'),
-  startDate: z.string().or(z.date()).transform((val) => new Date(val)),
-  endDate: z.string().or(z.date()).transform((val) => new Date(val)),
+  startDate: validDateSchema,
+  endDate: validDateSchema,
   status: z.enum(['ACTIVE', 'COMPLETED', 'UPCOMING']).optional().default('UPCOMING'),
   periods: z.array(periodSchema).optional(),
 });
 
+import { RedisCache } from '../config/redis';
+import { conLiceo } from '../config/ambito-del-liceo';
+
 const statusSchema = z.object({
   status: z.enum(['ACTIVE', 'COMPLETED', 'UPCOMING']),
 });
+
+async function invalidateDashboardCache(request: FastifyRequest) {
+  try {
+    const instituteId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
+    if (instituteId) {
+      await conLiceo(instituteId, () => RedisCache.delete(`dashboard:admin:${instituteId}`));
+    }
+  } catch {
+    // Fail-safe para no interrumpir la respuesta principal
+  }
+}
 
 export const createAcademicYear = async (request: FastifyRequest, reply: FastifyReply) => {
   try {
@@ -50,26 +70,46 @@ export const createAcademicYear = async (request: FastifyRequest, reply: Fastify
       });
     }
 
+    // Un ciclo sin lapsos deja sin base los promedios (todo se calcula por
+    // lapso). Si no vienen, se crean los tres del calendario venezolano
+    // repartiendo el año en tres partes iguales; enviarlos explícitamente manda.
+    const lapsosPorDefecto = () => {
+      const inicio = new Date(data.startDate);
+      const fin = new Date(data.endDate);
+      const total = fin.getTime() - inicio.getTime();
+      if (!(total > 0)) return [];
+      const nombres = ['Primer Lapso', 'Segundo Lapso', 'Tercer Lapso'];
+      return nombres.map((name, i) => {
+        const desde = new Date(inicio.getTime() + (total * i) / 3);
+        const hasta = new Date(inicio.getTime() + (total * (i + 1)) / 3 - 1);
+        return { name, startDate: desde, endDate: hasta, isActive: i === 0 };
+      });
+    };
+
+    const periodosACrear =
+      data.periods && data.periods.length > 0
+        ? data.periods.map((p) => ({
+            name: p.name,
+            startDate: p.startDate,
+            endDate: p.endDate,
+            isActive: p.isActive,
+          }))
+        : lapsosPorDefecto();
+
     const newYear = await request.tenantPrisma.academicYear.create({
       data: {
         name: data.name,
         startDate: data.startDate,
         endDate: data.endDate,
         status: data.status,
-        periods: data.periods && data.periods.length > 0 ? {
-          create: data.periods.map((p) => ({
-            name: p.name,
-            startDate: p.startDate,
-            endDate: p.endDate,
-            isActive: p.isActive,
-          })),
-        } : undefined,
+        periods: periodosACrear.length > 0 ? { create: periodosACrear } : undefined,
       },
       include: {
         periods: true,
       },
     });
 
+    await invalidateDashboardCache(request);
     return reply.status(201).send(newYear);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -201,6 +241,7 @@ export const changeYearStatus = async (request: FastifyRequest, reply: FastifyRe
       data: { status },
     });
 
+    await invalidateDashboardCache(request);
     return reply.send(updatedYear);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -286,6 +327,7 @@ export const updateAcademicYear = async (request: FastifyRequest, reply: Fastify
       },
     });
 
+    await invalidateDashboardCache(request);
     return reply.send(finalYear);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -298,6 +340,7 @@ export const updateAcademicYear = async (request: FastifyRequest, reply: Fastify
 
 
 import { comparePassword } from '../utils/bcrypt';
+import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 
 export const deleteAcademicYear = async (request: FastifyRequest, reply: FastifyReply) => {
   try {
@@ -367,10 +410,10 @@ export const deleteAcademicYear = async (request: FastifyRequest, reply: Fastify
     // Si tiene estudiantes pero NO notas, permitimos borrar (se eliminarán las inscripciones en cascada)
     // El frontend ya habrá advertido de esto.
 
-    await prisma.academicYear.delete({
-      where: { id },
-    });
+    // Borrar un año escolar arrastra las inscripciones. Copia antes.
+    await borrarGuardandoCopia(prisma, 'academicYear', { id }, quienBorra(request as any));
 
+    await invalidateDashboardCache(request);
     return reply.status(204).send();
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -390,27 +433,7 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
     const year = await prisma.academicYear.findUnique({ where: { id } });
     if (!year) return reply.status(404).send({ error: 'Año escolar no encontrado' });
 
-    // 2. Fetch all classrooms for this year with student data
-    const classrooms = await prisma.classroom.findMany({
-      where: { academicYearId: id },
-      include: {
-        _count: { select: { studentClassrooms: true } },
-        studentClassrooms: {
-          where: { isActive: true }, // Only active enrollments
-          include: {
-            student: {
-              include: {
-                grades: { where: { period: { academicYearId: id } } }, // Only grades for this year
-                attendance: { where: { date: { gte: year.startDate, lte: year.endDate } } },
-                observations: { where: { createdAt: { gte: year.startDate, lte: year.endDate } } }
-              }
-            }
-          }
-        }
-      }
-    });
-
-    // 3. Aggregate by Year (Grade)
+    // 2. Aggregate stats efficiently by Grade using direct DB queries
     const yearStats: Record<number, {
       grade: number;
       totalStudents: number;
@@ -429,7 +452,7 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
         totalStudents: 0,
         totalCapacity: 0,
         sumAverages: 0,
-        minAverage: 20, // Init with max possible
+        minAverage: 0,
         maxAverage: 0,
         riskCount: 0,
         sumAttendance: 0,
@@ -437,76 +460,192 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
       };
     });
 
-    classrooms.forEach(cls => {
-      const g = cls.grade;
-      if (!yearStats[g]) return;
-
-      const capacity = cls.capacity || 35;
-      yearStats[g].totalCapacity += capacity;
-      yearStats[g].totalStudents += cls.studentClassrooms.length;
-
-      cls.studentClassrooms.forEach(item => {
-        const student = item.student;
-
-        // Average Calculation
-        const grades = student.grades || [];
-        const validGrades = grades.filter(g => g.score !== null);
-        const studentAvg = validGrades.length > 0
-          ? validGrades.reduce((sum, g) => sum + (g.score || 0), 0) / validGrades.length
-          : 0;
-
-        if (validGrades.length > 0) {
-          yearStats[g].sumAverages += studentAvg;
-          if (studentAvg < yearStats[g].minAverage) yearStats[g].minAverage = studentAvg;
-          if (studentAvg > yearStats[g].maxAverage) yearStats[g].maxAverage = studentAvg;
+    const classrooms = await prisma.classroom.findMany({
+      where: { academicYearId: id },
+      select: {
+        id: true,
+        grade: true,
+        capacity: true,
+        _count: {
+          select: {
+            studentClassrooms: { where: { isActive: true } }
+          }
         }
-
-        // Risk Calculation: Avg < 10
-        if (studentAvg < 10 && validGrades.length > 0) {
-          yearStats[g].riskCount++;
-        }
-
-        // Attendance Calculation
-        const attendanceRecords = student.attendance || [];
-        const totalDays = attendanceRecords.length;
-        const presentDays = attendanceRecords.filter(a => a.status === 'PRESENT').length;
-        const attentionPercent = totalDays > 0 ? (presentDays / totalDays) * 100 : 0;
-
-        if (totalDays > 0) {
-          yearStats[g].sumAttendance += attentionPercent;
-        }
-
-        // Observations
-        yearStats[g].observationsCount += (student.observations || []).length;
-      });
+      }
     });
 
-    // 4. Format Output
-    // CORRECCIÓN (jerarquía de agregación): el promedio de cada grado = NIVEL 5
-    // (promedio de los N4 de sus secciones), y min/max/riesgo se derivan de los
-    // promedios NIVEL 2 por estudiante (nunca 0 por notas inexistentes; las
-    // notas de Clase en Vivo cuentan). Antes: promedio simple de grades 0-20.
-    // Fase 3.5: `periodId` opcional filtra toda la cadena por lapso/momento.
-    const periodId = (request.query as any)?.periodId || undefined;
+    classrooms.forEach(cls => {
+      const g = cls.grade;
+      if (yearStats[g]) {
+        yearStats[g].totalCapacity += cls.capacity || 35;
+        yearStats[g].totalStudents += cls._count.studentClassrooms;
+      }
+    });
+
+    // Contar observaciones creadas en este ciclo escolar agrupadas por año/grado
+    const observations = await prisma.observation.findMany({
+      where: {
+        student: {
+          studentClassrooms: {
+            some: { academicYearId: id, isActive: true }
+          }
+        }
+      },
+      select: {
+        id: true,
+        student: {
+          select: {
+            studentClassrooms: {
+              where: { academicYearId: id, isActive: true },
+              select: { classroom: { select: { grade: true } } },
+              take: 1
+            }
+          }
+        }
+      }
+    });
+
+    observations.forEach(obs => {
+      const grade = obs.student?.studentClassrooms?.[0]?.classroom?.grade;
+      if (grade && yearStats[grade]) {
+        yearStats[grade].observationsCount += 1;
+      }
+    });
+
+    // Calcular promedios por estudiante y por materia para detectar estudiantes en riesgo real (<10 pts)
+    const studentSubjectGrades = await prisma.grade.groupBy({
+      by: ['studentId', 'subjectId'],
+      where: {
+        period: { academicYearId: id },
+        score: { not: null }
+      },
+      _avg: { score: true }
+    });
+
+    if (studentSubjectGrades.length > 0) {
+      const studentIds = Array.from(new Set(studentSubjectGrades.map(sg => sg.studentId)));
+      const studentClassrooms = await prisma.studentClassroom.findMany({
+        where: {
+          studentId: { in: studentIds },
+          academicYearId: id,
+          isActive: true
+        },
+        select: {
+          studentId: true,
+          classroom: { select: { grade: true } }
+        }
+      });
+
+      const studentGradeMap = new Map(studentClassrooms.map(sc => [sc.studentId, sc.classroom.grade]));
+
+      // 0. Obtener nota mínima aprobatoria configurable del instituto
+      let minPassing = 10;
+      try {
+        const instId = getRequestInstituteId(request);
+        const config = await closeCycleService.getAcademicConfig(instId);
+        minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
+      } catch {
+        minPassing = 10;
+      }
+
+      // 1. Acumular promedios generales por estudiante
+      const studentOverallAverages = new Map<string, { sum: number; count: number }>();
+      const studentFailedSubjects = new Map<string, number>();
+
+      studentSubjectGrades.forEach(ssg => {
+        const studentId = ssg.studentId;
+        const subjAvg = ssg._avg.score || 0;
+
+        if (!studentOverallAverages.has(studentId)) {
+          studentOverallAverages.set(studentId, { sum: 0, count: 0 });
+        }
+        const current = studentOverallAverages.get(studentId)!;
+        current.sum += subjAvg;
+        current.count += 1;
+
+        if (subjAvg < minPassing) {
+          studentFailedSubjects.set(studentId, (studentFailedSubjects.get(studentId) || 0) + 1);
+        }
+      });
+
+      // 2. Acumular estadísticas del grado (Año)
+      studentOverallAverages.forEach((data, studentId) => {
+        const grade = studentGradeMap.get(studentId);
+        if (grade && yearStats[grade]) {
+          const avg = data.count > 0 ? (data.sum / data.count) : 0;
+          yearStats[grade].sumAverages += avg;
+
+          if (yearStats[grade].minAverage === 0 || avg < yearStats[grade].minAverage) {
+            yearStats[grade].minAverage = avg;
+          }
+          if (avg > yearStats[grade].maxAverage) {
+            yearStats[grade].maxAverage = avg;
+          }
+
+          // Un estudiante está en riesgo académico si tiene materias reprobadas (< minPassing) o su promedio es < minPassing
+          const failedCount = studentFailedSubjects.get(studentId) || 0;
+          if (failedCount > 0 || avg < minPassing) {
+            yearStats[grade].riskCount += 1;
+          }
+        }
+      });
+    }
+
+    // 3. Calcular asistencia por sección y agregarla por año/grado (Nivel Jerárquico)
+    const attendanceGroups = await prisma.dailyAttendance.groupBy({
+      by: ['classroomId', 'status'],
+      where: {
+        classroom: { academicYearId: id }
+      },
+      _count: { id: true }
+    });
+
+    const classroomAttendanceMap = new Map<string, { attended: number; total: number }>();
+    attendanceGroups.forEach(g => {
+      if (!classroomAttendanceMap.has(g.classroomId)) {
+        classroomAttendanceMap.set(g.classroomId, { attended: 0, total: 0 });
+      }
+      const item = classroomAttendanceMap.get(g.classroomId)!;
+      item.total += g._count.id;
+      if (g.status === 'PRESENT' || g.status === 'LATE') {
+        item.attended += g._count.id;
+      }
+    });
+
+    const gradeAttendanceAccum = new Map<number, { sumRates: number; count: number }>();
+    [1, 2, 3, 4, 5].forEach(g => gradeAttendanceAccum.set(g, { sumRates: 0, count: 0 }));
+
+    classrooms.forEach(cls => {
+      const att = classroomAttendanceMap.get(cls.id);
+      if (att && att.total > 0) {
+        const sectionRate = (att.attended / att.total) * 100;
+        const accum = gradeAttendanceAccum.get(cls.grade);
+        if (accum) {
+          accum.sumRates += sectionRate;
+          accum.count += 1;
+        }
+      }
+    });
+
+    gradeAttendanceAccum.forEach((accum, grade) => {
+      if (yearStats[grade]) {
+        yearStats[grade].sumAttendance = accum.count > 0 ? (accum.sumRates / accum.count) : 0;
+      }
+    });
+
+    // 4. Format Output instantáneo
     const result: any[] = [];
     for (const stat of Object.values(yearStats)) {
-      const details = await aggregationService.yearGradeStudentDetails(prisma, id, stat.grade, periodId);
-      const n5 = await aggregationService.yearGradeAverage(prisma, id, stat.grade, periodId);
-
-      const studentAverages = details.studentAverages;
-      const avg = n5.average;
-      const minAvg = studentAverages.length > 0 ? Math.min(...studentAverages).toFixed(1) : '0.0';
-      const maxAvg = studentAverages.length > 0 ? Math.max(...studentAverages).toFixed(1) : '0.0';
-      const riskCount = studentAverages.filter(a => a < 10).length;
-      const attendance = stat.totalStudents > 0 ? Math.round(stat.sumAttendance / stat.totalStudents) : 0;
+      const avg = stat.sumAverages > 0 && stat.totalStudents > 0 ? (stat.sumAverages / stat.totalStudents) : 0;
+      const attendance = stat.sumAttendance > 0 ? Math.round(stat.sumAttendance) : 0;
 
       result.push({
         grade: stat.grade,
         stats: {
           average: Number(avg.toFixed(1)),
-          minAverage: Number(minAvg),
-          maxAverage: Number(maxAvg),
-          riskCount,
+          minAverage: Number(stat.minAverage.toFixed(1)),
+          maxAverage: Number(stat.maxAverage.toFixed(1)),
+          riskCount: stat.riskCount,
           occupancy: `${stat.totalStudents}/${stat.totalCapacity}`,
           attendance: `${attendance}%`,
           observations: stat.observationsCount
@@ -562,10 +701,11 @@ export const confirmAcademicYearClose = async (request: FastifyRequest, reply: F
         strategyKey: body.strategyKey,
         strategyMode: body.strategyMode,
         autoCreateNextYear: body.autoCreateNextYear ?? true,
-        nextYearName: body.nextYearName,
+        nextYearName: body.nextYearName || body.suggestedNextYearName,
       },
       getRequestInstituteId(request)
     );
+    await invalidateDashboardCache(request);
     return reply.status(200).send(result);
   } catch (error: any) {
     request.log.error(error);

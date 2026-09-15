@@ -17,8 +17,8 @@ import {
 } from '../../src/services/promotion/close-cycle.service';
 
 function gId(): string {
-    const id = createId();
-    return id.startsWith('c') ? id : `c${id}`;
+    // Siempre la 'c' delante: ver la nota de `tests/helpers.ts`.
+    return `c${createId()}`;
 }
 
 /**
@@ -107,14 +107,17 @@ describe('Fase 3.5 Parte 2 — Página de promoción', () => {
             },
         });
 
-        // Secciones: 2 en el año siguiente + 1 en el año posterior
+        // Secciones: 2 en el año siguiente + 1 en el año posterior.
+        // Son de 2do grado porque los estudiantes del año actual están en 1ro:
+        // al promover pasan a 2do, y la estrategia solo puede colocarlos donde
+        // exista una sección de su grado destino.
         for (const [letter, y] of [['A', nextYear], ['B', nextYear]] as const) {
             const sec = await prisma.classroom.create({
                 data: {
                     id: gId(),
-                    name: `1er Grado ${letter}`,
+                    name: `2do Grado ${letter}`,
                     slug: `n-${letter}-${gId().substring(0, 12)}`,
-                    grade: 1,
+                    grade: 2,
                     section: letter,
                     capacity: 30,
                     academicYearId: y.id,
@@ -212,7 +215,6 @@ describe('Fase 3.5 Parte 2 — Página de promoción', () => {
             await prisma.user.update({
                 where: { id: s.user.id },
                 data: {
-                    classroomId: classroom.id,
                     firstName: `Est${letter}${i}`,
                     lastName: 'Test',
                     gender: i % 2 === 0 ? 'FEMENINO' : 'MASCULINO',

@@ -17,12 +17,11 @@ export function useSessionKeepAlive() {
 
         const performSilentRefresh = async () => {
             try {
+                // La cookie la pone /api/auth/refresh en su propia respuesta, con
+                // `Secure` en producción. Volver a escribirla desde aquí le
+                // quitaba esa marca en cada renovación.
                 const response = await fetch('/api/auth/refresh', { method: 'POST' });
                 if (response.ok) {
-                    const data = await response.json().catch(() => ({}));
-                    if (data.accessToken && typeof document !== 'undefined') {
-                        document.cookie = `access_token=${data.accessToken}; path=/; max-age=900; SameSite=Lax`;
-                    }
                     lastRefreshRef.current = Date.now();
                 }
             } catch (error) {

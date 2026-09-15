@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, CheckCircle2, Clock, Info } from 'lucide-react';
 import Link from 'next/link';
 import { useClassroomHistory } from '@/hooks/useSchedules';
+import { toLocalYMD } from '@/utils/date.utils';
 
 interface ScheduleCalendarModalProps {
     isOpen: boolean;
@@ -12,8 +13,9 @@ interface ScheduleCalendarModalProps {
 export default function ScheduleCalendarModal({ isOpen, onClose, classroomId }: ScheduleCalendarModalProps) {
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
     
-    // Convert to YYYY-MM-DD for the API
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    // Fecha LOCAL como YYYY-MM-DD. Con toISOString() se mandaba la fecha UTC:
+    // en Venezuela (UTC-4), a partir de las 8 de la noche pedía el día siguiente.
+    const dateStr = toLocalYMD(selectedDate);
     
     const { data: history, isLoading } = useClassroomHistory(classroomId, dateStr);
 
@@ -114,10 +116,14 @@ export default function ScheduleCalendarModal({ isOpen, onClose, classroomId }: 
                                     <div key={index} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
                                         
                                         {/* Timeline Dot */}
+                                        {/* Una clase suspendida NO es una clase dada: antes el historial la
+                                            pintaba en verde como registrada solo porque existía su sesión. */}
                                         <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 ${
-                                            session.isRecorded ? 'bg-green-500' : 'bg-gray-300'
+                                            session.isSuspended ? 'bg-amber-500' : session.isRecorded ? 'bg-green-500' : 'bg-gray-300'
                                         }`}>
-                                            {session.isRecorded ? (
+                                            {session.isSuspended ? (
+                                                <X className="w-4 h-4 text-white" />
+                                            ) : session.isRecorded ? (
                                                 <CheckCircle2 className="w-4 h-4 text-white" />
                                             ) : (
                                                 <Clock className="w-4 h-4 text-white" />
@@ -139,7 +145,15 @@ export default function ScheduleCalendarModal({ isOpen, onClose, classroomId }: 
                                                 </span>
                                             </div>
 
-                                            {session.isRecorded && session.sessionInfo ? (
+                                            {session.isSuspended ? (
+                                                <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                                                    <X className="w-4 h-4 shrink-0 mt-px" />
+                                                    <span>
+                                                        <strong>Clase suspendida</strong>
+                                                        {session.suspendedReason ? `: ${session.suspendedReason}` : ''}
+                                                    </span>
+                                                </div>
+                                            ) : session.isRecorded && session.sessionInfo ? (
                                                 <div className="mt-3 bg-gray-50 rounded-lg p-3 border border-gray-100">
                                                     <h4 className="text-sm font-bold text-gray-800 mb-1 line-clamp-1">{session.sessionInfo.topic || 'Sin tema registrado'}</h4>
                                                     <p className="text-xs text-gray-500 line-clamp-2 mb-3">

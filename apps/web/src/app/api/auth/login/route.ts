@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { setAuthCookies, CookieUser } from '@/lib/auth-cookies';
 import { API_URL } from '@/config/env';
 
+/**
+ * `secure` manda la cookie SOLO por conexión cifrada (https).
+ *
+ * Estaba en `false` fijo, así que en producción la sesión podía viajar en claro:
+ * quien estuviera en la misma red —el wifi del liceo, por ejemplo— podía leerla
+ * y entrar como esa persona.
+ *
+ * En desarrollo se sigue usando http://localhost, donde `secure` impediría
+ * guardar la cookie; por eso depende del entorno y no es fijo.
+ */
+const SOLO_POR_CONEXION_CIFRADA = process.env.NODE_ENV === 'production';
+
+
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
@@ -16,6 +29,10 @@ export async function POST(request: NextRequest) {
         if (slug) {
             headers['X-Institute-Slug'] = slug;
         }
+        const ua = request.headers.get('user-agent');
+        if (ua) headers['user-agent'] = ua;
+        const xff = request.headers.get('x-forwarded-for');
+        if (xff) headers['x-forwarded-for'] = xff;
 
         const keepSession = Boolean(body.keepSession || body.rememberMe);
 
@@ -34,7 +51,7 @@ export async function POST(request: NextRequest) {
         if (!backendResponse.ok) {
             const errorData = await backendResponse.json().catch(() => ({}));
             return NextResponse.json(
-                { message: errorData.message || 'Error al iniciar sesión' },
+                { message: errorData.error || errorData.message || 'Error al iniciar sesión' },
                 { status: backendResponse.status }
             );
         }
@@ -75,8 +92,11 @@ export async function POST(request: NextRequest) {
         // Setear cookies explícitamente en la respuesta HTTP
         const cookieMaxAge = keepSession ? 60 * 24 * 60 * 60 : 7 * 24 * 60 * 60; // 60 días si keepSession
         responseNext.cookies.set('access_token', tokens.accessToken, {
-            httpOnly: false,
-            secure: false,
+            // Cerrada a la página: la llave corta vive en memoria
+            // (`lib/credencial-en-memoria.ts`). La cookie la lee el guardián de
+            // pantallas, que corre en el servidor.
+            httpOnly: true,
+            secure: SOLO_POR_CONEXION_CIFRADA,
             sameSite: 'lax',
             path: '/',
             maxAge: 15 * 60, // 15 min JWT
@@ -84,7 +104,7 @@ export async function POST(request: NextRequest) {
 
         responseNext.cookies.set('refresh_token', tokens.refreshToken, {
             httpOnly: true,
-            secure: false,
+            secure: SOLO_POR_CONEXION_CIFRADA,
             sameSite: 'lax',
             path: '/',
             maxAge: cookieMaxAge,
@@ -92,7 +112,7 @@ export async function POST(request: NextRequest) {
 
         responseNext.cookies.set('user_data', JSON.stringify(cookieUser), {
             httpOnly: false,
-            secure: false,
+            secure: SOLO_POR_CONEXION_CIFRADA,
             sameSite: 'lax',
             path: '/',
             maxAge: cookieMaxAge,
@@ -101,7 +121,7 @@ export async function POST(request: NextRequest) {
         if (slug) {
             responseNext.cookies.set('institute_slug', slug, {
                 httpOnly: false,
-                secure: false,
+                secure: SOLO_POR_CONEXION_CIFRADA,
                 sameSite: 'lax',
                 path: '/',
                 maxAge: cookieMaxAge,

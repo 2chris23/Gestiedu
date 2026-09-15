@@ -6,10 +6,6 @@ async function run() {
   const t = await getTenantPrisma(institute.id);
   await t.$transaction(async (tx) => {
     await tx.studentClassroom.updateMany({ data: { isActive: false } });
-    await tx.user.update({
-      where: { email: 'estudiantemaria@tuapp.com' },
-      data: { classroomId: 'cmpltkidd000avv4wb31dnzwf' }
-    });
     await tx.studentClassroom.create({
       data: {
         studentId: '234232434',

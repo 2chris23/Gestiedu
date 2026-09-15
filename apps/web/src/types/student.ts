@@ -35,5 +35,12 @@ export interface StudentDashboardStats {
         description?: string;
         type: string; // "POSITIVE" | "NEGATIVE"
         date: string;
+        teacher?: string;
+        classroomId?: string;
+        classroomName?: string;
+        subjectId?: string;
+        subjectName?: string;
+        subjectColor?: string;
+        classSessionId?: string;
     }[];
 }

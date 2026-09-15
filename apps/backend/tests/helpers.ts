@@ -11,8 +11,17 @@ import { createId } from '@paralleldrive/cuid2';
  * Se fuerza el prefijo 'c' para garantizar compatibilidad.
  */
 function gId(): string {
-    const id = createId(); // e.g. "ilb5rl8eq71miju8..." — CUID2 puede empezar con cualquier letra
-    return id.startsWith('c') ? id : `c${id}`;
+    // SIEMPRE se antepone la 'c'. Antes se anteponía **solo si el
+    // identificador no empezaba ya por 'c'**, y ahí estaba el fallo: cuando
+    // cuid2 devolvía uno que empezaba por 'c' (un 3,9% de las veces), el
+    // identificador se quedaba en 24 caracteres y el validador del sistema
+    // —que exige 'c' + 24 = 25, como los que genera Prisma— lo rechazaba con
+    // un 400.
+    //
+    // Efecto: una de cada cinco o seis tandas completas fallaba en una prueba
+    // distinta, la que hubiera tenido la mala suerte. Se culpó durante meses al
+    // pozo de conexiones, que no tenía nada que ver.
+    return `c${createId()}`;
 }
 
 function parseDbUrl(url: string): { user: string; password: string; host: string; port: number; db: string } {
@@ -66,7 +75,10 @@ export async function createTestServer(): Promise<FastifyInstance> {
             databaseUser: tenant.user,
             databasePassword: tenant.password,
         };
-        const { platformPrisma } = await import('../src/config/database');
+        const { platformPrisma, invalidateTenantCache } = await import('../src/config/database');
+        // La conexión cacheada del liceo apunta a la base del archivo ANTERIOR:
+        // sin esto, las peticiones del servidor irían a otra base.
+        await invalidateTenantCache('institute').catch(() => {});
         await platformPrisma.institute.upsert({
             where: { id: 'institute' },
             update: {

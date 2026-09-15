@@ -5,8 +5,42 @@ import { CreateGradeInput, UpdateGradeInput, GradeFiltersInput, PaginationInput 
 import { logger } from '../utils/logger';
 import { gradesService } from '../services/grades.service';
 import { RequestUser } from '../types/fastify';
+import { fueModificadoPorOtro, versionVista, AVISO_MODIFICADO_POR_OTRO } from '../utils/concurrencia';
+import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 import { sanitizeHTML } from '../utils/sanitize'; // ✅ SECURITY: XSS protection
 import { handlePrismaError } from '../utils/error-handler'; // ✅ SECURITY: Better error handling
+import { assertClassroomScope } from '../services/authorization.service';
+
+/**
+ * ¿PUEDE ESTA PERSONA TOCAR ESTA NOTA?
+ *
+ * Poner una nota sí se comprobaba. **Cambiarla y borrarla, no**: las rutas
+ * `PUT /api/grades/:id` y `DELETE /api/grades/:id` solo pedían ser profesor, y
+ * ahí se acababa la pregunta. Con eso, cualquier profesor del liceo podía
+ * cambiar —o borrar— la nota de cualquier alumno en cualquier materia, con solo
+ * saber el identificador de la nota.
+ *
+ * Lo cazó `puertas-sin-cerradura` (PUERTA-06 y PUERTA-07): el profesor B borró
+ * de verdad la nota que había puesto el profesor A en una clase que B no
+ * imparte.
+ *
+ * La sección de una nota no está en la nota: está en su actividad. De ahí que
+ * haya que traerla para poder preguntar.
+ */
+async function soloSiEsDeSuClase(request: FastifyRequest, gradeId: string) {
+  const nota = await request.tenantPrisma.grade.findUnique({
+    where: { id: gradeId },
+    select: { subjectId: true, activity: { select: { classroomId: true } } },
+  });
+  if (!nota?.activity?.classroomId) return;
+
+  await assertClassroomScope(
+    request.tenantPrisma,
+    request.user as any,
+    nota.activity.classroomId,
+    { subjectId: nota.subjectId, accion: 'poner notas' }
+  );
+}
 
 interface CreateGradeRequest {
   Body: CreateGradeInput;
@@ -87,6 +121,14 @@ export async function createGrade(
     });
 
     logger.info('Nueva calificación creada', { gradeId: grade.id, studentId: grade.student.id });
+
+    // A quién le toca este cambio: al alumno y a sus representantes (ven lo
+    // suyo), y al personal de la sección (ve los medidores). Al resto del
+    // liceo no se le toca nada: sus datos no cambiaron.
+    request.aQuienAfecta = {
+      studentIds: [grade.student.id],
+      classroomId: (grade as any)?.activity?.classroomId,
+    };
 
     return reply.status(201).send({ grade });
   } catch (error) {
@@ -182,12 +224,18 @@ export async function getGrade(
             lastName: true,
             studentCode: true,
             email: true,
-            classroom: {
+            studentClassrooms: {
+              where: { isActive: true },
+              take: 1,
               select: {
-                id: true,
-                name: true,
-                grade: true,
-                section: true,
+                classroom: {
+                  select: {
+                    id: true,
+                    name: true,
+                    grade: true,
+                    section: true,
+                  },
+                },
               },
             },
           },
@@ -270,6 +318,20 @@ export async function updateGrade(
       });
     }
 
+    await soloSiEsDeSuClase(request, id);
+
+    // DOS PERSONAS, LA MISMA NOTA
+    //
+    // Si la pantalla mandó la versión que tenía a la vista y la nota ya
+    // cambió, otra persona guardó primero: se avisa en vez de borrarle el
+    // trabajo en silencio. Quien no manda versión guarda como siempre.
+    if (fueModificadoPorOtro(versionVista(request as any), existingGrade.updatedAt)) {
+      return reply.status(409).send({
+        ...AVISO_MODIFICADO_POR_OTRO,
+        actual: { score: existingGrade.score, updatedAt: existingGrade.updatedAt },
+      });
+    }
+
     // ✅ SECURITY: Sanitize comments to prevent XSS
     const sanitizedComments = updateData.comments ? sanitizeHTML(updateData.comments) : undefined;
 
@@ -304,6 +366,10 @@ export async function updateGrade(
 
     return reply.status(200).send({ grade });
   } catch (error) {
+    // Un "no puedes" no es un "se rompió": si se tragara aquí, el servidor
+    // respondería 500 a algo que en realidad está prohibido, y quien lo lea
+    // pensará que hay una avería.
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error;
     logger.error('Error al actualizar calificación', { error, gradeId: request.params.id });
     return reply.status(500).send({
       error: 'Error en el servidor',
@@ -349,10 +415,10 @@ export async function deleteGrade(
       });
     }
 
-    // Eliminar la calificación
-    await request.tenantPrisma.grade.delete({
-      where: { id },
-    });
+    await soloSiEsDeSuClase(request, id);
+
+    // Eliminar la calificación (con copia en la papelera)
+    await borrarGuardandoCopia(request.tenantPrisma, 'grade', { id }, quienBorra(request as any));
 
     // Registrar el evento de eliminación
     await request.tenantPrisma.auditLog.create({
@@ -378,6 +444,7 @@ export async function deleteGrade(
       message: 'Calificación eliminada correctamente',
     });
   } catch (error) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error;
     logger.error('Error al eliminar calificación', { error, gradeId: request.params.id });
     return reply.status(500).send({
       error: 'Error en el servidor',
@@ -403,51 +470,61 @@ export async function bulkCreateGrades(
       });
     }
 
-    const createdGrades = [];
-    const errors = [];
+    // TODAS O NINGUNA
+    //
+    // Cargar las notas de una sección es un solo gesto del profesor: pulsa
+    // "guardar" una vez con 35 notas dentro. Antes se guardaban una a una y
+    // sin transacción: si se caía la conexión en la nota 20, veinte quedaban
+    // puestas, quince no, y el profesor se quedaba sin saber por dónde se
+    // cortó. Ahora entran todas juntas o no entra ninguna, y se dice qué fila
+    // es la que estorba.
+    let createdGrades: any[] = [];
+    const errors: any[] = [];
 
-    for (let i = 0; i < grades.length; i++) {
-      try {
-        const gradeData = grades[i];
-
-        // Verificar duplicados
-        const existingGrade = await request.tenantPrisma.grade.findFirst({
-          where: {
+    try {
+      /**
+       * DE UNA EN UNA A TODAS DE GOLPE
+       *
+       * Aquí se recorrían las notas una por una llamando a `createGrade`, y
+       * `createGrade` comprueba diez cosas contra la base **por cada nota**.
+       * Seis de esas diez son las mismas para toda la tanda —la actividad, el
+       * lapso, la materia, el profesor, que ese profesor imparta esa materia
+       * ahí— y se preguntaban treinta veces seguidas.
+       *
+       * Medido: **266 ms** para las 29 notas de una sección, unas 300
+       * consultas. Era lo más lento del sistema, y es lo que hace el profesor
+       * después de cada clase.
+       *
+       * `createGradesBatch` comprueba exactamente lo mismo, con los mismos
+       * mensajes y el mismo número de fila, pero preguntando una vez por cosa.
+       * Sigue siendo todas o ninguna.
+       */
+      createdGrades = await request.tenantPrisma.$transaction(async (tx: any) =>
+        gradesService.createGradesBatch(
+          tx,
+          grades.map((gradeData: any) => ({
+            score: gradeData.score as any,
+            comments: gradeData.comments,
             studentId: gradeData.studentId,
             activityId: gradeData.activityId,
-            subjectId: gradeData.subjectId,
             periodId: gradeData.periodId,
-          },
-        });
-
-        if (existingGrade) {
-          errors.push({
-            index: i,
-            error: 'Ya existe una calificación para esta actividad',
-            studentId: gradeData.studentId,
-          });
-          continue;
-        }
-
-        // Crear la calificación usando el servicio (mapea value->score)
-        const grade = await gradesService.createGrade(request.tenantPrisma, {
-          score: gradeData.score as any,
-          comments: gradeData.comments,
-          studentId: gradeData.studentId,
-          activityId: gradeData.activityId,
-          periodId: gradeData.periodId,
-          subjectId: gradeData.subjectId,
-          teacherId: (request.user as RequestUser)?.id,
-        });
-
-        createdGrades.push(grade);
-      } catch (error) {
-        errors.push({
-          index: i,
-          error: 'Error al crear calificación',
-          details: (error as Error).message,
-        });
-      }
+            subjectId: gradeData.subjectId,
+            teacherId: (request.user as RequestUser)?.id,
+          }))
+        )
+      );
+    } catch (error) {
+      const fila = (error as any)?.fila;
+      return reply.status((error as any)?.statusCode ?? 400).send({
+        error: (error as Error).message || 'No se pudieron guardar las calificaciones',
+        code: (error as any)?.code ?? 'CARGA_RECHAZADA',
+        fila,
+        studentId: (error as any)?.studentId,
+        detalle:
+          fila !== undefined
+            ? `No se guardó ninguna nota: la número ${fila + 1} no se pudo poner.`
+            : 'No se guardó ninguna nota.',
+      });
     }
 
     // Registrar el evento de creación en lote
@@ -472,6 +549,14 @@ export async function bulkCreateGrades(
       'Calificaciones creadas en lote',
       { totalGrades: grades.length, createdCount: createdGrades.length, errorCount: errors.length }
     );
+
+    // Una tanda de notas le toca a esos alumnos y a su sección, no al liceo.
+    // Es el camino que más filas escribe de una vez: avisar a todos aquí es lo
+    // más caro que puede hacer el sistema.
+    request.aQuienAfecta = {
+      studentIds: [...new Set(createdGrades.map((g: any) => g?.student?.id ?? g?.studentId).filter(Boolean))],
+      classroomId: (createdGrades[0] as any)?.activity?.classroomId,
+    };
 
     return reply.status(201).send({
       message: 'Proceso de calificaciones en lote completado',

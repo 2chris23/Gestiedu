@@ -13,18 +13,13 @@ export const instituteKeys = {
  * Hook para obtener la configuración del instituto
  */
 export function useInstituteConfig(options?: { enabled?: boolean }) {
-    // Solo hacer la petición si hay token (evitar 401 en consola cuando no hay sesión)
-    const hasToken = typeof document !== 'undefined'
-        ? document.cookie.includes('access_token')
-        : false;
-
     return useQuery({
         queryKey: instituteKeys.config(),
         queryFn: instituteService.getConfig,
         staleTime: 5 * 60 * 1000, // 5 minutos
         retry: false,
         refetchOnWindowFocus: false,
-        enabled: hasToken && options?.enabled !== false,
+        enabled: options?.enabled !== false,
     });
 }
 

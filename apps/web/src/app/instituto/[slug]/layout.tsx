@@ -4,6 +4,8 @@ import { useParams, useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState, ReactNode } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { olvidarCredencial } from '@/lib/credencial-en-memoria';
+import { conseguirCredencial } from '@/lib/credencial-en-memoria';
 
 interface Institute {
     id: string;
@@ -22,16 +24,13 @@ interface NavItem {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3001';
 
-function getToken(): string {
-    if (typeof document === 'undefined') return '';
-    const cookies = document.cookie.split(';');
-    for (const cookie of cookies) {
-        const [key, ...valueParts] = cookie.trim().split('=');
-        if (key === 'access_token') {
-            return valueParts.join('=');
-        }
-    }
-    return '';
+/**
+ * La llave corta ya no está en las cookies: vive en la memoria de la pestaña
+ * (`lib/credencial-en-memoria.ts`). Leerla de `document.cookie` devolvía
+ * siempre vacío, y con eso el servidor responde 401.
+ */
+async function getToken(): Promise<string> {
+    return (await conseguirCredencial()) || '';
 }
 
 /** Decodifica el JWT localmente (sin verificar firma) y checa si expiró */
@@ -51,10 +50,17 @@ function isTokenExpired(token: string): boolean {
     }
 }
 
-/** Limpia las cookies de sesión del instituto */
+/**
+ * CERRAR LA SESIÓN LO TIENE QUE HACER EL SERVIDOR
+ *
+ * Esto borraba las llaves con `document.cookie`, y desde el navegador **no se
+ * pueden borrar las marcadas `httpOnly`**. La llave larga (`refresh_token`) ya
+ * era una de ellas: este "cerrar sesión" la dejaba viva. Se le pide al
+ * servidor, que sí puede, y se borra también la que está en memoria.
+ */
 function clearSession() {
-    document.cookie = 'access_token=; path=/; max-age=0';
-    document.cookie = 'refresh_token=; path=/; max-age=0';
+    olvidarCredencial();
+    void fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
     document.cookie = 'institute_slug=; path=/; max-age=0';
 }
 
@@ -97,42 +103,46 @@ export default function InstituteLayout({ children }: { children: ReactNode; par
             .finally(() => setLoading(false));
 
         // Fetch current user role (skip on login page)
+        //
+        // Conseguir la credencial es asíncrono desde que vive en la memoria de
+        // la pestaña (antes se leía de una cookie, que era inmediato), así que
+        // este trozo se envuelve para poder esperarla.
         if (!isLoginPage) {
-            const token = getToken();
-            // Verificar token ANTES de hacer la llamada (evita 401 en consola)
-            if (!token || isTokenExpired(token)) {
-                clearSession();
-                router.push('/login');
-                return;
-            }
-            fetch(`${API_URL}/api/users/profile/me`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Institute-Slug': slug,
-                },
-            })
-                .then(async r => {
+            void (async () => {
+                const token = await getToken();
+                // Verificar token ANTES de hacer la llamada (evita 401 en consola)
+                if (!token || isTokenExpired(token)) {
+                    clearSession();
+                    router.push('/login');
+                    return;
+                }
+                try {
+                    const r = await fetch(`${API_URL}/api/users/profile/me`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'X-Institute-Slug': slug,
+                        },
+                    });
                     if (r.status === 401) {
                         clearSession();
                         router.push('/login');
-                        return null;
+                        return;
                     }
-                    return r.ok ? r.json() : null;
-                })
-                .then(data => {
+                    const data = r.ok ? await r.json() : null;
                     if (data?.user) {
                         setUserRole(data.user.role);
                         setUserName(`${data.user.firstName} ${data.user.lastName}`);
                     }
-                })
-                .catch(() => { });
+                } catch {
+                    /* la pantalla funciona igual sin el nombre */
+                }
+            })();
         }
     }, [slug, isLoginPage, router]);
 
     const handleLogout = () => {
-        document.cookie = 'access_token=; path=/; max-age=0';
-        document.cookie = 'refresh_token=; path=/; max-age=0';
-        document.cookie = 'institute_slug=; path=/; max-age=0';
+        // Mismo motivo que en `clearSession`: las llaves las quita el servidor.
+        clearSession();
         router.push('/login');
     };
 

@@ -5,6 +5,7 @@ import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../utils/constants';
 import { createError, AppErrors } from '../middleware/error.middleware';
 import { RequestUser } from '../types/fastify';
 import { RedisCache } from '../config/redis';
+import { conLiceo } from '../config/ambito-del-liceo';
 
 const dashboardService = new DashboardService();
 
@@ -35,12 +36,12 @@ export async function getAdminDashboard(request: FastifyRequest, reply: FastifyR
     // Caché de respuesta: el dashboard admin es el endpoint más consultado al abrir la app
     if (instituteId) {
       const cacheKey = `dashboard:admin:${instituteId}`;
-      const cached = await RedisCache.get(cacheKey);
+      const cached = await conLiceo(instituteId, () => RedisCache.get(cacheKey));
       if (cached) {
         return reply.status(200).send({ success: true, message: SUCCESS_MESSAGES.FETCH_SUCCESS, data: cached });
       }
-      const dashboard = await dashboardService.getAdminDashboard(db);
-      await RedisCache.set(cacheKey, dashboard, DASHBOARD_CACHE_TTL);
+      const dashboard = await dashboardService.getAdminDashboard(db, instituteId);
+      await conLiceo(instituteId, () => RedisCache.set(cacheKey, dashboard, DASHBOARD_CACHE_TTL));
       return reply.status(200).send({ success: true, message: SUCCESS_MESSAGES.FETCH_SUCCESS, data: dashboard });
     }
 
@@ -70,7 +71,8 @@ export async function getStudentDashboard(request: FastifyRequest, reply: Fastif
     const userId = user?.userId;
     if (!userId) throw createError(400, ERROR_MESSAGES.TENANT_NOT_FOUND);
     const db = getTenantDb(request);
-    const dashboard = await dashboardService.getStudentDashboard(userId, db);
+    const instituteId = (request as any).institute?.id ?? user.instituteId;
+    const dashboard = await dashboardService.getStudentDashboard(userId, db, instituteId);
     return reply.status(200).send({ success: true, message: SUCCESS_MESSAGES.FETCH_SUCCESS, data: dashboard });
   } catch (error) {
     throw error;
@@ -83,7 +85,8 @@ export async function getTutorDashboard(request: FastifyRequest, reply: FastifyR
     const userId = user?.userId;
     if (!userId) throw createError(400, ERROR_MESSAGES.TENANT_NOT_FOUND);
     const db = getTenantDb(request);
-    const dashboard = await dashboardService.getTutorDashboard(userId, db);
+    const instituteId = (request as any).institute?.id ?? user.instituteId;
+    const dashboard = await dashboardService.getTutorDashboard(userId, db, instituteId);
     return reply.status(200).send({ success: true, message: SUCCESS_MESSAGES.FETCH_SUCCESS, data: dashboard });
   } catch (error) {
     throw error;

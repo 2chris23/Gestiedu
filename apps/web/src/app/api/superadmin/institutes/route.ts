@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
     try {
         const cookieStore = await cookies();
-        const token = cookieStore.get('superadmin_access_token')?.value || request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+        const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || cookieStore.get('superadmin_access_token')?.value;
 
         if (!token) {
             return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const cookieStore = await cookies();
-        const token = cookieStore.get('superadmin_access_token')?.value || request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+        const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || cookieStore.get('superadmin_access_token')?.value;
 
         if (!token) {
             return NextResponse.json({ error: 'No autenticado' }, { status: 401 });

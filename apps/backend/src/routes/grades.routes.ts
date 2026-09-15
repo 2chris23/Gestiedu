@@ -9,7 +9,7 @@ import {
   getGrade,
 } from '../controllers/grades.controller';
 import { authenticate, requireTeacher, requireStudent, requireSelfOrAdmin } from '../middleware/auth.middleware';
-import { validateBody, validateCUID } from '../middleware/validation.middleware';
+import { validateBody, validateCUID, validateUserId } from '../middleware/validation.middleware';
 import validators from '../utils/validators';
 
 const gradesRoutes: FastifyPluginAsync = async (fastify) => {
@@ -134,7 +134,7 @@ const gradesRoutes: FastifyPluginAsync = async (fastify) => {
       },
       querystring: getGradesQuerySchema.querystring,
     },
-    preHandler: [authenticate, validateCUID('studentId'), requireSelfOrAdmin('studentId')]
+    preHandler: [authenticate, validateUserId('studentId'), requireSelfOrAdmin('studentId')]
   }, getStudentGrades as any);
 
   // Rutas por actividad

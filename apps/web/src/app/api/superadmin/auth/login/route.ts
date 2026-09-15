@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+/**
+ * `secure` manda la cookie SOLO por conexión cifrada (https).
+ *
+ * Estaba en `false` fijo, así que en producción la sesión podía viajar en claro:
+ * quien estuviera en la misma red —el wifi del liceo, por ejemplo— podía leerla
+ * y entrar como esa persona.
+ *
+ * En desarrollo se sigue usando http://localhost, donde `secure` impediría
+ * guardar la cookie; por eso depende del entorno y no es fijo.
+ */
+const SOLO_POR_CONEXION_CIFRADA = process.env.NODE_ENV === 'production';
+
+
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
@@ -39,7 +52,7 @@ export async function POST(request: NextRequest) {
         // Setear cookies en la respuesta HTTP directamente
         responseNext.cookies.set('superadmin_access_token', data.accessToken, {
             httpOnly: false,
-            secure: false,
+            secure: SOLO_POR_CONEXION_CIFRADA,
             sameSite: 'lax',
             maxAge: 7 * 24 * 60 * 60,
             path: '/',
@@ -47,7 +60,7 @@ export async function POST(request: NextRequest) {
 
         responseNext.cookies.set('superadmin_refresh_token', data.refreshToken, {
             httpOnly: true,
-            secure: false,
+            secure: SOLO_POR_CONEXION_CIFRADA,
             sameSite: 'lax',
             maxAge: 7 * 24 * 60 * 60,
             path: '/',
@@ -55,7 +68,7 @@ export async function POST(request: NextRequest) {
 
         responseNext.cookies.set('superadmin_data', JSON.stringify(data.user), {
             httpOnly: false,
-            secure: false,
+            secure: SOLO_POR_CONEXION_CIFRADA,
             sameSite: 'lax',
             maxAge: 7 * 24 * 60 * 60,
             path: '/',

@@ -151,6 +151,11 @@ async function provisionInstitute(): Promise<{ databaseName: string; adminId: st
                 email: 'test@testload5k.com',
                 status: 'PROVISIONING',
                 environment: 'development',
+                // ENTERPRISE a propósito: este liceo tiene 5.000 alumnos y las
+                // pruebas de carga además crean más. Con el plan BASIC (tope
+                // 2.000) el sistema rechaza cada alta con 403 — correctamente— y
+                // la prueba mide rechazos en vez de trabajo.
+                plan: 'ENTERPRISE',
             },
         });
     }
@@ -183,7 +188,7 @@ async function provisionInstitute(): Promise<{ databaseName: string; adminId: st
     await pgClient.end();
 
     // ── 4. Aplicar schema con prisma db push ────
-    progressLine('📋 Aplicando schema Prisma (db push)...');
+    progressLine('📋 Aplicando migraciones al liceo de carga...');
     const schemaPath = path.join(
         path.dirname(path.dirname(path.dirname(__dirname))),
         'backend', 'src', 'prisma', 'schema.prisma'
@@ -192,7 +197,7 @@ async function provisionInstitute(): Promise<{ databaseName: string; adminId: st
 
     try {
         const { stdout, stderr } = await execAsync(
-            `npx prisma db push --schema="${schemaPath}" --skip-generate --accept-data-loss`,
+            `npx prisma migrate deploy --schema="${schemaPath}"`,
             {
                 cwd: path.join(path.dirname(path.dirname(path.dirname(path.dirname(__dirname)))), 'apps', 'backend'),
                 env: { ...process.env, DATABASE_URL: tenantUrl },
@@ -203,12 +208,39 @@ async function provisionInstitute(): Promise<{ databaseName: string; adminId: st
         }
         progressLine('✅ Schema aplicado correctamente');
     } catch (err: any) {
-        throw new Error(`db push falló: ${err.message?.slice(0, 300)}`);
+        throw new Error(`migrate deploy falló: ${err.message?.slice(0, 300)}`);
     }
 
     // ── 5. Crear admin inicial ────
     progressLine('👤 Creando usuario admin inicial...');
     const tenantPrisma = new PrismaClient({ datasourceUrl: tenantUrl });
+
+    /**
+     * La fila del instituto TAMBIÉN va dentro de su propia base.
+     *
+     * Sin esto, todo lo que lleva `instituteId` —las observaciones, por ejemplo—
+     * falla con "Foreign key constraint violated" y el liceo parece roto. Costó
+     * una tanda entera de pruebas de carga: las escrituras daban error y el
+     * tiempo medido era el que tardaba en fallar, no en guardar.
+     *
+     * El aprovisionamiento de verdad ya lo hace
+     * (`services/tenant-provisioning.service.ts`); esta siembra se había quedado
+     * atrás.
+     */
+    await tenantPrisma.institute.upsert({
+        where: { id: institute.id },
+        update: {},
+        create: {
+            id: institute.id,
+            name: institute.name,
+            code: institute.code,
+            email: institute.email,
+            slug: institute.slug,
+            subdomain: institute.subdomain ?? institute.slug,
+            status: 'ACTIVE',
+            plan: 'BASIC',
+        } as any,
+    });
     const hashedPw = await hash(BASE_PASSWORD, 12);
     try {
         await tenantPrisma.user.upsert({
@@ -229,9 +261,19 @@ async function provisionInstitute(): Promise<{ databaseName: string; adminId: st
     }
 
     // ── 6. Actualizar instituto en platform ────
+    // La fila del liceo tiene que llevar TODAS las credenciales: con solo el
+    // nombre de la base, la aplicación no sabe a qué servidor conectarse y cada
+    // login responde "Error al conectar con la base de datos del instituto".
     await platformPrisma.institute.update({
         where: { id: institute.id },
-        data: { status: 'ACTIVE', databaseName: DB_NAME },
+        data: {
+            status: 'ACTIVE',
+            databaseName: DB_NAME,
+            databaseHost: creds.host,
+            databasePort: creds.port,
+            databaseUser: creds.user,
+            databasePassword: creds.password,
+        },
     });
 
     progressLine(`✅ Instituto provisionado → DB: ${DB_NAME}`);
@@ -472,7 +514,9 @@ async function seedStudents(
                 lastName: `Test${n}`,
                 role: 'STUDENT' as const,
                 isActive: true,
-                classroomId: classroom.id,
+                // El alumno pertenece a la sección por su inscripción
+                // (StudentClassroom), no por un campo suyo: ese campo ya no existe
+                // y este seed llevaba tiempo sin poder correr.
             };
         });
 
@@ -486,19 +530,6 @@ async function seedStudents(
                 academicYearId: yearId,
                 isActive: true,
             })),
-            skipDuplicates: true,
-        });
-
-        // Enrollments en materias
-        await prisma.enrollment.createMany({
-            data: batchData.flatMap((u) =>
-                subjectIds.map((subjectId) => ({
-                    studentId: u.id,
-                    subjectId,
-                    status: 'ACTIVE',
-                    currentAverage: 0,
-                }))
-            ),
             skipDuplicates: true,
         });
 
@@ -839,7 +870,6 @@ async function cleanExisting(): Promise<void> {
             await prisma.activity.deleteMany({});
             await prisma.studentTutor.deleteMany({});
             await prisma.studentClassroom.deleteMany({});
-            await prisma.enrollment.deleteMany({});
             await prisma.teacherClassroom.deleteMany({});
             await prisma.user.deleteMany({ where: { email: { contains: '@testload.com' } } });
             await prisma.classroomSubject.deleteMany({});

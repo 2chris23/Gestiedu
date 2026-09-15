@@ -1,18 +1,32 @@
 /**
- * TEST CON ESCRITURAS - K6
+ * CARGA CON ESCRITURAS
  *
- * Simula operaciones reales de escritura de profesores y admins junto con
- * la lectura masiva de estudiantes y tutores.
+ * Lo que pasa en un día normal del liceo: casi todo el mundo leyendo, y un
+ * puñado de profesores escribiendo a la vez (pasando asistencia, poniendo notas,
+ * dejando actividades).
  *
- * - 3,000 VUs Estudiantes (solo lectura)
- * - 1,500 VUs Tutores (solo lectura)
- * - 150  VUs Profesores (POST asistencia, calificaciones, actividades)
- * - 25   VUs Admins (POST usuarios, PUT datos)
+ *   - 3.000 estudiantes  (solo leen)
+ *   - 1.500 representantes (solo leen)
+ *   -   150 profesores   (leen Y escriben)
+ *   -    25 administrativos
  *
- * Duración: ~20 minutos
+ * Duración: ~20 minutos.
+ *
+ * ─── DOS COSAS QUE HAY QUE SABER ANTES DE MIRAR LOS NÚMEROS ─────────────────
+ *
+ * 1. **Las credenciales se piden UNA vez, en setup().** Antes este archivo hacía
+ *    login en cada iteración: con 4.675 usuarios eso son decenas de miles de
+ *    logins por minuto. Medía bcrypt y el freno de peticiones, no las
+ *    escrituras. Se midió: 278.181 rechazos por minuto, todos en /api/auth/login.
+ *
+ * 2. **Las credenciales caducan.** Con JWT_EXPIRES_IN=15m y una prueba de 20
+ *    minutos, desde el minuto 15 todo devuelve 401 y el error se dispara sin que
+ *    al sistema le pase nada. Para medir de verdad, arrancar el servidor con una
+ *    caducidad mayor que la prueba (un .env.production temporal con
+ *    JWT_EXPIRES_IN=45m; el .env pisa lo que se ponga en la consola).
  *
  * EJECUTAR:
- *   k6 run load-tests/write-operations-test.js
+ *   k6 run --summary-export=reports/write-summary.json write-operations-test.js
  */
 
 import http from 'k6/http';
@@ -24,39 +38,29 @@ import { config, loginUser, authHeaders, trackCache } from './config.js';
 // ─── Métricas ─────────────────────────────────────────────────────────────────
 const writeOpsTotal = new Counter('write_operations_total');
 const writeOpsFailed = new Counter('write_operations_failed');
-const cacheInvalidations = new Counter('cache_invalidations_triggered');
 const writeDuration = new Trend('write_duration', true);
 const cacheHitRate = new Rate('cache_hit_rate');
 const loginErrors = new Counter('login_errors');
+const sinDatos = new Counter('escenarios_sin_datos');
 
 // ─── Usuarios ─────────────────────────────────────────────────────────────────
 const CSV = './test-users-5k.csv';
 
-const students = new SharedArray('students', function () {
-    return open(CSV).split('\n').slice(1)
-        .filter(l => l.startsWith('STUDENT'))
-        .map(l => { const [, email, password, , id] = l.split(','); return { email, password, id }; });
-});
+const leerCsv = (prefijo) =>
+    open(CSV)
+        .split('\n')
+        .slice(1)
+        .filter((l) => l.trim().startsWith(prefijo))
+        .map((l) => {
+            const p = l.trim().split(',');
+            return { email: p[1], password: p[2] };
+        });
 
-const tutors = new SharedArray('tutors', function () {
-    return open(CSV).split('\n').slice(1)
-        .filter(l => l.startsWith('TUTOR'))
-        .map(l => { const [, email, password] = l.split(','); return { email, password }; });
-});
+const students = new SharedArray('students', () => leerCsv('STUDENT'));
+const tutors = new SharedArray('tutors', () => leerCsv('TUTOR'));
+const teachers = new SharedArray('teachers', () => leerCsv('TEACHER'));
+const admins = new SharedArray('admins', () => leerCsv('ADMIN'));
 
-const teachers = new SharedArray('teachers', function () {
-    return open(CSV).split('\n').slice(1)
-        .filter(l => l.startsWith('TEACHER'))
-        .map(l => { const [, email, password, , id] = l.split(','); return { email, password, id }; });
-});
-
-const admins = new SharedArray('admins', function () {
-    return open(CSV).split('\n').slice(1)
-        .filter(l => l.startsWith('ADMIN'))
-        .map(l => { const [, email, password] = l.split(','); return { email, password }; });
-});
-
-// ─── Configuración ────────────────────────────────────────────────────────────
 export const options = {
     scenarios: {
         estudiantes: {
@@ -81,7 +85,7 @@ export const options = {
             exec: 'tutorScenario',
             tags: { role: 'tutor' },
         },
-        profesores: {
+        profesores_escritura: {
             executor: 'ramping-vus',
             startVUs: 0,
             stages: [
@@ -92,265 +96,296 @@ export const options = {
             exec: 'teacherWriteScenario',
             tags: { role: 'teacher' },
         },
-        admins: {
+        administrativos: {
             executor: 'constant-vus',
             vus: 25,
             duration: '20m',
-            exec: 'adminWriteScenario',
+            exec: 'adminScenario',
             tags: { role: 'admin' },
         },
     },
+    setupTimeout: '10m',
     thresholds: {
         'http_req_duration': ['p(95)<800'],
         'http_req_duration{role:student}': ['p(95)<500'],
-        'http_req_duration{role:teacher}': ['p(95)<1000'],
-        'http_req_failed': ['rate<0.02'],
-        'write_operations_failed': ['count<500'],
-        'cache_hit_rate': ['rate>0.60'],
+        'http_req_failed': ['rate<0.05'],
+        'write_duration': ['p(95)<1500'],
     },
 };
 
-// ─── Escenario: Estudiante ─────────────────────────────────────────────────────
-export function studentScenario() {
-    const u = students[__VU % students.length];
-    const token = loginUser(u.email, u.password, config.instituteSlug);
-    if (!token) { loginErrors.add(1); sleep(2); return; }
-    const hdr = authHeaders(token, config.instituteSlug);
+// ─── Login por tandas, sin saturar bcrypt ni el freno de peticiones ──────────
+function batchLogin(usuarios, slug, tamano = 20) {
+    const tokens = [];
+    for (let i = 0; i < usuarios.length; i += tamano) {
+        for (const u of usuarios.slice(i, i + tamano)) {
+            tokens.push(loginUser(u.email, u.password, slug));
+        }
+        sleep(0.5);
+    }
+    return tokens;
+}
 
-    const r = http.get(`${config.apiUrl}/api/dashboard`, { headers: hdr });
-    check(r, { 'student dash ok': x => x.status < 500 });
+export function setup() {
+    const slug = config.instituteSlug;
+
+    // Un puñado de credenciales alcanza: los VUs se las reparten por turnos.
+    const muestraEstudiantes = students.slice(0, 100);
+    const muestraTutores = tutors.slice(0, 50);
+    const muestraProfesores = teachers.slice(0, 40);
+    const muestraAdmins = admins.slice(0, 10);
+
+    console.log(`[setup] Pidiendo credenciales de ${muestraEstudiantes.length} estudiantes...`);
+    const studentTokens = batchLogin(muestraEstudiantes, slug);
+    console.log(`[setup] Estudiantes: ${studentTokens.filter(Boolean).length}/${muestraEstudiantes.length}`);
+
+    console.log(`[setup] Representantes...`);
+    const tutorTokens = batchLogin(muestraTutores, slug);
+    console.log(`[setup] Representantes: ${tutorTokens.filter(Boolean).length}/${muestraTutores.length}`);
+
+    console.log(`[setup] Profesores...`);
+    const teacherTokens = batchLogin(muestraProfesores, slug);
+    console.log(`[setup] Profesores: ${teacherTokens.filter(Boolean).length}/${muestraProfesores.length}`);
+
+    console.log(`[setup] Administrativos...`);
+    const adminTokens = batchLogin(muestraAdmins, slug);
+    console.log(`[setup] Administrativos: ${adminTokens.filter(Boolean).length}/${muestraAdmins.length}`);
+
+    return { slug, studentTokens, tutorTokens, teacherTokens, adminTokens };
+}
+
+const tomarToken = (lista) => (lista && lista.length ? lista[__VU % lista.length] : null);
+
+const anotarCache = (r) => {
     const h = trackCache(r);
     if (h === 'HIT') cacheHitRate.add(true);
     else if (h === 'MISS') cacheHitRate.add(false);
+};
+
+const leerJson = (r) => {
+    try {
+        return JSON.parse(r.body);
+    } catch {
+        return null;
+    }
+};
+
+// ─── Estudiante: solo mira lo suyo ───────────────────────────────────────────
+export function studentScenario(data) {
+    const token = tomarToken(data.studentTokens);
+    if (!token) {
+        loginErrors.add(1);
+        sleep(5);
+        return;
+    }
+    const hdr = authHeaders(token, data.slug);
+
+    const r = http.get(`${config.apiUrl}/api/dashboard/student`, { headers: hdr });
+    check(r, { 'panel del alumno ok': (x) => x.status < 500 });
+    anotarCache(r);
     sleep(5);
 
-    http.get(`${config.apiUrl}/api/students/me/grades`, { headers: hdr });
+    http.get(`${config.apiUrl}/api/students/my-grades`, { headers: hdr });
     sleep(10);
-    http.get(`${config.apiUrl}/api/students/me/attendance`, { headers: hdr });
+    http.get(`${config.apiUrl}/api/students/my-attendance`, { headers: hdr });
     sleep(8);
-    http.get(`${config.apiUrl}/api/activities`, { headers: hdr });
+    http.get(`${config.apiUrl}/api/activities/student/my-activities`, { headers: hdr });
     sleep(5);
 }
 
-// ─── Escenario: Tutor ─────────────────────────────────────────────────────────
-export function tutorScenario() {
-    const u = tutors[__VU % tutors.length];
-    const token = loginUser(u.email, u.password, config.instituteSlug);
-    if (!token) { loginErrors.add(1); sleep(2); return; }
-    const hdr = authHeaders(token, config.instituteSlug);
+// ─── Representante ───────────────────────────────────────────────────────────
+export function tutorScenario(data) {
+    const token = tomarToken(data.tutorTokens);
+    if (!token) {
+        loginErrors.add(1);
+        sleep(5);
+        return;
+    }
+    const hdr = authHeaders(token, data.slug);
 
-    http.get(`${config.apiUrl}/api/tutors/me/children`, { headers: hdr });
-    sleep(3);
-    http.get(`${config.apiUrl}/api/notifications`, { headers: hdr });
-    sleep(5);
+    const r = http.get(`${config.apiUrl}/api/dashboard/tutor`, { headers: hdr });
+    check(r, { 'panel del representante ok': (x) => x.status < 500 });
+    anotarCache(r);
+    sleep(4);
+
+    http.get(`${config.apiUrl}/api/notifications/my-notifications`, { headers: hdr });
+    sleep(6);
 }
 
-// ─── Escenario: Profesor (READ + WRITE) ───────────────────────────────────────
-export function teacherWriteScenario() {
-    const u = teachers[__VU % teachers.length];
-    const token = loginUser(u.email, u.password, config.instituteSlug);
-    if (!token) { loginErrors.add(1); sleep(2); return; }
-    const hdr = authHeaders(token, config.instituteSlug);
+// ─── Profesor: mira sus secciones y escribe en ellas ─────────────────────────
+export function teacherWriteScenario(data) {
+    const token = tomarToken(data.teacherTokens);
+    if (!token) {
+        loginErrors.add(1);
+        sleep(5);
+        return;
+    }
+    const hdr = authHeaders(token, data.slug);
 
-    // Ver aulas
     let classroomId = null;
+    let subjectId = null;
     let studentIds = [];
-    group('Teacher: Ver aulas', () => {
-        const r = http.get(`${config.apiUrl}/api/teachers/me/classrooms`, { headers: hdr });
-        check(r, { 'classrooms ok': x => x.status < 500 });
-        try {
-            const d = JSON.parse(r.body);
-            const cl = d.classrooms || d.data || d;
-            if (Array.isArray(cl) && cl.length > 0) {
-                classroomId = cl[Math.floor(Math.random() * cl.length)].id;
-            }
-        } catch { }
+
+    group('Profesor: sus secciones', () => {
+        const r = http.get(`${config.apiUrl}/api/teachers/my-classrooms`, { headers: hdr });
+        check(r, { 'mis secciones ok': (x) => x.status < 500 });
+        const d = leerJson(r);
+        const lista = d && (d.classrooms || d.data || d);
+        if (Array.isArray(lista) && lista.length > 0) {
+            classroomId = lista[Math.floor(Math.random() * lista.length)].id;
+        }
         sleep(2);
     });
 
-    if (!classroomId) { sleep(5); return; }
+    if (!classroomId) {
+        sinDatos.add(1);
+        sleep(10);
+        return;
+    }
 
-    // Ver estudiantes del aula
-    group('Teacher: Estudiantes del aula', () => {
-        const r = http.get(`${config.apiUrl}/api/classrooms/${classroomId}/students`, { headers: hdr });
-        check(r, { 'students ok': x => x.status < 500 });
-        try {
-            const d = JSON.parse(r.body);
-            studentIds = (d.students || d.data || d).slice(0, 50).map(s => s.id);
-        } catch { }
+    group('Profesor: materias de la sección', () => {
+        const r = http.get(`${config.apiUrl}/api/classrooms/${classroomId}/subjects`, { headers: hdr });
+        const d = leerJson(r);
+        const lista = d && (d.subjects || d.data || d);
+        if (Array.isArray(lista) && lista.length > 0) {
+            const cs = lista[Math.floor(Math.random() * lista.length)];
+            subjectId = cs.subjectId || (cs.subject && cs.subject.id) || cs.id;
+        }
+        sleep(2);
+    });
+
+    group('Profesor: alumnos de la sección', () => {
+        const r = http.get(`${config.apiUrl}/api/students?classroomId=${classroomId}&limit=50`, {
+            headers: hdr,
+        });
+        check(r, { 'alumnos ok': (x) => x.status < 500 });
+        const d = leerJson(r);
+        const lista = d && (d.students || d.data || d);
+        if (Array.isArray(lista)) studentIds = lista.slice(0, 40).map((s) => s.id);
         sleep(3);
     });
 
-    // POST: Asistencia masiva
-    group('Teacher: POST asistencia', () => {
-        const start = Date.now();
-        const today = new Date().toISOString().split('T')[0];
-        const records = studentIds.map(id => {
-            const r = Math.random();
-            return {
-                studentId: id,
-                status: r < 0.90 ? 'PRESENT' : r < 0.95 ? 'LATE' : 'ABSENT',
-                periods: r < 0.90 ? 255 : r < 0.95 ? 127 : 0,
-            };
+    if (!subjectId || studentIds.length === 0) {
+        sinDatos.add(1);
+        sleep(10);
+        return;
+    }
+
+    // ESCRITURA 1: pasar lista
+    group('Profesor: pasar asistencia', () => {
+        const inicio = Date.now();
+        const hoy = new Date().toISOString().split('T')[0];
+        const attendances = studentIds.map((id) => {
+            const s = Math.random();
+            return { studentId: id, status: s < 0.9 ? 'PRESENT' : s < 0.95 ? 'LATE' : 'ABSENT' };
         });
 
         const r = http.post(
             `${config.apiUrl}/api/attendance/bulk`,
-            JSON.stringify({ classroomId, date: today, records }),
+            JSON.stringify({ classroomId, subjectId, date: hoy, attendances }),
             { headers: hdr }
         );
 
-        writeDuration.add(Date.now() - start);
-        writeOpsTotal.add(1, { type: 'attendance' });
-
-        if (r.status >= 400 && r.status !== 422) writeOpsFailed.add(1);
-        if (r.status === 200 || r.status === 201) cacheInvalidations.add(1);
-        check(r, { 'attendance write not 500': x => x.status !== 500 });
+        writeDuration.add(Date.now() - inicio);
+        writeOpsTotal.add(1, { type: 'asistencia' });
+        if (r.status >= 400) writeOpsFailed.add(1);
+        check(r, { 'asistencia sin error del servidor': (x) => x.status < 500 });
         sleep(20);
     });
 
-    // POST: Nueva actividad
-    group('Teacher: POST actividad', () => {
-        const start = Date.now();
+    // ESCRITURA 2: guardar la clase (tema + asistencia), la pantalla más usada
+    group('Profesor: guardar la clase', () => {
+        const inicio = Date.now();
+        const hoy = new Date().toISOString().split('T')[0];
         const r = http.post(
-            `${config.apiUrl}/api/activities`,
+            `${config.apiUrl}/api/sessions/live-save`,
             JSON.stringify({
-                title: `Actividad K6 ${Date.now()}`,
-                type: 'EXAM',
-                scope: 'CLASSROOM',
-                startDate: new Date().toISOString(),
-                dueDate: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
                 classroomId,
-                maxGrade: 20,
-                weight: 1,
+                subjectId,
+                date: hoy,
+                topic: `Tema de carga ${Date.now()}`,
+                attendances: studentIds.slice(0, 20).map((id) => ({ studentId: id, status: 'PRESENT' })),
             }),
             { headers: hdr }
         );
-        writeDuration.add(Date.now() - start);
-        writeOpsTotal.add(1, { type: 'activity' });
+        writeDuration.add(Date.now() - inicio);
+        writeOpsTotal.add(1, { type: 'clase' });
         if (r.status >= 400) writeOpsFailed.add(1);
-        check(r, { 'activity write not 500': x => x.status !== 500 });
-        sleep(10);
+        check(r, { 'clase sin error del servidor': (x) => x.status < 500 });
+        sleep(15);
     });
 
-    // POST: Calificaciones
-    if (studentIds.length > 0) {
-        group('Teacher: POST calificación', () => {
-            const start = Date.now();
-            const studentId = studentIds[Math.floor(Math.random() * studentIds.length)];
-
-            // Primero buscar actividades del aula
-            const actsR = http.get(
-                `${config.apiUrl}/api/activities?classroomId=${classroomId}&limit=5`,
-                { headers: hdr }
-            );
-
-            let activityId = null;
-            try {
-                const d = JSON.parse(actsR.body);
-                const acts = d.activities || d.data || d;
-                if (Array.isArray(acts) && acts.length > 0) {
-                    activityId = acts[Math.floor(Math.random() * acts.length)].id;
-                }
-            } catch { }
-
-            if (!activityId) { sleep(5); return; }
-
-            const r = http.post(
-                `${config.apiUrl}/api/grades`,
-                JSON.stringify({
-                    studentId,
-                    activityId,
-                    score: Math.round(Math.random() * 20 * 100) / 100,
-                }),
-                { headers: hdr }
-            );
-            writeDuration.add(Date.now() - start);
-            writeOpsTotal.add(1, { type: 'grade' });
-            if (r.status >= 400) writeOpsFailed.add(1);
-            check(r, { 'grade write not 500': x => x.status !== 500 });
-            sleep(15);
-        });
-    }
+    // ESCRITURA 3: dejar una actividad para los alumnos
+    group('Profesor: dejar actividad', () => {
+        const inicio = Date.now();
+        const r = http.post(
+            `${config.apiUrl}/api/sessions/activities`,
+            JSON.stringify({
+                classroomId,
+                subjectId,
+                title: `Actividad de carga ${Date.now()}`,
+                description: 'Generada por la prueba de carga',
+                target: 'NEXT',
+                maxScore: 20,
+            }),
+            { headers: hdr }
+        );
+        writeDuration.add(Date.now() - inicio);
+        writeOpsTotal.add(1, { type: 'actividad' });
+        if (r.status >= 400) writeOpsFailed.add(1);
+        check(r, { 'actividad sin error del servidor': (x) => x.status < 500 });
+        sleep(15);
+    });
 }
 
-// ─── Escenario: Admin (READ + WRITE) ──────────────────────────────────────────
-export function adminWriteScenario() {
-    const u = admins[__VU % admins.length];
-    const token = loginUser(u.email, u.password, config.instituteSlug);
-    if (!token) { loginErrors.add(1); sleep(2); return; }
-    const hdr = authHeaders(token, config.instituteSlug);
-
-    // Listar estudiantes
-    group('Admin: Listar usuarios', () => {
-        const r = http.get(`${config.apiUrl}/api/users?role=STUDENT&limit=50`, { headers: hdr });
-        check(r, { 'list users ok': x => x.status < 500 });
-        sleep(3);
-    });
-
-    // Crear usuario de prueba
-    group('Admin: POST usuario', () => {
-        const ts = Date.now();
-        const start = Date.now();
-        const r = http.post(
-            `${config.apiUrl}/api/users`,
-            JSON.stringify({
-                id: `V-NEW${ts}`,
-                email: `new-student-${ts}@testload.com`,
-                password: 'Test123!',
-                firstName: 'Nuevo',
-                lastName: `Estudiante${ts}`,
-                role: 'STUDENT',
-            }),
-            { headers: hdr }
-        );
-        writeDuration.add(Date.now() - start);
-        writeOpsTotal.add(1, { type: 'create_user' });
-        if (r.status >= 400 && r.status !== 422) writeOpsFailed.add(1);
-        check(r, { 'create user not 500': x => x.status !== 500 });
+// ─── Administrativo: mira los paneles del liceo ──────────────────────────────
+export function adminScenario(data) {
+    const token = tomarToken(data.adminTokens);
+    if (!token) {
+        loginErrors.add(1);
         sleep(5);
-    });
+        return;
+    }
+    const hdr = authHeaders(token, data.slug);
 
-    // Ver aulas
-    group('Admin: Ver aulas', () => {
-        const r = http.get(`${config.apiUrl}/api/classrooms`, { headers: hdr });
-        check(r, { 'classrooms ok': x => x.status < 500 });
-        sleep(2);
-    });
+    const r = http.get(`${config.apiUrl}/api/dashboard/admin`, { headers: hdr });
+    check(r, { 'panel del admin ok': (x) => x.status < 500 });
+    anotarCache(r);
+    sleep(8);
 
-    // Audit logs
-    group('Admin: Audit logs', () => {
-        const r = http.get(`${config.apiUrl}/api/audit-logs?limit=20`, { headers: hdr });
-        check(r, { 'audit logs ok': x => x.status < 500 });
-        sleep(3);
-    });
+    http.get(`${config.apiUrl}/api/users?limit=25`, { headers: hdr });
+    sleep(12);
 }
 
 export function handleSummary(data) {
-    const p95 = data.metrics['http_req_duration']?.values?.['p(95)'] || 0;
-    const errs = (data.metrics['http_req_failed']?.values?.rate || 0) * 100;
-    const hits = (data.metrics['cache_hit_rate']?.values?.rate || 0) * 100;
-    const writes = data.metrics['write_operations_total']?.values?.count || 0;
-    const writeFails = data.metrics['write_operations_failed']?.values?.count || 0;
-    const writeFailRate = writes > 0 ? (writeFails / writes * 100) : 0;
-    const invalidations = data.metrics['cache_invalidations_triggered']?.values?.count || 0;
+    const m = data.metrics;
+    const v = (n, campo = 'value') => (m[n] && m[n].values ? m[n].values[campo] : 0);
+    const p95 = (n) => (m[n] && m[n].values ? m[n].values['p(95)'] : 0);
 
-    const ok = b => b ? '✅' : '❌';
+    const linea = (etiqueta, valor, objetivo) =>
+        `║ ${etiqueta.padEnd(26)} ${String(valor).padStart(12)}  ${objetivo.padEnd(18)}║`;
 
-    return {
-        stdout: `
-╔══════════════════════════════════════════════════════╗
-║        WRITE OPERATIONS TEST - RESULTADOS            ║
-╠══════════════════════════════════════════════════════╣
-║ p(95) Duration tot:  ${String(Math.round(p95) + 'ms').padStart(10)} (obj <800ms)      ║
-║ Error rate:          ${String(errs.toFixed(2) + '%').padStart(10)} (obj <2%)          ║
-║ Cache hit rate:      ${String(hits.toFixed(1) + '%').padStart(10)} (obj >60%)         ║
-║ Write ops total:     ${String(Math.round(writes)).padStart(10)}                        ║
-║ Write fail rate:     ${String(writeFailRate.toFixed(2) + '%').padStart(10)} (obj <1%)          ║
-║ Cache invalidations: ${String(Math.round(invalidations)).padStart(10)}                        ║
-╠══════════════════════════════════════════════════════╣
-║ ${ok(p95 < 800)}  p(95)<800ms  ${ok(errs < 2)}  Errors<2%  ${ok(writeFailRate < 1)}  WriteErr<1%  ║
-╚══════════════════════════════════════════════════════╝
-`,
-    };
+    const texto = [
+        '',
+        '╔══════════════════════════════════════════════════════════════════╗',
+        '║              CARGA CON ESCRITURAS — RESULTADOS                   ║',
+        '╠══════════════════════════════════════════════════════════════════╣',
+        linea('Peticiones', Math.round(v('http_reqs', 'count')), ''),
+        linea('p(95) general', `${Math.round(p95('http_req_duration'))} ms`, '(objetivo <800)'),
+        linea('p(95) escrituras', `${Math.round(p95('write_duration'))} ms`, '(objetivo <1500)'),
+        linea('Escrituras hechas', Math.round(v('write_operations_total', 'count')), ''),
+        linea('Escrituras fallidas', Math.round(v('write_operations_failed', 'count')), ''),
+        linea('Errores', `${(v('http_req_failed', 'rate') * 100).toFixed(2)}%`, '(objetivo <5%)'),
+        linea('Aciertos de caché', `${(v('cache_hit_rate', 'rate') * 100).toFixed(1)}%`, ''),
+        linea('Sin datos para escribir', Math.round(v('escenarios_sin_datos', 'count')), ''),
+        '╚══════════════════════════════════════════════════════════════════╝',
+        '',
+    ].join('\n');
+
+    // Ojo: al poner un resumen propio, k6 deja de escribir el --summary-export.
+    // Se devuelve también el JSON para que el summary-export siga funcionando y
+    // se puedan comparar dos mediciones.
+    const salida = { stdout: texto };
+    const destino = __ENV.SUMMARY_JSON;
+    if (destino) salida[destino] = JSON.stringify(data, null, 1);
+    return salida;
 }

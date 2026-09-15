@@ -1,5 +1,6 @@
 import Redis, { RedisOptions } from 'ioredis';
 import { config } from './environment';
+import { liceoActual } from './ambito-del-liceo';
 
 // Configuración de Redis
 const redisConfig: RedisOptions = {
@@ -114,6 +115,47 @@ export async function checkRedisHealth(): Promise<boolean> {
 }
 
 // Utilidades para caché
+/**
+ * Lo que varios patrones tienen en común antes de su primer comodín.
+ *
+ * Sirve para buscar una sola vez en Redis, que solo admite un patrón por
+ * búsqueda. Para `cache:liceo1:*:ana:*` y `cache:liceo1:*:luis:*` devuelve
+ * `cache:liceo1:` — se recorre lo del liceo y nada más.
+ */
+function prefijoComun(patrones: string[]): string {
+    const literales = patrones.map((p) => {
+        const i = p.indexOf('*');
+        return i === -1 ? p : p.slice(0, i);
+    });
+
+    let comun = literales[0] ?? '';
+    for (const literal of literales.slice(1)) {
+        let i = 0;
+        while (i < comun.length && i < literal.length && comun[i] === literal[i]) i++;
+        comun = comun.slice(0, i);
+        if (comun === '') break;
+    }
+
+    // Lo que quede se manda a Redis como texto literal, no como patrón: si un
+    // identificador trajera un `?` o un `[`, Redis lo leería como comodín y
+    // borraría de más.
+    return comun.replace(/[?[\]\\]/g, (c) => `\\${c}`);
+}
+
+/**
+ * LO QUE ES DE LA PLATAFORMA Y NO DE NINGÚN LICEO
+ *
+ * Todo lo demás se guarda dentro del apartado del liceo de la petición (ver
+ * `config/ambito-del-liceo.ts`). Estas claves no: se escriben y se borran desde
+ * sitios distintos —el portal público las escribe, el superadministrador las
+ * borra— y si cada uno las metiera en un apartado distinto, borrar no
+ * alcanzaría a lo escrito y el liceo seguiría enseñando su nombre viejo.
+ *
+ * `tenant:` es, además, lo que se consulta **para averiguar de qué liceo es la
+ * petición**: cuando se lee todavía no hay liceo que poner.
+ */
+const CLAVES_DE_PLATAFORMA = ['tenant:', 'institute:info:', 'superadmin:', 'platform:'];
+
 export class RedisCache {
   private static keyPrefix = 'gestion-escolar:';
 
@@ -122,18 +164,48 @@ export class RedisCache {
   // Nota: es local al proceso — en despliegues multi-instancia Redis sigue siendo el backend real.
   private static memoryStore = new Map<string, { value: any; expiresAt: number }>();
 
-  // Generar clave con prefijo
+  /**
+   * La clave con la que se guarda de verdad.
+   *
+   * Lleva **el liceo de la petición** delante, y por eso dos liceos que pidan
+   * lo mismo no se pisan. No lo pone quien llama: lo pone aquí, para que no
+   * pueda olvidarse. El porqué, con el fallo que lo destapó, está en
+   * `config/ambito-del-liceo.ts`.
+   */
   private static getKey(key: string): string {
-    return `${this.keyPrefix}${key}`;
+    if (CLAVES_DE_PLATAFORMA.some((p) => key.startsWith(p))) {
+      return `${this.keyPrefix}${key}`;
+    }
+    const liceo = liceoActual();
+    return `${this.keyPrefix}${liceo ? `liceo:${liceo}:` : 'sin-liceo:'}${key}`;
   }
 
   private static isRedisReady(): boolean {
     return redis.status === 'ready';
   }
 
+  /**
+   * LA LIMPIEZA DE LO CADUCADO SE HACE DE VEZ EN CUANDO, NO EN CADA GUARDADO.
+   *
+   * Antes esto se llamaba **en cada guardado**, y en cuanto había mil copias
+   * recorría las mil enteras, una por una, antes de guardar la mil y una. Con
+   * 300 personas conectadas eso era el 4,25% de todo el procesador del servidor,
+   * medido con el grabador de perfil bajo la prueba de un día completo.
+   *
+   * El trabajo que hace no corre ninguna prisa: solo tira lo que ya caducó, y lo
+   * caducado tampoco se sirve (`memoryGet` lo comprueba al leerlo). Basta con
+   * pasar la escoba cada pocos segundos.
+   */
+  private static ultimaLimpieza = 0;
+  private static readonly CADA_CUANTO_SE_LIMPIA_MS = 5000;
+
   private static pruneMemory(): void {
     if (this.memoryStore.size < 1000) return;
+
     const now = Date.now();
+    if (now - this.ultimaLimpieza < this.CADA_CUANTO_SE_LIMPIA_MS) return;
+    this.ultimaLimpieza = now;
+
     for (const [key, entry] of this.memoryStore) {
       if (entry.expiresAt !== 0 && entry.expiresAt < now) {
         this.memoryStore.delete(key);
@@ -204,6 +276,11 @@ export class RedisCache {
     this.memoryStore.delete(redisKey);
   }
 
+  // Alias para delete
+  static async delete(key: string): Promise<void> {
+    return this.del(key);
+  }
+
   // Verificar si existe una clave
   static async exists(key: string): Promise<boolean> {
     const redisKey = this.getKey(key);
@@ -264,6 +341,54 @@ export class RedisCache {
     const matcher = this.matchPattern(redisPattern);
     for (const key of Array.from(this.memoryStore.keys())) {
       if (matcher(key)) this.memoryStore.delete(key);
+    }
+  }
+
+  /**
+   * BORRAR LO DE VARIAS PERSONAS EN UNA SOLA PASADA
+   *
+   * `clearPattern` recorre **todas** las claves guardadas cada vez que se llama.
+   * Un cambio suele afectar a varias personas a la vez —el alumno, sus dos
+   * representantes, los profesores de la sección y los admins—, y llamarlo una
+   * vez por cabeza recorría lo mismo diez o quince veces seguidas por una sola
+   * nota guardada. Se pagaba entero en cada escritura.
+   *
+   * Aquí se recorre **una vez** y se compara cada clave contra todos los
+   * patrones. El resultado es idéntico; el trabajo, el de una sola llamada.
+   */
+  static async clearPatterns(patterns: string[]): Promise<void> {
+    const limpios = Array.from(new Set(patterns.filter(Boolean)));
+    if (limpios.length === 0) return;
+    if (limpios.length === 1) return this.clearPattern(limpios[0]);
+
+    const conPrefijo = limpios.map((p) => this.getKey(p));
+    const matchers = conPrefijo.map((p) => this.matchPattern(p));
+    const coincideAlguno = (key: string) => matchers.some((m) => m(key));
+
+    // Redis solo admite un patrón por búsqueda, así que se busca por lo que
+    // todos tienen en común y se afina aquí. Lo común es siempre el liceo, que
+    // ya deja fuera las claves de los demás.
+    const patronDeBusqueda = `${prefijoComun(conPrefijo)}*`;
+
+    try {
+      if (this.isRedisReady()) {
+        let cursor = '0';
+        const keysToDelete: string[] = [];
+        do {
+          const [nextCursor, results] = await redis.scan(cursor, 'MATCH', patronDeBusqueda, 'COUNT', 1000);
+          cursor = nextCursor;
+          for (const key of results || []) {
+            if (coincideAlguno(key)) keysToDelete.push(key);
+          }
+        } while (cursor !== '0');
+        if (keysToDelete.length > 0) {
+          await redis.del(...keysToDelete);
+        }
+      }
+    } catch { /* noop */ }
+
+    for (const key of Array.from(this.memoryStore.keys())) {
+      if (coincideAlguno(key)) this.memoryStore.delete(key);
     }
   }
 

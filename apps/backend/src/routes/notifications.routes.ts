@@ -9,11 +9,12 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
   getNotificationStats,
+  getInstituteNotificationStats,
   createSystemNotification,
   sendBulkNotifications
 } from '../controllers/notifications.controller';
 import { authenticate, requireAdmin, requireTeacher } from '../middleware/auth.middleware';
-import { validateBody, validateParams, validateCUID } from '../middleware/validation.middleware';
+import { validateBody, validateParams, validateCUID, validateUserId } from '../middleware/validation.middleware';
 
 const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
   // Esquemas para validación
@@ -154,12 +155,11 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [authenticate, requireTeacher]
   }, getAllNotifications);
 
+  // Las cuentas de TODO el liceo. Las de uno mismo están en
+  // `/my-notifications/stats`, que es otra ruta y otra respuesta.
   fastify.get('/stats', {
     preHandler: [authenticate, requireAdmin]
-  }, async (request, reply) => {
-    // Stats globales del sistema
-    return getNotificationStats(request, reply);
-  });
+  }, getInstituteNotificationStats);
 
   fastify.get('/user/:userId', {
     schema: {
@@ -172,7 +172,7 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
       },
       querystring: getNotificationsQuerySchema.querystring
     },
-    preHandler: [authenticate, requireTeacher, validateCUID('userId')]
+    preHandler: [authenticate, requireTeacher, validateUserId('userId')]
   }, getUserNotifications);
 
   fastify.get('/:id', {

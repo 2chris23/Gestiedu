@@ -91,6 +91,10 @@ class AuthService {
       throw AppErrors.InvalidCredentials();
     }
 
+    if ((user as any).status === 'ARCHIVED') {
+      throw AppErrors.UserArchived();
+    }
+
     if (!user.isActive) {
       throw AppErrors.UserInactive();
     }
@@ -319,7 +323,7 @@ class AuthService {
   async getUserSessions(
     userId: string,
     tenantDb: PrismaClient,
-    currentMeta?: { userAgent?: string; ip?: string }
+    currentMeta?: { userAgent?: string; ip?: string; currentTokenId?: string }
   ): Promise<Array<{
     id: string;
     userAgent: string | null;
@@ -342,21 +346,33 @@ class AuthService {
       orderBy: { lastUsedAt: 'desc' },
     });
 
-    // Marcar "esta sesión" por coincidencia de (userAgent + ip) con la request.
-    // Si varias coinciden, la de último uso más reciente.
-    return sessions.map((s, idx) => ({
-      id: s.id,
-      userAgent: s.userAgent,
-      ip: s.ip,
-      createdAt: s.createdAt,
-      lastUsedAt: s.lastUsedAt,
-      rememberMe: s.rememberMe,
-      isCurrent:
-        (currentMeta?.userAgent && currentMeta.userAgent === s.userAgent &&
-         currentMeta?.ip && currentMeta.ip === s.ip)
-          ? idx === 0 // la más reciente de las que coinciden
-          : false,
-    }));
+    // Marcar "esta sesión":
+    // 1) Si conocemos el currentTokenId exacto (del refresh token actual), coincide 100% por ID
+    // 2) Si no, por coincidencia de (userAgent + ip)
+    // 3) Si solo hay 1 sesión o ninguna otra coincide, la más reciente (idx === 0)
+    return sessions.map((s, idx) => {
+      let isCurrent = false;
+      if (currentMeta?.currentTokenId) {
+        isCurrent = s.id === currentMeta.currentTokenId;
+      } else if (
+        currentMeta?.userAgent && currentMeta.userAgent === s.userAgent &&
+        currentMeta?.ip && currentMeta.ip === s.ip
+      ) {
+        isCurrent = idx === 0;
+      } else if (idx === 0) {
+        isCurrent = true;
+      }
+
+      return {
+        id: s.id,
+        userAgent: s.userAgent,
+        ip: s.ip,
+        createdAt: s.createdAt,
+        lastUsedAt: s.lastUsedAt,
+        rememberMe: s.rememberMe,
+        isCurrent,
+      };
+    });
   }
 
   /**
@@ -375,6 +391,50 @@ class AuthService {
     await RedisSession.deleteSession(session.id);
     await RedisSession.removeUserSession(userId, session.id);
     return true;
+  }
+
+  /**
+   * Revoca todas las sesiones activas del usuario EXCEPTO la actual.
+   * Si no se especifica currentSessionId, conserva la más reciente.
+   */
+  async revokeOtherSessions(
+    userId: string,
+    currentSessionId: string | undefined,
+    tenantDb: PrismaClient
+  ): Promise<number> {
+    let keepId = currentSessionId;
+    if (!keepId) {
+      const latest = await tenantDb.refreshToken.findFirst({
+        where: { userId },
+        orderBy: { lastUsedAt: 'desc' },
+        select: { id: true },
+      });
+      keepId = latest?.id;
+    }
+
+    const whereClause: any = { userId };
+    if (keepId) {
+      whereClause.id = { not: keepId };
+    }
+
+    const otherSessions = await tenantDb.refreshToken.findMany({
+      where: whereClause,
+      select: { id: true },
+    });
+
+    if (otherSessions.length === 0) return 0;
+
+    const ids = otherSessions.map(s => s.id);
+    await tenantDb.refreshToken.deleteMany({
+      where: { id: { in: ids } },
+    });
+
+    for (const id of ids) {
+      await RedisSession.deleteSession(id);
+      await RedisSession.removeUserSession(userId, id);
+    }
+
+    return ids.length;
   }
 
   /**

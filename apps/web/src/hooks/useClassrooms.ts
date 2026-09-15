@@ -35,3 +35,14 @@ export function useClassroomBySlug(slug: string, academicYear?: string) {
         enabled: !!slug,
     });
 }
+
+/**
+ * Hook para obtener estadísticas académicas de un aula/sección
+ */
+export function useClassroomStats(idOrSlug: string, periodId?: string) {
+    return useQuery({
+        queryKey: ['classroom', 'stats', idOrSlug, periodId],
+        queryFn: () => classroomService.getClassroomStats(idOrSlug, periodId),
+        enabled: !!idOrSlug,
+    });
+}

@@ -6,6 +6,7 @@ import { RedisCache } from '../config/redis';
 import { CACHE_TTL } from '../utils/constants';
 import { AppErrors } from '../middleware/error.middleware';
 import { RequestUser } from '../types/fastify';
+import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 
 // Helper para obtener el cliente DB del tenant.
 // SEGURIDAD: No hay fallback al platform DB. Si tenantPrisma no está resuelto,
@@ -176,7 +177,12 @@ export async function createActivity(
 
     logger.info('Actividad creada', { activityId: activity.id, teacherId });
 
-    return reply.status(201).send({ activity });
+    return reply.status(201).send({
+      success: true,
+      message: 'Actividad creada exitosamente',
+      data: activity,
+      activity
+    });
   } catch (error) {
     logger.error('Error al crear actividad', { error: error instanceof Error ? error.message : String(error) });
     if (error && typeof error === 'object' && 'statusCode' in error) {
@@ -373,10 +379,23 @@ export async function getActivities(
     }
 
     // Búsqueda por texto
+    //
+    // Va dentro de `AND` y no suelto en `where.OR`, y esto NO es un capricho de
+    // estilo: unas líneas más abajo el filtro por rol también escribe
+    // `where.OR`, y al escribirlo BORRABA el de la búsqueda. Efecto en el liceo:
+    // el profesor (y el estudiante) escribía una palabra en el buscador y la
+    // lista salía exactamente igual, sin filtrar nada. Al administrador sí le
+    // funcionaba, porque su rol no escribe `where.OR`. Lo vigilan ACT-01 y
+    // ACT-02.
     if (search) {
-      where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } }
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { title: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } }
+          ]
+        }
       ];
     }
 
@@ -649,22 +668,16 @@ export async function deleteActivity(
       throw AppErrors.Forbidden('No tienes permisos para eliminar actividades');
     }
 
-    // Verificar si tiene calificaciones asociadas
-    if (existingActivity._count.grades > 0) {
-      return reply.status(400).send({
-        error: 'No se puede eliminar una actividad que tiene calificaciones',
-        code: 'ACTIVITY_HAS_GRADES'
-      });
-    }
+    // Cascada: Limpiar notas asociadas a esta actividad para no dejar datos
+    // huérfanos. Las notas se copian a la papelera primero: borrar una actividad
+    // por error no puede costar las notas de toda la sección.
+    const quien = quienBorra(request as any);
+    await borrarGuardandoCopia(db, 'grade', { activityId: id }, quien);
+    await borrarGuardandoCopia(db, 'activity', { id }, quien);
 
-    // Eliminar la actividad
-    await db.activity.delete({
-      where: { id }
-    });
+    logger.info('Actividad y notas asociadas eliminadas en cascada', { activityId: id, userId });
 
-    logger.info('Actividad eliminada', { activityId: id, userId });
-
-    return reply.status(204).send();
+    return reply.status(200).send({ success: true, message: 'Actividad eliminada exitosamente' });
   } catch (error) {
     logger.error('Error al eliminar actividad', {
       error: error instanceof Error ? error.message : String(error),

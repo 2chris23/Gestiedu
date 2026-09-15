@@ -5,9 +5,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button, Input, Card } from '@/components/ui';
 import { useAuthStore } from '@/store/auth.store';
+import { guardarCredencial } from '@/lib/credencial-en-memoria';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { BookOpen } from 'lucide-react';
+import { BACKEND_URL } from '@/config/env';
 
 const loginSchema = z.object({
     instituteSlug: z.string().min(1, 'Ingresa el slug del instituto'),
@@ -61,6 +64,15 @@ export default function LoginPage() {
     const [error, setError] = useState('');
 
     const [detectedSlug, setDetectedSlug] = useState<string | null>(null);
+    const [instituteData, setInstituteData] = useState<{
+        name: string;
+        logo?: string;
+        favicon?: string;
+        primaryColor?: string;
+        status?: string;
+    } | null>(null);
+    const [instituteNotFound, setInstituteNotFound] = useState(false);
+    const [validatingInstitute, setValidatingInstitute] = useState(false);
 
     useEffect(() => {
         const sub = getSubdomainFromBrowser();
@@ -71,9 +83,76 @@ export default function LoginPage() {
             const slugParam = params.get('slug') || params.get('instituto') || params.get('institute');
             if (slugParam) {
                 setDetectedSlug(slugParam);
+            } else {
+                // Si no hay slug en URL, buscar en cookie si ya inició sesión previamente en un instituto
+                const match = document.cookie.match(/(?:^|;\s*)institute_slug=([^;]+)/);
+                if (match?.[1]) {
+                    setDetectedSlug(decodeURIComponent(match[1]));
+                }
             }
         }
     }, []);
+
+    // Validar instituto contra la base de datos de la plataforma si viene de subdominio o parámetro
+    useEffect(() => {
+        if (!detectedSlug) {
+            setInstituteData(null);
+            setInstituteNotFound(false);
+            return;
+        }
+
+        let isMounted = true;
+        setValidatingInstitute(true);
+        setInstituteNotFound(false);
+
+        fetch(`/api/instituto/${detectedSlug}/info`)
+            .then(async (res) => {
+                if (!isMounted) return;
+                if (res.ok) {
+                    const data = await res.json();
+                    setInstituteData(data);
+                    setInstituteNotFound(false);
+                } else if (res.status === 404) {
+                    setInstituteNotFound(true);
+                    setInstituteData(null);
+                } else {
+                    // Si hubo otro error o el instituto no está activo
+                    const err = await res.json().catch(() => ({}));
+                    setError(err.error || 'Error al validar el instituto');
+                }
+            })
+            .catch(() => {
+                if (isMounted) {
+                    setInstituteNotFound(true);
+                }
+            })
+            .finally(() => {
+                if (isMounted) setValidatingInstitute(false);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [detectedSlug]);
+
+    // Si el instituto tiene favicon, actualizarlo dinámicamente en la pantalla de login
+    useEffect(() => {
+        if (instituteData?.favicon) {
+            const faviconUrl = instituteData.favicon.startsWith('/uploads')
+                ? `${BACKEND_URL}${instituteData.favicon}`
+                : instituteData.favicon;
+            const finalUrl = `${faviconUrl}?v=login`;
+
+            const existingLinks = document.querySelectorAll("link[rel*='icon']");
+            existingLinks.forEach(el => el.remove());
+
+            const iconLink = document.createElement('link');
+            iconLink.rel = 'icon';
+            iconLink.type = faviconUrl.endsWith('.ico') ? 'image/x-icon' : 'image/png';
+            iconLink.href = finalUrl;
+            document.head.appendChild(iconLink);
+        }
+    }, [instituteData?.favicon]);
 
     const hasAutoSlug = !!detectedSlug;
 
@@ -124,20 +203,31 @@ export default function LoginPage() {
             const result = await response.json();
             const { user, tokens } = result;
 
-            // Guardar el slug del instituto como cookie para que axios lo envíe al backend
-            if (result.instituteSlug) {
-                document.cookie = `institute_slug=${result.instituteSlug}; path=/; max-age=${60 * 60 * 24 * 30}`;
-            }
-
-            // Los tokens viven en cookies (los servicios los leen de ahí)
+            /**
+             * LAS LLAVES LAS GUARDA EL SERVIDOR, NO ESTA PANTALLA
+             *
+             * `/api/auth/login` ya devolvió las cookies puestas como toca: la
+             * llave larga (`refresh_token`) marcada `httpOnly`, para que ningún
+             * programa de la página pueda leerla, y todas marcadas `Secure` en
+             * producción, para que no viajen por conexión sin cifrar.
+             *
+             * Aquí se volvían a escribir a mano, y desde el navegador **no se
+             * puede** poner ninguna de esas dos marcas. Al reescribirlas se
+             * perdían:
+             *
+             *     document.cookie = `refresh_token=${refreshToken}; path=/; ...`
+             *
+             * Es decir, se deshacía lo que el servidor había hecho bien. Además
+             * de innecesario: las cookies ya venían puestas en la respuesta.
+             */
             const accessToken = tokens?.accessToken || result.accessToken;
-            const refreshToken = tokens?.refreshToken || result.refreshToken;
-            if (accessToken) {
-                document.cookie = `access_token=${accessToken}; path=/; max-age=${60 * 60 * 24 * 7}`;
-            }
-            if (refreshToken) {
-                document.cookie = `refresh_token=${refreshToken}; path=/; max-age=${60 * 60 * 24 * 7}`;
-            }
+
+            /**
+             * La llave corta se queda **solo en la memoria de esta pestaña**.
+             * No se escribe en ningún sitio del que se pueda copiar. Ver
+             * `lib/credencial-en-memoria.ts`.
+             */
+            guardarCredencial(accessToken);
 
             // Store user data in Zustand for UI
             setAuth(user, accessToken || '', result.keepSession);
@@ -151,27 +241,44 @@ export default function LoginPage() {
         }
     };
 
-    // Formatear el nombre del instituto para mostrar bonito
-    const displayName = detectedSlug
+    // Nombre a mostrar: prioridad al nombre real registrado en base de datos
+    const displayName = instituteData?.name || (detectedSlug
         ? detectedSlug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-        : '';
+        : '');
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
             <div className="sm:mx-auto sm:w-full sm:max-w-md">
-                <div className="flex justify-center text-primary-600">
-                    <BookOpen size={48} />
+                <div className="flex justify-center mb-2">
+                    {instituteData?.logo ? (
+                        <div className="relative flex items-center justify-center p-1">
+                            <Image
+                                src={instituteData.logo.startsWith('/uploads')
+                                    ? `${BACKEND_URL}${instituteData.logo}`
+                                    : instituteData.logo}
+                                alt={displayName || 'Logo del Instituto'}
+                                width={84}
+                                height={84}
+                                className="object-contain max-h-24 w-auto drop-shadow-sm"
+                                unoptimized
+                                priority
+                            />
+                        </div>
+                    ) : (
+                        <div className="flex justify-center text-primary-600">
+                            <BookOpen size={48} />
+                        </div>
+                    )}
                 </div>
                 
                 {hasAutoSlug ? (
                     <>
                         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                            {displayName}
+                            {validatingInstitute ? 'Cargando...' : instituteNotFound ? 'Instituto No Encontrado' : displayName}
                         </h2>
                         <p className="mt-2 text-center text-sm text-gray-600">
-                            Sistema de Gestión Escolar
+                            {instituteNotFound ? 'El subdominio al que intentas acceder no existe en la plataforma' : 'Sistema de Gestión Escolar'}
                         </p>
-
                     </>
                 ) : (
                     <>
@@ -186,6 +293,27 @@ export default function LoginPage() {
             </div>
 
             <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+                {instituteNotFound ? (
+                    <Card className="py-8 px-4 shadow sm:rounded-lg sm:px-10 text-center">
+                        <div className="text-amber-500 mb-3 flex justify-center">
+                            <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">
+                            El instituto «{detectedSlug}» no está registrado
+                        </h3>
+                        <p className="text-sm text-gray-500 mb-6">
+                            Verifica que la dirección URL sea correcta o comunícate con el administrador de tu institución.
+                        </p>
+                        <a
+                            href="http://localhost:3000/login"
+                            className="inline-flex items-center justify-center px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition"
+                        >
+                            Ir al inicio general
+                        </a>
+                    </Card>
+                ) : (
                 <Card className="py-8 px-4 shadow sm:rounded-lg sm:px-10">
                     <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
                         {error && (
@@ -283,6 +411,7 @@ export default function LoginPage() {
                         </div>
                     </form>
                 </Card>
+                )}
                 
                 {/* Footer */}
                 <p className="mt-6 text-center text-xs text-gray-500">

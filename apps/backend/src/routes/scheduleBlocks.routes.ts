@@ -10,6 +10,12 @@ import {
     autoGenerateSchedule,
     getScheduleSummary,
     getTeacherScheduleBlocks,
+    getTeacherClassroomSubjects,
+    bulkUpdateTeacherSchedule,
+    autoFillTeacherSchedule,
+    createPersonalBlock,
+    updatePersonalBlock,
+    deletePersonalBlock,
     getClassSessionsByDate,
 } from '../controllers/scheduleBlocks.controller';
 
@@ -46,6 +52,13 @@ export async function scheduleBlocksRoutes(fastify: FastifyInstance) {
             getTeacherScheduleBlocks as any
         );
 
+        // Materias que el admin le asignó al profesor, con sus bloques semanales
+        authenticatedRoutes.get(
+            '/schedules/teacher/:teacherId/subjects',
+            { onRequest: [requireTeacher] },
+            getTeacherClassroomSubjects as any
+        );
+
         // Rutas solo para administradores
         authenticatedRoutes.register(async (adminRoutes) => {
             adminRoutes.addHook('onRequest', requireAdmin);
@@ -78,6 +91,34 @@ export async function scheduleBlocksRoutes(fastify: FastifyInstance) {
             adminRoutes.post(
                 '/schedules/classroom/:classroomId/auto-generate',
                 autoGenerateSchedule
+            );
+
+            // Guardar el horario editado desde la vista de UN profesor.
+            // Mueve los mismos ScheduleBlock que ve la sección (fuente única).
+            adminRoutes.post(
+                '/schedules/teacher/:teacherId/bulk',
+                bulkUpdateTeacherSchedule as any
+            );
+
+            // Colocar al azar los bloques pendientes del profesor
+            adminRoutes.post(
+                '/schedules/teacher/:teacherId/auto-fill',
+                autoFillTeacherSchedule as any
+            );
+
+            // Horas personales del profesor (planificación, guardia…).
+            // Solo el admin las crea y edita.
+            adminRoutes.post(
+                '/schedules/teacher/:teacherId/personal-blocks',
+                createPersonalBlock as any
+            );
+            adminRoutes.put(
+                '/schedules/personal-blocks/:id',
+                updatePersonalBlock as any
+            );
+            adminRoutes.delete(
+                '/schedules/personal-blocks/:id',
+                deletePersonalBlock as any
             );
         });
     });

@@ -115,10 +115,22 @@ export async function sendBulkNotifications(request: FastifyRequest, reply: Fast
     const data = request.body as any;
     const senderId = request.user?.userId;
 
+    // La ruta publica el campo como `recipients` y el servicio lo esperaba como
+    // `recipientIds`: llegaba vacío y la petición reventaba con un 500. Se aceptan
+    // los dos nombres y se avisa claro si no viene ninguno.
+    const destinatarios: string[] = data?.recipients ?? data?.recipientIds ?? [];
+    if (!Array.isArray(destinatarios) || destinatarios.length === 0) {
+      return reply.status(400).send({
+        error: 'Hace falta al menos un destinatario',
+        code: 'SIN_DESTINATARIOS',
+      });
+    }
+
     const result = await notificationsService.sendBulkNotifications(
       request.tenantPrisma,
       {
         ...data,
+        recipientIds: destinatarios,
         senderId
       }
     );
@@ -224,6 +236,21 @@ export async function markAllNotificationsAsRead(request: FastifyRequest, reply:
   } catch (error) {
     throw error;
   }
+}
+
+/**
+ * Las cuentas de TODO el liceo. Solo el admin.
+ *
+ * Antes esta ruta devolvía las del propio admin aunque su comentario dijera
+ * "globales del sistema". Ver `notificationsService.getInstituteStats`.
+ */
+export async function getInstituteNotificationStats(request: FastifyRequest, reply: FastifyReply) {
+  const stats = await notificationsService.getInstituteStats(request.tenantPrisma);
+  return reply.status(200).send({
+    success: true,
+    message: SUCCESS_MESSAGES.FETCH_SUCCESS,
+    data: stats,
+  });
 }
 
 export async function getNotificationStats(request: FastifyRequest, reply: FastifyReply) {

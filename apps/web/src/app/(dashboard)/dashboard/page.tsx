@@ -145,7 +145,7 @@ export default function DashboardPage() {
                     value: adminData.stats.studentsAtRisk,
                     icon: AlertTriangle,
                     color: 'red' as const,
-                    subtitle: 'Promedio < 10',
+                    subtitle: 'Materias < 10',
                     isLoading: isLoadingAdmin,
                 },
                 {

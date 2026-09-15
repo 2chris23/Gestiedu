@@ -7,7 +7,7 @@ import { studentsService } from '@/services/students.service';
  */
 export function useStudents(
     sectionId: string,
-    options?: { page?: number; limit?: number; search?: string; periodId?: string }
+    options?: { page?: number; limit?: number; search?: string; periodId?: string; subjectId?: string }
 ) {
     return useQuery({
         queryKey: ['students', sectionId, options],

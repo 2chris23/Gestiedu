@@ -4,9 +4,13 @@ import * as crypto from 'crypto';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { CreateUserInput, UpdateUserInput, UserFiltersInput, PaginationInput } from '../utils/validators';
 import { logger } from '../utils/logger';
+import { teacherClassroomIds } from '../services/authorization.service';
 import { createAuditLogger } from '../services/audit.service'; // ✅ SECURITY: Audit logging
 import { gradesService } from '../services/grades.service'; // promedio ponderado unificado (Fase 2.5)
 import { studentsWithNoteInSubject } from '../services/aggregation.service'; // filtro por lapso (Fase 3.5)
+import { getAcademicConfig } from '../services/promotion/close-cycle.service';
+import { studentsService } from '../services/students.service';
+import { bulkSubjectAverages } from '../services/bulk-averages.service';
 
 interface CreateStudentRequest {
   Body: CreateUserInput;
@@ -22,7 +26,7 @@ interface GetStudentRequest {
 }
 
 interface GetStudentsRequest {
-  Querystring: UserFiltersInput & PaginationInput & { periodId?: string };
+  Querystring: UserFiltersInput & PaginationInput & { periodId?: string; subjectId?: string };
 }
 
 interface DeleteStudentRequest {
@@ -36,98 +40,47 @@ export async function createStudent(
   request: FastifyRequest<CreateStudentRequest>,
   reply: FastifyReply
 ) {
-  try {
-    const studentData = { ...request.body, role: UserRole.STUDENT } as any;
+  const studentData = { ...request.body } as any;
 
-    // Fix for Date format mismatch (Schema 'date' vs Prisma DateTime)
-    if (studentData.birthDate && !studentData.birthDate.includes('T')) {
-      studentData.birthDate = new Date(studentData.birthDate).toISOString();
-    }
-
-    // Verificar si el estudiante ya existe
-    let existingStudent = null;
-    if (studentData.id) {
-      existingStudent = await request.tenantPrisma.user.findUnique({
-        where: { id: studentData.id },
-      });
-    }
-
-    if (!existingStudent && studentData.email) {
-      existingStudent = await request.tenantPrisma.user.findUnique({
-        where: { email: studentData.email }
-      });
-    }
-
-    if (existingStudent) {
-      return reply.status(409).send({
-        error: 'El estudiante ya existe',
-        code: 'STUDENT_EXISTS',
-      });
-    }
-
-    // Verificar si el aula existe (si se proporciona)
-    const classroomId = (request.body as any)?.classroomId as string | undefined;
-    if (classroomId) {
-      const classroom = await request.tenantPrisma.classroom.findUnique({
-        where: { id: classroomId },
-      });
-
-      if (!classroom) {
-        return reply.status(404).send({
-          error: 'Aula no encontrada',
-          code: 'CLASSROOM_NOT_FOUND',
-        });
-      }
-    }
-
-    // Crear el estudiante
-    const student = await request.tenantPrisma.user.create({
-      data: {
-        id: studentData.id || crypto.randomUUID(),
-        ...(studentData as any),
-
-      },
-      include: {
-        classroom: true,
-        institute: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
-    });
-
-    // Registrar el evento de creación
-    await request.tenantPrisma.auditLog.create({
-      data: {
-        action: ActionType.CREATE,
-        entity: 'STUDENT',
-        entityType: 'STUDENT',
-        entityId: student.id,
-        metadata: {
-          ip: request.ip,
-          userAgent: request.headers['user-agent'],
-        },
-        userId: (request.user as any)?.id,
-      },
-    });
-
-    logger.info('Nuevo estudiante creado', { studentId: student.id });
-
-    return reply.status(201).send({
-      student: {
-        ...student,
-        password: undefined, // No devolver la contraseña
-      },
-    });
-  } catch (error) {
-    logger.error('Error al crear estudiante', { error });
-    return reply.status(500).send({
-      error: 'Error en el servidor',
-      code: 'INTERNAL_SERVER_ERROR',
-    });
+  // El schema JSON declara `birthDate` como 'date' (YYYY-MM-DD) y Prisma espera
+  // DateTime. El service no normaliza fechas, así que se hace aquí, que es donde
+  // vive el formato de transporte.
+  if (studentData.birthDate && !String(studentData.birthDate).includes('T')) {
+    studentData.birthDate = new Date(studentData.birthDate).toISOString();
   }
+
+  // `User.id` es la cédula y NO tiene default en Prisma: si el admin no la manda
+  // hay que generar algo. Se conserva el comportamiento anterior del controller.
+  if (!studentData.id) {
+    studentData.id = crypto.randomUUID();
+  }
+
+  // La lógica de negocio (duplicados, capacidad del aula y la matrícula real en
+  // StudentClassroom) vive SOLO en el service. Los errores de dominio suben al
+  // handler central, que ya mapea NotFoundError → 404 y ConflictError → 409.
+  const student = await studentsService.createStudent(request.tenantPrisma, studentData);
+
+  await request.tenantPrisma.auditLog.create({
+    data: {
+      action: ActionType.CREATE,
+      entity: 'STUDENT',
+      entityType: 'STUDENT',
+      entityId: student.id,
+      metadata: {
+        ip: request.ip,
+        userAgent: request.headers['user-agent'],
+      },
+      userId: (request.user as any)?.id,
+    },
+  });
+
+  logger.info('Nuevo estudiante creado', { studentId: student.id });
+
+  return reply.status(201).send({
+    success: true,
+    message: 'Estudiante creado exitosamente',
+    data: { ...student, password: undefined },
+  });
 }
 
 /**
@@ -165,11 +118,24 @@ export async function getStudents(
       ];
     }
 
+    // Un profesor solo ve a los estudiantes de SUS secciones (las que imparte o
+    // de las que es guía). Antes veía a los de cualquier sección del liceo.
+    const actor: any = request.user;
+    if (actor?.role === 'TEACHER') {
+      const suyas = await teacherClassroomIds(request.tenantPrisma, actor.userId ?? actor.id);
+      if (classroomId && !suyas.includes(classroomId)) {
+        return reply.status(403).send({
+          error: 'Solo puedes ver a los estudiantes de tus secciones',
+          code: 'FORBIDDEN',
+        });
+      }
+      if (!classroomId) {
+        where.studentClassrooms = { some: { classroomId: { in: suyas }, isActive: true } };
+      }
+    }
+
     if (classroomId) {
-      where.OR = [
-        { classroomId },
-        { studentClassrooms: { some: { classroomId, isActive: true } } }
-      ];
+      where.studentClassrooms = { some: { classroomId, isActive: true } };
     }
 
     // OPTIMIZACIÓN: Obtener solo los campos necesarios sin includes pesados
@@ -186,13 +152,18 @@ export async function getStudents(
           avatar: true,
           studentCode: true,
           isActive: true,
-          classroomId: true,
-          classroom: {
+          studentClassrooms: {
+            where: { isActive: true },
+            take: 1,
             select: {
-              id: true,
-              name: true,
-              grade: true,
-              section: true,
+              classroom: {
+                select: {
+                  id: true,
+                  name: true,
+                  grade: true,
+                  section: true,
+                },
+              },
             },
           },
         },
@@ -203,9 +174,6 @@ export async function getStudents(
       }),
       request.tenantPrisma.user.count({ where }),
     ]);
-
-    // DEBUG: Log de resultados
-    console.log('📊 getStudents results:', { total, studentsFound: students.length, where: JSON.stringify(where) });
 
     // OPTIMIZACIÓN: Calcular estadísticas con query agregada en lugar de traer todos los datos
     const studentIds = students.map(s => s.id);
@@ -250,11 +218,34 @@ export async function getStudents(
     // por aula (~20-30 estudiantes) hace viable el cálculo por materia.
     // ============================================================
     const subjectIdsByStudent = new Map<string, Set<string>>();
+
+    /**
+     * Los lapsos del ciclo de esta sección, para no mirar toda la vida escolar.
+     *
+     * Sin este filtro, la consulta de abajo recorre TODAS las notas que esos
+     * alumnos han tenido nunca. Un liceo acumula años: en quinto año son cinco
+     * veces más filas para responder lo mismo, y cada septiembre empeora.
+     *
+     * Los años anteriores siguen enteros en la base; lo que cambia es qué se
+     * mira para pintar esta lista.
+     */
+    let lapsosDelCiclo: string[] = [];
+    if (classroomId) {
+      const seccion = await request.tenantPrisma.classroom.findUnique({
+        where: { id: classroomId },
+        select: { academicYear: { select: { periods: { select: { id: true } } } } },
+      });
+      lapsosDelCiclo = (seccion?.academicYear?.periods ?? []).map((p) => p.id);
+    }
+
     if (studentIds.length > 0) {
       // Materias con grades por estudiante
       const gradeSubjects = await request.tenantPrisma.grade.groupBy({
         by: ['studentId', 'subjectId'],
-        where: { studentId: { in: studentIds } },
+        where: {
+          studentId: { in: studentIds },
+          ...(lapsosDelCiclo.length > 0 ? { periodId: { in: lapsosDelCiclo } } : {}),
+        },
       });
       gradeSubjects.forEach(g => {
         if (!subjectIdsByStudent.has(g.studentId)) subjectIdsByStudent.set(g.studentId, new Set());
@@ -278,38 +269,146 @@ export async function getStudents(
       });
     }
 
+    // PROMEDIO — si se especifica subjectId, calcular promedio ponderado del estudiante en esa materia;
+    // de lo contrario, calcular promedio general sobre todas sus materias.
     const averages = new Map<string, number>();
-    for (const sid of studentIds) {
-      const subjects = subjectIdsByStudent.get(sid);
-      if (!subjects || subjects.size === 0) {
-        averages.set(sid, 0);
-        continue;
+
+    let targetSubjectId = request.query?.subjectId;
+    if (targetSubjectId) {
+      const isCuid = /^c[a-z0-9]{24}$/.test(targetSubjectId);
+      if (!isCuid) {
+        const foundSub = await request.tenantPrisma.subject.findFirst({
+          where: { OR: [{ id: targetSubjectId }, { slug: targetSubjectId }, { code: targetSubjectId }] },
+          select: { id: true },
+        });
+        if (foundSub) {
+          targetSubjectId = foundSub.id;
+        }
       }
-      const perSubject: number[] = [];
-      for (const subjectId of subjects) {
-        const avg = await gradesService.calculateWeightedSubjectAverage(
-          request.tenantPrisma as any,
+    }
+
+    const studentFailedSubjectsMap = new Map<string, Array<{ subjectId: string; average: number }>>();
+
+    // Nota mínima aprobatoria del instituto (10 solo como valor por defecto)
+    let minPassing = 10;
+    try {
+      const instId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
+      if (instId) {
+        const config = await getAcademicConfig(instId);
+        minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
+      }
+    } catch {
+      minPassing = 10;
+    }
+
+    if (targetSubjectId) {
+      // En bloque: 4 consultas para toda la sección en vez de ~20 por estudiante
+      const bulk = classroomId
+        ? await bulkSubjectAverages(request.tenantPrisma, {
+            classroomId,
+            studentIds,
+            subjectIds: [targetSubjectId],
+            periodId: request.query?.periodId,
+          })
+        : null;
+
+      await Promise.all(
+        studentIds.map(async (sid) => {
+          try {
+            const stuAvg = bulk
+              ? bulk.get(sid)?.get(targetSubjectId!) ?? 0
+              : await gradesService.calculateWeightedSubjectAverage(
+                  request.tenantPrisma,
+                  sid,
+                  targetSubjectId!,
+                  request.query?.periodId
+                );
+            const roundedAvg = stuAvg > 0 ? Math.round(stuAvg * 10) / 10 : 0;
+            averages.set(sid, roundedAvg);
+            if (roundedAvg > 0 && roundedAvg < minPassing) {
+              studentFailedSubjectsMap.set(sid, [{ subjectId: targetSubjectId!, average: roundedAvg }]);
+            }
+          } catch {
+            averages.set(sid, 0);
+          }
+        })
+      );
+    } else {
+      // Promedio general = promedio de sus materias, con las MISMAS reglas que
+      // la vista por materia. Antes esta rama miraba solo la tabla `grades`, así
+      // que una nota puesta en Clase en Vivo no contaba y salía "Sin calificar".
+      const todasLasMaterias = Array.from(
+        new Set(Array.from(subjectIdsByStudent.values()).flatMap(set => Array.from(set)))
+      );
+
+      const bulk = classroomId && todasLasMaterias.length > 0
+        ? await bulkSubjectAverages(request.tenantPrisma, {
+            classroomId,
+            studentIds,
+            subjectIds: todasLasMaterias,
+            periodId: request.query?.periodId,
+          })
+        : null;
+
+      studentIds.forEach(sid => {
+        const materias = Array.from(subjectIdsByStudent.get(sid) ?? []);
+        const notas: number[] = [];
+
+        materias.forEach(subjectId => {
+          const nota = bulk?.get(sid)?.get(subjectId) ?? 0;
+          if (nota > 0) {
+            notas.push(nota);
+            if (nota < minPassing) {
+              if (!studentFailedSubjectsMap.has(sid)) studentFailedSubjectsMap.set(sid, []);
+              studentFailedSubjectsMap.get(sid)!.push({ subjectId, average: Math.round(nota * 10) / 10 });
+            }
+          }
+        });
+
+        averages.set(
           sid,
-          subjectId,
-          request.query?.periodId || undefined // Filtro por lapso/momento
+          notas.length > 0 ? Math.round((notas.reduce((a, b) => a + b, 0) / notas.length) * 10) / 10 : 0
         );
-        perSubject.push(avg);
-      }
-      // Promedio del estudiante = promedio simple de sus promedios por materia
-      const avg = perSubject.length > 0
-        ? perSubject.reduce((a, b) => a + b, 0) / perSubject.length
-        : 0;
-      averages.set(sid, Math.round(avg * 10) / 10);
+      });
     }
 
     const attendanceMap = new Map(
       attendanceStats.map(s => [s.studentId, Math.round(Number(s.attendancePercentage || 0))])
     );
 
+    // Filtro de fecha para observaciones si se pasó periodId
+    let obsPeriodFilter: any = {};
+    if (request.query?.periodId) {
+      const period = await request.tenantPrisma.period.findUnique({
+        where: { id: request.query.periodId },
+        select: { startDate: true, endDate: true },
+      });
+      if (period) {
+        obsPeriodFilter = { date: { gte: period.startDate, lte: period.endDate } };
+      }
+    }
+
+    // Contar observaciones registradas por estudiante (filtradas por materia y lapso si aplica)
+    const observationsStats = studentIds.length > 0
+      ? await request.tenantPrisma.observation.groupBy({
+          by: ['studentId'],
+          where: {
+            studentId: { in: studentIds },
+            ...(targetSubjectId ? { subjectId: targetSubjectId } : {}),
+            ...(obsPeriodFilter.date ? obsPeriodFilter : {}),
+          },
+          _count: { id: true },
+        })
+      : [];
+    const observationsMap = new Map(observationsStats.map(o => [o.studentId, o._count.id]));
+
     // Combinar datos de estudiantes con estadísticas
-    const studentsWithStats = students.map(student => {
+    const studentsWithStats = students.map((student: any) => {
       const average = averages.get(student.id) || 0;
       const attendancePercentage = attendanceMap.get(student.id) || 0;
+      const observationsCount = observationsMap.get(student.id) || 0;
+      const activeClassroom = student.studentClassrooms?.[0]?.classroom || null;
+      const failedSubjects = studentFailedSubjectsMap.get(student.id) || [];
 
       return {
         id: student.id,
@@ -319,9 +418,12 @@ export async function getStudents(
         avatar: student.avatar,
         studentCode: student.studentCode,
         isActive: student.isActive,
-        classroom: student.classroom,
+        classroom: activeClassroom,
         average,
+        failedSubjectsCount: failedSubjects.length,
+        failedSubjects,
         attendancePercentage,
+        observationsCount,
       };
     });
 
@@ -355,76 +457,17 @@ export async function getStudent(
   request: FastifyRequest<GetStudentRequest>,
   reply: FastifyReply
 ) {
-  try {
-    const { id } = request.params;
+  const { id } = request.params;
 
-    const student = await request.tenantPrisma.user.findUnique({
-      where: {
-        id,
-      },
-      include: {
-        classroom: {
-          include: {
-            teacher: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            },
-          },
-        },
-        institute: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        grades: {
-          include: {
-            subject: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            teacher: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-              },
-            },
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-        },
-        // Para simplificar, omitimos asistencia aquí; puede incluirse luego si es necesario
-      },
-    });
+  // Este handler tenía el MISMO problema que create/update: pedía
+  // `include: { classroom, institute }`, relaciones que la migración eliminó de
+  // `User`. `studentsService.getStudentById` ya trae las relaciones vigentes
+  // (studentClassrooms → classroom → teacher) y lanza NotFoundError → 404.
+  const student = await studentsService.getStudentById(request.tenantPrisma, id);
 
-    if (!student || student.role !== UserRole.STUDENT) {
-      return reply.status(404).send({
-        error: 'Estudiante no encontrado',
-        code: 'STUDENT_NOT_FOUND',
-      });
-    }
-
-    return reply.status(200).send({
-      student: {
-        ...student,
-        password: undefined, // No devolver la contraseña
-      },
-    });
-  } catch (error) {
-    logger.error('Error al obtener estudiante', { error, studentId: request.params.id });
-    return reply.status(500).send({
-      error: 'Error en el servidor',
-      code: 'INTERNAL_SERVER_ERROR',
-    });
-  }
+  return reply.status(200).send({
+    student: { ...student, password: undefined },
+  });
 }
 
 /**
@@ -434,84 +477,39 @@ export async function updateStudent(
   request: FastifyRequest<UpdateStudentRequest>,
   reply: FastifyReply
 ) {
-  try {
-    const { id } = request.params;
-    const updateData = request.body;
+  const { id } = request.params;
+  const updateData = { ...request.body } as any;
 
-    // Verificar que el estudiante existe
-    const existingStudent = await request.tenantPrisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!existingStudent || existingStudent.role !== UserRole.STUDENT) {
-      return reply.status(404).send({
-        error: 'Estudiante no encontrado',
-        code: 'STUDENT_NOT_FOUND',
-      });
-    }
-
-    // Verificar si el aula existe (si se proporciona)
-    const classroomId = (updateData as any)?.classroomId as string | undefined;
-    if (classroomId) {
-      const classroom = await request.tenantPrisma.classroom.findUnique({
-        where: { id: classroomId },
-      });
-
-      if (!classroom) {
-        return reply.status(404).send({
-          error: 'Aula no encontrada',
-          code: 'CLASSROOM_NOT_FOUND',
-        });
-      }
-    }
-
-    // Actualizar el estudiante
-    const student = await request.tenantPrisma.user.update({
-      where: { id },
-      data: {
-        ...(updateData as any),
-      },
-      include: {
-        classroom: true,
-        institute: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
-    });
-
-    // Registrar el evento de actualización
-    await request.tenantPrisma.auditLog.create({
-      data: {
-        action: ActionType.UPDATE,
-        entity: 'STUDENT',
-        entityType: 'STUDENT',
-        entityId: student.id,
-        metadata: {
-          ip: request.ip,
-          userAgent: request.headers['user-agent'],
-        },
-        userId: (request.user as any)?.id,
-      },
-    });
-
-    logger.info('Estudiante actualizado', { studentId: student.id });
-
-    return reply.status(200).send({
-      student: {
-        ...student,
-        password: undefined, // No devolver la contraseña
-      },
-    });
-  } catch (error) {
-    logger.error('Error al actualizar estudiante', { error, studentId: request.params.id });
-    return reply.status(500).send({
-      error: 'Error en el servidor',
-      code: 'INTERNAL_SERVER_ERROR',
-    });
+  if (updateData.birthDate && !String(updateData.birthDate).includes('T')) {
+    updateData.birthDate = new Date(updateData.birthDate).toISOString();
   }
+
+  // Igual que en `createStudent`: el service es el dueño de la lógica. Su
+  // `updateStudent` hace el upsert del StudentClassroom del año académico
+  // correspondiente, que es lo que el controller hacía mal contra el modelo viejo.
+  const student = await studentsService.updateStudent(request.tenantPrisma, id, updateData);
+
+  await request.tenantPrisma.auditLog.create({
+    data: {
+      action: ActionType.UPDATE,
+      entity: 'STUDENT',
+      entityType: 'STUDENT',
+      entityId: student.id,
+      metadata: {
+        ip: request.ip,
+        userAgent: request.headers['user-agent'],
+      },
+      userId: (request.user as any)?.id,
+    },
+  });
+
+  logger.info('Estudiante actualizado', { studentId: student.id });
+
+  return reply.status(200).send({
+    success: true,
+    message: 'Estudiante actualizado exitosamente',
+    data: { ...student, password: undefined },
+  });
 }
 
 /**
@@ -643,48 +641,49 @@ export async function getDashboardStats(
     const { id } = request.params;
     const prisma = request.tenantPrisma;
 
-    // Ejecutar consultas en paralelo para optimizar
-    const [student, totalObservations] = await Promise.all([
-      prisma.user.findUnique({
-        where: { id, role: UserRole.STUDENT },
-        include: {
-          classroom: {
-            include: {
-              teacher: {
-                select: { firstName: true, lastName: true }
+    // Consultar datos base del estudiante
+    const student = await prisma.user.findUnique({
+      where: { id, role: UserRole.STUDENT },
+      include: {
+        studentClassrooms: {
+          where: { isActive: true },
+          orderBy: [
+            { academicYear: { startDate: 'desc' } },
+            { createdAt: 'desc' }
+          ],
+          include: {
+            classroom: {
+              include: {
+                teacher: {
+                  select: { firstName: true, lastName: true }
+                },
+                academicYear: {
+                  select: { id: true, name: true, status: true, startDate: true, endDate: true }
+                }
               }
-            }
-          },
-          enrollments: {
-            where: { status: 'ACTIVE' }, // Solo materias activas para promedio actual
-            include: {
-              subject: { select: { id: true, name: true, color: true } }
-            }
-          },
-          attendance: true,
-          // @ts-ignore - Propiedad recién agregada al schema
-          academicHistory: {
-            include: {
-              academicYear: { select: { name: true } }
             },
-            orderBy: { createdAt: 'desc' }
+            academicYear: {
+              select: { id: true, name: true, status: true, startDate: true, endDate: true }
+            }
+          }
+        },
+        // @ts-ignore - Propiedad recién agregada al schema
+        academicHistory: {
+          include: {
+            academicYear: { select: { name: true } }
           },
-          observations: {
-            orderBy: { date: 'desc' },
-            take: 3
-          },
-          // Fetch all grades for the student to calculate averages on the fly
-          grades: {
-            include: {
-              subject: {
-                select: { id: true, name: true, color: true }
-              }
+          orderBy: { createdAt: 'desc' }
+        },
+        // Fetch all grades for the student to calculate averages on the fly
+        grades: {
+          include: {
+            subject: {
+              select: { id: true, name: true, color: true }
             }
           }
         }
-      }),
-      prisma.observation.count({ where: { studentId: id } })
-    ]);
+      }
+    });
 
     if (!student) {
       return reply.status(404).send({
@@ -693,15 +692,18 @@ export async function getDashboardStats(
       });
     }
 
+    const enrollments = (student as any).studentClassrooms || [];
+    const requestedYearId = (request.query as any)?.academicYearId;
+    const selectedEnrollment = requestedYearId
+      ? enrollments.find((e: any) => e.academicYearId === requestedYearId || e.classroom?.academicYear?.id === requestedYearId) || enrollments[0]
+      : enrollments[0];
+
+    const activeClassroom = selectedEnrollment?.classroom || null;
+
     // --- KPIs: Promedio Global y Materias (JERARQUÍA — Nivel 2 por materia) ---
-    // Las materias mostradas = las asignadas a la sección del estudiante +
-    // las que tengan cualquier nota (grades table ∪ ClassActivity.scores — las
-    // notas de Clase en Vivo cuentan). El promedio de cada materia es el Nivel 2
-    // ponderado por criterios. Antes: media simple de grades y solo materias
-    // con filas en la tabla grades (por eso "Sin materias inscritas" y 0).
-    const classroomSubjects = student.classroom?.id
+    const classroomSubjects = activeClassroom?.id
         ? await prisma.classroomSubject.findMany({
-            where: { classroomId: student.classroom.id },
+            where: { classroomId: activeClassroom.id },
             include: { subject: { select: { id: true, name: true, color: true } } },
         })
         : [];
@@ -713,9 +715,9 @@ export async function getDashboardStats(
         (student.grades || []).forEach((g: any) => {
             if (typeof g.score === 'number' && !Number.isNaN(g.score)) subjectIdsWithNote.add(g.subjectId);
         });
-        if (student.classroom?.id) {
+        if (activeClassroom?.id) {
             const classActs = await prisma.classActivity.findMany({
-                where: { classroomId: student.classroom.id, scores: { not: undefined } },
+                where: { classroomId: activeClassroom.id, scores: { not: undefined } },
                 select: { subjectId: true, scores: true },
             });
             classActs.forEach((ca: any) => {
@@ -735,6 +737,17 @@ export async function getDashboardStats(
     const subjectAverages: { [subjectId: string]: { id: string; average: number; name: string; color: string; } } = {};
     const subjectGrades: { [subjectId: string]: number[] } = {};
     let totalAverageSum = 0;
+    let minPassing = 10;
+    try {
+      const instId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
+      if (instId) {
+        const config = await getAcademicConfig(instId);
+        minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
+      }
+    } catch {
+      minPassing = 10;
+    }
+
     let failedSubjects = 0;
     let activeSubjectsWithGrades = 0;
 
@@ -744,7 +757,7 @@ export async function getDashboardStats(
         const name = s?.name || 'N/A';
         const color = s?.color || '#666';
         const hasNote = periodId
-            ? (await studentsWithNoteInSubject(prisma as any, student.classroom!.id, subjectId, periodId)).has(id)
+            ? (activeClassroom ? (await studentsWithNoteInSubject(prisma as any, activeClassroom.id, subjectId, periodId)).has(id) : false)
             : subjectIdsWithNote.has(subjectId);
         const average = hasNote
             ? parseFloat((await gradesService.calculateWeightedSubjectAverage(prisma as any, id, subjectId, periodId)).toFixed(1))
@@ -755,7 +768,7 @@ export async function getDashboardStats(
             subjectGrades[subjectId] = [average];
             totalAverageSum += average;
             activeSubjectsWithGrades++;
-            if (average < 10) { // Nota mínima aprobatoria 10/20
+            if (average < minPassing) { // Nota mínima aprobatoria configurable
                 failedSubjects++;
             }
         }
@@ -766,17 +779,131 @@ export async function getDashboardStats(
         globalAverage = parseFloat((totalAverageSum / activeSubjectsWithGrades).toFixed(1));
     }
 
-    // --- KPIs: Asistencia ---
-    let attendancePercentage = 0;
-    // GUARD: Verificar que attendance existe y es un array
-    const totalDays = student.attendance?.length || 0;
+    // Identificar el año académico y fechas del ciclo seleccionado
+    const targetAcademicYearId = selectedEnrollment?.academicYearId || activeClassroom?.academicYearId || requestedYearId;
+    const academicYearStartDate = selectedEnrollment?.academicYear?.startDate || activeClassroom?.academicYear?.startDate;
+    const academicYearEndDate = selectedEnrollment?.academicYear?.endDate || activeClassroom?.academicYear?.endDate;
 
-    if (totalDays > 0 && Array.isArray(student.attendance)) {
-      const positiveAttendance = student.attendance.filter(
-        a => a?.status === 'PRESENT' || a?.status === 'LATE'
+    // --- KPIs: Asistencia (filtrada por aula / ciclo escolar y lapso) ---
+    const attendanceFilter: any = { studentId: id };
+    if (activeClassroom?.id) {
+      attendanceFilter.classroomId = activeClassroom.id;
+    } else if (academicYearStartDate && academicYearEndDate) {
+      attendanceFilter.date = {
+        gte: academicYearStartDate,
+        lte: academicYearEndDate
+      };
+    }
+
+    if (periodId) {
+      const period = await prisma.period.findUnique({
+        where: { id: periodId },
+        select: { startDate: true, endDate: true }
+      });
+      if (period?.startDate && period?.endDate) {
+        attendanceFilter.date = {
+          gte: period.startDate,
+          lte: period.endDate
+        };
+      }
+    }
+
+    const cycleAttendance = await prisma.dailyAttendance.findMany({
+      where: attendanceFilter,
+      select: { status: true }
+    });
+
+    let attendancePercentage = 0;
+    const totalDays = cycleAttendance.length;
+    if (totalDays > 0) {
+      const positiveAttendance = cycleAttendance.filter(
+        (a: any) => a.status === 'PRESENT' || a.status === 'LATE'
       ).length;
       attendancePercentage = Math.round((positiveAttendance / totalDays) * 100);
     }
+
+    // --- Observaciones Filtradas Estrictamente por Ciclo Escolar y Lapso ---
+    const obsFilter: any = {
+      studentId: id,
+    };
+
+    if (activeClassroom?.id && targetAcademicYearId) {
+      obsFilter.OR = [
+        { classroomId: activeClassroom.id },
+        { classroom: { academicYearId: targetAcademicYearId } },
+        { classSession: { classroomId: activeClassroom.id } },
+        { classSession: { classroom: { academicYearId: targetAcademicYearId } } }
+      ];
+      if (academicYearStartDate && academicYearEndDate) {
+        obsFilter.OR.push({
+          classroomId: null,
+          classSessionId: null,
+          date: {
+            gte: academicYearStartDate,
+            lte: academicYearEndDate
+          }
+        });
+      }
+    } else if (activeClassroom?.id) {
+      obsFilter.OR = [
+        { classroomId: activeClassroom.id },
+        { classSession: { classroomId: activeClassroom.id } }
+      ];
+    } else if (targetAcademicYearId) {
+      obsFilter.OR = [
+        { classroom: { academicYearId: targetAcademicYearId } },
+        { classSession: { classroom: { academicYearId: targetAcademicYearId } } }
+      ];
+      if (academicYearStartDate && academicYearEndDate) {
+        obsFilter.OR.push({
+          classroomId: null,
+          classSessionId: null,
+          date: {
+            gte: academicYearStartDate,
+            lte: academicYearEndDate
+          }
+        });
+      }
+    }
+
+    if (periodId) {
+      const period = await prisma.period.findUnique({
+        where: { id: periodId },
+        select: { startDate: true, endDate: true }
+      });
+      if (period?.startDate && period?.endDate) {
+        obsFilter.date = {
+          gte: period.startDate,
+          lte: period.endDate
+        };
+      }
+    }
+
+    const [cycleObservations, totalObservations] = await Promise.all([
+      prisma.observation.findMany({
+        where: obsFilter,
+        include: {
+          createdBy: {
+            select: { firstName: true, lastName: true }
+          },
+          subject: {
+            select: { id: true, name: true, color: true }
+          },
+          classroom: {
+            select: { id: true, name: true }
+          },
+          classSession: {
+            include: {
+              classroom: { select: { id: true, name: true } },
+              subject: { select: { id: true, name: true, color: true } }
+            }
+          }
+        },
+        orderBy: { date: 'desc' },
+        take: 50
+      }),
+      prisma.observation.count({ where: obsFilter })
+    ]);
 
     // --- Construir Respuesta JSON conforme al requerimiento ---
     const response = {
@@ -785,14 +912,30 @@ export async function getDashboardStats(
         fullName: `${student.firstName} ${student.lastName}`,
         avatar: student.avatar || null,
         // Compatibilidad hacia atrás y nuevo formato
-        section: student.classroom ? `${student.classroom.grade}to Año "${student.classroom.section}"` : "Sin Aula",
-        currentSection: student.classroom ? {
-          id: student.classroom.id,
-          name: `${student.classroom.grade}to Año "${student.classroom.section}"`,
-          guideTeacher: student.classroom.teacher
-            ? `${student.classroom.teacher.firstName} ${student.classroom.teacher.lastName}`
+        section: activeClassroom ? activeClassroom.name : "Sin Aula",
+        currentSection: activeClassroom ? {
+          id: activeClassroom.id,
+          name: activeClassroom.name,
+          academicYearId: selectedEnrollment?.academicYear?.id || activeClassroom.academicYear?.id || null,
+          academicYearName: selectedEnrollment?.academicYear?.name || activeClassroom.academicYear?.name || null,
+          academicYearStatus: selectedEnrollment?.academicYear?.status || activeClassroom.academicYear?.status || null,
+          guideTeacher: activeClassroom.teacher
+            ? `${activeClassroom.teacher.firstName} ${activeClassroom.teacher.lastName}`
             : null
-        } : null
+        } : null,
+        enrollments: enrollments.map((sc: any) => ({
+          id: sc.id,
+          classroomId: sc.classroomId,
+          classroomName: sc.classroom?.name,
+          grade: sc.classroom?.grade,
+          section: sc.classroom?.section,
+          academicYearId: sc.academicYearId,
+          academicYearName: sc.academicYear?.name || sc.classroom?.academicYear?.name,
+          startDate: sc.academicYear?.startDate || sc.classroom?.academicYear?.startDate,
+          status: sc.academicYear?.status || sc.classroom?.academicYear?.status,
+          isActive: sc.isActive,
+          isCurrent: sc.id === selectedEnrollment?.id
+        }))
       },
       kpis: {
         globalAverage,
@@ -800,13 +943,36 @@ export async function getDashboardStats(
         attendancePercentage,
         totalObservations
       },
-      // Historial Académico
-      academicHistory: (student as any).academicHistory?.map((record: any) => ({
-        yearName: record.academicYear.name,
-        section: record.sectionSnapshot,
-        finalGrade: record.finalAverage,
-        status: record.status
-      })) || [],
+      enrollments: enrollments.map((sc: any) => ({
+        id: sc.id,
+        classroomId: sc.classroomId,
+        classroomName: sc.classroom?.name,
+        grade: sc.classroom?.grade,
+        section: sc.classroom?.section,
+        academicYearId: sc.academicYearId,
+        academicYearName: sc.academicYear?.name || sc.classroom?.academicYear?.name,
+        startDate: sc.academicYear?.startDate || sc.classroom?.academicYear?.startDate,
+        status: sc.academicYear?.status || sc.classroom?.academicYear?.status,
+        isActive: sc.isActive,
+        isCurrent: sc.id === selectedEnrollment?.id
+      })),
+      // Historial Académico por Ciclo Escolar
+      academicHistory: ((student as any).academicHistory && (student as any).academicHistory.length > 0)
+        ? (student as any).academicHistory.map((record: any) => ({
+            academicYearId: record.academicYearId,
+            yearName: record.academicYear?.name || 'Ciclo Escolar',
+            section: record.sectionSnapshot,
+            finalGrade: record.finalAverage,
+            status: record.status
+          }))
+        : enrollments.map((sc: any) => ({
+            academicYearId: sc.academicYearId,
+            yearName: sc.academicYear?.name || sc.classroom?.academicYear?.name || 'Ciclo Escolar',
+            section: sc.classroom?.name || `${sc.classroom?.grade}° ${sc.classroom?.section}`,
+            finalGrade: 0,
+            status: sc.academicYear?.status || 'COMPLETED',
+            isCurrent: sc.id === selectedEnrollment?.id
+          })),
       // Materias Actuales (using calculated averages)
       subjects: Object.values(subjectAverages).map(s => ({
         id: s.id, // Assuming subjectAverages stores subject ID
@@ -815,11 +981,19 @@ export async function getDashboardStats(
         color: s.color,
         status: s.average >= 10 ? "Aprobado" : "Reprobado"
       })),
-      recentObservations: student.observations.map(o => ({
+      recentObservations: cycleObservations.map((o: any) => ({
         id: o.id,
         title: o.title,
+        description: o.description || o.title,
         type: o.type, // POSITIVE, NEGATIVE
-        date: o.date.toISOString().split('T')[0]
+        date: o.date ? (typeof o.date === 'string' ? o.date : o.date.toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
+        teacher: o.createdBy ? `${o.createdBy.firstName} ${o.createdBy.lastName}` : 'Docente',
+        classroomId: o.classroomId || o.classSession?.classroomId || activeClassroom?.id,
+        classroomName: o.classroom?.name || o.classSession?.classroom?.name || activeClassroom?.name,
+        subjectId: o.subjectId || o.classSession?.subjectId,
+        subjectName: o.subject?.name || o.classSession?.subject?.name,
+        subjectColor: o.subject?.color || o.classSession?.subject?.color,
+        classSessionId: o.classSessionId,
       }))
     };
 

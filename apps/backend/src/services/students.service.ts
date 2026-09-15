@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { RedisCache } from '../config/redis';
 import { ErrorFactory, NotFoundError, ConflictError, UserNotFoundError } from '../utils/errors';
 import { logBusiness, logError } from '../utils/logger';
+import { hashPassword } from '../utils/bcrypt';
 
 // Tipos locales para student (reemplazan class-validator DTOs)
 interface CreateStudentData {
@@ -44,68 +45,7 @@ interface UpdateStudentData {
     emergencyPhone?: string;
 }
 
-interface StudentFiltersBase {
-    search?: string;
-    classroomId?: string;
-    grade?: string;
-    gender?: string;
-    isActive?: string;
-}
-
-interface StudentFilters extends StudentFiltersBase {
-    hasGrades?: boolean;
-    attendanceRate?: 'low' | 'medium' | 'high';
-}
-
 export class StudentsService {
-    private cachePrefix = 'students';
-    private cacheTTL = 600; // 10 minutos
-
-    /**
-     * Obtener estudiantes con filtros avanzados y paginación
-     */
-    async findMany(filters: StudentFilters = {}, pagination: PaginationInput = { page: 1, limit: 10 }, prisma: any) {
-        const where: any = {
-            role: 'STUDENT',
-            isActive: true,
-            ...this.buildFilter(filters)
-        };
-
-        const cacheKey = `students:filters:${JSON.stringify(filters)}:page:${pagination.page}`;
-        const cached = await RedisCache.get<any>(cacheKey);
-
-        if (cached) {
-            return cached;
-        }
-
-        const [students, total] = await Promise.all([
-            prisma.user.findMany({
-                where,
-                include: this.getStudentRelations(),
-                orderBy: [
-                    { lastName: 'asc' },
-                    { firstName: 'asc' }
-                ],
-                skip: (pagination.page - 1) * pagination.limit,
-                take: pagination.limit
-            }),
-            prisma.user.count({ where })
-        ]);
-
-        const result = {
-            students,
-            pagination: {
-                total,
-                page: pagination.page,
-                totalPages: Math.ceil(total / pagination.limit)
-            }
-        };
-
-        await RedisCache.set(cacheKey, result, this.cacheTTL); // Cachear por 10 minutos
-
-        return result;
-    }
-
     // Obtener detalles de un estudiante
     async getStudentById(prisma: PrismaClient, studentId: string) {
         const student = await prisma.user.findUnique({
@@ -130,25 +70,42 @@ export class StudentsService {
         await this.checkDuplicateStudentCode(prisma, data.studentCode);
         await this.checkClassroomCapacity(prisma, data.classroomId);
 
+        const { classroomId, ...userData } = data as any;
+
+        // La contraseña llega en texto plano desde el body y se guardaba tal cual
+        // (a diferencia de users.service.ts, que sí hashea). El login compara con
+        // bcrypt, así que además de ser una fuga era un estudiante que no podía
+        // entrar nunca.
+        if (userData.password) {
+            userData.password = await hashPassword(userData.password);
+        }
+
         const student = await prisma.user.create({
             data: {
-                ...data as any,
+                ...userData,
                 role: 'STUDENT',
                 isActive: true
             },
-            include: {
-                classroom: {
-                    select: {
-                        id: true,
-                        name: true,
-                        grade: true,
-                        section: true
-                    }
-                }
-            }
         });
 
-        await this.clearCacheRelatedToClassroom(data.classroomId);
+        if (classroomId) {
+            const classroom = await prisma.classroom.findUnique({
+                where: { id: classroomId },
+                select: { academicYearId: true }
+            });
+            if (classroom?.academicYearId) {
+                await prisma.studentClassroom.create({
+                    data: {
+                        studentId: student.id,
+                        classroomId,
+                        academicYearId: classroom.academicYearId,
+                        isActive: true
+                    }
+                });
+            }
+        }
+
+        await this.clearCacheRelatedToClassroom(classroomId);
 
         return student;
     }
@@ -170,24 +127,46 @@ export class StudentsService {
         await this.checkDuplicateStudentCode(prisma, data.studentCode, studentId);
         await this.checkClassroomCapacity(prisma, data.classroomId, studentId);
 
+        const { classroomId, ...userData } = data as any;
+
+        // Igual que en `createStudent`: si el admin manda contraseña nueva, se
+        // guarda hasheada, nunca en plano.
+        if (userData.password) {
+            userData.password = await hashPassword(userData.password);
+        }
+
         const student = await prisma.user.update({
             where: { id: studentId },
             data: {
-                ...data as any
+                ...userData
             },
-            include: {
-                classroom: {
-                    select: {
-                        id: true,
-                        name: true,
-                        grade: true,
-                        section: true
-                    }
-                }
-            }
         });
 
-        await this.clearCacheRelatedToClassroom(data.classroomId);
+        if (classroomId) {
+            const classroom = await prisma.classroom.findUnique({
+                where: { id: classroomId },
+                select: { academicYearId: true }
+            });
+            if (classroom?.academicYearId) {
+                await prisma.studentClassroom.upsert({
+                    where: {
+                        studentId_academicYearId: {
+                            studentId,
+                            academicYearId: classroom.academicYearId
+                        }
+                    },
+                    update: { classroomId, isActive: true },
+                    create: {
+                        studentId,
+                        classroomId,
+                        academicYearId: classroom.academicYearId,
+                        isActive: true
+                    }
+                });
+            }
+        }
+
+        await this.clearCacheRelatedToClassroom(classroomId);
 
         return student;
     }
@@ -211,8 +190,10 @@ export class StudentsService {
             data: { isActive: false }
         });
 
-        // Limpiar cache relacionado
-        await this.clearCacheRelatedToClassroom(existingStudent.classroomId ?? undefined);
+        await prisma.studentClassroom.updateMany({
+            where: { studentId, isActive: true },
+            data: { isActive: false }
+        });
     }
 
     // Obtener perfil completo de un estudiante
@@ -229,6 +210,8 @@ export class StudentsService {
         if (!student) {
             throw new NotFoundError('Estudiante', studentId);
         }
+
+        const activeClassroomId = student.studentClassrooms?.[0]?.classroomId || null;
 
         const [grades, attendance, activities] = await Promise.all([
             prisma.grade.findMany({
@@ -265,9 +248,9 @@ export class StudentsService {
                 orderBy: { date: 'desc' },
                 take: 10
             }),
-            student.classroomId ? prisma.activity.findMany({
+            activeClassroomId ? prisma.activity.findMany({
                 where: {
-                    classroomId: student.classroomId,
+                    classroomId: activeClassroomId,
                     isActive: true,
                     startDate: {
                         gte: new Date()
@@ -377,45 +360,26 @@ export class StudentsService {
         return stats;
     }
 
-    // Construir filtros avanzados para estudiantes
-    private buildFilter(filters: StudentFiltersBase) {
-        const filter: any = {};
-
-        if (filters.classroomId) {
-            filter.classroomId = filters.classroomId;
-        }
-
-        if (filters.grade) {
-            filter.grade = filters.grade;
-        }
-
-        if (filters.search) {
-            filter.OR = [
-                { firstName: { contains: filters.search, mode: 'insensitive' } },
-                { lastName: { contains: filters.search, mode: 'insensitive' } },
-                { email: { contains: filters.search, mode: 'insensitive' } },
-                { studentCode: { contains: filters.search, mode: 'insensitive' } }
-            ];
-        }
-
-        return filter;
-    }
-
     // Relaciones a incluir al obtener estudiantes
     private getStudentRelations() {
         return {
-            classroom: {
-                select: {
-                    id: true,
-                    name: true,
-                    grade: true,
-                    section: true,
-                    teacher: {
+            studentClassrooms: {
+                where: { isActive: true },
+                include: {
+                    classroom: {
                         select: {
                             id: true,
-                            firstName: true,
-                            lastName: true,
-                            email: true
+                            name: true,
+                            grade: true,
+                            section: true,
+                            teacher: {
+                                select: {
+                                    id: true,
+                                    firstName: true,
+                                    lastName: true,
+                                    email: true
+                                }
+                            }
                         }
                     }
                 }
@@ -478,12 +442,11 @@ export class StudentsService {
             }
 
             if (classroom.capacity) {
-                const count = await prisma.user.count({
+                const count = await prisma.studentClassroom.count({
                     where: {
                         classroomId,
-                        role: 'STUDENT',
                         isActive: true,
-                        ...(studentId && { id: { not: studentId } })
+                        ...(studentId && { studentId: { not: studentId } })
                     }
                 });
 
@@ -502,3 +465,10 @@ export class StudentsService {
         }
     }
 }
+
+/**
+ * Instancia compartida, igual que `gradesService` y el resto de servicios.
+ * Antes solo se exportaba la clase y nadie la instanciaba: el service estaba
+ * completo pero muerto, mientras el controller mantenía su propia copia rota.
+ */
+export const studentsService = new StudentsService();

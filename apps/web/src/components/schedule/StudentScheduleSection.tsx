@@ -13,6 +13,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSchedulePeriods } from '@/hooks/useSchedulePeriods';
 import { useLiveOverview } from '@/hooks/useLiveClass';
+import { toLocalYMD } from '@/utils/date.utils';
+import { useSchoolToday } from '@/hooks/useSchoolTime';
 
 interface Props {
     schedule: ScheduleBlock[];
@@ -97,7 +99,8 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
     const now = new Date();
     const currentDayIndex = now.getDay();
     const currentTime = now.toTimeString().slice(0, 5);
-    const todayDateStr = now.toISOString().split('T')[0];
+    // 'Hoy' según el liceo, no según el reloj del dispositivo
+    const todayDateStr = useSchoolToday();
 
     // ============================================================
     // FASE 3.5 PARTE B — HISTORIAL: la vista "Hoy" queda PARAMETRIZADA por
@@ -134,11 +137,12 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
     };
 
     // Tema generador y actividades por materia para el horario en vivo
-    const { data: liveOverview } = useLiveOverview(classroomId || '', todayDateStr);
+    const activeOverviewDate = histDate || todayDateStr;
+    const { data: liveOverview } = useLiveOverview(classroomId || '', activeOverviewDate);
 
     const handleClassClick = (classItem: ScheduleBlock | null) => {
         if (role !== 'teacher' || !classItem || !classItem.subjectId || !classroomId) return;
-        const blockDate = getDateForDayKey(classItem.day || '');
+        const blockDate = (viewMode === 'day' && histDate) ? histDate : getDateForDayKey(classItem.day || '');
         router.push(
             `/dashboard/clase-en-vivo/${classroomId}/${classItem.subjectId}?date=${blockDate}&start=${encodeURIComponent(classItem.startTime)}&end=${encodeURIComponent(classItem.endTime)}`
         );
@@ -278,10 +282,19 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                         (s) => s.day === day.key && s.startTime === nextPeriod.startTime
                     );
 
-                    const isSameContiguous =
+                    const isSameSection =
                         nextClass &&
-                        ((nextClass.subjectId && classItem.subjectId && nextClass.subjectId === classItem.subjectId) ||
-                            nextClass.subject.trim().toLowerCase() === classItem.subject.trim().toLowerCase());
+                        ((classItem.location && nextClass.location)
+                            ? classItem.location === nextClass.location
+                            : (classItem.detail && nextClass.detail)
+                                ? classItem.detail === nextClass.detail
+                                : true);
+
+                    const isSameContiguous =
+                        Boolean(nextClass) &&
+                        ((nextClass?.subjectId && classItem.subjectId && nextClass.subjectId === classItem.subjectId) ||
+                            nextClass?.subject.trim().toLowerCase() === classItem.subject.trim().toLowerCase()) &&
+                        isSameSection;
 
                     const isCoveredBySameBlock = classItem.endTime > nextPeriod.startTime;
 
@@ -400,7 +413,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setViewMode('week')}
+                                onClick={() => { setViewMode('week'); setHistDate(null); }}
                                 className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
                                     viewMode === 'week'
                                         ? 'bg-indigo-600 text-white shadow-xs'
@@ -485,6 +498,8 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                 const temaGenerador = subjectInfo?.temaGenerador || null;
                                 const firstColLabel = subjectInfo?.firstColumnLabel || 'Tema Generador';
                                 const activitiesCount = subjectInfo?.activitiesCount ?? 0;
+                                const todayActivitiesCount = subjectInfo?.todayActivitiesCount ?? 0;
+                                const nextActivitiesCount = subjectInfo?.nextActivitiesCount ?? 0;
 
                                 return (
                                     <div
@@ -557,23 +572,36 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                             )}
                                         </div>
 
-                                        {/* Footer del Bloque: Contador de Actividades + Docente/Aula */}
+                                        {/* Footer del Bloque: Contador de Actividades (Hoy y Próx) + Docente/Aula */}
                                         {classItem && (
-                                            <div className="pt-2 border-t border-gray-100/80 flex items-center justify-between gap-1 mt-auto">
-                                                {/* Badge Contador de Actividades */}
-                                                <div
-                                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
-                                                        activitiesCount > 0
-                                                            ? 'bg-blue-100 text-blue-800'
-                                                            : 'bg-gray-100 text-gray-500'
-                                                    }`}
-                                                    title={`${activitiesCount} actividad(es) registradas`}
-                                                >
-                                                    <ListTodo size={11} />
-                                                    <span>{activitiesCount} act.</span>
+                                            <div className="pt-2 border-t border-gray-100/80 flex items-center justify-between gap-1 mt-auto flex-wrap">
+                                                <div className="flex items-center gap-1">
+                                                    {/* Hoy */}
+                                                    <div
+                                                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${
+                                                            todayActivitiesCount > 0
+                                                                ? 'bg-blue-100 text-blue-800'
+                                                                : 'bg-gray-100 text-gray-500'
+                                                        }`}
+                                                        title={`${todayActivitiesCount} actividad(es) para hoy`}
+                                                    >
+                                                        <span>Hoy: {todayActivitiesCount}</span>
+                                                    </div>
+
+                                                    {/* Próx */}
+                                                    <div
+                                                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${
+                                                            nextActivitiesCount > 0
+                                                                ? 'bg-purple-100 text-purple-800'
+                                                                : 'bg-gray-100 text-gray-500'
+                                                        }`}
+                                                        title={`${nextActivitiesCount} actividad(es) para la próxima clase`}
+                                                    >
+                                                        <span>Próx: {nextActivitiesCount}</span>
+                                                    </div>
                                                 </div>
 
-                                                <span className="text-[10px] text-gray-400 truncate max-w-[80px]">
+                                                <span className="text-[10px] text-gray-400 truncate max-w-[65px]">
                                                     {classItem.location || 'Sin aula'}
                                                 </span>
                                             </div>
@@ -737,6 +765,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
             {/* Fase 3.5 Parte B — Historial por fecha (misma vista "Hoy", fecha parametrizada) */}
             {isHistoryOpen && (
                 <ScheduleHistoryModal
+                    classroomId={classroomId}
                     schedule={schedule}
                     onSelectDay={(dateStr, key) => {
                         setHistDate(dateStr);

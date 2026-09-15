@@ -6,7 +6,10 @@ import { hasPermission, Permission, PermissionContext } from '../utils/permissio
 import { ERROR_MESSAGES } from '../utils/constants';
 import { RequestUser } from '../types/fastify';
 import { RedisCache } from '../config/redis';
+import { createHash } from 'crypto';
 import { logger } from '../utils/logger';
+import { marcarGuardia } from './guardias';
+import { conLiceo } from '../config/ambito-del-liceo';
 
 // =====================================================
 // Caché de sesión de usuario (Redis)
@@ -31,26 +34,34 @@ function getAuthSessionKey(instituteId: string | null | undefined, userId: strin
 /**
  * Invalida la sesión cacheada de un usuario (cambio de rol/estado/contraseña, logout).
  * Debe llamarse desde los controllers que mutan esos campos.
+ *
+ * EL LICEO VA DICHO, NO SUPUESTO. La memoria rápida guarda cada cosa dentro del
+ * apartado de su liceo (`config/ambito-del-liceo.ts`). Esta función se llama
+ * también desde fuera de una petición —un guion, una tarea, el alta de otro
+ * liceo—, y ahí no hay apartado que suponer: si no se dijera, el borrado no
+ * alcanzaría a lo guardado y **una cuenta desactivada seguiría entrando** hasta
+ * que caducara sola. Pasó, y lo cazó `auditoria-intrusion`.
  */
 export async function invalidateUserSession(
   instituteId: string | null | undefined,
   userId: string
 ): Promise<void> {
-  await RedisCache.del(getAuthSessionKey(instituteId, userId));
+  await conLiceo(instituteId ?? '', () => RedisCache.del(getAuthSessionKey(instituteId, userId)));
 }
 
 /**
  * Carga el usuario para autenticación con caché en Redis.
  * Si Redis no está disponible degrada a consulta directa (fallos silenciosos).
  */
-async function loadUserSession(
+export async function loadUserSession(
   db: PrismaClient,
   instituteId: string | null | undefined,
   userId: string
 ): Promise<CachedUserSession | null> {
   const cacheKey = getAuthSessionKey(instituteId, userId);
+  const suLiceo = instituteId ?? '';
 
-  const cached = await RedisCache.get<CachedUserSession>(cacheKey);
+  const cached = await conLiceo(suLiceo, () => RedisCache.get<CachedUserSession>(cacheKey));
   if (cached) return cached;
 
   const user = await db.user.findUnique({
@@ -65,7 +76,7 @@ async function loadUserSession(
   });
 
   if (user) {
-    await RedisCache.set(cacheKey, user, AUTH_SESSION_TTL);
+    await conLiceo(suLiceo, () => RedisCache.set(cacheKey, user, AUTH_SESSION_TTL));
   }
 
   return user;
@@ -196,7 +207,7 @@ export async function optionalAuthenticate(
  * Middleware para verificar roles específicos
  */
 export function requireRoles(...allowedRoles: UserRole[]) {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
+  return marcarGuardia(async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.user) {
       return reply.status(401).send({
         error: ERROR_MESSAGES.UNAUTHORIZED,
@@ -210,7 +221,7 @@ export function requireRoles(...allowedRoles: UserRole[]) {
         message: `Acceso denegado. Roles permitidos: ${allowedRoles.join(', ')}`
       });
     }
-  };
+  });
 }
 
 /**
@@ -269,7 +280,7 @@ export async function verifyInstitute(
  * Middleware para verificar que el usuario puede acceder a sus propios datos
  */
 export function requireSelfOrAdmin(userIdParam: string = 'userId') {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
+  return marcarGuardia(async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.user) {
       return reply.status(401).send({
         error: ERROR_MESSAGES.UNAUTHORIZED
@@ -290,7 +301,7 @@ export function requireSelfOrAdmin(userIdParam: string = 'userId') {
         message: 'Solo puedes acceder a tus propios datos'
       });
     }
-  };
+  });
 }
 
 /**
@@ -323,6 +334,24 @@ export async function requireTeacher(
   // IMPORTANTE: Retornar explícitamente para que Fastify continúe con el siguiente handler
   return;
 }
+
+/**
+ * ESTOS VAN ANTES DEL FORMULARIO
+ *
+ * Preguntar quién eres y qué rol tienes no necesita mirar lo que traes escrito,
+ * así que se adelanta a la revisión del formulario. Si no, a un desconocido se
+ * le responde "falta el campo email" en vez de "no sé quién eres", y con eso se
+ * le va contando cómo está hecho el sistema. Ver `middleware/guardias.ts`.
+ *
+ * `requireAdmin`, `requireStudent` y `requireTutor` salen de `requireRoles`, que
+ * ya marca lo que devuelve; `requireSelfOrAdmin` también.
+ *
+ * NO se marcan, a propósito, los que necesitan leer el formulario:
+ * `verifyInstitute` (busca el instituto en el cuerpo) y `userRateLimit` (cuenta
+ * los intentos por correo). Esos se quedan detrás, que es su sitio.
+ */
+marcarGuardia(authenticate);
+marcarGuardia(requireTeacher);
 
 /**
  * Middleware específico para estudiantes
@@ -395,18 +424,66 @@ const LOGIN_RATE_WINDOW_SECONDS = 60;
 const USER_RATE_MAX = 200;
 const USER_RATE_WINDOW_SECONDS = 60;
 
+/**
+ * RENOVAR LA SESIÓN NO ES ADIVINAR UNA CONTRASEÑA
+ *
+ * Renovar cae por la rama de "no identificado" (todavía no hay credencial
+ * corta), así que se contaba con la clave del login: `ip + correo`. Pero al
+ * renovar **no se manda ningún correo**, así que la clave quedaba en
+ * `ip + vacío`: **todas las renovaciones del liceo entero compartían un solo
+ * cupo de diez por minuto**.
+ *
+ * Y un liceo sale a internet por una sola conexión. Con doscientas personas
+ * dentro, diez renovaciones cualesquiera —de quien fuera— dejaban a todos los
+ * demás con "demasiados intentos" y, acto seguido, en la pantalla de entrar.
+ *
+ * Es el mismo fallo que ya se había corregido en el contador general de
+ * peticiones (ver `cupoDeLaPeticion` en `server.ts`, "un liceo sale a internet
+ * por una sola conexión"), y aquí se había quedado.
+ *
+ * Ahora cada sesión lleva su propia cuenta: la clave es la huella de la llave
+ * larga que presenta. Quien la tenga puede renovar lo suyo sin gastarle el cupo
+ * a nadie, y quien intente machacar una llave concreta sigue topándose con un
+ * límite.
+ *
+ * Se comprobó midiendo: doce renovaciones seguidas desde la misma dirección y
+ * la undécima ya devolvía 429, con doce personas distintas.
+ */
+const REFRESH_RATE_MAX = 60;
+
+function claveDeLaPeticion(request: FastifyRequest): { key: string; max: number; windowSeconds: number } {
+  if (request.user) {
+    return {
+      key: `rate_limit:user:${request.user.userId}`,
+      max: USER_RATE_MAX,
+      windowSeconds: USER_RATE_WINDOW_SECONDS,
+    };
+  }
+
+  const llaveLarga = (request.body as any)?.refreshToken;
+  if (typeof llaveLarga === 'string' && llaveLarga.length > 0) {
+    // La huella, no la llave: no hace falta guardarla para contar, y así no
+    // acaba escrita en la memoria de nadie.
+    const huella = createHash('sha256').update(llaveLarga).digest('hex').slice(0, 32);
+    return {
+      key: `rate_limit:refresh:${huella}`,
+      max: REFRESH_RATE_MAX,
+      windowSeconds: LOGIN_RATE_WINDOW_SECONDS,
+    };
+  }
+
+  return {
+    key: `rate_limit:login:${request.ip}:${String((request.body as any)?.email || '').toLowerCase()}`,
+    max: LOGIN_RATE_MAX,
+    windowSeconds: LOGIN_RATE_WINDOW_SECONDS,
+  };
+}
+
 export async function userRateLimit(
   request: FastifyRequest,
   reply: FastifyReply
 ): Promise<void> {
-  const isAuthenticated = Boolean(request.user);
-
-  const key = isAuthenticated
-    ? `rate_limit:user:${request.user!.userId}`
-    : `rate_limit:login:${request.ip}:${String((request.body as any)?.email || '').toLowerCase()}`;
-
-  const max = isAuthenticated ? USER_RATE_MAX : LOGIN_RATE_MAX;
-  const windowSeconds = isAuthenticated ? USER_RATE_WINDOW_SECONDS : LOGIN_RATE_WINDOW_SECONDS;
+  const { key, max, windowSeconds } = claveDeLaPeticion(request);
 
   const count = await RedisCache.increment(key);
   if (count === 1) {

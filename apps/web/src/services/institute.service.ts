@@ -14,11 +14,22 @@ export interface InstituteConfig {
     subjectPalette?: string; // JSON string array - Nuevo
     colors?: string; // JSON string (legacy)
     configuration?: string; // JSON string
+    timezone?: string;
     createdAt: string;
     updatedAt: string;
 }
 
+/** Las reglas académicas que cada liceo configura por su cuenta. */
+export interface ReglasAcademicas {
+    notaMinimaAprobatoria: number;
+    maxMateriasPendientesParaPromover: number;
+    permitePendientesEnUltimoAno: boolean;
+    /** Porcentaje por debajo del cual se avisa al representante (0-100). */
+    asistenciaMinima: number;
+}
+
 export interface UpdateInstituteDto {
+    timezone?: string;
     name?: string;
     code?: string;
     email?: string;
@@ -35,6 +46,8 @@ export interface UpdateInstituteDto {
         timezone?: string;
         gradeScale?: { min: number; max: number };
         passingGrade?: number;
+        /** Porcentaje por debajo del cual se le avisa al representante (0-100). */
+        asistenciaMinima?: number;
         language?: string;
         dateFormat?: string;
         notifications?: {
@@ -70,11 +83,25 @@ export const instituteService = {
     },
 
     /**
+     * Obtener reglas de configuración académica (notaMinimaAprobatoria, materias pendientes)
+     */
+    getAcademicConfig: async (): Promise<ReglasAcademicas> => {
+        const response = await api.get('/institutes/current/academic-config');
+        return response.data.data;
+    },
+
+    /**
+     * Actualizar reglas de configuración académica
+     */
+    updateAcademicConfig: async (data: Partial<ReglasAcademicas>): Promise<ReglasAcademicas> => {
+        const response = await api.put('/institutes/current/academic-config', data);
+        return response.data.data;
+    },
+
+    /**
      * Actualizar configuración del instituto
      */
     updateConfig: async (data: UpdateInstituteDto): Promise<InstituteConfig> => {
-        // Usamos la ruta de instituto específico, asumiendo que el ID 'institute' es aceptado
-        // o que el backend será ajustado.
         const response = await api.put('/institutes/current/config', data);
         return response.data.data;
     },

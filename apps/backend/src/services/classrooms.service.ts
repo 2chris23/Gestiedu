@@ -36,7 +36,7 @@ export class ClassroomsService {
                     },
                     _count: {
                         select: {
-                            students: true
+                            studentClassrooms: { where: { isActive: true } }
                         }
                     }
                 },
@@ -47,8 +47,15 @@ export class ClassroomsService {
             prisma.classroom.count({ where })
         ]);
 
+        const formattedClassrooms = classrooms.map((c: any) => ({
+            ...c,
+            _count: {
+                students: c._count?.studentClassrooms ?? 0
+            }
+        }));
+
         return {
-            classrooms,
+            classrooms: formattedClassrooms,
             pagination: {
                 total,
                 page: parseInt(page),
@@ -58,10 +65,10 @@ export class ClassroomsService {
     }
 
     /**
-     * Obtener aula por ID
+     * Obtener aula por ID con detalles completos
      */
-    async getClassroomById(id: string, prisma: PrismaClient) {
-        return prisma.classroom.findUnique({
+    async getClassroomById(prisma: PrismaClient, id: string) {
+        const classroom = await prisma.classroom.findUnique({
             where: { id },
             include: {
                 teacher: {
@@ -69,19 +76,28 @@ export class ClassroomsService {
                         id: true,
                         firstName: true,
                         lastName: true,
-                        email: true
+                        email: true,
+                        phone: true
                     }
                 },
-                students: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        email: true
+                studentClassrooms: {
+                    where: { isActive: true },
+                    include: {
+                        student: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                                email: true,
+                                studentCode: true,
+                                avatar: true
+                            }
+                        }
                     }
                 }
             }
         });
+        return classroom;
     }
 
     /**
@@ -193,11 +209,10 @@ export class ClassroomsService {
         }
 
         // Verificar que no tenga estudiantes activos
-        const activeStudentsCount = await prisma.user.count({
+        const activeStudentsCount = await prisma.studentClassroom.count({
             where: {
                 classroomId: id,
-                isActive: true,
-                role: 'STUDENT'
+                isActive: true
             }
         });
 
@@ -217,63 +232,40 @@ export class ClassroomsService {
     async assignStudentsToClassroom(classroomId: string, studentIds: string[], prisma: PrismaClient) {
         const classroom = await prisma.classroom.findUnique({
             where: { id: classroomId },
-            select: { isActive: true, capacity: true, name: true }
+            select: { isActive: true, capacity: true, name: true, academicYearId: true }
         });
 
         if (!classroom || !classroom.isActive) {
             throw new Error('Aula no encontrada');
         }
 
-        // Verificar que los estudiantes existen y están activos
-        const students = await prisma.user.findMany({
-            where: {
-                id: { in: studentIds },
-                role: 'STUDENT',
-                isActive: true
-            },
-            select: { id: true, classroomId: true }
-        });
-
-        if (students.length !== studentIds.length) {
-            throw new Error('Algunos estudiantes no fueron encontrados o no están activos');
+        const academicYearId = classroom.academicYearId;
+        if (!academicYearId) {
+            throw new Error('El aula no está asociada a ningún ciclo escolar');
         }
 
-        // Filtrar estudiantes que no están ya asignados al aula
-        const studentsToAssign = students.filter(student => student.classroomId !== classroomId);
-
-        if (studentsToAssign.length === 0) {
-            return {
-                message: 'Todos los estudiantes ya están asignados a esta aula',
-                assigned: 0
-            };
+        // Matricular o reactivar en studentClassroom
+        for (const studentId of studentIds) {
+            await prisma.studentClassroom.upsert({
+                where: {
+                    studentId_academicYearId: {
+                        studentId,
+                        academicYearId
+                    }
+                },
+                update: { classroomId, isActive: true },
+                create: {
+                    studentId,
+                    classroomId,
+                    academicYearId,
+                    isActive: true
+                }
+            });
         }
-
-        // Verificar capacidad del aula
-        const currentStudentCount = await prisma.user.count({
-            where: {
-                classroomId: classroomId,
-                isActive: true,
-                role: 'STUDENT'
-            }
-        });
-
-        if (classroom.capacity && (currentStudentCount + studentsToAssign.length) > classroom.capacity) {
-            throw new Error(`La capacidad del aula sería excedida. Capacidad: ${classroom.capacity}, Actuales: ${currentStudentCount}, A asignar: ${studentsToAssign.length}`);
-        }
-
-        // Asignar estudiantes
-        await prisma.user.updateMany({
-            where: {
-                id: { in: studentsToAssign.map(s => s.id) }
-            },
-            data: {
-                classroomId: classroomId
-            }
-        });
 
         return {
-            message: `${studentsToAssign.length} estudiantes asignados al aula '${classroom.name}'`,
-            assigned: studentsToAssign.length
+            message: `${studentIds.length} estudiantes asignados al aula '${classroom.name}'`,
+            assigned: studentIds.length
         };
     }
 
@@ -290,37 +282,17 @@ export class ClassroomsService {
             throw new Error('Aula no encontrada');
         }
 
-        // Verificar que los estudiantes están asignados al aula
-        const studentsInClassroom = await prisma.user.findMany({
+        const res = await prisma.studentClassroom.updateMany({
             where: {
-                id: { in: studentIds },
-                classroomId: classroomId,
-                role: 'STUDENT',
-                isActive: true
+                classroomId,
+                studentId: { in: studentIds }
             },
-            select: { id: true }
-        });
-
-        if (studentsInClassroom.length === 0) {
-            return {
-                message: 'Ningún estudiante está asignado a esta aula',
-                removed: 0
-            };
-        }
-
-        // Remover estudiantes del aula
-        await prisma.user.updateMany({
-            where: {
-                id: { in: studentsInClassroom.map(s => s.id) }
-            },
-            data: {
-                classroomId: null
-            }
+            data: { isActive: false }
         });
 
         return {
-            message: `${studentsInClassroom.length} estudiantes removidos del aula '${classroom.name}'`,
-            removed: studentsInClassroom.length
+            message: `${res.count} estudiantes removidos del aula '${classroom.name}'`,
+            removed: res.count
         };
     }
 
@@ -328,7 +300,7 @@ export class ClassroomsService {
      * Obtener estadísticas del aula
      */
     async getClassroomStats(id: string, prisma: PrismaClient) {
-        const classroom = await this.getClassroomById(id, prisma);
+        const classroom = await this.getClassroomById(prisma, id);
 
         if (!classroom) {
             throw new Error('Aula no encontrada');
@@ -336,11 +308,10 @@ export class ClassroomsService {
 
         const [studentsCount, activitiesCount, gradesStats] = await Promise.all([
             // Contar estudiantes
-            prisma.user.count({
+            prisma.studentClassroom.count({
                 where: {
                     classroomId: id,
-                    isActive: true,
-                    role: 'STUDENT'
+                    isActive: true
                 }
             }),
             // Contar actividades

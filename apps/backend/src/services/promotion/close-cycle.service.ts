@@ -7,13 +7,31 @@ export interface AcademicConfig {
     notaMinimaAprobatoria: number;
     maxMateriasPendientesParaPromover: number;
     permitePendientesEnUltimoAno: boolean;
+    /**
+     * A partir de qué porcentaje de asistencia se deja de avisar al representante.
+     *
+     * Solo decide **cuándo se enciende el aviso** "Asistencia baja" en el panel
+     * del representante. No toca notas, ni promedios, ni la promoción: un alumno
+     * por debajo de este número no queda reprobado por eso.
+     *
+     * Estaba escrito a mano en el código (80) y no se podía cambiar. Cada liceo
+     * tiene su criterio, así que ahora se configura; 80 sigue siendo el valor de
+     * partida para que nadie note el cambio.
+     */
+    asistenciaMinima: number;
 }
 
 export const DEFAULT_ACADEMIC_CONFIG: AcademicConfig = {
     notaMinimaAprobatoria: 10,
     maxMateriasPendientesParaPromover: 2,
     permitePendientesEnUltimoAno: false,
+    asistenciaMinima: 80,
 };
+
+/** El porcentaje de asistencia va de 0 a 100 y no admite otra cosa. */
+export function esAsistenciaMinimaValida(valor: unknown): valor is number {
+    return typeof valor === 'number' && Number.isFinite(valor) && valor >= 0 && valor <= 100;
+}
 
 export async function getAcademicConfig(instituteId: string): Promise<AcademicConfig> {
     const inst = await platformPrisma.institute.findUnique({ where: { id: instituteId }, select: { academicConfig: true } });
@@ -23,6 +41,7 @@ export async function getAcademicConfig(instituteId: string): Promise<AcademicCo
         notaMinimaAprobatoria: typeof raw.notaMinimaAprobatoria === 'number' ? raw.notaMinimaAprobatoria : DEFAULT_ACADEMIC_CONFIG.notaMinimaAprobatoria,
         maxMateriasPendientesParaPromover: typeof raw.maxMateriasPendientesParaPromover === 'number' ? raw.maxMateriasPendientesParaPromover : DEFAULT_ACADEMIC_CONFIG.maxMateriasPendientesParaPromover,
         permitePendientesEnUltimoAno: typeof raw.permitePendientesEnUltimoAno === 'boolean' ? raw.permitePendientesEnUltimoAno : DEFAULT_ACADEMIC_CONFIG.permitePendientesEnUltimoAno,
+        asistenciaMinima: esAsistenciaMinimaValida(raw.asistenciaMinima) ? raw.asistenciaMinima : DEFAULT_ACADEMIC_CONFIG.asistenciaMinima,
     };
 }
 
@@ -32,6 +51,7 @@ export async function updateAcademicConfig(instituteId: string, patch: Partial<A
         notaMinimaAprobatoria: patch.notaMinimaAprobatoria ?? current.notaMinimaAprobatoria,
         maxMateriasPendientesParaPromover: patch.maxMateriasPendientesParaPromover ?? current.maxMateriasPendientesParaPromover,
         permitePendientesEnUltimoAno: patch.permitePendientesEnUltimoAno ?? current.permitePendientesEnUltimoAno,
+        asistenciaMinima: esAsistenciaMinimaValida(patch.asistenciaMinima) ? patch.asistenciaMinima : current.asistenciaMinima,
     };
     await platformPrisma.institute.update({
         where: { id: instituteId },
@@ -93,64 +113,71 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
     });
 
     const suggestions: StudentSuggestion[] = [];
-    for (const enr of enrollments) {
-        const classroom = enr.classroom;
-        const subjectGrades: StudentSuggestion['subjectGrades'] = [];
-        
-        for (const cs of classroom.subjects) {
-            const avg = await gradesService.calculateWeightedSubjectAverage(prisma, enr.studentId, cs.subjectId);
-            subjectGrades.push({
-                subjectId: cs.subjectId,
-                subjectName: cs.subject.name,
-                average: avg,
-                approved: avg >= config.notaMinimaAprobatoria,
-            });
-        }
+    const chunkSize = 25;
+    for (let i = 0; i < enrollments.length; i += chunkSize) {
+        const chunk = enrollments.slice(i, i + chunkSize);
+        const chunkResults = await Promise.all(
+            chunk.map(async (enr: any) => {
+                const classroom = enr.classroom;
+                const subjectGrades: StudentSuggestion['subjectGrades'] = await Promise.all(
+                    classroom.subjects.map(async (cs: any) => {
+                        const avg = await gradesService.calculateWeightedSubjectAverage(prisma, enr.studentId, cs.subjectId);
+                        return {
+                            subjectId: cs.subjectId,
+                            subjectName: cs.subject.name,
+                            average: avg,
+                            approved: avg >= config.notaMinimaAprobatoria,
+                        };
+                    })
+                );
 
-        const failed = subjectGrades.filter(sg => sg.average > 0 && sg.average < config.notaMinimaAprobatoria);
-        const pendingCount = failed.length;
-        const graded = subjectGrades.filter(sg => sg.average > 0);
-        const finalAverage = graded.length > 0
-            ? Math.round((graded.reduce((a, b) => a + b.average, 0) / graded.length) * 100) / 100
-            : 0;
+                const failed = subjectGrades.filter(sg => sg.average > 0 && sg.average < config.notaMinimaAprobatoria);
+                const pendingCount = failed.length;
+                const graded = subjectGrades.filter(sg => sg.average > 0);
+                const finalAverage = graded.length > 0
+                    ? Math.round((graded.reduce((a, b) => a + b.average, 0) / graded.length) * 100) / 100
+                    : 0;
 
-        const isLastGrade = classroom.grade >= 5;
+                const isLastGrade = classroom.grade >= 5;
 
-        let suggestedStatus: SuggestionStatus;
-        if (pendingCount === 0) {
-            suggestedStatus = 'PROMOVIDO';
-        } else if (isLastGrade && !config.permitePendientesEnUltimoAno) {
-            suggestedStatus = 'NO_PROMOVIDO';
-        } else if (pendingCount <= config.maxMateriasPendientesParaPromover) {
-            suggestedStatus = 'PROMOVIDO_CON_PENDIENTES';
-        } else {
-            suggestedStatus = 'NO_PROMOVIDO';
-        }
+                let suggestedStatus: SuggestionStatus;
+                if (pendingCount === 0) {
+                    suggestedStatus = 'PROMOVIDO';
+                } else if (isLastGrade && !config.permitePendientesEnUltimoAno) {
+                    suggestedStatus = 'NO_PROMOVIDO';
+                } else if (pendingCount <= config.maxMateriasPendientesParaPromover) {
+                    suggestedStatus = 'PROMOVIDO_CON_PENDIENTES';
+                } else {
+                    suggestedStatus = 'NO_PROMOVIDO';
+                }
 
-        let defaultTargetGrade: number | null = null;
-        if (isLastGrade) {
-            defaultTargetGrade = null; // Egresado
-        } else if (suggestedStatus === 'NO_PROMOVIDO') {
-            defaultTargetGrade = classroom.grade; // Repite en su mismo año
-        } else {
-            defaultTargetGrade = classroom.grade + 1; // Pasa al siguiente año
-        }
+                let defaultTargetGrade: number | null = null;
+                if (isLastGrade) {
+                    defaultTargetGrade = null; // Egresado
+                } else if (suggestedStatus === 'NO_PROMOVIDO') {
+                    defaultTargetGrade = classroom.grade; // Repite en su mismo año
+                } else {
+                    defaultTargetGrade = classroom.grade + 1; // Pasa al siguiente año
+                }
 
-        suggestions.push({
-            studentId: enr.studentId,
-            name: `${enr.student.firstName} ${enr.student.lastName}`.trim(),
-            gender: enr.student.gender,
-            currentSection: classroom.section,
-            gradeLevel: classroom.grade,
-            isLastGrade,
-            defaultTargetGrade,
-            defaultTargetSection: classroom.section,
-            subjectGrades,
-            failedSubjects: failed.map(f => ({ name: f.subjectName, average: f.average })),
-            pendingCount,
-            finalAverage,
-            suggestedStatus,
-        });
+                return {
+                    studentId: enr.studentId,
+                    name: `${enr.student.firstName} ${enr.student.lastName}`.trim(),
+                    gender: enr.student.gender,
+                    currentSection: classroom.section,
+                    gradeLevel: classroom.grade,
+                    isLastGrade,
+                    defaultTargetGrade,
+                    defaultTargetSection: classroom.section,
+                    subjectGrades,
+                    failedSubjects: failed.map(f => ({ name: f.subjectName, average: f.average })),
+                    pendingCount,
+                    finalAverage,
+                    suggestedStatus,
+                };
+            })
+        );
+        suggestions.push(...chunkResults);
     }
 
     return { academicYearId, config, suggestions };
@@ -182,19 +209,21 @@ export interface CloseConfirmResult {
 
 /** 2. Ejecución atómica de Cierre de Ciclo Escolar */
 export async function confirmClose(
-    prisma: PrismaClient,
+    prisma: any,
     input: CloseConfirmInput,
     instituteId: string
 ): Promise<CloseConfirmResult> {
-    return prisma.$transaction(async (tx) => {
+    // 1. Preparar sugerencias y cálculos fuera de la transacción para no bloquear el pool
+    const prepared = await prepareClose(prisma, input.academicYearId, instituteId);
+    const config = prepared.config;
+
+    return prisma.$transaction(async (tx: any) => {
         // 1. Verificar idempotencia
         const existing = await tx.academicRecord.count({ where: { academicYearId: input.academicYearId } });
         if (existing > 0) {
             throw Object.assign(new Error('El ciclo ya fue cerrado'), { code: 'CLOSE_ALREADY_EXECUTED', statusCode: 409 });
         }
 
-        const prepared = await prepareClose(tx, input.academicYearId, instituteId);
-        const config = prepared.config;
         const currentYear = await tx.academicYear.findUnique({
             where: { id: input.academicYearId },
             include: {
@@ -208,6 +237,16 @@ export async function confirmClose(
 
         if (!currentYear) {
             throw new Error('Academic year not found');
+        }
+
+        // Un ciclo ya cerrado no se vuelve a cerrar. La comprobación de arriba
+        // mira si dejó registros; esta mira su estado, para el caso de un ciclo
+        // marcado como cerrado que no los tenga.
+        if (currentYear.status === 'COMPLETED') {
+            throw Object.assign(new Error('El ciclo ya fue cerrado'), {
+                code: 'CLOSE_ALREADY_EXECUTED',
+                statusCode: 409,
+            });
         }
 
         // 2. Buscar o crear automáticamente el año escolar destino si se requiere
@@ -265,9 +304,9 @@ export async function confirmClose(
 
         // Mapear materias existentes por grado para replicarlas al auto-crear aulas
         const subjectsByGrade = new Map<number, string[]>();
-        currentYear.classrooms.forEach(c => {
+        currentYear.classrooms.forEach((c: any) => {
             if (!subjectsByGrade.has(c.grade)) {
-                subjectsByGrade.set(c.grade, c.subjects.map(s => s.subjectId));
+                subjectsByGrade.set(c.grade, c.subjects.map((s: any) => s.subjectId));
             }
         });
 
@@ -393,32 +432,38 @@ export async function confirmClose(
                 },
             });
 
-            // Matricular en el aula destino en el año nuevo
-            if (targetClassroomId && nextAcademicYear) {
-                await tx.studentClassroom.upsert({
-                    where: {
-                        studentId_academicYearId: {
-                            studentId: s.studentId,
-                            academicYearId: nextAcademicYear.id,
-                        },
-                    },
-                    update: { classroomId: targetClassroomId, isActive: true },
-                    create: {
-                        studentId: s.studentId,
-                        classroomId: targetClassroomId,
-                        academicYearId: nextAcademicYear.id,
-                        isActive: true,
-                    },
+            // Matricular en el aula destino, EN EL AÑO DE ESA AULA.
+            // El admin puede mover a un estudiante a un año posterior, no solo al
+            // inmediato siguiente; antes la matrícula se creaba siempre en el año
+            // siguiente, así que apuntaba a un aula de otro año.
+            if (targetClassroomId) {
+                const targetClassroomYear = await tx.classroom.findUnique({
+                    where: { id: targetClassroomId },
+                    select: { academicYearId: true },
                 });
+                const targetYearId = targetClassroomYear?.academicYearId ?? nextAcademicYear?.id ?? null;
 
-                await tx.user.update({
-                    where: { id: s.studentId },
-                    data: { classroomId: targetClassroomId },
-                }).catch(() => {});
+                if (targetYearId) {
+                    await tx.studentClassroom.upsert({
+                        where: {
+                            studentId_academicYearId: {
+                                studentId: s.studentId,
+                                academicYearId: targetYearId,
+                            },
+                        },
+                        update: { classroomId: targetClassroomId, isActive: true },
+                        create: {
+                            studentId: s.studentId,
+                            classroomId: targetClassroomId,
+                            academicYearId: targetYearId,
+                            isActive: true,
+                        },
+                    });
+                }
             }
 
-            records.push({ studentId: s.studentId, finalResult: decision.finalResult, assignedClassroomId: targetClassroomId });
-            placements.push({ studentId: s.studentId, sectionId: targetClassroomId });
+            records.push({ studentId: s.studentId, finalResult: decision.finalResult, assignedClassroomId: targetClassroomId ?? null });
+            placements.push({ studentId: s.studentId, sectionId: targetClassroomId ?? null });
         }
 
         // 4. Cerrar el año escolar actual
@@ -428,7 +473,7 @@ export async function confirmClose(
         });
 
         return { closed: true, records, placements };
-    });
+    }, { timeout: 60000, maxWait: 15000 });
 }
 
 export interface PromotionContext {
@@ -452,6 +497,25 @@ export interface PromotionContext {
 }
 
 /** Contexto completo para la pantalla de promoción */
+/**
+ * Estudiantes que todavía NO tienen destino. Mientras la lista no esté vacía, el
+ * botón "Confirmar" del cierre de ciclo tiene que seguir bloqueado: cerrar el
+ * año con alguien sin destino lo deja fuera del ciclo siguiente.
+ *
+ * Acepta tanto un Map como un objeto plano, que es como lo maneja la pantalla.
+ * Un valor vacío (null, '' o ausente) cuenta como "sin destino"; una acción
+ * terminal (graduado, retirado) cuenta como destino.
+ */
+export function missingAssignmentIds(
+    suggestions: Array<{ studentId: string }>,
+    assignments: Map<string, string | null | undefined> | Record<string, string | null | undefined>
+): string[] {
+    const valueOf = (studentId: string) =>
+        assignments instanceof Map ? assignments.get(studentId) : assignments[studentId];
+
+    return suggestions.filter((s) => !valueOf(s.studentId)).map((s) => s.studentId);
+}
+
 export async function getPromotionContext(prisma: PrismaClient, academicYearId: string, instituteId: string): Promise<PromotionContext> {
     const [currentYear, suggestionsData, allYears] = await Promise.all([
         prisma.academicYear.findUnique({

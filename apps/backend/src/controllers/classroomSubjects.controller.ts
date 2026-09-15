@@ -1,7 +1,11 @@
 /// <reference path="../types/fastify.d.ts" />
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { logger } from '../utils/logger';
-import { subjectSectionAverage } from '../services/aggregation.service';
+import { subjectSectionAverage, studentsWithNoteInSubject } from '../services/aggregation.service';
+import { gradesService } from '../services/grades.service';
+import { getAcademicConfig } from '../services/promotion/close-cycle.service';
+import { findTeacherAssignmentConflicts } from '../services/schedule-conflicts.service';
+import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 
 interface AssignSubjectToClassroomRequest {
     Params: {
@@ -502,6 +506,24 @@ export async function assignTeacherToSubject(
             });
         }
 
+        // Asignar un profesor ocupa sus horas en los bloques YA colocados de esta
+        // materia. Antes no se miraba y el choque aparecía en el acto, sin pasar
+        // por ninguna validación (así entraron parte de los choques heredados).
+        if (classroomSubject.teacherId !== teacherId) {
+            const clashes = await findTeacherAssignmentConflicts(
+                request.tenantPrisma,
+                [classroomSubject.id],
+                teacherId
+            );
+            if (clashes.length > 0) {
+                return reply.status(409).send({
+                    error: `${teacher.firstName} ${teacher.lastName} ya tiene clase a esas horas: ${clashes[0].message}`,
+                    code: 'SCHEDULE_CONFLICT',
+                    conflicts: clashes,
+                });
+            }
+        }
+
         // Usar transacción para actualizar profesor y crear historial
         const result = await request.tenantPrisma.$transaction(async (prisma) => {
             // Si había un profesor anterior, desactivar su registro en el historial
@@ -664,14 +686,12 @@ export async function removeSubjectFromClassroom(
         }
 
         // Eliminar (esto también eliminará en cascada el historial y bloques de horario)
-        await request.tenantPrisma.classroomSubject.delete({
-            where: {
-                classroomId_subjectId: {
-                    classroomId,
-                    subjectId,
-                },
-            },
-        });
+        await borrarGuardandoCopia(
+            request.tenantPrisma,
+            'classroomSubject',
+            { classroomId, subjectId },
+            quienBorra(request as any)
+        );
 
         return reply.status(200).send({
             message: 'Materia removida exitosamente de la sección',
@@ -818,6 +838,32 @@ export async function getClassroomSubjectsStats(
 
         const studentIds = enrollments.map(e => e.studentId);
 
+        let minPassing = 10;
+        try {
+            const instId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
+            if (instId) {
+                const config = await getAcademicConfig(instId);
+                minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
+            }
+        } catch {
+            minPassing = 10;
+        }
+
+        // Filtrar por fechas del periodo/lapso si fue especificado
+        let periodDateFilter: any = {};
+        if (periodId) {
+            const period = await request.tenantPrisma.period.findUnique({
+                where: { id: periodId },
+                select: { startDate: true, endDate: true },
+            });
+            if (period) {
+                periodDateFilter = {
+                    gte: period.startDate,
+                    lte: period.endDate,
+                };
+            }
+        }
+
         // Calcular estadísticas para cada materia
         // CORRECCIÓN (jerarquía de agregación): el promedio de la materia es el
         // NIVEL 3 — promedio de los promedios NIVEL 2 por estudiante, excluyendo
@@ -834,36 +880,38 @@ export async function getClassroomSubjectsStats(
                     where: {
                         studentId: { in: studentIds },
                         classroomId,
+                        ...(periodDateFilter.gte ? { date: periodDateFilter } : {}),
                     },
                 });
 
-                const presentCount = attendanceRecords.filter(a => a.status === 'PRESENT').length;
+                const presentCount = attendanceRecords.filter(a => a.status === 'PRESENT' || a.status === 'LATE').length;
                 const attendance = attendanceRecords.length > 0
                     ? Math.round((presentCount / attendanceRecords.length) * 100)
                     : 0;
 
-                // Obtener observaciones (no filtradas por materia ya que el modelo no tiene subjectId)
+                // Obtener observaciones filtradas por materia y lapso
                 const observations = await request.tenantPrisma.observation.count({
                     where: {
                         studentId: { in: studentIds },
-                    },
-                });
-
-                // Estudiantes en riesgo (promedio < 10)
-                const studentGrades = await request.tenantPrisma.grade.groupBy({
-                    by: ['studentId'],
-                    where: {
-                        studentId: { in: studentIds },
                         subjectId: cs.subjectId,
-                    },
-                    _avg: {
-                        score: true,
+                        ...(periodDateFilter.gte ? { date: periodDateFilter } : {}),
                     },
                 });
 
-                const atRiskStudents = studentGrades.filter(
-                    sg => sg._avg.score !== null && sg._avg.score < 10
-                ).length;
+                // Estudiantes en riesgo (promedio ponderado en la materia < minPassing)
+                const withData = await studentsWithNoteInSubject(request.tenantPrisma, classroomId, cs.subjectId, periodId);
+                let atRiskStudents = 0;
+                for (const studentId of withData) {
+                    const stuAvg = await gradesService.calculateWeightedSubjectAverage(
+                        request.tenantPrisma,
+                        studentId,
+                        cs.subjectId,
+                        periodId
+                    );
+                    if (stuAvg > 0 && stuAvg < minPassing) {
+                        atRiskStudents++;
+                    }
+                }
 
                 return {
                     id: cs.subject.id,

@@ -3,6 +3,7 @@ import {
   getClassrooms,
   getClassroom,
   getClassroomBySlug,
+  getClassroomStats,
   createClassroom,
   updateClassroom,
   deleteClassroom,
@@ -19,15 +20,41 @@ const classroomsRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Listar y Ver detalle (Profesor/Admin necesitan ver)
     protectedRoutes.get('/', getClassrooms);
+    protectedRoutes.get('/:id/stats', getClassroomStats);
     protectedRoutes.get('/:id', getClassroom);
     protectedRoutes.get('/slug/:slug', getClassroomBySlug);
 
-    // Inscribir/Desinscribir estudiantes (Teacher/Admin)
+    /**
+     * INSCRIBIR Y DESINSCRIBIR: PROFESOR O ADMIN
+     *
+     * Aquí ponía «(Teacher/Admin)» en un comentario y **el código no lo
+     * cumplía**: las dos rutas solo pedían `authenticate`. Con eso, un alumno
+     * con su sesión normal podía meter a cualquier compañero en cualquier
+     * sección, y sacarlo de la suya poniendo su PROPIA contraseña —que
+     * obviamente tiene—, porque el controlador comprueba la contraseña de quien
+     * llama pero nunca su rol.
+     *
+     * Lo cazó `puertas-sin-cerradura` (PUERTA-01 y PUERTA-02), y hasta entonces
+     * ninguna de las 696 pruebas pasaba por aquí.
+     */
     // POST /api/classrooms/:classroomId/students
-    protectedRoutes.post('/:classroomId/students', enrollStudent);
+    //
+    // `authenticate` va TAMBIÉN aquí, y no solo en el gancho de arriba, porque
+    // los guardias se adelantan a `onRequest` (ver `middleware/guardias.ts`):
+    // sin él, `requireTeacher` corría antes de que nadie hubiera preguntado
+    // quién llama y respondía 401 hasta al administrador.
+    protectedRoutes.post(
+      '/:classroomId/students',
+      { preHandler: [authenticate, requireTeacher] },
+      enrollStudent as any
+    );
 
     // DELETE /api/classrooms/:classroomId/students/:studentId
-    protectedRoutes.delete('/:classroomId/students/:studentId', unenrollStudent);
+    protectedRoutes.delete(
+      '/:classroomId/students/:studentId',
+      { preHandler: [authenticate, requireTeacher] },
+      unenrollStudent as any
+    );
 
     // Admin Only
     protectedRoutes.register(async (adminRoutes) => {

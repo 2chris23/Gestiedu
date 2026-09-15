@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { logger } from '../utils/logger';
+import { getAcademicConfig } from '../services/promotion/close-cycle.service';
 
 interface StudentHistoryRequest {
     Params: { id: string };
@@ -16,6 +17,18 @@ export async function getStudentCompleteHistory(
     try {
         const { id: studentId } = request.params;
         const prisma = request.tenantPrisma;
+
+        // Nota mínima aprobatoria del instituto; 10 solo como valor por defecto
+        let minPassing = 10;
+        try {
+            const instId = (request as any).institute?.id ?? (request as any).user?.instituteId;
+            if (instId) {
+                const config = await getAcademicConfig(instId);
+                minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
+            }
+        } catch {
+            minPassing = 10;
+        }
 
         // 1. Información básica del estudiante
         const student = await prisma.user.findUnique({
@@ -134,7 +147,7 @@ export async function getStudentCompleteHistory(
         COUNT(CASE WHEN ar.status = 'LATE' THEN 1 END)::int as "lateDays",
         COUNT(CASE WHEN ar.status = 'ABSENT' THEN 1 END)::int as "absentDays",
         (COUNT(CASE WHEN ar.status IN ('PRESENT', 'LATE') THEN 1 END) * 100.0 / COUNT(*)) as "attendancePercentage"
-      FROM attendance_records ar
+      FROM daily_attendance ar
       INNER JOIN classrooms c ON c.id = ar."classroomId"
       INNER JOIN academic_years ay ON ay.id = c."academicYearId"
       WHERE ar."studentId" = ${studentId}
@@ -181,10 +194,10 @@ export async function getStudentCompleteHistory(
         COUNT(DISTINCT g."subjectId")::int as "totalSubjects",
         COUNT(DISTINCT g."activityId")::int as "totalActivities",
         (SELECT COUNT(*)::int FROM observations WHERE "studentId" = ${studentId}) as "totalObservations",
-        (SELECT COUNT(*)::int FROM attendance_records WHERE "studentId" = ${studentId}) as "totalAttendanceDays",
+        (SELECT COUNT(*)::int FROM daily_attendance WHERE "studentId" = ${studentId}) as "totalAttendanceDays",
         (SELECT 
           (COUNT(CASE WHEN status IN ('PRESENT', 'LATE') THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0))
-          FROM attendance_records 
+          FROM daily_attendance
           WHERE "studentId" = ${studentId}
         ) as "globalAttendancePercentage"
       FROM grades g
@@ -264,7 +277,7 @@ export async function getStudentCompleteHistory(
                     performance: {
                         average: yearAverage,
                         subjects: yearGrades,
-                        failedSubjects: yearGrades.filter(g => g.average < 10).length,
+                        failedSubjects: yearGrades.filter(g => g.average < minPassing).length,
                         totalSubjects: yearGrades.length
                     },
                     attendance: yearAttendance ? {

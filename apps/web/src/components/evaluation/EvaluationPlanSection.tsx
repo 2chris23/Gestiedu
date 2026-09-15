@@ -5,13 +5,15 @@ import { planWeekRangeFromRange } from '@/lib/plan-weeks';
 import { toast } from 'sonner';
 import {
   Save, Printer, ArrowLeft, Edit2,
-  Sparkles, BookOpen, Plus, Trash2, RotateCcw, Zap, ChevronDown, GripVertical, X, Upload
+  Sparkles, BookOpen, Plus, Trash2, RotateCcw, Zap, ChevronDown, GripVertical, X, Upload, Copy, AlertTriangle
 } from 'lucide-react';
 import {
   useEvaluationPlanMetadata,
   useUpsertEvaluationPlanMetadata,
   useEvaluationPlanRows,
   useBatchUpsertRows,
+  useCopyTargets,
+  useCopyPlan,
   type EvaluationPlanRow,
   type EvaluationPlanMetadata,
   type AutoPopulatedData
@@ -37,6 +39,8 @@ type ColDef = PlanColumnDef;
 // mergeSpan > 1 means "this cell spans N weeks downward" (rowSpan)
 // hiddenByMerge = true means the row above has claimed this cell
 interface WeekRow {
+  id?: string;
+  activityId?: string;
   weekNumber: number;
   data: Record<string, string | number>;
   /** Per-column span configuration: colKey → number of weeks it spans */
@@ -68,22 +72,29 @@ function buildEmptyWeekRows(totalWeeks: number): WeekRow[] {
 /** Converts flat EvaluationPlanRow[] (from DB) → WeekRow[] */
 function dbRowsToWeekRows(dbRows: Partial<EvaluationPlanRow>[], totalWeeks: number): WeekRow[] {
   const base = buildEmptyWeekRows(totalWeeks);
-  dbRows.forEach(r => {
+  const sorted = [...dbRows].sort((a, b) => {
+    if (a.rowType === 'EVALUATION') return 1;
+    if (b.rowType === 'EVALUATION') return -1;
+    return 0;
+  });
+
+  sorted.forEach(r => {
     const wn = (r.weekNumber || 1) - 1;
     if (wn < 0 || wn >= base.length) return;
+    if (r.id) base[wn].id = r.id;
+    if (r.activityId) base[wn].activityId = r.activityId;
     const span = r.endWeekNumber ? Math.max(1, r.endWeekNumber - r.weekNumber! + 1) : 1;
     // Store all data fields
-    const d: Record<string, string | number> = {};
+    const d = base[wn].data;
     (DEFAULT_PLAN_COLUMNS as ColDef[]).forEach(col => {
       const val = (r as any)[col.key];
-      if (val !== undefined && val !== null) d[col.key] = val;
+      if (val !== undefined && val !== null && val !== '') d[col.key] = val;
     });
     // Also store any extra keys (custom columns)
     const extra = (r as any).extraData;
     if (extra) {
       try { Object.assign(d, typeof extra === 'string' ? JSON.parse(extra) : extra); } catch {}
     }
-    base[wn].data = d;
     // Apply span to all mergeable columns
     DEFAULT_PLAN_COLUMNS.filter(c => c.mergeable).forEach(col => {
       base[wn].colSpan[col.key] = span;
@@ -99,6 +110,8 @@ function weekRowsToDbRows(weeks: WeekRow[], totalWeeks: number): any[] {
     // find max span for this row (for endWeekNumber)
     const maxSpan = Math.max(1, ...Object.values(w.colSpan).map(Number).filter(Boolean));
     const row: any = {
+      id: w.id,
+      activityId: w.activityId,
       weekNumber: w.weekNumber,
       endWeekNumber: Math.min(w.weekNumber + maxSpan - 1, totalWeeks),
       rowType: 'EVALUATION',
@@ -106,9 +119,15 @@ function weekRowsToDbRows(weeks: WeekRow[], totalWeeks: number): any[] {
     };
     DEFAULT_PLAN_COLUMNS.forEach(col => {
       // PONDERACIÓN DERIVADA: única fuente de verdad = Puntos (escala 0-20).
-      row[col.key] = col.key === 'ponderacion'
-        ? Math.round((Number(w.data['puntos'] || 0) / 20) * 100 * 100) / 100
-        : w.data[col.key] ?? (col.numeric ? 0 : '');
+      const rawPts = Number(w.data['puntos']);
+      const pts = !isNaN(rawPts) && rawPts > 0 ? Math.round(rawPts * 100) / 100 : (col.numeric && col.key === 'puntos' ? 0 : null);
+      if (col.key === 'puntos') {
+        row['puntos'] = pts ?? 0;
+      } else if (col.key === 'ponderacion') {
+        row['ponderacion'] = pts ? Math.round((pts / 20) * 100 * 100) / 100 : 0;
+      } else {
+        row[col.key] = w.data[col.key] ?? (col.numeric ? 0 : '');
+      }
     });
     // Store extra cols as extraData JSON
     const extraKeys = Object.keys(w.data).filter(k => !DEFAULT_PLAN_COLUMNS.find(c => c.key === k));
@@ -221,6 +240,46 @@ export default function EvaluationPlanSection({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
 
+  // ── Copiar el plan a otras secciones ─────────
+  const [copiandoAbierto, setCopiandoAbierto] = useState(false);
+  const [destinosElegidos, setDestinosElegidos] = useState<string[]>([]);
+  const { data: destinos = [], isLoading: cargandoDestinos } = useCopyTargets({
+    sourceClassroomId: classroomId,
+    subjectId,
+    enabled: copiandoAbierto,
+  });
+  const { mutateAsync: copiarPlan, isPending: copiando } = useCopyPlan();
+
+  const alternarDestino = (id: string) =>
+    setDestinosElegidos(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+
+  const cerrarCopiar = () => {
+    setCopiandoAbierto(false);
+    setDestinosElegidos([]);
+  };
+
+  const confirmarCopia = async () => {
+    if (destinosElegidos.length === 0) return;
+    try {
+      await copiarPlan({
+        sourceClassroomId: classroomId,
+        sourceSubjectId: subjectId,
+        sourceLapso: selectedLapso,
+        targetClassroomIds: destinosElegidos,
+      });
+      toast.success(
+        destinosElegidos.length === 1
+          ? 'Plan copiado a 1 sección'
+          : `Plan copiado a ${destinosElegidos.length} secciones`
+      );
+      cerrarCopiar();
+    } catch (error: any) {
+      // El servidor dice el motivo exacto (p.ej. una sección que no es suya):
+      // se muestra tal cual en vez de un "ocurrió un error".
+      toast.error(error?.response?.data?.message || error?.response?.data?.error || 'No se pudo copiar el plan');
+    }
+  };
+
   const handleImportWord = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -240,6 +299,21 @@ export default function EvaluationPlanSection({
         const newWeeks = [...weeks];
         parsedRows.forEach((r, i) => {
           if (i < newWeeks.length) {
+            // Sincronizar puntos y ponderación si vienen del Word
+            if (r['ponderacion'] && !r['puntos']) {
+              const p = parseFloat(String(r['ponderacion']).replace('%', '').trim());
+              if (!isNaN(p)) {
+                const pt = Math.round((p / 100) * 20 * 100) / 100;
+                r['puntos'] = String(pt);
+                r['ponderacion'] = String(Math.round((pt / 20) * 100 * 100) / 100);
+              }
+            } else if (r['puntos']) {
+              const pt = parseFloat(String(r['puntos']).trim());
+              if (!isNaN(pt)) {
+                r['puntos'] = String(Math.round(pt * 100) / 100);
+                r['ponderacion'] = String(Math.round((pt / 20) * 100 * 100) / 100);
+              }
+            }
             newWeeks[i].data = { ...newWeeks[i].data, ...r };
             Object.keys(r).forEach(k => {
               newWeeks[i].colSpan[k] = 1;
@@ -289,12 +363,13 @@ export default function EvaluationPlanSection({
   }, [rowsData, autoPopulated.lapsoWeeks, localMeta.totalSemanas]);
 
   // ── Totals ────────────────────────────────────
-  const totalPonderacion = useMemo(() =>
-    weeks.reduce((s, w) => s + (Number(w.data['ponderacion']) || 0), 0)
-  , [weeks]);
   const totalPuntos = useMemo(() =>
-    weeks.reduce((s, w) => s + (Number(w.data['puntos']) || 0), 0)
+    Math.round(weeks.reduce((s, w) => s + (Number(w.data['puntos']) || 0), 0) * 100) / 100
   , [weeks]);
+
+  const totalPonderacion = useMemo(() =>
+    Math.round((totalPuntos / 20) * 100 * 100) / 100
+  , [totalPuntos]);
 
   // ── Helpers: column mutations ─────────────────
   const addColumn = () => {
@@ -319,6 +394,14 @@ export default function EvaluationPlanSection({
     setWeeks(prev => {
       const next = prev.map(w => ({ ...w, data: { ...w.data }, colSpan: { ...w.colSpan } }));
       next[weekIdx].data[colKey] = value;
+      if (colKey === 'puntos') {
+        const pts = Number(value);
+        if (!isNaN(pts) && pts > 0) {
+          next[weekIdx].data['ponderacion'] = Math.round((pts / 20) * 100 * 100) / 100;
+        } else {
+          next[weekIdx].data['ponderacion'] = 0;
+        }
+      }
       return next;
     });
   }, []);
@@ -368,18 +451,21 @@ export default function EvaluationPlanSection({
 
     if (activeIdxs.length === 0) return;
 
-    const pPerItem = Math.round((100 / activeIdxs.length) * 100) / 100;
-    const ptPerItem = Math.round((20 / activeIdxs.length) * 100) / 100;
+    const count = activeIdxs.length;
+    const ptPerItem = Math.floor((20 / count) * 100) / 100;
 
     setWeeks(prev => {
       const next = prev.map(w => ({ ...w, data: { ...w.data }, colSpan: { ...w.colSpan } }));
+      let accumulatedPt = 0;
+
       activeIdxs.forEach((idx, i) => {
-        // last gets remainder
-        const isLast = i === activeIdxs.length - 1;
-        const usedP = pPerItem * i;
-        const usedPt = ptPerItem * i;
-        next[idx].data['ponderacion'] = isLast ? Math.round((100 - usedP) * 100) / 100 : pPerItem;
-        next[idx].data['puntos'] = isLast ? Math.round((20 - usedPt) * 100) / 100 : ptPerItem;
+        const isLast = i === count - 1;
+        const currentPt = isLast ? Math.round((20 - accumulatedPt) * 100) / 100 : ptPerItem;
+        accumulatedPt = Math.round((accumulatedPt + currentPt) * 100) / 100;
+        const currentPond = Math.round((currentPt / 20) * 100 * 100) / 100;
+
+        next[idx].data['puntos'] = currentPt;
+        next[idx].data['ponderacion'] = currentPond;
       });
       return next;
     });
@@ -442,6 +528,11 @@ export default function EvaluationPlanSection({
           ))}
         </div>
 
+        {/* Separador elegante para que las divisiones de 4 columnas no choquen visualmente con las de 5 */}
+        <div className="bg-slate-100 px-3 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-600 border-b border-gray-200 flex items-center justify-between">
+          <span>Referentes Curriculares e Institucionales</span>
+        </div>
+
         <div className="grid grid-cols-5 gap-0 bg-white text-[10px]">
           {fields.map(field => (
             <div key={field.key} className="p-2 border-r border-gray-200 last:border-r-0">
@@ -455,7 +546,7 @@ export default function EvaluationPlanSection({
                   className="w-full bg-gray-50 border border-gray-200 rounded p-1.5 focus:ring-2 focus:ring-indigo-500 outline-none resize-none text-[10px]"
                 />
               ) : (
-                <span>{(localMeta as any)[field.key] || '—'}</span>
+                <span className="text-gray-700 leading-snug font-medium block">{(localMeta as any)[field.key] || '—'}</span>
               )}
             </div>
           ))}
@@ -494,37 +585,38 @@ export default function EvaluationPlanSection({
       });
     });
 
+    const nonNumericCols = columns.filter(c => !c.numeric);
+
     return (
       <div className="flex flex-col h-full">
-        {/* Sticky thead */}
-        <div className="overflow-x-auto flex-shrink-0">
+        {/* Tabla unificada con thead y tfoot sticky para sincronización y alineación perfecta de columnas */}
+        <div className="overflow-auto flex-1 min-h-0">
           <table className="w-full text-[10px] text-left text-gray-700 border-collapse">
-            <colgroup>
-              <col style={{ width: '96px' }} />
-              {columns.map(col => <col key={col.key} style={{ minWidth: col.numeric ? '60px' : '100px', width: col.numeric ? '60px' : 'auto' }} />)}
-            </colgroup>
-            <thead className="text-white uppercase bg-slate-800">
+            <thead className="text-white uppercase bg-slate-800 sticky top-0 z-10 shadow-sm">
               <tr>
-                <th className="px-2 py-2 border border-slate-700 text-center w-24">FECHA / SEMANA</th>
+                <th className="px-1.5 py-2.5 border border-slate-700 text-center w-20 min-w-[76px] bg-slate-800 sticky top-0 font-bold whitespace-nowrap">
+                  FECHA / SEMANA
+                </th>
                 {columns.map(col => (
-                  <th key={col.key} className="px-2 py-2 border border-slate-700">{col.label}</th>
+                  <th
+                    key={col.key}
+                    className={`px-1.5 py-2.5 border border-slate-700 bg-slate-800 sticky top-0 font-bold ${
+                      col.numeric ? 'text-center whitespace-nowrap' : 'text-left'
+                    }`}
+                    style={{
+                      width: col.numeric ? (col.key === 'puntos' ? '54px' : '64px') : undefined,
+                      minWidth: col.numeric ? (col.key === 'puntos' ? '50px' : '60px') : '70px',
+                    }}
+                  >
+                    {col.label}
+                  </th>
                 ))}
               </tr>
             </thead>
-          </table>
-        </div>
-
-        {/* Scrollable tbody */}
-        <div className="overflow-auto flex-1 min-h-0">
-          <table className="w-full text-[10px] text-left text-gray-700 border-collapse">
-            <colgroup>
-              <col style={{ width: '96px' }} />
-              {columns.map(col => <col key={col.key} style={{ minWidth: col.numeric ? '60px' : '100px', width: col.numeric ? '60px' : 'auto' }} />)}
-            </colgroup>
-            <tbody>
+            <tbody className="bg-white">
               {weeks.map((w, idx) => (
-                <tr key={w.weekNumber} className="bg-white border-b border-gray-200">
-                  <td className="px-2 py-2 border border-gray-200 text-center align-middle w-24">
+                <tr key={w.weekNumber} className="border-b border-gray-200 hover:bg-slate-50/50 transition-colors">
+                  <td className="px-1.5 py-2 border border-gray-200 text-center align-middle w-20 min-w-[76px] bg-slate-50/40">
                     <div className="font-bold text-gray-800 text-[10px] uppercase">Semana {w.weekNumber}</div>
                     <div className="text-[9px] text-gray-500 mt-0.5 leading-tight">
                       {getWeekDates(autoPopulated?.lapsoStartDate, w.weekNumber)?.start}
@@ -537,8 +629,20 @@ export default function EvaluationPlanSection({
                     const span = rowSpanMap[col.key].get(idx) || 1;
                     const val = w.data[col.key];
                     return (
-                      <td key={col.key} rowSpan={span} className="px-2 py-2 border border-gray-200 align-middle">
-                        <div className="whitespace-pre-wrap font-medium text-gray-700">
+                      <td
+                        key={col.key}
+                        rowSpan={span}
+                        className={`px-1.5 py-2 border border-gray-200 align-middle ${
+                          col.numeric ? 'text-center' : 'text-left'
+                        }`}
+                      >
+                        <div
+                          className={`whitespace-pre-wrap ${
+                            col.numeric
+                              ? 'text-center font-bold text-gray-900'
+                              : 'text-left font-medium text-gray-700'
+                          }`}
+                        >
                           {col.key === 'ponderacion' && val ? `${val}%` :
                            col.key === 'puntos' && val ? `${val} pts` :
                            val || ''}
@@ -549,28 +653,37 @@ export default function EvaluationPlanSection({
                 </tr>
               ))}
             </tbody>
+            <tfoot className="sticky bottom-0 z-10 bg-slate-100 border-t-2 border-slate-300 font-bold text-gray-800 shadow-[0_-2px_4px_rgba(0,0,0,0.05)]">
+              <tr>
+                <td
+                  colSpan={nonNumericCols.length + 1}
+                  className="px-4 py-2.5 border border-gray-300 text-right uppercase text-[10px] tracking-wider text-gray-700 bg-slate-100 sticky bottom-0"
+                >
+                  Total Ponderación Acumulada
+                </td>
+                <td className="px-1.5 py-2.5 border border-gray-300 text-center font-black text-xs bg-slate-100 sticky bottom-0">
+                  <span className={totalPonderacion > 100 ? 'text-red-600' : totalPonderacion === 100 ? 'text-emerald-600' : 'text-amber-600'}>
+                    {totalPonderacion}%
+                  </span>
+                  {totalPonderacion < 100 && (
+                    <span className="block text-[8px] font-normal text-gray-400">faltan {100 - totalPonderacion}%</span>
+                  )}
+                  {totalPonderacion > 100 && (
+                    <span className="block text-[8px] font-normal text-red-500">exceso {totalPonderacion - 100}%</span>
+                  )}
+                </td>
+                <td className="px-1.5 py-2.5 border border-gray-300 text-center font-black text-xs text-gray-800 bg-slate-100 sticky bottom-0">
+                  {totalPuntos} pts
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
 
-        {/* Footer */}
-        <div className="border-t border-gray-300 flex-shrink-0">
-          <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-gray-200">
-            <span className="text-[10px] font-bold uppercase text-gray-600">Total Ponderación Acumulada</span>
-            <div className="flex items-center gap-4">
-              <div className={`text-sm font-black ${
-                totalPonderacion > 100 ? 'text-red-600' : totalPonderacion === 100 ? 'text-emerald-600' : 'text-amber-600'
-              }`}>
-                {totalPonderacion}%
-                {totalPonderacion < 100 && <span className="text-[10px] font-normal text-gray-400 ml-1">(faltan {100 - totalPonderacion}%)</span>}
-                {totalPonderacion > 100 && <span className="text-[10px] font-normal text-red-400 ml-1">(exceso {totalPonderacion - 100}%)</span>}
-              </div>
-              <div className="text-sm font-black text-gray-700">{totalPuntos} pts</div>
-            </div>
-          </div>
-          <div className="px-4 py-2 bg-white">
-            <span className="text-[10px] font-bold uppercase text-gray-500">Observaciones:</span>
-            <p className="text-xs mt-1 text-gray-700">{localMeta.observaciones || 'Sin observaciones.'}</p>
-          </div>
+        {/* Footer: Observaciones */}
+        <div className="px-4 py-2 bg-white border-t border-gray-200 flex-shrink-0">
+          <span className="text-[10px] font-bold uppercase text-gray-500">Observaciones:</span>
+          <p className="text-xs mt-0.5 text-gray-700">{localMeta.observaciones || 'Sin observaciones.'}</p>
         </div>
       </div>
     );
@@ -598,27 +711,38 @@ export default function EvaluationPlanSection({
       });
     });
 
+    const nonNumericCols = columns.filter(c => !c.numeric);
+
     return (
       <div className="flex flex-col h-full bg-white">
-        {/* Sticky thead */}
-        <div className="overflow-x-auto flex-shrink-0">
+        {/* Tabla unificada editable con thead y tfoot sticky */}
+        <div className="overflow-auto flex-1 min-h-0">
           <table className="w-full text-[10px] text-left text-gray-700 border-collapse">
-            <thead className="text-white uppercase bg-slate-800">
+            <thead className="text-white uppercase bg-slate-800 sticky top-0 z-20 shadow-sm">
               <tr>
-                <th className="px-1 py-1 border border-slate-700 text-center w-20">FECHA/SEM.</th>
+                <th className="px-1 py-1.5 border border-slate-700 text-center w-18 min-w-[70px] bg-slate-800 sticky top-0 font-bold whitespace-nowrap">
+                  FECHA/SEM.
+                </th>
                 {columns.map(col => (
-                  <th key={col.key} className="px-1 py-1 border border-slate-700" style={{ minWidth: col.numeric ? '60px' : '100px', width: col.numeric ? '60px' : 'auto' }}>
+                  <th
+                    key={col.key}
+                    className="px-1 py-1.5 border border-slate-700 bg-slate-800 sticky top-0"
+                    style={{
+                      width: col.numeric ? (col.key === 'puntos' ? '54px' : '64px') : undefined,
+                      minWidth: col.numeric ? (col.key === 'puntos' ? '50px' : '60px') : '70px',
+                    }}
+                  >
                     <div className="flex items-center gap-1">
                       <AutoResizeTextarea
                         value={col.label}
                         onChange={e => renameColumn(col.key, e.target.value)}
-                        className="bg-slate-700 border border-slate-600 rounded px-1 py-0.5 text-white w-full focus:outline-none focus:ring-1 focus:ring-indigo-400 text-[10px] min-w-0 text-center leading-tight"
+                        className="bg-slate-700 border border-slate-600 rounded px-1 py-0.5 text-white w-full focus:outline-none focus:ring-1 focus:ring-indigo-400 text-[10px] min-w-0 text-center leading-tight font-bold"
                         minHeight={20}
                       />
                       {!DEFAULT_PLAN_COLUMNS.find(d => d.key === col.key) && (
                         <button
                           onClick={() => removeColumn(col.key)}
-                          className="text-red-300 hover:text-red-100 shrink-0"
+                          className="text-red-300 hover:text-red-100 shrink-0 p-0.5 rounded hover:bg-slate-600"
                           title="Eliminar columna"
                         >
                           <X className="w-3 h-3" />
@@ -627,25 +751,14 @@ export default function EvaluationPlanSection({
                     </div>
                   </th>
                 ))}
-                <th className="px-1 py-1 border border-slate-700 w-8 text-center">
+                <th className="px-1 py-1.5 border border-slate-700 w-8 text-center bg-slate-800 sticky top-0">
                   <button onClick={addColumn} title="Agregar columna" className="bg-indigo-500 hover:bg-indigo-400 text-white rounded p-0.5 transition-colors">
                     <Plus className="w-3 h-3 mx-auto" />
                   </button>
                 </th>
               </tr>
             </thead>
-          </table>
-        </div>
-
-        {/* Scrollable tbody */}
-        <div className="overflow-auto flex-1 min-h-0">
-          <table className="w-full text-[10px] text-left text-gray-700 border-collapse">
-            <colgroup>
-              <col style={{ width: '80px' }} />
-              {columns.map(col => <col key={col.key} style={{ minWidth: col.numeric ? '60px' : '100px', width: col.numeric ? '60px' : 'auto' }} />)}
-              <col style={{ width: '32px' }} />
-            </colgroup>
-            <tbody>
+            <tbody className="bg-white">
               {weeks.map((w, idx) => {
                 return (
                   <tr key={w.weekNumber} className="bg-white border-b border-gray-200 hover:bg-indigo-50/20 transition-colors">
@@ -666,22 +779,29 @@ export default function EvaluationPlanSection({
                         <td key={col.key} rowSpan={span} className="px-0.5 py-0.5 border border-gray-200 align-top relative group">
                           {col.numeric ? (
                             col.key === 'ponderacion' ? (
-                              // PONDERACIÓN DERIVADA: única fuente de verdad = Puntos.
-                              // Se muestra calculada (puntos/20*100) y no se edita.
                               <input
-                                type="number"
+                                type="text"
                                 readOnly
-                                value={String(Math.round((Number(w.data['puntos'] ?? 0) / 20) * 10000) / 100.00001 || 0)}
-                                className="w-full px-1 py-0.5 h-full min-h-[22px] border-none bg-gray-100 text-gray-500 text-[10px] cursor-not-allowed"
+                                value={(() => {
+                                  const pts = Number(w.data['puntos']);
+                                  if (isNaN(pts) || pts <= 0) return '';
+                                  const pond = Math.round((pts / 20) * 100 * 100) / 100;
+                                  return `${pond}%`;
+                                })()}
+                                className="w-full px-1 py-0.5 h-full min-h-[22px] border-none bg-gray-100 text-gray-600 text-[10px] cursor-not-allowed font-medium text-center"
                                 title="La ponderación se deriva de los Puntos (puntos/20×100). Edita Puntos."
-                                placeholder="0"
+                                placeholder="0%"
                               />
                             ) : (
                               <input
                                 type="number"
-                                value={String(w.data[col.key] ?? '')}
-                                onChange={e => setCell(idx, col.key, parseFloat(e.target.value) || 0)}
-                                className="w-full px-1 py-0.5 h-full min-h-[22px] border-none focus:ring-1 focus:ring-indigo-500 outline-none bg-transparent text-[10px]"
+                                step="any"
+                                value={w.data[col.key] !== undefined && w.data[col.key] !== null && w.data[col.key] !== '' ? String(w.data[col.key]) : ''}
+                                onChange={e => {
+                                  const val = e.target.value === '' ? '' : parseFloat(e.target.value);
+                                  setCell(idx, col.key, isNaN(val as number) ? '' : (val as number));
+                                }}
+                                className="w-full px-1 py-0.5 h-full min-h-[22px] border-none focus:ring-1 focus:ring-indigo-500 outline-none bg-transparent text-[10px] text-center"
                                 placeholder="0"
                               />
                             )
@@ -705,37 +825,43 @@ export default function EvaluationPlanSection({
                         </td>
                       );
                     })}
-                    <td className="border border-gray-100 bg-gray-50 w-8" />
+                    <td className="px-0.5 py-0.5 border border-gray-200 bg-slate-50/50 w-8" />
                   </tr>
                 );
               })}
             </tbody>
+            <tfoot className="sticky bottom-0 z-20 bg-slate-100 border-t-2 border-slate-300 font-bold text-gray-800 shadow-[0_-2px_4px_rgba(0,0,0,0.05)]">
+              <tr>
+                <td
+                  colSpan={nonNumericCols.length + 1}
+                  className="px-4 py-2 border border-gray-300 text-right uppercase text-[10px] tracking-wider text-gray-700 bg-slate-100 sticky bottom-0"
+                >
+                  Total Ponderación
+                </td>
+                <td className="px-1 py-2 border border-gray-300 text-center font-black text-xs bg-slate-100 sticky bottom-0">
+                  <span className={totalPonderacion > 100 ? 'text-red-600' : totalPonderacion === 100 ? 'text-emerald-600' : 'text-amber-600'}>
+                    {totalPonderacion}%
+                  </span>
+                </td>
+                <td className="px-1 py-2 border border-gray-300 text-center font-black text-xs text-gray-800 bg-slate-100 sticky bottom-0">
+                  {totalPuntos} pts
+                </td>
+                <td className="border border-gray-300 bg-slate-100 sticky bottom-0" />
+              </tr>
+            </tfoot>
           </table>
         </div>
 
-        {/* FOOTER */}
-        <div className="border-t border-gray-300 flex-shrink-0">
-          <div className="flex items-center justify-between px-4 py-1.5 bg-slate-50 border-b border-gray-200">
-            <span className="text-[10px] font-bold uppercase text-gray-600">Total Ponderación</span>
-            <div className="flex items-center gap-4">
-              <div className={`text-sm font-black ${
-                totalPonderacion > 100 ? 'text-red-600' : totalPonderacion === 100 ? 'text-emerald-600' : 'text-amber-600'
-              }`}>
-                {totalPonderacion}%
-              </div>
-              <div className="text-sm font-black text-gray-700">{totalPuntos} pts</div>
-            </div>
-          </div>
-          <div className="px-4 py-2 bg-white">
-            <span className="text-[10px] font-bold uppercase text-gray-500">Observaciones:</span>
-            <textarea
-              value={localMeta.observaciones || ''}
-              onChange={e => handleMetaChange('observaciones', e.target.value)}
-              placeholder="Observaciones finales..."
-              rows={2}
-              className="w-full mt-1 text-xs border border-gray-200 bg-gray-50 rounded p-2 focus:ring-indigo-500 outline-none resize-none"
-            />
-          </div>
+        {/* Footer: Observaciones editables */}
+        <div className="px-4 py-2 bg-white border-t border-gray-200 flex-shrink-0">
+          <span className="text-[10px] font-bold uppercase text-gray-500">Observaciones:</span>
+          <textarea
+            value={localMeta.observaciones || ''}
+            onChange={e => handleMetaChange('observaciones', e.target.value)}
+            placeholder="Observaciones finales..."
+            rows={2}
+            className="w-full mt-1 text-xs border border-gray-200 bg-gray-50 rounded p-2 focus:ring-indigo-500 outline-none resize-none"
+          />
         </div>
       </div>
     );
@@ -849,12 +975,97 @@ export default function EvaluationPlanSection({
             <Printer className="w-3.5 h-3.5 mr-1.5" /> Imprimir
           </button>
           {canEdit && (
+            <button
+              onClick={() => setCopiandoAbierto(true)}
+              className="flex items-center px-3 py-1.5 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs"
+              title="Usar este mismo plan en otra sección donde das esta materia"
+            >
+              <Copy className="w-3.5 h-3.5 mr-1.5" /> Copiar a otra sección
+            </button>
+          )}
+          {canEdit && (
             <button onClick={() => setIsEditing(true)} className="flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-bold text-xs">
               <Edit2 className="w-3.5 h-3.5 mr-1.5" /> Editar Plan
             </button>
           )}
         </div>
       </div>
+
+      {/* ── Copiar el plan a otras secciones ───────────────────────── */}
+      {copiandoAbierto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 print:hidden">
+          <div className="w-full max-w-md bg-white rounded-xl shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <Copy className="w-4 h-4 text-indigo-600" /> Copiar plan a otra sección
+              </h3>
+              <button onClick={cerrarCopiar} className="text-gray-400 hover:text-gray-600" aria-label="Cerrar">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-5 py-4 max-h-[50vh] overflow-auto">
+              <p className="text-xs text-gray-500 mb-3">
+                Se copia el plan del <strong>{LAPSOS.find(l => l.id === selectedLapso)?.name}</strong> tal como está ahora.
+              </p>
+
+              {cargandoDestinos ? (
+                <p className="text-xs text-gray-400 py-4 text-center">Buscando tus secciones...</p>
+              ) : destinos.length === 0 ? (
+                <p className="text-xs text-gray-500 py-4 text-center">
+                  No hay otra sección donde des esta materia en este año escolar.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {destinos.map(seccion => (
+                    <label
+                      key={seccion.id}
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={destinosElegidos.includes(seccion.id)}
+                        onChange={() => alternarDestino(seccion.id)}
+                        className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-sm text-gray-800">
+                        {seccion.grade}° {seccion.section}
+                        <span className="text-xs text-gray-400 ml-2">{seccion.name}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {destinosElegidos.length > 0 && (
+                <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800">
+                    El plan que tengan esas secciones en este lapso se reemplaza por este.
+                    Las notas ya puestas no se tocan.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 px-5 py-3 bg-gray-50 border-t border-gray-100">
+              <button
+                onClick={cerrarCopiar}
+                className="px-3 py-1.5 text-xs text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarCopia}
+                disabled={destinosElegidos.length === 0 || copiando}
+                className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {copiando ? 'Copiando...' : `Copiar${destinosElegidos.length > 0 ? ` a ${destinosElegidos.length}` : ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Membrete + Table occupying remaining space */}
       <div className="flex flex-col flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden print:border-none print:shadow-none">

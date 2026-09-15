@@ -110,12 +110,20 @@ export async function identifyTenant(
         // distinto, la request se rechaza con 401: un usuario del Instituto B
         // no puede operar bajo el contexto del Instituto A.
         if (jwtInstituteId) {
-            const conflictingSource = [
-                slugInstituteId,
-                headerInstituteId,
-                subdomainInstituteId,
-                domainInstituteId,
-            ].find(id => id !== null && id !== jwtInstituteId);
+            // Si la petición NOMBRA un instituto (slug, id, subdominio o dominio),
+            // tiene que ser el del token. Se rechaza también cuando ese nombre no
+            // resuelve a nada: pedir un liceo que no es el tuyo se corta aunque ese
+            // liceo no exista, y así tampoco se puede ir probando nombres para ver
+            // cuáles existen.
+            const pidioOtroInstituto =
+                (slug !== null && slugInstituteId !== jwtInstituteId) ||
+                (headerInstituteId !== null && headerInstituteId !== jwtInstituteId) ||
+                (subdomainInstituteId !== null && subdomainInstituteId !== jwtInstituteId) ||
+                (domainInstituteId !== null && domainInstituteId !== jwtInstituteId);
+
+            const conflictingSource = pidioOtroInstituto
+                ? slugInstituteId ?? headerInstituteId ?? subdomainInstituteId ?? domainInstituteId ?? slug
+                : null;
 
             if (conflictingSource) {
                 logger.warn('Tenant mismatch: JWT instituteId no coincide con el instituto resuelto', {

@@ -20,11 +20,15 @@ import { cycleStatisticsRoutes } from './cycle-statistics.routes';
 import { classroomSubjectsRoutes } from './classroomSubjects.routes';
 import { scheduleBlocksRoutes } from './scheduleBlocks.routes';
 import { classSessionsRoutes } from './classSessions.routes';
+import { observationsRoutes } from './observations.routes';
 import evaluationPlanRoutes from './evaluation-plan.routes';
 import { superAdminAuthRoutes } from './superadmin-auth.routes';
 import { superAdminInstitutesRoutes } from './superadmin-institutes.routes';
 import { instituteInfoRoutes } from '../controllers/institute-info.controller';
 import { cacheMetricsRoutes } from '../controllers/cache-metrics.controller';
+import { monitoringRoutes } from './monitoring.routes';
+import { schoolEventsRoutes } from './school-events.routes';
+import { schoolTimeRoutes } from './school-time.routes';
 
 // Función para registrar todas las rutas
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
@@ -44,9 +48,12 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(subjectsRoutes, { prefix: '/api/subjects' });
   await fastify.register(classroomSubjectsRoutes, { prefix: '/api' });
   await fastify.register(attendanceRoutes, { prefix: '/api/attendance' });
+  // La hora oficial del liceo (el reloj del dispositivo no es de fiar)
+  await fastify.register(schoolTimeRoutes, { prefix: '/api/time' });
   await fastify.register(schedulesRoutes, { prefix: '/api/schedules' });
   await fastify.register(scheduleBlocksRoutes, { prefix: '/api' });
   await fastify.register(classSessionsRoutes, { prefix: '/api/sessions' });
+  await fastify.register(observationsRoutes, { prefix: '/api/observations' });
 
   // Rutas por roles específicos
   await fastify.register(studentsRoutes, { prefix: '/api/students' });
@@ -74,6 +81,12 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
 
   // Rutas de métricas de cache (SuperAdmin)
   await fastify.register(cacheMetricsRoutes);
+
+  // Rutas de monitoreo: métricas de queries y alertas (SuperAdmin)
+  await fastify.register(monitoringRoutes, { prefix: '/api/superadmin/monitoring' });
+
+  // Eventos del liceo (calendario del director): /api/events
+  await fastify.register(schoolEventsRoutes, { prefix: '/api' });
 
   // Rutas de estado del sistema
   fastify.get('/api/health', async () => {

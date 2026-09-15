@@ -3,9 +3,13 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { InstitutesService } from '../services/institutes.service';
 import { SUCCESS_MESSAGES } from '../utils/constants';
 import { deleteOldFile } from '../middleware/upload.middleware';
-import { getAcademicConfig, updateAcademicConfig } from '../services/promotion/close-cycle.service';
+import { getAcademicConfig, updateAcademicConfig, esAsistenciaMinimaValida } from '../services/promotion/close-cycle.service';
+import { RedisCache } from '../config/redis';
+import { conLiceo } from '../config/ambito-del-liceo';
+import { platformPrisma } from '../config/database';
 import path from 'path';
 import fs from 'fs';
+import { revisarImagen } from '../utils/archivos-que-se-aceptan';
 
 const institutesService = new InstitutesService();
 
@@ -28,7 +32,10 @@ export async function getInstituteConfig(request: FastifyRequest, reply: Fastify
     return reply.status(200).send({
       success: true,
       message: SUCCESS_MESSAGES.FETCH_SUCCESS,
-      data: config
+      data: {
+        ...config,
+        configuration: config?.academicConfig ? JSON.stringify(config.academicConfig) : null
+      }
     });
   } catch (error) {
     throw error;
@@ -42,8 +49,8 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
     const userId = request.user?.userId!;
     const instituteId = getInstId(request);
 
-    // Validar que solo se puedan actualizar campos permitidos
-    const allowedFields = {
+    // Campos directos del modelo Institute
+    const allowedFields: any = {
       name: data.name,
       code: data.code,
       logo: data.logo,
@@ -51,8 +58,64 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
       phone: data.phone,
       email: data.email,
       website: data.website,
-      description: data.description
+      description: data.description,
+      timezone: data.timezone,
     };
+
+    // Procesar configuraciones académicas, notificaciones y seguridad
+    const currentInstitute = await platformPrisma.institute.findUnique({
+      where: { id: instituteId },
+      select: { academicConfig: true, timezone: true }
+    });
+
+    const currentAcademicConfig = (currentInstitute?.academicConfig as any) || {};
+    let nextAcademicConfig = { ...currentAcademicConfig };
+    let hasAcademicChanges = false;
+
+    // Manejar payload `configuration` (usado por AcademicSettings, NotificationSettings y SecuritySettings)
+    if (data.configuration !== undefined) {
+      const configObj = typeof data.configuration === 'string'
+        ? JSON.parse(data.configuration)
+        : data.configuration;
+
+      if (configObj && typeof configObj === 'object') {
+        hasAcademicChanges = true;
+        if (configObj.timezone && !allowedFields.timezone) {
+          allowedFields.timezone = configObj.timezone;
+        }
+        if (configObj.gradeScale) nextAcademicConfig.gradeScale = configObj.gradeScale;
+        if (configObj.passingGrade !== undefined) {
+          nextAcademicConfig.passingGrade = Number(configObj.passingGrade);
+          nextAcademicConfig.notaMinimaAprobatoria = Number(configObj.passingGrade);
+        }
+        // Desde qué porcentaje se le avisa al representante que su hijo falta.
+        // Fuera de 0–100 se ignora y se queda el que había.
+        if (esAsistenciaMinimaValida(Number(configObj.asistenciaMinima))) {
+          nextAcademicConfig.asistenciaMinima = Number(configObj.asistenciaMinima);
+        }
+        if (configObj.schedule) nextAcademicConfig.schedule = configObj.schedule;
+        if (configObj.language) nextAcademicConfig.language = configObj.language;
+        if (configObj.dateFormat) nextAcademicConfig.dateFormat = configObj.dateFormat;
+        if (configObj.notifications) nextAcademicConfig.notifications = configObj.notifications;
+        if (configObj.security) nextAcademicConfig.security = configObj.security;
+      }
+    }
+
+    // Manejar payload `academicConfig` directo
+    if (data.academicConfig && typeof data.academicConfig === 'object') {
+      hasAcademicChanges = true;
+      nextAcademicConfig = { ...nextAcademicConfig, ...data.academicConfig };
+      if (data.academicConfig.notaMinimaAprobatoria !== undefined) {
+        nextAcademicConfig.passingGrade = Number(data.academicConfig.notaMinimaAprobatoria);
+      }
+      if (data.academicConfig.passingGrade !== undefined) {
+        nextAcademicConfig.notaMinimaAprobatoria = Number(data.academicConfig.passingGrade);
+      }
+    }
+
+    if (hasAcademicChanges) {
+      allowedFields.academicConfig = nextAcademicConfig;
+    }
 
     // Filtrar solo los campos que se enviaron
     const updateData = Object.fromEntries(
@@ -61,10 +124,16 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
 
     const config = await institutesService.updateInstituteConfig(instituteId, updateData, userId, request.tenantPrisma);
 
+    // Invalidar caché Redis
+    await conLiceo(instituteId, () => RedisCache.delete(`dashboard:admin:${instituteId}`));
+
     return reply.status(200).send({
       success: true,
       message: SUCCESS_MESSAGES.UPDATE_SUCCESS,
-      data: config
+      data: {
+        ...config,
+        configuration: config.academicConfig ? JSON.stringify(config.academicConfig) : null
+      }
     });
   } catch (error) {
     throw error;
@@ -98,12 +167,25 @@ export async function uploadLogos(request: FastifyRequest, reply: FastifyReply) 
           fs.mkdirSync(uploadDir, { recursive: true });
         }
 
-        // Generar nombre único para el archivo
-        const ext = path.extname(filename);
-        const uniqueFilename = `${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`;
+        // SE MIRA QUÉ ES, NO CÓMO SE LLAMA
+        //
+        // Antes la extensión salía del nombre que mandaba el usuario y el archivo
+        // se escribía tal cual. Como esta carpeta se sirve públicamente, con eso
+        // se podía dejar una página HTML colgada en el dominio del sistema.
+        // Ahora se miran los primeros bytes, que son los que de verdad dicen qué
+        // es. Ver `utils/archivos-que-se-aceptan.ts`.
+        const veredicto = revisarImagen(buffer, filename);
+        if (!veredicto.aceptada) {
+            return reply.status(400).send({
+                error: veredicto.motivo,
+                code: 'ARCHIVO_NO_ACEPTADO',
+            });
+        }
+
+        // La extensión es la que le toca por su contenido, no la que traía.
+        const uniqueFilename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${veredicto.extension}`;
         const filepath = path.join(uploadDir, uniqueFilename);
 
-        // Guardar archivo
         fs.writeFileSync(filepath, buffer);
 
         // Ruta relativa para guardar en BD
@@ -243,7 +325,11 @@ export async function updateAcademicConfigEndpoint(request: FastifyRequest, repl
     if (typeof body.notaMinimaAprobatoria === 'number') patch.notaMinimaAprobatoria = body.notaMinimaAprobatoria;
     if (typeof body.maxMateriasPendientesParaPromover === 'number') patch.maxMateriasPendientesParaPromover = body.maxMateriasPendientesParaPromover;
     if (typeof body.permitePendientesEnUltimoAno === 'boolean') patch.permitePendientesEnUltimoAno = body.permitePendientesEnUltimoAno;
-    const config = await updateAcademicConfig(getInstId(request), patch);
+    // Un porcentaje fuera de 0–100 no se guarda: se queda el que había.
+    if (esAsistenciaMinimaValida(body.asistenciaMinima)) patch.asistenciaMinima = body.asistenciaMinima;
+    const instId = getInstId(request);
+    const config = await updateAcademicConfig(instId, patch);
+    await conLiceo(instId, () => RedisCache.delete(`dashboard:admin:${instId}`));
     return reply.status(200).send({ success: true, data: config });
   } catch (error) {
     throw error;

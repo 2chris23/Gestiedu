@@ -110,6 +110,51 @@ export class UsersService {
               }
             }
           }
+        },
+        studentClassrooms: {
+          select: {
+            isActive: true,
+            classroomId: true,
+            academicYearId: true,
+            classroom: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                grade: true,
+                section: true,
+                academicYear: {
+                  select: {
+                    id: true,
+                    name: true,
+                    status: true,
+                    periods: {
+                      select: {
+                        id: true,
+                        name: true
+                      },
+                      orderBy: { startDate: 'asc' }
+                    }
+                  }
+                }
+              }
+            },
+            academicYear: {
+              select: {
+                id: true,
+                name: true,
+                status: true,
+                periods: {
+                  select: {
+                    id: true,
+                    name: true
+                  },
+                  orderBy: { startDate: 'asc' }
+                }
+              }
+            }
+          },
+          orderBy: { createdAt: 'desc' }
         }
       }
     });
@@ -152,7 +197,7 @@ export class UsersService {
     // Construir filtros
     const where: any = {};
 
-    if (role) {
+    if (role && (role as string) !== 'ALL') {
       where.role = role;
     }
 
@@ -160,13 +205,27 @@ export class UsersService {
       where.isActive = isActive;
     }
 
-    if (search) {
-      where.OR = [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { id: { contains: search } }
-      ];
+    if (search && search.trim()) {
+      const terms = search.trim().split(/\s+/).filter(Boolean);
+      if (terms.length === 1) {
+        where.OR = [
+          { firstName: { contains: terms[0], mode: 'insensitive' } },
+          { lastName: { contains: terms[0], mode: 'insensitive' } },
+          { email: { contains: terms[0], mode: 'insensitive' } },
+          { studentCode: { contains: terms[0], mode: 'insensitive' } },
+          { id: { contains: terms[0], mode: 'insensitive' } }
+        ];
+      } else if (terms.length > 1) {
+        where.AND = terms.map((term: string) => ({
+          OR: [
+            { firstName: { contains: term, mode: 'insensitive' } },
+            { lastName: { contains: term, mode: 'insensitive' } },
+            { email: { contains: term, mode: 'insensitive' } },
+            { studentCode: { contains: term, mode: 'insensitive' } },
+            { id: { contains: term, mode: 'insensitive' } }
+          ]
+        }));
+      }
     }
 
     // Contar total
@@ -181,6 +240,7 @@ export class UsersService {
         firstName: true,
         lastName: true,
         role: true,
+        studentCode: true,
         phone: true,
         address: true,
         birthDate: true,

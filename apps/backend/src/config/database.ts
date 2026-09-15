@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaClient as PlatformPrismaClient } from '../generated/platform-client';
 import { applyTenantIsolation } from './tenant-isolation.ext';
+import { buildTenantDatabaseUrl, cabenLasConexiones } from './tenant-db-url';
 
 // =====================================================
 // PLATFORM DATABASE (Metadata única)
@@ -68,6 +69,12 @@ interface TenantConnection {
 // Cache de conexiones de tenants (máximo 50 conexiones activas)
 const tenantConnections = new Map<string, TenantConnection>();
 const MAX_CONNECTIONS = 50;
+
+/**
+ * Cuántos clientes de liceo se guardan a la vez. Lo usa el aviso de arranque
+ * para hacer la cuenta con PostgreSQL: ver `cabenLasConexiones`.
+ */
+export const CLIENTES_DE_LICEO_GUARDADOS = MAX_CONNECTIONS;
 const CONNECTION_TTL = 30 * 60 * 1000; // 30 minutos
 
 /**
@@ -108,7 +115,9 @@ export async function getTenantPrisma(instituteId: string): Promise<PrismaClient
   }
 
   // 3. Crear nueva conexión Prisma para el tenant
-  const databaseUrl = `postgresql://${institute.databaseUser}:${institute.databasePassword}@${institute.databaseHost}:${institute.databasePort || 5432}/${institute.databaseName}?schema=public`;
+  // Con un cliente por liceo, sin límite de conexiones se agota PostgreSQL:
+  // ver src/config/tenant-db-url.ts
+  const databaseUrl = buildTenantDatabaseUrl(institute, 'runtime');
 
   const rawPrisma = new PrismaClient({
     datasources: {
@@ -116,7 +125,28 @@ export async function getTenantPrisma(instituteId: string): Promise<PrismaClient
         url: databaseUrl,
       },
     },
-    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+    /**
+     * PODER CONTAR LAS CONSULTAS DE UNA PETICIÓN
+     *
+     * El cliente de cada liceo no escribía las consultas que hace, así que no
+     * había forma de saber cuántas cuesta abrir una pantalla. Y esa cuenta es
+     * justo lo que destapa el problema que más se repite aquí: preguntar lo
+     * mismo una vez por alumno.
+     *
+     * Se vio con el guardado de notas: parecían "361 ms, algo lento". Contadas,
+     * eran **300 consultas para guardar 29 notas**, y quedó en 28 ms.
+     *
+     * Con `LOG_TENANT_QUERIES=1` se encienden. Apagado por defecto: encendido
+     * llena el registro y hace más lento justo lo que se quiere medir.
+     *
+     *   LOG_TENANT_QUERIES=1 npm run dev
+     */
+    log:
+      process.env.LOG_TENANT_QUERIES === '1'
+        ? ['query', 'error', 'warn']
+        : process.env.NODE_ENV === 'development'
+          ? ['error', 'warn']
+          : ['error'],
   });
 
   // 3.5. Aplicar extensión de aislamiento (safety net que inyecta instituteId automáticamente)
@@ -193,6 +223,34 @@ async function cleanupOldConnections(): Promise<void> {
       tenantConnections.delete(instituteId);
       console.log(`Cleaned up tenant connection: ${instituteId}`);
     }
+  }
+}
+
+/**
+ * AVISAR AL ARRANCAR SI LAS CONEXIONES NO DAN
+ *
+ * Se le pregunta a PostgreSQL cuántas plazas tiene y se hace la cuenta con lo
+ * configurado. No corta el arranque a propósito: un servidor que no levanta es
+ * peor que uno apretado. Pero queda dicho, con el número, antes de que alguien
+ * lo descubra un lunes a primera hora.
+ */
+export async function avisarSiNoCabenLasConexiones(): Promise<void> {
+  try {
+    const [max] = await platformPrisma.$queryRawUnsafe<any[]>('SHOW max_connections');
+    const [res] = await platformPrisma.$queryRawUnsafe<any[]>('SHOW superuser_reserved_connections');
+
+    const cuenta = cabenLasConexiones(
+      Number(max?.max_connections) || 100,
+      Number(res?.superuser_reserved_connections) || 0,
+      CLIENTES_DE_LICEO_GUARDADOS
+    );
+
+    if (cuenta.cabe) console.log(cuenta.mensaje);
+    else console.warn(cuenta.mensaje);
+  } catch (error) {
+    // Si no se puede preguntar, no se inventa un veredicto.
+    console.warn('No se pudo comprobar el máximo de conexiones de PostgreSQL:',
+      error instanceof Error ? error.message : String(error));
   }
 }
 

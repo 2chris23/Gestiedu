@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import SuperAdminLayout from '../layout';
 import Link from 'next/link';
+import { useSuperAdminAuthStore } from '@/store/superadmin-auth.store';
+import { superAdminFetch } from '@/lib/superadmin-fetch';
 
 interface Institute {
     id: string;
@@ -19,7 +21,9 @@ interface Institute {
     status: string;
     plan: string;
     currentStudents: number;
+    currentTeachers?: number;
     maxStudents: number;
+    maxTeachers?: number;
     billingStatus: string;
     monthlyPrice: number;
     createdAt: string;
@@ -52,24 +56,17 @@ export default function SuperAdminInstitutesPage() {
                 ...(statusFilter && { status: statusFilter }),
             });
 
-            const clientToken = typeof document !== 'undefined' ? document.cookie.split('superadmin_access_token=')[1]?.split(';')[0] : '';
-            const headers: Record<string, string> = {};
-            if (clientToken) {
-                headers['Authorization'] = `Bearer ${clientToken}`;
-            }
-
-            const response = await fetch(
-                `/api/superadmin/institutes?${params}`,
-                {
-                    credentials: 'include',
-                    headers,
-                }
-            );
+            const response = await superAdminFetch(`/api/superadmin/institutes?${params}`);
 
             if (response.ok) {
                 const data = await response.json();
-                setInstitutes(data.institutes);
-                setPagination(data.pagination);
+                setInstitutes(Array.isArray(data.institutes) ? data.institutes : []);
+                setPagination(data.pagination || null);
+            } else if (response.status === 401) {
+                toast.error('Sesión de SuperAdmin expirada. Por favor vuelve a iniciar sesión.');
+            } else {
+                const errData = await response.json().catch(() => ({}));
+                console.error('Error fetching institutes from server:', errData);
             }
         } catch (error) {
             console.error('Error fetching institutes:', error);
@@ -91,14 +88,10 @@ export default function SuperAdminInstitutesPage() {
 
         setDeleting(true);
         try {
-            const response = await fetch(
+            const response = await superAdminFetch(
                 `/api/superadmin/institutes/${deleteModal.institute.id}`,
                 {
                     method: 'DELETE',
-                    credentials: 'include',
-                    headers: {
-                        'Authorization': `Bearer ${document.cookie.split('superadmin_access_token=')[1]?.split(';')[0]}`,
-                    },
                 }
             );
 
@@ -131,8 +124,7 @@ export default function SuperAdminInstitutesPage() {
     };
 
     return (
-        <SuperAdminLayout>
-            <div className="p-8">
+        <div className="p-8">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-8">
                     <div>
@@ -228,11 +220,14 @@ export default function SuperAdminInstitutesPage() {
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     {(() => {
-                                                        const pct = Math.min(Math.round((institute.currentStudents / (institute.maxStudents || 1)) * 100), 100);
+                                                        const current = institute.currentStudents ?? 0;
+                                                        const max = institute.maxStudents ?? 1;
+                                                        const pct = Math.min(Math.round((current / max) * 100), 100);
                                                         const planColors: Record<string, string> = { BASIC: 'text-slate-300', PREMIUM: 'text-violet-400', ENTERPRISE: 'text-amber-400' };
                                                         const barColor = pct >= 90 ? 'bg-red-500' : pct >= 75 ? 'bg-amber-500' : 'bg-emerald-500';
+                                                        const teachers = institute.currentTeachers ?? 0;
                                                         return (
-                                                            <div className="min-w-[120px]">
+                                                            <div className="min-w-[140px]">
                                                                 <div className="flex items-center justify-between mb-1">
                                                                     <span className={`text-xs font-bold ${planColors[institute.plan] || 'text-gray-400'}`}>{institute.plan}</span>
                                                                     {pct >= 90 && <span className="text-xs text-red-400">⚠️</span>}
@@ -240,7 +235,10 @@ export default function SuperAdminInstitutesPage() {
                                                                 <div className="w-full bg-gray-700 rounded-full h-1.5 overflow-hidden">
                                                                     <div className={`h-1.5 rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
                                                                 </div>
-                                                                <p className="text-xs text-gray-500 mt-0.5">{institute.currentStudents.toLocaleString()}/{institute.maxStudents.toLocaleString()} alumnos</p>
+                                                                <div className="flex items-center justify-between text-xs text-gray-400 mt-1">
+                                                                    <span>👨‍🎓 {current.toLocaleString()} / {max.toLocaleString()} alumnos</span>
+                                                                    {teachers > 0 && <span className="text-gray-500">👩‍🏫 {teachers} prof</span>}
+                                                                </div>
                                                             </div>
                                                         );
                                                     })()}
@@ -324,7 +322,6 @@ export default function SuperAdminInstitutesPage() {
                         </>
                     )}
                 </div>
-            </div>
 
             {/* Delete Confirmation Modal */}
             {deleteModal.show && deleteModal.institute && (
@@ -369,6 +366,6 @@ export default function SuperAdminInstitutesPage() {
                     </div>
                 </div>
             )}
-        </SuperAdminLayout>
+        </div>
     );
 }

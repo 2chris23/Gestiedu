@@ -7,6 +7,7 @@ import {
   changePassword,
   getSessions,
   deleteSession,
+  deleteOtherSessions,
 } from '../controllers/auth.controller';
 import { authenticate, userRateLimit } from '../middleware/auth.middleware';
 
@@ -88,7 +89,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       required: ['currentPassword', 'newPassword'],
       properties: {
         currentPassword: { type: 'string' },
-        newPassword: { type: 'string', minLength: 6 },
+        // 8, igual que al crear la cuenta. Estaba en 6: se podía cambiar a una
+        // contraseña MÁS débil de la que el sistema exige para nacer.
+        newPassword: { type: 'string', minLength: 8 },
       },
     },
     response: {
@@ -117,6 +120,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Sesiones/dispositivos activos del usuario autenticado
   fastify.get('/sessions', { preHandler: authenticate }, getSessions as any);
+  fastify.delete('/sessions/others', { preHandler: authenticate }, deleteOtherSessions as any);
   fastify.delete('/sessions/:sessionId', { preHandler: authenticate }, deleteSession as any);
 };
 

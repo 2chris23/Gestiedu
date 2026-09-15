@@ -41,8 +41,25 @@ export const gradeSchema = z.number()
   .min(GRADE_SYSTEM.MIN_SCORE, `Calificación debe ser al menos ${GRADE_SYSTEM.MIN_SCORE}`)
   .max(GRADE_SYSTEM.MAX_SCORE, `Calificación no puede ser mayor a ${GRADE_SYSTEM.MAX_SCORE}`);
 
+// Validador de fecha de calendario válida (evita desbordamientos como 31 de Febrero)
+export function isValidCalendarDate(val?: string | null): boolean {
+  if (!val) return true;
+  const match = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return false;
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const day = parseInt(match[3], 10);
+
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return day <= daysInMonth;
+}
+
 // Validador de fecha
-export const dateSchema = z.string().datetime('Fecha debe estar en formato ISO 8601');
+export const dateSchema = z.string()
+  .datetime('Fecha debe estar en formato ISO 8601')
+  .refine(isValidCalendarDate, { message: 'Fecha de calendario inválida para el mes especificado' });
 
 // Validador de paginación
 export const paginationSchema = z.object({
@@ -140,9 +157,9 @@ export const createActivitySchema = z.object({
     .optional(),
   type: z.nativeEnum(ActivityType),
   scope: z.nativeEnum(ActivityScope),
-  startDate: z.string().datetime('Fecha de inicio debe estar en formato ISO 8601'),
-  endDate: z.string().datetime('Fecha de fin debe estar en formato ISO 8601').optional(),
-  dueDate: z.string().datetime('Fecha límite debe estar en formato ISO 8601').optional(),
+  startDate: dateSchema,
+  endDate: dateSchema.optional(),
+  dueDate: dateSchema.optional(),
   maxGrade: z.number().min(1, 'Calificación máxima debe ser mayor a 0').max(20, 'Calificación máxima no puede ser mayor a 20').default(20),
   weight: z.number().min(0.1, 'Peso debe ser mayor a 0').max(10, 'Peso no puede ser mayor a 10').default(1),
   isVisible: z.boolean().default(true),
@@ -178,9 +195,9 @@ export const updateActivitySchema = z.object({
   description: z.string().max(500, 'Descripción no puede tener más de 500 caracteres').optional(),
   type: z.nativeEnum(ActivityType).optional(),
   scope: z.nativeEnum(ActivityScope).optional(),
-  startDate: z.string().datetime('Fecha de inicio debe estar en formato ISO 8601').optional(),
-  endDate: z.string().datetime('Fecha de fin debe estar en formato ISO 8601').optional(),
-  dueDate: z.string().datetime('Fecha límite debe estar en formato ISO 8601').optional(),
+  startDate: dateSchema.optional(),
+  endDate: dateSchema.optional(),
+  dueDate: dateSchema.optional(),
   maxGrade: z.number().min(1, 'Calificación máxima debe ser mayor a 0').max(20, 'Calificación máxima no puede ser mayor a 20').optional(),
   weight: z.number().min(0.1, 'Peso debe ser mayor a 0').max(10, 'Peso no puede ser mayor a 10').optional(),
   isVisible: z.boolean().optional(),
@@ -199,11 +216,16 @@ export const createGradeSchema = z.object({
   subjectId: z.string().cuid('ID de materia inválido'),
 });
 
-export const updateGradeSchema = createGradeSchema.partial().omit({ studentId: true, activityId: true });
+// `expectedUpdatedAt`: la versión de la nota que la pantalla tenía a la vista.
+// Si se manda y ya no coincide, otra persona guardó mientras tanto y se avisa.
+export const updateGradeSchema = createGradeSchema
+  .partial()
+  .omit({ studentId: true, activityId: true })
+  .extend({ expectedUpdatedAt: z.string().optional() });
 
 // Validador de asistencia
 export const createAttendanceSchema = z.object({
-  date: z.string().datetime('Fecha debe estar en formato ISO 8601'),
+  date: dateSchema,
   status: z.nativeEnum(AttendanceStatus),
   comments: z.string().max(255, 'Comentarios no pueden tener más de 255 caracteres').optional(),
   studentId: z.string().min(1, 'ID de estudiante es requerido'),
@@ -249,8 +271,8 @@ export const updateScheduleSchema = z.object({
 // Validador de año académico
 export const createAcademicYearSchema = z.object({
   name: z.string().min(3, 'Nombre debe tener al menos 3 caracteres').max(20, 'Nombre no puede tener más de 20 caracteres'),
-  startDate: z.string().datetime('Fecha de inicio debe estar en formato ISO 8601'),
-  endDate: z.string().datetime('Fecha de fin debe estar en formato ISO 8601'),
+  startDate: dateSchema,
+  endDate: dateSchema,
   isActive: z.boolean().default(false),
 }).refine(
   data => new Date(data.endDate) > new Date(data.startDate),
@@ -262,16 +284,16 @@ export const createAcademicYearSchema = z.object({
 
 export const updateAcademicYearSchema = z.object({
   name: z.string().min(3, 'Nombre debe tener al menos 3 caracteres').max(20, 'Nombre no puede tener más de 20 caracteres').optional(),
-  startDate: z.string().datetime('Fecha de inicio debe estar en formato ISO 8601').optional(),
-  endDate: z.string().datetime('Fecha de fin debe estar en formato ISO 8601').optional(),
+  startDate: dateSchema.optional(),
+  endDate: dateSchema.optional(),
   isActive: z.boolean().optional(),
 });
 
 // Validador de período
 export const createPeriodSchema = z.object({
   name: z.string().min(3, 'Nombre debe tener al menos 3 caracteres').max(50, 'Nombre no puede tener más de 50 caracteres'),
-  startDate: z.string().datetime('Fecha de inicio debe estar en formato ISO 8601'),
-  endDate: z.string().datetime('Fecha de fin debe estar en formato ISO 8601'),
+  startDate: dateSchema,
+  endDate: dateSchema,
   isActive: z.boolean().default(false),
   academicYearId: z.string().cuid('ID de año académico inválido'),
 }).refine(
@@ -284,8 +306,8 @@ export const createPeriodSchema = z.object({
 
 export const updatePeriodSchema = z.object({
   name: z.string().min(3, 'Nombre debe tener al menos 3 caracteres').max(50, 'Nombre no puede tener más de 50 caracteres').optional(),
-  startDate: z.string().datetime('Fecha de inicio debe estar en formato ISO 8601').optional(),
-  endDate: z.string().datetime('Fecha de fin debe estar en formato ISO 8601').optional(),
+  startDate: dateSchema.optional(),
+  endDate: dateSchema.optional(),
   isActive: z.boolean().optional(),
   academicYearId: z.string().cuid('ID de año académico inválido').optional(),
 });

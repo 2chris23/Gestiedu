@@ -19,8 +19,8 @@ import {
 import { getStrategy } from '../../src/services/promotion/strategies';
 
 function gId(): string {
-    const id = createId();
-    return id.startsWith('c') ? id : `c${id}`;
+    // Siempre la 'c' delante: ver la nota de `tests/helpers.ts`.
+    return `c${createId()}`;
 }
 
 /**
@@ -230,7 +230,7 @@ describe('Fase 3.5-C — Cierre de ciclo, prosecución y comparación', () => {
         });
         await prisma.user.update({
             where: { id: s.user.id },
-            data: { classroomId: classroom.id, firstName: name.split(' ')[0], lastName: name.split(' ')[1] || 'T', gender },
+            data: { firstName: name.split(' ')[0], lastName: name.split(' ')[1] || 'T', gender },
         });
         subjects.forEach((sub, i) => {
             const score = scores[i];
@@ -390,7 +390,6 @@ describe('Fase 3.5-C — Cierre de ciclo, prosecución y comparación', () => {
         await prisma.studentClassroom.create({
             data: { studentId: s.user.id, classroomId: classroomA.id, academicYearId: year.id, isActive: true },
         });
-        await prisma.user.update({ where: { id: s.user.id }, data: { classroomId: classroomA.id } });
 
         // Año anterior + registro histórico
         const prevYear = await prisma.academicYear.create({

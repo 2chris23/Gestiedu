@@ -16,6 +16,32 @@ interface CustomError extends Error {
 }
 
 /**
+ * Reconocimiento de errores de Prisma por forma, no por `instanceof`.
+ *
+ * La Platform DB usa un cliente generado aparte (`src/generated/platform-client`)
+ * con su propio runtime, así que sus errores NO son instancias de las clases de
+ * `@prisma/client/runtime/library`: un `instanceof` los deja pasar de largo y
+ * terminan como 500 genérico (un duplicado P2002 salía 500 en vez de 409).
+ * Ambos runtimes sí exponen la misma forma: `name` + `code` tipo `P####`.
+ */
+function isPrismaKnownRequestError(error: unknown): error is PrismaClientKnownRequestError {
+  if (error instanceof PrismaClientKnownRequestError) return true;
+  const e = error as any;
+  return (
+    e?.name === 'PrismaClientKnownRequestError' &&
+    typeof e?.code === 'string' &&
+    /^P\d{4}$/.test(e.code)
+  );
+}
+
+function isPrismaValidationError(error: unknown): boolean {
+  return (
+    error instanceof PrismaClientValidationError ||
+    (error as any)?.name === 'PrismaClientValidationError'
+  );
+}
+
+/**
  * Manejador principal de errores - debe usarse como setErrorHandler
  */
 export function errorHandler(
@@ -58,12 +84,12 @@ export function errorHandler(
   }
 
   // Errores de Prisma
-  if (error instanceof PrismaClientKnownRequestError) {
+  if (isPrismaKnownRequestError(error)) {
     console.error('Prisma error:', errorInfo);
     return handlePrismaError(error, reply);
   }
 
-  if (error instanceof PrismaClientValidationError) {
+  if (isPrismaValidationError(error)) {
     console.error('Prisma validation error:', errorInfo);
     return reply.status(400).send({
       error: ERROR_MESSAGES.DATABASE_ERROR,
@@ -88,12 +114,14 @@ export function errorHandler(
   }
 
   // Errores no manejados
+  // El mensaje crudo NO se devuelve ni en desarrollo: los errores de Prisma y de
+  // provisioning incluyen rutas absolutas del servidor. El detalle completo (con
+  // stack en desarrollo) ya quedó en el log de arriba.
   console.error('Unhandled error:', errorInfo);
   return reply.status(500).send({
     error: ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
-    message: config.isDevelopment ? error.message : 'Error interno del servidor',
+    message: 'Error interno del servidor',
     code: 'UNHANDLED_ERROR',
-    ...(config.isDevelopment && { stack: error.stack }),
   });
 }
 
@@ -243,7 +271,6 @@ function handleHttpError(error: FastifyError | CustomError, reply: FastifyReply,
   return reply.status(statusCode).send({
     ...errorData,
     ...((error as any).validation && { details: (error as any).validation }),
-    ...(config.isDevelopment && { stack: (error as any).stack }),
   });
 }
 
@@ -297,6 +324,7 @@ export const AppErrors = {
   UserNotFound: () => createError(404, ERROR_MESSAGES.USER_NOT_FOUND, 'USER_NOT_FOUND'),
   UserAlreadyExists: () => createError(409, ERROR_MESSAGES.USER_ALREADY_EXISTS, 'USER_ALREADY_EXISTS'),
   UserInactive: () => createError(401, ERROR_MESSAGES.USER_INACTIVE, 'USER_INACTIVE'),
+  UserArchived: () => createError(403, 'Tu cuenta se encuentra archivada. Contacta a un administrador para reactivarla.', 'USER_ARCHIVED'),
   
   // Errores de autenticación
   InvalidCredentials: () => createError(401, ERROR_MESSAGES.INVALID_CREDENTIALS, 'INVALID_CREDENTIALS'),
@@ -308,6 +336,8 @@ export const AppErrors = {
   
   // Errores de validación
   BadRequest: (message?: string) => createError(400, message || 'Solicitud inválida', 'BAD_REQUEST'),
+  Conflict: (message?: string) => createError(409, message || 'El registro ya existe', 'CONFLICT'),
+  NotFound: (message?: string) => createError(404, message || 'Registro no encontrado', 'NOT_FOUND'),
   InvalidGrade: () => createError(400, ERROR_MESSAGES.INVALID_GRADE, 'INVALID_GRADE'),
   InvalidEmail: () => createError(400, ERROR_MESSAGES.INVALID_EMAIL, 'INVALID_EMAIL'),
   

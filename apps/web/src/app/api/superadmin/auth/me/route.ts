@@ -7,17 +7,27 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
     try {
         const cookieStore = await cookies();
-        const superAdminData = cookieStore.get('superadmin_data')?.value;
+        const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || cookieStore.get('superadmin_access_token')?.value;
 
-        if (!superAdminData) {
-            return NextResponse.json(
-                { error: 'No autenticado' },
-                { status: 401 }
-            );
+        if (!token) {
+            return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
         }
 
-        const superAdmin = JSON.parse(superAdminData);
-        return NextResponse.json(superAdmin);
+        const backendUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '');
+        const response = await fetch(`${backendUrl}/api/superadmin/auth/me`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            return NextResponse.json(error, { status: response.status });
+        }
+
+        const data = await response.json();
+        return NextResponse.json(data);
     } catch (error) {
         console.error('Error obteniendo datos de SuperAdmin:', error);
         return NextResponse.json(

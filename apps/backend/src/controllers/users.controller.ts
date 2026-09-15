@@ -1,4 +1,5 @@
 import { UserRole, ActionType } from '../utils/prisma-enums';
+import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 /// <reference path="../types/fastify.d.ts" />
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { CreateUserInput, UpdateUserInput, UserFiltersInput, PaginationInput } from '../utils/validators';
@@ -6,6 +7,20 @@ import { logger } from '../utils/logger';
 import bcrypt from 'bcrypt';
 import { RequestUser } from '../types/fastify';
 import { invalidateUserSession } from '../middleware/auth.middleware';
+import { fueModificadoPorOtro, versionVista, AVISO_MODIFICADO_POR_OTRO } from '../utils/concurrencia';
+
+/**
+ * Cuánto cuesta cifrar una contraseña.
+ *
+ * Cada vuelta dobla el trabajo. Estaba en 10; se sube a 12, que es lo
+ * recomendado hoy. Al que entra le cuesta unas décimas de segundo más — no lo
+ * nota. A quien intente probar contraseñas a lo bruto le cuesta cuatro veces
+ * más, y eso sí lo nota.
+ */
+const VUELTAS_DE_CIFRADO = 12;
+
+/** Lo mínimo que puede medir una contraseña. */
+const MINIMO_DE_CONTRASENA = 8;
 
 /** Resuelve el instituto actual del request (inyectado por identifyTenant). */
 function getInstituteId(request: FastifyRequest): string | null {
@@ -83,10 +98,51 @@ export async function createUser(
       });
     }
 
+    // Verificar si ya existe un usuario con la misma cédula / ID
+    if (userData.id) {
+      const existingUserById = await request.tenantPrisma.user.findUnique({
+        where: {
+          id: userData.id,
+        },
+      });
+
+      if (existingUserById) {
+        return reply.status(409).send({
+          error: 'Ya existe un usuario con este documento de identidad / cédula',
+          code: 'DOCUMENT_ALREADY_EXISTS',
+          field: ['id'],
+        });
+      }
+    }
+
     // Nota: Roles en entrada vienen en español; se mapean a Prisma
 
-    // Hashear la contraseña (o generar una temporal para MVP)
-    const hashedPassword = await bcrypt.hash(userData.password || 'temporal123', 10);
+    // SIN CONTRASEÑA NO SE CREA LA CUENTA
+    //
+    // Antes esta línea decía `userData.password || 'temporal123'`: si no se
+    // mandaba contraseña, se le ponía esa. La misma para todas las cuentas
+    // creadas así, y **escrita en el código fuente**.
+    //
+    // Se reprodujo: crear un alumno sin contraseña y entrar con `temporal123`
+    // devolvía 200. Cualquiera que hubiera visto el código —o probado una
+    // contraseña común— entraba en esas cuentas.
+    //
+    // Y era alcanzable: la pantalla de crear usuario borra el campo cuando va
+    // vacío, con un comentario que decía "aunque el validador debería atraparlo".
+    // Un guardia que "debería" no es un guardia.
+    //
+    // Ahora se exige y se explica. Es lo correcto para un liceo: el admin pone la
+    // contraseña y se la entrega a la persona.
+    if (!userData.password || String(userData.password).trim().length < MINIMO_DE_CONTRASENA) {
+      return reply.status(400).send({
+        error: 'Hace falta una contraseña',
+        message: `La contraseña es obligatoria y debe tener al menos ${MINIMO_DE_CONTRASENA} caracteres.`,
+        code: 'CONTRASENA_REQUERIDA',
+        field: ['password'],
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(userData.password, VUELTAS_DE_CIFRADO);
 
     // Mapear rol ES -> Prisma
     const { toPrismaUserRole } = await import('../utils/constants');
@@ -140,8 +196,19 @@ export async function createUser(
     logger.info('Nuevo usuario creado', { userId: user.id, role: user.role });
 
     return reply.status(201).send({ user });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('Error al crear usuario', { error: error instanceof Error ? error.message : String(error) });
+
+    if (error?.code === 'P2002') {
+      const target = (error.meta?.target as string[]) || ['campo'];
+      return reply.status(409).send({
+        error: 'Ya existe un usuario con ese dato único',
+        message: `Ya existe un usuario con el mismo valor en: ${target.join(', ')}`,
+        code: 'DUPLICATE_ENTRY',
+        field: target,
+      });
+    }
+
     return reply.status(500).send({
       error: 'Error en el servidor',
       code: 'INTERNAL_SERVER_ERROR',
@@ -181,16 +248,30 @@ export async function getUsers(
     // Construir filtros
     const where: any = {};
 
-    if (search) {
-      where.OR = [
-        { firstName: { contains: search } },
-        { lastName: { contains: search } },
-        { email: { contains: search } },
-        { id: { contains: search } }, // Permitir búsqueda por cédula
-      ];
+    if (search && search.trim()) {
+      const terms = search.trim().split(/\s+/).filter(Boolean);
+      if (terms.length === 1) {
+        where.OR = [
+          { firstName: { contains: terms[0], mode: 'insensitive' } },
+          { lastName: { contains: terms[0], mode: 'insensitive' } },
+          { email: { contains: terms[0], mode: 'insensitive' } },
+          { studentCode: { contains: terms[0], mode: 'insensitive' } },
+          { id: { contains: terms[0], mode: 'insensitive' } },
+        ];
+      } else if (terms.length > 1) {
+        where.AND = terms.map((term: string) => ({
+          OR: [
+            { firstName: { contains: term, mode: 'insensitive' } },
+            { lastName: { contains: term, mode: 'insensitive' } },
+            { email: { contains: term, mode: 'insensitive' } },
+            { studentCode: { contains: term, mode: 'insensitive' } },
+            { id: { contains: term, mode: 'insensitive' } },
+          ]
+        }));
+      }
     }
 
-    if (role) {
+    if (role && (role as string) !== 'ALL') {
       const { toPrismaUserRole } = await import('../utils/constants');
       where.role = toPrismaUserRole(role as any);
     }
@@ -201,6 +282,18 @@ export async function getUsers(
 
     if (isActive !== undefined) {
       where.isActive = isActive;
+    }
+
+    const statusParam = (request.query as any).status;
+    if (statusParam === 'ARCHIVED') {
+      where.status = 'ARCHIVED';
+    } else if (statusParam === 'ALL') {
+      // No filtrar por status
+    } else if (statusParam === 'ACTIVE') {
+      where.status = 'ACTIVE';
+    } else if (isActive === undefined) {
+      // Por defecto listar sólo usuarios activos
+      where.status = 'ACTIVE';
     }
 
     // Obtener usuarios y total
@@ -215,8 +308,53 @@ export async function getUsers(
           lastName: true,
           email: true,
           role: true,
+          status: true,
+          archivedAt: true,
+          studentCode: true,
+          avatar: true,
           isActive: true,
           createdAt: true,
+          studentClassrooms: {
+            where: { isActive: true },
+            orderBy: [
+              { academicYear: { startDate: 'desc' } },
+              { createdAt: 'desc' }
+            ],
+            take: 1,
+            select: {
+              academicYear: {
+                select: {
+                  id: true,
+                  name: true,
+                  status: true,
+                  startDate: true,
+                }
+              },
+              classroom: {
+                select: {
+                  id: true,
+                  name: true,
+                  grade: true,
+                  section: true,
+                  slug: true,
+                  academicYear: {
+                    select: {
+                      id: true,
+                      name: true,
+                      status: true,
+                      startDate: true,
+                    }
+                  }
+                }
+              }
+            }
+          },
+          subjectTeachings: {
+            select: {
+              weeklyBlocks: true,
+              hoursPerWeek: true,
+            }
+          }
         },
         orderBy: [
           { lastName: 'asc' },
@@ -229,7 +367,23 @@ export async function getUsers(
     const totalPages = Math.ceil(total / limit);
 
     return reply.status(200).send({
-      users,
+      users: users.map((u: any) => {
+        const totalWeeklyBlocks = u.subjectTeachings?.reduce((sum: number, st: any) => sum + (st.weeklyBlocks || 0), 0) || 0;
+        const totalWeeklyHours = u.subjectTeachings?.reduce((sum: number, st: any) => sum + (st.hoursPerWeek || ((st.weeklyBlocks || 0) * 45 / 60)), 0) || 0;
+
+        const latestEnrollment = u.studentClassrooms?.[0] || null;
+        const activeClassroom = latestEnrollment?.classroom ? {
+          ...latestEnrollment.classroom,
+          academicYear: latestEnrollment.academicYear || latestEnrollment.classroom?.academicYear || null
+        } : null;
+
+        return {
+          ...u,
+          classroom: activeClassroom,
+          totalWeeklyBlocks,
+          totalWeeklyHours,
+        };
+      }),
       pagination: {
         page,
         limit,
@@ -290,17 +444,51 @@ export async function getUser(
         avatar: true,
         // Datos específicos de estudiante
         studentCode: true,
-        classroom: {
+        studentClassrooms: {
+          where: { isActive: true },
+          orderBy: [
+            { academicYear: { startDate: 'desc' } },
+            { createdAt: 'desc' }
+          ],
           select: {
             id: true,
-            name: true,
-            grade: true,
-            section: true,
-            teacher: {
+            createdAt: true,
+            academicYear: {
               select: {
                 id: true,
-                firstName: true,
-                lastName: true,
+                name: true,
+                status: true,
+                startDate: true,
+                endDate: true,
+              }
+            },
+            classroom: {
+              select: {
+                id: true,
+                name: true,
+                grade: true,
+                section: true,
+                slug: true,
+                teacher: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                  }
+                },
+                academicYear: {
+                  select: {
+                    id: true,
+                    name: true,
+                    status: true,
+                    periods: {
+                      select: {
+                        id: true,
+                        name: true
+                      }
+                    }
+                  }
+                }
               }
             }
           }
@@ -323,15 +511,23 @@ export async function getUser(
         specialization: true,
         subjectTeachings: {
           select: {
+            id: true,
+            weeklyBlocks: true,
+            hoursPerWeek: true,
             subject: {
               select: {
+                id: true,
                 name: true,
+                slug: true,
                 code: true
               }
             },
             classroom: {
               select: {
+                id: true,
                 name: true,
+                slug: true,
+                grade: true,
                 section: true,
                 academicYear: {
                   select: {
@@ -374,9 +570,15 @@ export async function getUser(
                 id: true,
                 firstName: true,
                 lastName: true,
-                classroom: {
+                studentClassrooms: {
+                  where: { isActive: true },
+                  take: 1,
                   select: {
-                    name: true
+                    classroom: {
+                      select: {
+                        name: true
+                      }
+                    }
                   }
                 }
               }
@@ -433,7 +635,50 @@ export async function getUser(
       });
     }
 
-    return reply.status(200).send({ user });
+    // Si es docente, calcular los promedios y carga horaria total
+    let teacherAverages: Record<string, number> = {};
+    let totalWeeklyBlocks = 0;
+    let totalWeeklyHours = 0;
+
+    if (user.role === 'TEACHER') {
+      const gradesAgg = await request.tenantPrisma.grade.groupBy({
+        by: ['subjectId'],
+        where: {
+          teacherId: user.id,
+          score: { not: null }
+        },
+        _avg: { score: true }
+      });
+      gradesAgg.forEach((g: any) => {
+        teacherAverages[g.subjectId] = g._avg.score ? Math.round(g._avg.score * 10) / 10 : 0;
+      });
+
+      if (user.subjectTeachings) {
+        user.subjectTeachings.forEach((st: any) => {
+          const blocks = st.weeklyBlocks || 0;
+          const hours = st.hoursPerWeek || (blocks * 45 / 60);
+          totalWeeklyBlocks += blocks;
+          totalWeeklyHours += hours;
+        });
+      }
+    }
+
+    const activeStudentClassroom = (user as any).studentClassrooms?.[0] || null;
+    const activeClassroom = activeStudentClassroom?.classroom ? {
+      ...activeStudentClassroom.classroom,
+      academicYear: activeStudentClassroom.academicYear || activeStudentClassroom.classroom?.academicYear || null
+    } : null;
+
+    return reply.status(200).send({
+      user: {
+        ...user,
+        classroom: activeClassroom,
+        studentClassrooms: (user as any).studentClassrooms || [],
+        teacherAverages,
+        totalWeeklyBlocks,
+        totalWeeklyHours
+      }
+    });
   } catch (error) {
     logger.error('Error al obtener usuario', {
       error: error instanceof Error ? error.message : String(error),
@@ -730,6 +975,17 @@ export async function updateUser(
       });
     }
 
+    // DOS PERSONAS, LA MISMA FICHA
+    //
+    // Dos administrativos corrigiendo al mismo alumno se pisaban sin enterarse.
+    // Si la pantalla mandó la versión que tenía a la vista y ya cambió, se avisa.
+    if (fueModificadoPorOtro(versionVista(request as any), existingUser.updatedAt)) {
+      return reply.status(409).send({
+        ...AVISO_MODIFICADO_POR_OTRO,
+        actual: { updatedAt: existingUser.updatedAt },
+      });
+    }
+
     // Verificar email único si se está cambiando
     if ((updateData as any).email && (updateData as any).email !== existingUser.email) {
       const emailExists = await request.tenantPrisma.user.findUnique({
@@ -785,7 +1041,7 @@ export async function updateUser(
 
     // 1. Hashear password si existe
     if (dataToUpdate.password) {
-      dataToUpdate.password = await bcrypt.hash(dataToUpdate.password, 10);
+      dataToUpdate.password = await bcrypt.hash(dataToUpdate.password, VUELTAS_DE_CIFRADO);
     } else {
       delete dataToUpdate.password; // Evitar enviar undefined/null/empty si no se actualiza
     }
@@ -824,45 +1080,31 @@ export async function updateUser(
           specialization: true,
           isActive: true,
           updatedAt: true,
-          classroom: {
-            select: {
-              id: true,
-              name: true,
-              grade: true,
-              section: true,
-              academicYearId: true
-            },
-          },
         },
       });
 
       if (user.role === 'STUDENT' && dataToUpdate.classroomId) {
-        if (user.classroom) {
-          // Desactivar inscripciones anteriores
-          await tx.studentClassroom.updateMany({
-            where: { studentId: id, isActive: true },
-            data: { isActive: false }
-          });
+        const targetClassroom = await tx.classroom.findUnique({
+          where: { id: dataToUpdate.classroomId },
+          select: { id: true, academicYearId: true }
+        });
 
-          const existingEnrollment = await tx.studentClassroom.findFirst({
-            where: { studentId: id, classroomId: user.classroom.id }
-          });
-
-          if (existingEnrollment) {
-            await tx.studentClassroom.update({
-              where: { id: existingEnrollment.id },
-              data: { isActive: true }
-            });
-          } else {
-            await tx.studentClassroom.create({
-              data: {
+        if (targetClassroom && targetClassroom.academicYearId) {
+          await tx.studentClassroom.upsert({
+            where: {
+              studentId_academicYearId: {
                 studentId: id,
-                classroomId: user.classroom.id,
-                academicYearId: user.classroom.academicYearId as string,
-                isActive: true
+                academicYearId: targetClassroom.academicYearId
               }
-            });
-          }
+            },
+            update: { classroomId: targetClassroom.id, isActive: true },
+            create: {
+              studentId: id,
+              classroomId: targetClassroom.id,
+              academicYearId: targetClassroom.academicYearId,
+              isActive: true
+            }
+          });
         }
       }
 
@@ -913,7 +1155,182 @@ export async function updateUser(
 }
 
 /**
- * Controlador para eliminar un usuario
+ * Controlador para archivar un usuario
+ */
+export async function archiveUser(
+  request: FastifyRequest<{ Params: { id: string } }>,
+  reply: FastifyReply
+) {
+  try {
+    const { id } = request.params;
+    const instituteId = requireTenant(request, reply);
+    if (!instituteId) return;
+
+    const existingUser = await request.tenantPrisma.user.findFirst({
+      where: { id, instituteId },
+    });
+
+    if (!existingUser) {
+      return reply.status(404).send({
+        error: 'Usuario no encontrado',
+        code: 'USER_NOT_FOUND',
+      });
+    }
+
+    const updatedUser = await request.tenantPrisma.user.update({
+      where: { id },
+      data: {
+        status: 'ARCHIVED',
+        isActive: false,
+        archivedAt: new Date(),
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        role: true,
+        status: true,
+        isActive: true,
+        archivedAt: true,
+      },
+    });
+
+    // Revocar tokens de refresco y sesiones
+    await request.tenantPrisma.refreshToken.deleteMany({
+      where: { userId: id },
+    });
+
+    await invalidateUserSession(instituteId, id);
+
+    try {
+      await request.tenantPrisma.auditLog.create({
+        data: {
+          instituteId,
+          action: ActionType.UPDATE,
+          entity: 'USER',
+          entityType: 'USER',
+          entityId: id,
+          metadata: {
+            ip: request.ip,
+            userAgent: request.headers['user-agent'],
+            action: 'ARCHIVE_USER',
+            previousStatus: existingUser.status || 'ACTIVE',
+          },
+          userId: (request.user as any)?.id || (request.user as any)?.userId,
+        },
+      });
+    } catch (auditError) {
+      logger.error('Error al crear log de auditoría en archiveUser', { error: auditError });
+    }
+
+    logger.info('Usuario archivado exitosamente', { userId: id });
+
+    return reply.status(200).send({
+      message: 'Usuario archivado correctamente',
+      user: updatedUser,
+    });
+  } catch (error) {
+    logger.error('Error al archivar usuario', {
+      error: error instanceof Error ? error.message : String(error),
+      userId: request.params.id,
+    });
+    return reply.status(500).send({
+      error: 'Error en el servidor',
+      code: 'INTERNAL_SERVER_ERROR',
+    });
+  }
+}
+
+/**
+ * Controlador para desarchivar / restaurar un usuario
+ */
+export async function unarchiveUser(
+  request: FastifyRequest<{ Params: { id: string } }>,
+  reply: FastifyReply
+) {
+  try {
+    const { id } = request.params;
+    const instituteId = requireTenant(request, reply);
+    if (!instituteId) return;
+
+    const existingUser = await request.tenantPrisma.user.findFirst({
+      where: { id, instituteId },
+    });
+
+    if (!existingUser) {
+      return reply.status(404).send({
+        error: 'Usuario no encontrado',
+        code: 'USER_NOT_FOUND',
+      });
+    }
+
+    const updatedUser = await request.tenantPrisma.user.update({
+      where: { id },
+      data: {
+        status: 'ACTIVE',
+        isActive: true,
+        archivedAt: null,
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        role: true,
+        status: true,
+        isActive: true,
+        archivedAt: true,
+      },
+    });
+
+    await invalidateUserSession(instituteId, id);
+
+    try {
+      await request.tenantPrisma.auditLog.create({
+        data: {
+          instituteId,
+          action: ActionType.UPDATE,
+          entity: 'USER',
+          entityType: 'USER',
+          entityId: id,
+          metadata: {
+            ip: request.ip,
+            userAgent: request.headers['user-agent'],
+            action: 'UNARCHIVE_USER',
+            previousStatus: existingUser.status || 'ARCHIVED',
+          },
+          userId: (request.user as any)?.id || (request.user as any)?.userId,
+        },
+      });
+    } catch (auditError) {
+      logger.error('Error al crear log de auditoría en unarchiveUser', { error: auditError });
+    }
+
+    logger.info('Usuario desarchivado / restaurado exitosamente', { userId: id });
+
+    return reply.status(200).send({
+      message: 'Usuario restaurado correctamente',
+      user: updatedUser,
+    });
+  } catch (error) {
+    logger.error('Error al desarchivar usuario', {
+      error: error instanceof Error ? error.message : String(error),
+      userId: request.params.id,
+    });
+    return reply.status(500).send({
+      error: 'Error en el servidor',
+      code: 'INTERNAL_SERVER_ERROR',
+    });
+  }
+}
+
+/**
+ * Controlador para eliminar un usuario con reglas diferenciadas:
+ * - Estudiante: Eliminación total en cascada de sus notas, asistencias, matrículas e historial para no dejar datos huérfanos.
+ * - Profesor: Desvinculación de aulas activas, pero preservación de su nombre completo en el historial de actividades, notas y sesiones.
+ * - Tutor / Admin: Limpieza de relaciones directas y eliminación.
+ * En todos los casos, la cédula y el email quedan completamente liberados para su recreación exacta.
  */
 export async function deleteUser(
   request: FastifyRequest<DeleteUserRequest>,
@@ -923,14 +1340,6 @@ export async function deleteUser(
     const { id } = request.params;
     const instituteId = requireTenant(request, reply);
     if (!instituteId) return;
-
-    // Solo administradores pueden eliminar usuarios (DESHABILITADO PARA MVP para facilitar pruebas)
-    // if (request.user?.role !== UserRole.ADMIN) {
-    //   return reply.status(403).send({
-    //     error: 'Solo los administradores pueden eliminar usuarios',
-    //     code: 'INSUFFICIENT_PERMISSIONS',
-    //   });
-    // }
 
     // Verificar que el usuario existe Y pertenece al instituto del request
     const existingUser = await request.tenantPrisma.user.findFirst({
@@ -944,21 +1353,155 @@ export async function deleteUser(
       });
     }
 
-    // Eliminar el usuario
-    try {
-      await request.tenantPrisma.user.delete({
-        where: { id },
-      });
-    } catch (dbError: any) {
-      if (dbError.code === 'P2003') {
-        logger.warn('Intento de eliminar usuario con relaciones', { userId: id });
-        return reply.status(409).send({
-          error: 'No se puede eliminar el usuario',
-          message: 'El usuario tiene registros relacionados (notas, asistencias, etc.) que impiden su eliminación permanente. Intente desactivar el usuario en su lugar.',
-          code: 'FOREIGN_KEY_CONSTRAINT',
+    const callerUser = request.user as RequestUser;
+    const callerId = callerUser?.userId || callerUser?.id;
+
+    const quien = quienBorra(request as any);
+
+    if (existingUser.role === UserRole.STUDENT) {
+      // Cascada completa para estudiantes: limpiar todos los datos dependientes para no dejar datos huérfanos.
+      //
+      // Todo pasa antes por la papelera. Borrar un estudiante se lleva sus notas,
+      // sus asistencias, sus observaciones y su historial: si fue un error, no se
+      // recuperan de ningún otro sitio hasta el respaldo de anoche.
+      await request.tenantPrisma.$transaction(async (tx: any) => {
+        await borrarGuardandoCopia(tx, 'grade', { studentId: id }, quien);
+        await borrarGuardandoCopia(tx, 'dailyAttendance', { studentId: id }, quien);
+        await borrarGuardandoCopia(tx, 'studentClassroom', { studentId: id }, quien);
+        await borrarGuardandoCopia(tx, 'studentTutor', { studentId: id }, quien);
+        await borrarGuardandoCopia(tx, 'observation', { studentId: id }, quien);
+        await borrarGuardandoCopia(tx, 'academicRecord', { studentId: id }, quien);
+        // Avisos y sesiones no son información del liceo: no van a la papelera.
+        await tx.notification.deleteMany({ where: { recipientId: id } });
+        await tx.refreshToken.deleteMany({ where: { userId: id } });
+        await borrarGuardandoCopia(tx, 'user', { id }, quien);
+      }, { timeout: 30000, maxWait: 10000 });
+    } else if (existingUser.role === UserRole.TEACHER) {
+      const teacherFullName = `${existingUser.firstName} ${existingUser.lastName}`.trim();
+
+      await request.tenantPrisma.$transaction(async (tx: any) => {
+        // Buscar usuario fallback administrativo para reasignar llaves foráneas necesarias
+        let fallbackUserId = callerId && callerId !== id ? callerId : null;
+        if (!fallbackUserId) {
+          const adminUser = await tx.user.findFirst({
+            where: { instituteId, role: UserRole.ADMIN, NOT: { id } },
+            select: { id: true },
+          });
+          fallbackUserId = adminUser?.id || null;
+        }
+
+        // 1. Preservar nombre del docente en metadatos de plan de evaluación
+        await tx.evaluationPlanMetadata.updateMany({
+          where: { cedulaDocente: id },
+          data: { nombreDocente: teacherFullName },
         });
-      }
-      throw dbError;
+
+        // 2. Desvincular de aulas activas
+        await tx.classroom.updateMany({
+          where: { teacherId: id },
+          data: { teacherId: null },
+        });
+        await tx.classroomSubject.updateMany({
+          where: { teacherId: id },
+          data: { teacherId: null },
+        });
+        await borrarGuardandoCopia(tx, 'teacherClassroom', { teacherId: id }, quien);
+        await borrarGuardandoCopia(tx, 'subjectTeacherHistory', { teacherId: id }, quien);
+
+        // 3. Actividades creadas por el docente:
+        // Reasignar creador al fallback y conservar el nombre completo del profesor en la descripción
+        if (fallbackUserId) {
+          const teacherActivities = await tx.activity.findMany({
+            where: { createdBy: id },
+            select: { id: true, description: true },
+          });
+          for (const act of teacherActivities) {
+            const desc = act.description || '';
+            const tag = `[Profesor histórico: ${teacherFullName}]`;
+            const newDesc = desc.includes(tag) ? desc : (desc ? `${desc} ${tag}` : tag);
+            await tx.activity.update({
+              where: { id: act.id },
+              data: {
+                createdBy: fallbackUserId,
+                description: newDesc,
+              },
+            });
+          }
+
+          // 4. Calificaciones dadas por el docente:
+          // Reasignar teacherId al fallback y almacenar en metadata el nombre del profesor histórico
+          const teacherGrades = await tx.grade.findMany({
+            where: { teacherId: id },
+            select: { id: true, metadata: true },
+          });
+          for (const g of teacherGrades) {
+            const meta = (typeof g.metadata === 'object' && g.metadata !== null) ? g.metadata : {};
+            await tx.grade.update({
+              where: { id: g.id },
+              data: {
+                teacherId: fallbackUserId,
+                metadata: {
+                  ...meta,
+                  historicalTeacherName: teacherFullName,
+                  historicalTeacherId: id,
+                },
+              },
+            });
+          }
+
+          // 5. Asistencias tomadas por el docente:
+          const attendances = await tx.dailyAttendance.findMany({
+            where: { teacherId: id },
+            select: { id: true, comments: true },
+          });
+          for (const att of attendances) {
+            const comm = att.comments || '';
+            const tag = `[Tomada por: ${teacherFullName}]`;
+            const newComments = comm.includes(tag) ? comm : (comm ? `${comm} ${tag}` : tag);
+            await tx.dailyAttendance.update({
+              where: { id: att.id },
+              data: {
+                teacherId: fallbackUserId,
+                comments: newComments,
+              },
+            });
+          }
+
+          // 6. Horarios asignados al docente
+          await borrarGuardandoCopia(tx, 'schedule', { teacherId: id }, quien);
+
+          // 7. Observaciones creadas por el docente
+          await tx.observation.updateMany({
+            where: { createdById: id },
+            data: { createdById: fallbackUserId },
+          });
+        } else {
+          // Si no hay admin de reemplazo, se eliminan las referencias que apuntan
+          // al docente. Este es el camino más destructivo del sistema: se lleva
+          // todas las notas que ese profesor puso y todas las asistencias que
+          // tomó. Copia en la papelera antes de tocar nada.
+          await borrarGuardandoCopia(tx, 'grade', { teacherId: id }, quien);
+          await borrarGuardandoCopia(tx, 'dailyAttendance', { teacherId: id }, quien);
+          await borrarGuardandoCopia(tx, 'activity', { createdBy: id }, quien);
+          await borrarGuardandoCopia(tx, 'schedule', { teacherId: id }, quien);
+          await borrarGuardandoCopia(tx, 'observation', { createdById: id }, quien);
+        }
+
+        // 8. Notificaciones y tokens
+        await tx.notification.deleteMany({ where: { recipientId: id } });
+        await tx.refreshToken.deleteMany({ where: { userId: id } });
+
+        // 9. Eliminar usuario docente de users para liberar cédula e email
+        await borrarGuardandoCopia(tx, 'user', { id }, quien);
+      }, { timeout: 30000, maxWait: 10000 });
+    } else {
+      // TUTOR o ADMIN u otros roles
+      await request.tenantPrisma.$transaction(async (tx: any) => {
+        await borrarGuardandoCopia(tx, 'studentTutor', { tutorId: id }, quien);
+        await tx.notification.deleteMany({ where: { recipientId: id } });
+        await tx.refreshToken.deleteMany({ where: { userId: id } });
+        await borrarGuardandoCopia(tx, 'user', { id }, quien);
+      }, { timeout: 30000, maxWait: 10000 });
     }
 
     // Registrar el evento de eliminación (Fail-safe)
@@ -983,7 +1526,7 @@ export async function deleteUser(
       logger.error('Error al crear log de auditoría en delete', { error: auditError });
     }
 
-    logger.info('Usuario eliminado', { userId: id });
+    logger.info('Usuario eliminado con éxito', { userId: id });
 
     // Invalidar caché de sesión del usuario eliminado
     await invalidateUserSession(
@@ -1015,7 +1558,13 @@ export async function toggleUserStatus(
 ) {
   try {
     const { id } = request.params;
-    const instituteId = request.headers['x-institute-id'] as string;
+    // El instituto ya lo resolvió el middleware (por token, slug o subdominio).
+    // Antes se leía SOLO de la cabecera x-institute-id, que la aplicación no
+    // envía: el botón respondía 400 "No se pudo determinar el instituto".
+    const instituteId =
+      (request as any).institute?.id ??
+      (request.user as any)?.instituteId ??
+      (request.headers['x-institute-id'] as string | undefined);
 
     if (!instituteId) {
       return reply.status(400).send({
@@ -1119,7 +1668,13 @@ export async function assignStudentToClassroom(
   try {
     const { id } = request.params;
     const { classroomId } = request.body;
-    const instituteId = request.headers['x-institute-id'] as string;
+    // El instituto ya lo resolvió el middleware (por token, slug o subdominio).
+    // Antes se leía SOLO de la cabecera x-institute-id, que la aplicación no
+    // envía: el botón respondía 400 "No se pudo determinar el instituto".
+    const instituteId =
+      (request as any).institute?.id ??
+      (request.user as any)?.instituteId ??
+      (request.headers['x-institute-id'] as string | undefined);
 
     if (!instituteId) {
       return reply.status(400).send({
@@ -1159,57 +1714,52 @@ export async function assignStudentToClassroom(
 
     // Asignar el estudiante al aula usando transacción para sincronizar inscripción
     const updatedStudent = await request.tenantPrisma.$transaction(async (tx) => {
-      const user = await tx.user.update({
+      const targetClassroom = await tx.classroom.findUnique({
+        where: { id: classroomId },
+        select: {
+          id: true,
+          name: true,
+          grade: true,
+          section: true,
+          academicYearId: true
+        }
+      });
+
+      if (!targetClassroom || !targetClassroom.academicYearId) {
+        throw new Error('Aula no encontrada o sin año académico activo');
+      }
+
+      await tx.studentClassroom.upsert({
+        where: {
+          studentId_academicYearId: {
+            studentId: id,
+            academicYearId: targetClassroom.academicYearId
+          }
+        },
+        update: { classroomId: targetClassroom.id, isActive: true },
+        create: {
+          studentId: id,
+          classroomId: targetClassroom.id,
+          academicYearId: targetClassroom.academicYearId,
+          isActive: true
+        }
+      });
+
+      const user = await tx.user.findUnique({
         where: { id },
-        data: { classroomId },
         select: {
           id: true,
           firstName: true,
           lastName: true,
           email: true,
           studentCode: true,
-          classroom: {
-            select: {
-              id: true,
-              name: true,
-              grade: true,
-              section: true,
-              academicYearId: true
-            },
-          },
         },
       });
 
-      if (user.classroom) {
-        // Desactivar inscripciones anteriores activas
-        await tx.studentClassroom.updateMany({
-          where: { studentId: id, isActive: true },
-          data: { isActive: false }
-        });
-
-        // Buscar si ya existe una inscripción
-        const existingEnrollment = await tx.studentClassroom.findFirst({
-          where: { studentId: id, classroomId: user.classroom.id }
-        });
-
-        if (existingEnrollment) {
-          await tx.studentClassroom.update({
-            where: { id: existingEnrollment.id },
-            data: { isActive: true }
-          });
-        } else {
-          await tx.studentClassroom.create({
-            data: {
-              studentId: id,
-              classroomId: user.classroom.id,
-              academicYearId: user.classroom.academicYearId as string,
-              isActive: true
-            }
-          });
-        }
-      }
-
-      return user;
+      return {
+        ...user,
+        classroom: targetClassroom
+      };
     });
 
     // Registrar el evento

@@ -5,6 +5,8 @@ import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../utils/constants';
 import { createError } from '../middleware/error.middleware';
 import { hasPermission } from '../utils/permissions';
 import { auditLog } from '../utils/audit';
+import { ScheduleConflictError } from '../services/schedule-conflicts.service';
+import { quienBorra } from '../utils/papelera';
 
 const subjectsService = new SubjectsService();
 
@@ -40,9 +42,10 @@ export async function getAllSubjects(request: FastifyRequest, reply: FastifyRepl
 export async function getSubjectById(request: FastifyRequest, reply: FastifyReply) {
   try {
     const { id } = request.params as { id: string };
-    const { academicYearId: rawAcademicYearId, academicYearName } = request.query as { academicYearId?: string; academicYearName?: string };
+    const { academicYearId: rawAcademicYearId, academicYearName, periodId } = request.query as { academicYearId?: string; academicYearName?: string; periodId?: string };
     const prisma = (request as any).tenantPrisma;
     const userId = request.user?.userId;
+    const instituteId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
 
     if (!hasPermission(request.user as any, 'subjects:read')) {
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
@@ -58,7 +61,7 @@ export async function getSubjectById(request: FastifyRequest, reply: FastifyRepl
       if (year) academicYearId = year.id;
     }
 
-    const subject = await subjectsService.getSubjectById(id, prisma, academicYearId);
+    const subject = await subjectsService.getSubjectById(id, prisma, academicYearId, periodId, instituteId);
 
     if (!subject) {
       throw createError(404, ERROR_MESSAGES.RECORD_NOT_FOUND);
@@ -131,10 +134,9 @@ export async function updateSubject(request: FastifyRequest, reply: FastifyReply
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
-    const subject = await subjectsService.updateSubject(id, {
-      ...data,
-      updatedBy: userId
-    }, prisma);
+    // Sin `updatedBy`: la tabla de materias no tiene esa columna y Prisma
+    // rechazaba la actualización entera. Quién hizo el cambio queda en auditLog.
+    const subject = await subjectsService.updateSubject(id, data, prisma);
 
     await auditLog({
       userId,
@@ -164,7 +166,7 @@ export async function deleteSubject(request: FastifyRequest, reply: FastifyReply
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
-    await subjectsService.deleteSubject(id, prisma);
+    await subjectsService.deleteSubject(id, prisma, quienBorra(request as any));
 
     await auditLog({
       userId,
@@ -254,7 +256,21 @@ export async function assignSubjectToGrade(request: FastifyRequest, reply: Fasti
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
-    const assignment = await subjectsService.assignSubjectToGrade(parseInt(grade), subjectId, teacherId, prisma, academicYearId);
+    let assignment;
+    try {
+      assignment = await subjectsService.assignSubjectToGrade(parseInt(grade), subjectId, teacherId, prisma, academicYearId);
+    } catch (e) {
+      // Responder aquí con el detalle: el manejador central convertiría el 409
+      // en un "Conflicto" genérico sin decir qué choca.
+      if (e instanceof ScheduleConflictError) {
+        return reply.status(409).send({
+          error: `El profesor ya tiene clase a esas horas: ${e.conflicts[0].message}`,
+          code: e.code,
+          conflicts: e.conflicts,
+        });
+      }
+      throw e;
+    }
 
     await auditLog({
       userId,

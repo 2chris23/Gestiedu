@@ -29,6 +29,7 @@ yarn-error.log*
 .env.development.local
 .env.test
 .env.test.local
+.env.production
 .env.production.local
 
 # Código generado (Prisma clients)
@@ -74,3 +75,18 @@ load-tests/reports/
 load-tests/*.csv
 load-tests/*.json
 .github/
+
+# Respaldos de los liceos: son datos de gente real, nunca al repositorio
+backups/
+*.dump
+
+# Certificados del repartidor: son llaves privadas, nunca al repositorio.
+docker/nginx/certs/
+docker/nginx/certbot/
+
+# Restos de las herramientas de prueba: no van al repositorio.
+apps/backend/.playwright-cli/
+
+# Restos de compilación y de Redis: se regeneran solos, no van al repositorio.
+*.tsbuildinfo
+dump.rdb

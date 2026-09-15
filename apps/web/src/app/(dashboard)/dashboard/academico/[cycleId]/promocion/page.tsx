@@ -5,7 +5,8 @@ import { useRouter, useParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
     ArrowLeft, GraduationCap, CheckCircle2, Users, Wand2, Loader2,
-    AlertTriangle, ChevronRight, Check, School, UserMinus, Plus, Trash2, ShieldAlert
+    AlertTriangle, ChevronRight, Check, School, UserMinus, Plus, Trash2, ShieldAlert,
+    Printer, FileText
 } from 'lucide-react';
 import { academicYearService } from '@/services/academic-year.service';
 
@@ -121,6 +122,12 @@ export default function PromotionPage() {
     const [assignments, setAssignments] = useState<Record<string, StudentAssignment>>({});
     const [finalResults, setFinalResults] = useState<Record<string, string>>({});
 
+    // Filtro por condición académica en Nivel 3
+    const [statusFilter, setStatusFilter] = useState<'ALL' | 'PROMOVIDO' | 'PROMOVIDO_CON_PENDIENTES' | 'NO_PROMOVIDO'>('ALL');
+
+    // Modal de Acta de Materia Pendiente (Arrastre venezolano)
+    const [pendingModalStudent, setPendingModalStudent] = useState<Suggestion | null>(null);
+
     // Modales
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [confirmText, setConfirmText] = useState('');
@@ -189,8 +196,13 @@ export default function PromotionPage() {
             setFinalResults(initialResults);
 
             if (loadedSuggestions.length > 0) {
-                setSelectedGrade(loadedSuggestions[0].gradeLevel);
-                setSelectedSection(loadedSuggestions[0].currentSection || 'A');
+                // Ordenar por año ascendente y sección alfabética para seleccionar 1er Año Sección A por defecto
+                const sorted = [...loadedSuggestions].sort((a, b) => {
+                    if (a.gradeLevel !== b.gradeLevel) return a.gradeLevel - b.gradeLevel;
+                    return (a.currentSection || 'A').localeCompare(b.currentSection || 'A');
+                });
+                setSelectedGrade(sorted[0].gradeLevel);
+                setSelectedSection(sorted[0].currentSection || 'A');
             }
         } catch (e: any) {
             toast.error(e?.response?.data?.error || 'Error al cargar el panel de promoción');
@@ -251,8 +263,12 @@ export default function PromotionPage() {
 
     const level3Students = useMemo(() => {
         if (!selectedGradeEntry || selectedSection === null) return [];
-        return (selectedGradeEntry.sections.get(selectedSection) || []).slice(0, visibleLimit);
-    }, [selectedGradeEntry, selectedSection, visibleLimit]);
+        let list = selectedGradeEntry.sections.get(selectedSection) || [];
+        if (statusFilter !== 'ALL') {
+            list = list.filter(s => (finalResults[s.studentId] || s.suggestedStatus) === statusFilter);
+        }
+        return list.slice(0, visibleLimit);
+    }, [selectedGradeEntry, selectedSection, visibleLimit, statusFilter, finalResults]);
 
     const allAssignedCount = useMemo(() => {
         return suggestions.filter(s => {
@@ -534,11 +550,42 @@ export default function PromotionPage() {
                 {/* NIVEL 3 — Lista de Estudiantes con Asignación Manual y Libertad Total */}
                 {selectedGradeEntry && selectedSection !== null && (
                     <section className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
-                        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-                            <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
-                                <Users className="w-5 h-5 text-indigo-600" />
-                                Estudiantes de {selectedGrade}º Año · Sección {selectedSection}
-                            </h2>
+                        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50 flex-wrap gap-3">
+                            <div className="flex items-center gap-3 flex-wrap">
+                                <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                                    <Users className="w-5 h-5 text-indigo-600" />
+                                    Estudiantes de {selectedGrade}º Año · Sección {selectedSection}
+                                </h2>
+
+                                {/* Filtros por Condición Académica */}
+                                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
+                                    <button
+                                        onClick={() => setStatusFilter('ALL')}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'ALL' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                                    >
+                                        Todos
+                                    </button>
+                                    <button
+                                        onClick={() => setStatusFilter('PROMOVIDO')}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'PROMOVIDO' ? 'bg-emerald-600 text-white' : 'text-emerald-700 hover:bg-emerald-50'}`}
+                                    >
+                                        Aprobados
+                                    </button>
+                                    <button
+                                        onClick={() => setStatusFilter('PROMOVIDO_CON_PENDIENTES')}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'PROMOVIDO_CON_PENDIENTES' ? 'bg-amber-600 text-white' : 'text-amber-700 hover:bg-amber-50'}`}
+                                    >
+                                        Con Pendientes (Arrastre)
+                                    </button>
+                                    <button
+                                        onClick={() => setStatusFilter('NO_PROMOVIDO')}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'NO_PROMOVIDO' ? 'bg-rose-600 text-white' : 'text-rose-700 hover:bg-rose-50'}`}
+                                    >
+                                        Repitientes
+                                    </button>
+                                </div>
+                            </div>
+
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => {
@@ -565,6 +612,7 @@ export default function PromotionPage() {
                                 const isMale = s.gender === 'MASCULINO';
                                 const isRetired = currentAsg.action === 'RETIRE_KEEP_HISTORY' || currentAsg.action === 'RETIRE_DELETE';
                                 const isGraduate = s.isLastGrade || currentAsg.action === 'GRADUATE';
+                                const hasPending = s.failedSubjects.length > 0;
 
                                 // Secciones disponibles para el año destino elegido
                                 const availableSections = [
@@ -593,11 +641,21 @@ export default function PromotionPage() {
                                                 <span>
                                                     Promedio: <strong className="text-indigo-700">{s.finalAverage.toFixed(1)} / 20</strong>
                                                 </span>
-                                                {s.failedSubjects.length > 0 ? (
-                                                    <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md font-semibold">
-                                                        <AlertTriangle className="w-3 h-3 text-amber-500" />
-                                                        Reprobado en: {s.failedSubjects.map(f => `${f.name} (${f.average} pts)`).join(', ')}
-                                                    </span>
+                                                {hasPending ? (
+                                                    <div className="inline-flex items-center gap-1.5 flex-wrap">
+                                                        <span className="inline-flex items-center gap-1 text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-md font-semibold">
+                                                            <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                                            Materia Pendiente ({s.failedSubjects.length}): {s.failedSubjects.map(f => `${f.name} (${f.average} pts)`).join(', ')}
+                                                        </span>
+                                                        <button
+                                                            onClick={() => setPendingModalStudent(s)}
+                                                            className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 px-2 py-0.5 rounded-md transition-colors shadow-2xs"
+                                                            title="Ver e Imprimir Acta de Compromiso de Materias Pendientes"
+                                                        >
+                                                            <FileText className="w-3 h-3 text-indigo-600" />
+                                                            Acta de Arrastre
+                                                        </button>
+                                                    </div>
                                                 ) : (
                                                     <span className="text-emerald-600 font-medium">✓ Todas las materias aprobadas</span>
                                                 )}
@@ -861,6 +919,100 @@ export default function PromotionPage() {
                                 ) : (
                                     'Aceptar y Finalizar Ciclo'
                                 )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Acta de Materia Pendiente (Arrastre venezolano) */}
+            {pendingModalStudent && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto print:p-0 print:bg-white">
+                    <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 print:shadow-none print:max-w-full">
+                        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-amber-50/70 print:hidden">
+                            <div className="flex items-center gap-2 text-amber-900 font-bold text-base">
+                                <FileText className="w-5 h-5 text-amber-600" />
+                                Acta de Compromiso de Materias Pendientes (Arrastre)
+                            </div>
+                            <button
+                                onClick={() => window.print()}
+                                className="px-3 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-1.5 shadow-2xs transition-colors"
+                            >
+                                <Printer className="w-3.5 h-3.5" /> Imprimir Acta
+                            </button>
+                        </div>
+
+                        {/* Documento Oficial Formateado para Venezuela */}
+                        <div className="p-8 space-y-6 text-gray-800 font-sans text-xs leading-relaxed print:p-8">
+                            <div className="text-center border-b border-gray-200 pb-4 space-y-1">
+                                <div className="font-extrabold uppercase tracking-wider text-gray-900 text-sm">República Bolivariana de Venezuela</div>
+                                <div className="font-semibold text-gray-700">Ministerio del Poder Popular para la Educación</div>
+                                <div className="font-bold text-indigo-900 text-sm">ACTA DE COMPROMISO ACADÉMICO — MATERIA PENDIENTE</div>
+                                <div className="text-gray-500 font-medium text-[11px]">Año Escolar Cursado: <strong>{yearName}</strong></div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <p>
+                                    En la fecha actual, se hace constar que el(la) estudiante:
+                                </p>
+                                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 grid grid-cols-2 gap-2 text-xs">
+                                    <div><strong>Nombre y Apellido:</strong> {pendingModalStudent.name}</div>
+                                    <div><strong>Año Cursado:</strong> {pendingModalStudent.gradeLevel}º Año</div>
+                                    <div><strong>Condición Académica:</strong> Promovido(a) con Materia(s) Pendiente(s)</div>
+                                    <div><strong>Promedio Final Obtenido:</strong> {pendingModalStudent.finalAverage.toFixed(2)} pts</div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 className="font-bold text-gray-900 mb-2 uppercase text-[11px] tracking-wide">
+                                    Asignatura(s) Pendiente(s) para Evaluación Extraordinaria:
+                                </h4>
+                                <table className="w-full border-collapse border border-gray-300 text-left text-xs">
+                                    <thead>
+                                        <tr className="bg-gray-100 font-bold text-gray-700">
+                                            <th className="border border-gray-300 p-2">Asignatura</th>
+                                            <th className="border border-gray-300 p-2 text-center w-28">Nota Final (01-20)</th>
+                                            <th className="border border-gray-300 p-2 text-center w-36">Estado de Arrastre</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {pendingModalStudent.failedSubjects.map((f, idx) => (
+                                            <tr key={idx} className="hover:bg-gray-50">
+                                                <td className="border border-gray-300 p-2 font-semibold">{f.name}</td>
+                                                <td className="border border-gray-300 p-2 text-center font-bold text-red-600">{f.average} pts</td>
+                                                <td className="border border-gray-300 p-2 text-center text-amber-700 font-medium bg-amber-50/50">Materia Pendiente</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200 text-amber-900 text-[11px] space-y-1">
+                                <div className="font-bold">Normativa del Ministerio de Educación (MPPE):</div>
+                                <p>
+                                    El(la) estudiante tiene derecho a cursar el siguiente año escolar ({pendingModalStudent.gradeLevel + 1}º Año) y presentar las evaluaciones extraordinarias de las materias pendientes en los momentos pedagógicos reglamentarios.
+                                </p>
+                            </div>
+
+                            {/* Firmas */}
+                            <div className="grid grid-cols-2 gap-8 pt-8 text-center text-xs">
+                                <div className="border-t border-gray-400 pt-2">
+                                    <div className="font-bold text-gray-900">Firma del Representante Legal</div>
+                                    <div className="text-gray-500 text-[10px]">C.I.: _______________________</div>
+                                </div>
+                                <div className="border-t border-gray-400 pt-2">
+                                    <div className="font-bold text-gray-900">Dirección del Plantel / Control de Estudios</div>
+                                    <div className="text-gray-500 text-[10px]">Sello y Firma Oficial</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-2 print:hidden">
+                            <button
+                                onClick={() => setPendingModalStudent(null)}
+                                className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-200 rounded-xl transition-colors"
+                            >
+                                Cerrar
                             </button>
                         </div>
                     </div>

@@ -64,6 +64,87 @@ function isSuperAdminRequest(hostname: string, pathname: string): boolean {
     return false;
 }
 
+/**
+ * PANTALLAS POR ROL
+ *
+ * El menú oculta lo que no toca, pero la dirección se puede escribir a mano:
+ * un estudiante entraba a /dashboard/usuarios. Aquí se corta antes de pintar.
+ *
+ * Ojo: esto es la puerta de la casa, no la de la caja fuerte. Los datos los
+ * protege el servidor, que responde 403 aunque alguien manipule la cookie del
+ * navegador para hacerse pasar por administrador: solo vería una pantalla vacía.
+ */
+type Rol = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'TUTOR';
+
+const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[] }> = [
+    { prefijo: '/dashboard/usuarios', roles: ['ADMIN'] },
+    { prefijo: '/dashboard/configuracion', roles: ['ADMIN'] },
+    { prefijo: '/dashboard/eventos', roles: ['ADMIN'] },
+    { prefijo: '/dashboard/academico', roles: ['ADMIN', 'TEACHER'] },
+    { prefijo: '/dashboard/materias', roles: ['ADMIN', 'TEACHER'] },
+    { prefijo: '/dashboard/horarios', roles: ['ADMIN', 'TEACHER'] },
+    { prefijo: '/dashboard/clase-en-vivo', roles: ['ADMIN', 'TEACHER'] },
+    /**
+     * ESTAS CUATRO FALTABAN
+     *
+     * Son pantallas de trabajo del personal —gestionar una clase, las aulas, el
+     * calendario, el horario de una sección— y no estaban en esta lista. Un
+     * alumno identificado podía abrirlas.
+     *
+     * Los datos nunca estuvieron en riesgo: el servidor comprueba los permisos
+     * por su cuenta y le habría devuelto una pantalla vacía. Pero la puerta de
+     * la casa estaba abierta, y eso no es lo acordado.
+     *
+     * Se encontró contando: de las 40 pantallas del sistema, diecisiete no
+     * aparecían en ninguna prueba de navegador. Al escribirlas, salió esto
+     * (ABRE-13).
+     */
+    { prefijo: '/dashboard/clases', roles: ['ADMIN', 'TEACHER'] },
+    { prefijo: '/dashboard/aulas', roles: ['ADMIN', 'TEACHER'] },
+    { prefijo: '/dashboard/horario', roles: ['ADMIN', 'TEACHER'] },
+    /**
+     * `/dashboard/calendario` NO va aquí, a propósito.
+     *
+     * Se puso al escribir lo de arriba, dando por hecho que era una pantalla de
+     * gestión. No lo es: **el alumno y el representante también la usan** para
+     * ver sus clases. Ponerla en esta lista los dejaba fuera de su propio
+     * calendario.
+     *
+     * Lo cazó PANT-estudiante, que ya decía —desde antes— qué pantallas son
+     * suyas. Queda escrito para que no se vuelva a "arreglar".
+     */
+];
+
+function rolDeLaSesion(request: NextRequest): Rol | null {
+    const cookie = request.cookies.get('user_data')?.value;
+    if (!cookie) return null;
+    try {
+        const datos = JSON.parse(decodeURIComponent(cookie));
+        return (datos?.role as Rol) ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/** Redirige al inicio si el rol no puede abrir esa pantalla. */
+function pantallaProhibida(request: NextRequest): NextResponse | null {
+    const { pathname } = request.nextUrl;
+    const regla = PANTALLAS_POR_ROL.find(
+        (r) => pathname === r.prefijo || pathname.startsWith(r.prefijo + '/')
+    );
+    if (!regla) return null;
+
+    const rol = rolDeLaSesion(request);
+    if (rol && !regla.roles.includes(rol)) {
+        const url = request.nextUrl.clone();
+        url.pathname = '/dashboard';
+        url.search = '';
+        url.searchParams.set('sinPermiso', '1');
+        return NextResponse.redirect(url);
+    }
+    return null;
+}
+
 export async function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
     const hostname = request.headers.get('host') || '';
@@ -82,23 +163,54 @@ export async function proxy(request: NextRequest) {
     // SUPERADMIN ROUTES
     // ========================================
     if (isSuperAdminRequest(hostname, pathname)) {
-        // Allow login page without auth
-        if (pathname === SUPERADMIN_LOGIN) {
-            const superAdminAccessToken = request.cookies.get('superadmin_access_token')?.value;
-            // If already logged in, redirect to dashboard
-            if (superAdminAccessToken) {
-                return NextResponse.redirect(new URL('/superadmin/dashboard', request.url));
-            }
-            return NextResponse.next();
-        }
-
-        // Protected SuperAdmin routes — require auth
+        /**
+         * LAS DOS PUERTAS TIENEN QUE MEDIR CON LA MISMA VARA
+         *
+         * Aquí había un bucle infinito de redirecciones, y era por una
+         * diferencia de una palabra:
+         *
+         *   - la pantalla de entrar miraba **solo la credencial**: si existe,
+         *     "ya estás dentro", y te mandaba al panel;
+         *   - el panel miraba **la credencial Y los datos**: si falta uno de los
+         *     dos, "no estás dentro", y te mandaba a entrar.
+         *
+         * Con una credencial pero sin los datos —que pasa si una caduca antes
+         * que la otra, o si un cierre de sesión se queda a medias— cada puerta
+         * mandaba a la otra. El navegador acababa en "demasiadas
+         * redirecciones": el superadmin **no podía ni llegar a la pantalla de
+         * entrar** para arreglarlo.
+         *
+         * Se cazó probándolo desde el navegador (ABRE-11) con una credencial
+         * que no servía. Contra la API no se ve: la API responde 401 y ya.
+         *
+         * Ahora las dos puertas preguntan lo mismo, y además la que rebota
+         * **borra lo que sobra**, para que un resto de sesión no pueda volver a
+         * encerrar a nadie.
+         */
         const superAdminAccessToken = request.cookies.get('superadmin_access_token')?.value;
         const superAdminData = request.cookies.get('superadmin_data')?.value;
+        const sesionCompleta = Boolean(superAdminAccessToken && superAdminData);
 
-        if (!superAdminAccessToken || !superAdminData) {
-            // No auth — redirect to SuperAdmin login
-            return NextResponse.redirect(new URL(SUPERADMIN_LOGIN, request.url));
+        if (pathname === SUPERADMIN_LOGIN) {
+            if (sesionCompleta) {
+                return NextResponse.redirect(new URL('/superadmin/dashboard', request.url));
+            }
+
+            // Sesión a medias: se limpia lo que quedara, para que la pantalla de
+            // entrar funcione y no vuelva a rebotar.
+            const respuesta = NextResponse.next();
+            if (superAdminAccessToken || superAdminData) {
+                respuesta.cookies.delete('superadmin_access_token');
+                respuesta.cookies.delete('superadmin_data');
+            }
+            return respuesta;
+        }
+
+        if (!sesionCompleta) {
+            const respuesta = NextResponse.redirect(new URL(SUPERADMIN_LOGIN, request.url));
+            respuesta.cookies.delete('superadmin_access_token');
+            respuesta.cookies.delete('superadmin_data');
+            return respuesta;
         }
 
         return NextResponse.next();
@@ -128,6 +240,9 @@ export async function proxy(request: NextRequest) {
             return response;
         }
 
+        // Antes de dejar pasar: ¿puede este rol abrir esta pantalla?
+        const prohibida = pantallaProhibida(request);
+        if (prohibida) return prohibida;
         // Protección de rutas: verificar token
         const accessToken = request.cookies.get('access_token')?.value;
         if (!accessToken) {
@@ -160,6 +275,9 @@ export async function proxy(request: NextRequest) {
         return NextResponse.next();
     }
 
+    // Antes de dejar pasar: ¿puede este rol abrir esta pantalla?
+    const prohibida = pantallaProhibida(request);
+    if (prohibida) return prohibida;
     // Check for access token
     const accessToken = request.cookies.get('access_token')?.value;
 

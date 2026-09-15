@@ -4,6 +4,10 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { CreateAttendanceInput, UpdateAttendanceInput, PaginationInput } from '../utils/validators';
 import { logger } from '../utils/logger';
 import { RequestUser } from '../types/fastify';
+import { assertClassroomScope, canSeeStudent } from '../services/authorization.service';
+import { instituteTimezone, isFutureDate, todayInTimezone } from '../utils/school-time';
+import { fueModificadoPorOtro, versionVista, AVISO_MODIFICADO_POR_OTRO } from '../utils/concurrencia';
+import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 
 // Tipos locales para attendance (reemplazan class-validator DTOs)
 interface AttendanceFilters {
@@ -92,6 +96,24 @@ export async function createAttendance(
     const attendanceData = request.body;
     // Para instituto único
     const instituteId = 'institute';
+
+    // La fecha la valida el SERVIDOR: si el reloj del dispositivo va adelantado
+    // (a mano o por una VPN), no se puede registrar asistencia de un día que aún
+    // no ha ocurrido.
+    const zonaLiceo = await instituteTimezone(request.tenantPrisma);
+    if (isFutureDate(attendanceData.date, zonaLiceo)) {
+      return reply.status(400).send({
+        error: 'No se puede registrar asistencia de una fecha futura',
+        code: 'FUTURE_DATE',
+        today: todayInTimezone(zonaLiceo),
+      });
+    }
+
+    // Un profesor solo pasa asistencia en las clases que imparte (o en su
+    // sección guía). Antes cualquier profesor podía hacerlo en cualquier sección.
+    await assertClassroomScope(request.tenantPrisma, request.user as any, attendanceData.classroomId, {
+      accion: 'pasar asistencia',
+    });
 
     // Verificar que el estudiante existe
     const student = await request.tenantPrisma.user.findFirst({
@@ -214,6 +236,14 @@ export async function createAttendance(
 
     return reply.status(201).send({ attendance });
   } catch (error) {
+    // Los errores con código propio (permisos, no encontrado…) se responden
+    // tal cual: convertirlos en 500 esconde el motivo real.
+    if ((error as any)?.statusCode) {
+      return reply.status((error as any).statusCode).send({
+        error: (error as any).message || 'No autorizado',
+        code: (error as any).code || 'FORBIDDEN',
+      });
+    }
     logger.error('Error al crear registro de asistencia', {
       error: error instanceof Error ? error.message : String(error)
     });
@@ -425,7 +455,9 @@ export async function updateAttendance(
 ) {
   try {
     const { id } = request.params;
-    const updateData = request.body;
+    // `any`: el cuerpo admite más campos de los que declara el tipo de la ruta;
+    // abajo se filtra a los que existen en la tabla.
+    const updateData = request.body as any;
     // Instituto único
     const instituteId = 'institute';
 
@@ -441,11 +473,30 @@ export async function updateAttendance(
       });
     }
 
+    // DOS PERSONAS, LA MISMA ASISTENCIA
+    //
+    // Mismo caso que con las notas: si la pantalla mandó la versión que tenía a
+    // la vista y ya cambió, otra persona guardó primero. Se avisa en vez de
+    // borrarle el cambio sin que se entere. Quien no manda versión guarda igual.
+    if (fueModificadoPorOtro(versionVista(request as any), existingAttendance.updatedAt)) {
+      return reply.status(409).send({
+        ...AVISO_MODIFICADO_POR_OTRO,
+        actual: { status: existingAttendance.status, updatedAt: existingAttendance.updatedAt },
+      });
+    }
+
     // Actualizar el registro de asistencia
     const attendance = await request.tenantPrisma.dailyAttendance.update({
       where: { id },
+      // Solo los campos que existen: antes se volcaba el cuerpo entero y
+      // cualquier campo inesperado hacía fallar la petición con un 500.
       data: {
-        ...updateData,
+        ...(updateData.status !== undefined ? { status: updateData.status } : {}),
+        ...(updateData.comments !== undefined ? { comments: updateData.comments } : {}),
+        ...(updateData.excuseNote !== undefined ? { excuseNote: updateData.excuseNote } : {}),
+        ...(updateData.lateArrival !== undefined ? { lateArrival: updateData.lateArrival } : {}),
+        ...(updateData.earlyLeave !== undefined ? { earlyLeave: updateData.earlyLeave } : {}),
+        ...(updateData.periods !== undefined ? { periods: updateData.periods } : {}),
         updatedAt: new Date(),
       },
       include: {
@@ -498,6 +549,14 @@ export async function updateAttendance(
 
     return reply.status(200).send({ attendance });
   } catch (error) {
+    // Los errores con código propio (permisos, no encontrado…) se responden
+    // tal cual: convertirlos en 500 esconde el motivo real.
+    if ((error as any)?.statusCode) {
+      return reply.status((error as any).statusCode).send({
+        error: (error as any).message || 'No autorizado',
+        code: (error as any).code || 'FORBIDDEN',
+      });
+    }
     logger.error('Error al actualizar asistencia', {
       error: error instanceof Error ? error.message : String(error),
       attendanceId: request.params.id
@@ -540,10 +599,13 @@ export async function deleteAttendance(
       });
     }
 
-    // Eliminar el registro de asistencia
-    await request.tenantPrisma.dailyAttendance.delete({
-      where: { id },
-    });
+    // Eliminar el registro de asistencia (con copia en la papelera)
+    await borrarGuardandoCopia(
+      request.tenantPrisma,
+      'dailyAttendance',
+      { id },
+      quienBorra(request as any)
+    );
 
     // Registrar el evento de eliminación
     await request.tenantPrisma.auditLog.create({
@@ -608,11 +670,24 @@ export async function getStudentAttendance(
       });
     }
 
-    // Verificar permisos según el rol
+    /**
+     * QUIÉN PUEDE VER LA ASISTENCIA DE ESTE ALUMNO
+     *
+     * Antes aquí solo se frenaba al propio alumno mirando la de otro. Al
+     * representante no se le preguntaba nada: con el identificador de cualquier
+     * alumno del liceo leía su asistencia completa, aunque no lo representara.
+     * Y la regla del liceo es clara: **el tutor solo ve a los alumnos que
+     * tutela**.
+     *
+     * `canSeeStudent` es la misma pregunta que usa el resto del sistema: el
+     * propio alumno, su representante, un profesor que le da clase o es su guía,
+     * y el administrador. Lo cazó `puertas-sin-cerradura` (PUERTA-09).
+     */
     const user = request.user as RequestUser;
-    if (user?.role === UserRole.STUDENT && studentId !== user.userId) {
+    const puedeVerlo = await canSeeStudent(request.tenantPrisma, user as any, studentId);
+    if (!puedeVerlo) {
       return reply.status(403).send({
-        error: 'Solo puedes ver tu propia asistencia',
+        error: 'No puedes ver la asistencia de este estudiante',
         code: 'INSUFFICIENT_PERMISSIONS',
       });
     }
@@ -747,59 +822,58 @@ export async function markClassAttendance(
     const attendanceDate = new Date(date);
     const user = request.user as RequestUser;
 
-    // Obtener registros de asistencia existentes para esta fecha y aula
-    const existingAttendances = await request.tenantPrisma.dailyAttendance.findMany({
-      where: {
-        classroomId,
-        date: attendanceDate,
-      },
-    });
-
-    const existingMap = new Map(
-      existingAttendances.map(attendance => [attendance.studentId, attendance.id])
+    // Quiénes ya tenían asistencia ese día: solo para poder contar cuántas
+    // se crean y cuántas se corrigen en el mensaje de vuelta.
+    const yaTenian = new Set(
+      (
+        await request.tenantPrisma.dailyAttendance.findMany({
+          where: { classroomId, date: attendanceDate },
+          select: { studentId: true },
+        })
+      ).map((a) => a.studentId)
     );
 
-    // Preparar operaciones de creación y actualización
-    const createOperations = [];
-    const updateOperations = [];
+    // DOS ENVÍOS A LA VEZ
+    //
+    // Antes se leía qué había y se escribía después. Un doble clic, o el
+    // navegador reintentando por una red lenta, mandaba dos veces lo mismo:
+    // las dos peticiones veían el aula vacía, las dos creaban las mismas
+    // filas y la segunda chocaba contra la base. El profesor veía "Error en
+    // el servidor" sin saber si la asistencia había quedado guardada.
+    //
+    // Con upsert sobre (alumno, fecha) el segundo envío corrige en lugar de
+    // chocar: pulsar dos veces deja exactamente lo mismo que pulsar una.
+    const operaciones = attendances.map((attendanceData) =>
+      request.tenantPrisma.dailyAttendance.upsert({
+        where: {
+          studentId_date: {
+            studentId: attendanceData.studentId,
+            date: attendanceDate,
+          },
+        },
+        update: {
+          status: attendanceData.status,
+          comments: attendanceData.comments,
+          classroomId,
+          updatedAt: new Date(),
+        },
+        create: {
+          studentId: attendanceData.studentId,
+          classroomId,
+          status: attendanceData.status,
+          comments: attendanceData.comments,
+          date: attendanceDate,
+          teacherId: user?.userId,
+        },
+      })
+    );
 
-    for (const attendanceData of attendances) {
-      const existingId = existingMap.get(attendanceData.studentId);
+    // Todo el pase de lista entra junto o no entra nada: si se corta la
+    // conexión a mitad no queda media sección marcada.
+    await request.tenantPrisma.$transaction(operaciones);
 
-      if (existingId) {
-        // Actualizar asistencia existente
-        updateOperations.push(
-          request.tenantPrisma.dailyAttendance.update({
-            where: { id: existingId },
-            data: {
-              status: attendanceData.status,
-              comments: attendanceData.comments,
-              updatedAt: new Date(),
-            },
-          })
-        );
-      } else {
-        // Crear nueva asistencia
-        createOperations.push(
-          request.tenantPrisma.dailyAttendance.create({
-            data: {
-              studentId: attendanceData.studentId,
-              classroomId,
-              status: attendanceData.status,
-              comments: attendanceData.comments,
-              date: attendanceDate,
-              teacherId: user?.userId,
-            },
-          })
-        );
-      }
-    }
-
-    // Ejecutar operaciones en transacción
-    await request.tenantPrisma.$transaction([
-      ...createOperations,
-      ...updateOperations,
-    ]);
+    const createOperations = attendances.filter((a) => !yaTenian.has(a.studentId));
+    const updateOperations = attendances.filter((a) => yaTenian.has(a.studentId));
 
     // Registrar el evento
     await request.tenantPrisma.auditLog.create({
@@ -829,6 +903,13 @@ export async function markClassAttendance(
       updated: updateOperations.length,
     });
 
+    // A quién le toca: a los alumnos de la lista y a sus representantes, y al
+    // personal de la sección. Los demás alumnos del liceo ni se enteran.
+    request.aQuienAfecta = {
+      studentIds: attendances.map((a: { studentId: string }) => a.studentId),
+      classroomId,
+    };
+
     return reply.status(201).send({
       success: true,
       message: `Se registraron ${createOperations.length} asistencias nuevas y se actualizaron ${updateOperations.length} existentes`,
@@ -836,6 +917,14 @@ export async function markClassAttendance(
       updated: updateOperations.length,
     });
   } catch (error) {
+    // Los errores con código propio (permisos, no encontrado…) se responden
+    // tal cual: convertirlos en 500 esconde el motivo real.
+    if ((error as any)?.statusCode) {
+      return reply.status((error as any).statusCode).send({
+        error: (error as any).message || 'No se pudo registrar la asistencia',
+        code: (error as any).code || 'ERROR',
+      });
+    }
     logger.error('Error al registrar asistencia masiva', {
       error: error instanceof Error ? error.message : String(error)
     });

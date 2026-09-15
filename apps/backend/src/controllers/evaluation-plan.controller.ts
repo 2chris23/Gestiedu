@@ -5,6 +5,8 @@ import { RequestUser } from '../types/fastify';
 import * as mammoth from 'mammoth';
 import * as cheerio from 'cheerio';
 import { planWeekNumberFromRange } from '../utils/plan-weeks';
+import { assertClassroomScope } from '../services/authorization.service';
+import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 
 // Helper para obtener el cliente DB del tenant.
 // SEGURIDAD: No hay fallback al platform DB. Si tenantPrisma no está resuelto,
@@ -173,6 +175,20 @@ export async function upsertEvaluationPlanMetadata(
     if (!user?.userId) throw AppErrors.Forbidden('Usuario no autenticado');
     if (!classroomId || !subjectId || !lapso) throw AppErrors.BadRequest('Faltan parámetros requeridos');
 
+    /**
+     * LA CABECERA DEL PLAN TAMBIÉN ES EL PLAN
+     *
+     * Las filas del plan (`batchUpsertRows`) sí comprobaban quién escribe. Esta
+     * función, que guarda la CABECERA —el nombre del profesor, su cédula, su
+     * teléfono, su correo, las fechas del lapso— no comprobaba nada: cualquiera
+     * con una sesión abierta, un alumno incluido, podía reescribir la cabecera
+     * del plan de cualquier clase del liceo.
+     *
+     * Es la misma comprobación que usan las filas, ni una más. La cazó
+     * `puertas-sin-cerradura` (PUERTA-03).
+     */
+    await assertClassroomScope(db, user as any, classroomId, { subjectId, accion: 'planificar' });
+
     const metadata = await db.evaluationPlanMetadata.upsert({
       where: { classroomId_subjectId_lapso: { classroomId, subjectId, lapso } },
       update: {
@@ -241,6 +257,9 @@ export async function getEvaluationPlanRows(
       throw AppErrors.BadRequest('Faltan parámetros requeridos');
     }
 
+    // El plan de una sección lo consulta quien imparte ahí (o el administrador)
+    await assertClassroomScope(db, request.user as any, classroomId, { subjectId, accion: 'consultar el plan' });
+
     const rows = await db.evaluationPlanRow.findMany({
       where: { classroomId, subjectId, lapso },
       orderBy: [{ weekNumber: 'asc' }, { orderIndex: 'asc' }]
@@ -274,7 +293,7 @@ export async function batchUpsertRows(
   reply: FastifyReply
 ) {
   try {
-    const { classroomId, subjectId, lapso, rows } = request.body;
+    const { classroomId, subjectId, lapso, rows } = request.body ?? ({} as any);
     const db = getDb(request);
     const user = request.user as RequestUser;
 
@@ -285,6 +304,16 @@ export async function batchUpsertRows(
     if (!classroomId || !subjectId || !lapso) {
       throw AppErrors.BadRequest('Faltan parámetros requeridos');
     }
+
+    // Sin esto, `rows.filter` de más abajo reventaba y el profesor recibía
+    // "Error interno del servidor": un mensaje que no dice nada y hace pensar
+    // que el sistema está roto, cuando lo que pasa es que faltó la lista.
+    if (!Array.isArray(rows)) {
+      throw AppErrors.BadRequest('Falta la lista de filas del plan (rows)');
+    }
+
+    // El plan es de quien imparte esa materia en esa sección
+    await assertClassroomScope(db, user as any, classroomId, { subjectId, accion: 'planificar' });
 
     // ============================================================
     // VALIDACIÓN BLOQUEANTE: la suma de puntos de los criterios debe
@@ -309,45 +338,23 @@ export async function batchUpsertRows(
       where: { classroomId, subjectId, lapso }
     });
 
-    const currentIds = currentRows.map((r: any) => r.id);
-    const incomingIds = rows.filter((r: any) => r.id && !r.id.startsWith('new_')).map((r: any) => r.id);
-    const idsToDelete = currentIds.filter((id: string) => !incomingIds.includes(id));
-
+    const quien = quienBorra(request as any);
     const result = await db.$transaction(async (tx: any) => {
-      // Eliminar filas removidas
-      if (idsToDelete.length > 0) {
-        // Verificar si alguna tiene actividad con calificaciones
-        const rowsToDelete = await tx.evaluationPlanRow.findMany({
-          where: { id: { in: idsToDelete }, activityId: { not: null } },
-          select: { activityId: true }
-        });
-        
-        const actIds = rowsToDelete.map((r: any) => r.activityId).filter(Boolean);
-        if (actIds.length > 0) {
-          const withGrades = await tx.grade.count({
-            where: { activityId: { in: actIds } }
-          });
-          if (withGrades > 0) {
-            throw AppErrors.BadRequest('No se pueden eliminar filas con evaluaciones que ya tienen calificaciones');
-          }
-          // Eliminar actividades sin calificaciones
-          await tx.activity.deleteMany({ where: { id: { in: actIds } } });
-        }
-
-        await tx.evaluationPlanRow.deleteMany({
-          where: { id: { in: idsToDelete } }
-        });
-      }
-
-      // Upsert filas
       const savedRows = [];
+      const usedIds = new Set<string>();
+
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
+        const rawPuntos = row.puntos != null ? parseFloat(row.puntos) : null;
+        const calcPonderacion = rawPuntos != null && rawPuntos > 0
+          ? Math.round((rawPuntos / 20) * 100 * 100) / 100
+          : (row.ponderacion != null ? parseFloat(row.ponderacion) : null);
+
         const rowData: any = {
           classroomId,
           subjectId,
           lapso,
-          rowType: row.rowType,
+          rowType: row.rowType || 'EVALUATION',
           weekNumber: row.weekNumber,
           endWeekNumber: row.endWeekNumber || null,
           orderIndex: i,
@@ -360,40 +367,46 @@ export async function batchUpsertRows(
           tecnicas: row.tecnicas || null,
           instrumentos: row.instrumentos || null,
           criterios: row.criterios || null,
-          ponderacion: row.ponderacion != null
-            ? parseFloat(row.ponderacion)
-            : Math.round(((row.puntos || 0) / 20) * 100 * 100) / 100, // derivada de Puntos
-          puntos: row.puntos != null ? parseFloat(row.puntos) : null,
+          ponderacion: calcPonderacion,
+          puntos: rawPuntos,
           tipoEvaluacion: row.tipoEvaluacion || null,
           indicadores: row.indicadores || null,
           extraData: row.extraData || null,
         };
 
-        let savedRow;
+        // Buscar coincidencia existente por id o por (weekNumber + rowType)
+        let existingMatch = null;
         if (row.id && !row.id.startsWith('new_')) {
+          existingMatch = currentRows.find((cr: any) => cr.id === row.id);
+        }
+        if (!existingMatch && row.weekNumber) {
+          existingMatch = currentRows.find((cr: any) => cr.weekNumber === row.weekNumber && cr.rowType === (row.rowType || 'EVALUATION') && !usedIds.has(cr.id));
+        }
+
+        let savedRow;
+        if (existingMatch) {
+          usedIds.add(existingMatch.id);
           savedRow = await tx.evaluationPlanRow.update({
-            where: { id: row.id },
+            where: { id: existingMatch.id },
             data: rowData
           });
         } else {
           savedRow = await tx.evaluationPlanRow.create({
             data: rowData
           });
+          usedIds.add(savedRow.id);
         }
 
-        // Para filas tipo EVALUATION con ponderación: auto-crear/actualizar Activity
-        // PONDERACIÓN DERIVADA: si no vino, se calcula desde Puntos (puntos/20*100).
-        const ponderacionVal = row.ponderacion != null
-          ? parseFloat(row.ponderacion)
-          : Math.round(((row.puntos || 0) / 20) * 100);
-        if (row.rowType === 'EVALUATION' && ponderacionVal > 0) {
+        // Para filas tipo EVALUATION con ponderación o puntos: auto-crear/actualizar Activity
+        const ponderacionVal = calcPonderacion || 0;
+        if (row.rowType === 'EVALUATION' && (ponderacionVal > 0 || (rawPuntos && rawPuntos > 0))) {
           const actData = {
-            title: row.actividadEval || 'Actividad Evaluativa',
+            title: row.actividadEval || row.title || 'Actividad Evaluativa',
             type: row.tipoEvaluacion || 'OTHER',
             scope: 'CLASSROOM',
             startDate: new Date(),
-            maxGrade: row.puntos || 20,
-            weight: row.puntos || 0, // Puntos como referencia de peso del criterio
+            maxGrade: rawPuntos || 20,
+            weight: rawPuntos || 0, // Puntos como referencia de peso del criterio
             classroomId,
             subjectId,
             lapso,
@@ -420,6 +433,37 @@ export async function batchUpsertRows(
         savedRows.push(savedRow);
       }
 
+      // Eliminar filas removidas que no tengan notas
+      const idsToDelete = currentRows
+        .filter((cr: any) => !usedIds.has(cr.id))
+        .map((cr: any) => cr.id);
+
+      if (idsToDelete.length > 0) {
+        const rowsWithGrades = await tx.evaluationPlanRow.findMany({
+          where: {
+            id: { in: idsToDelete },
+            activityId: { not: null },
+            activity: { grades: { some: {} } }
+          },
+          select: { id: true, activityId: true }
+        });
+
+        const gradeRowIds = new Set(rowsWithGrades.map((r: any) => r.id));
+        const safeIdsToDelete = idsToDelete.filter((id: string) => !gradeRowIds.has(id));
+
+        if (safeIdsToDelete.length > 0) {
+          const actsToDelete = currentRows
+            .filter((cr: any) => safeIdsToDelete.includes(cr.id) && cr.activityId)
+            .map((cr: any) => cr.activityId)
+            .filter(Boolean);
+
+          if (actsToDelete.length > 0) {
+            await borrarGuardandoCopia(tx, 'activity', { id: { in: actsToDelete } }, quien);
+          }
+          await borrarGuardandoCopia(tx, 'evaluationPlanRow', { id: { in: safeIdsToDelete } }, quien);
+        }
+      }
+
       return savedRows;
     });
 
@@ -444,12 +488,48 @@ export async function copyPlan(
   reply: FastifyReply
 ) {
   try {
-    const { sourceClassroomId, sourceSubjectId, sourceLapso, targetClassroomIds } = request.body;
+    const { sourceClassroomId, sourceSubjectId, sourceLapso, targetClassroomIds } =
+      request.body ?? ({} as any);
     const db = getDb(request);
     const user = request.user as RequestUser;
 
     if (!user?.userId || (user.role !== 'TEACHER' && user.role !== 'ADMIN')) {
       throw AppErrors.Forbidden('No tienes permisos');
+    }
+
+    if (!sourceClassroomId || !sourceSubjectId || !sourceLapso) {
+      throw AppErrors.BadRequest('Faltan parámetros del plan de origen (sección, materia y lapso)');
+    }
+
+    if (!Array.isArray(targetClassroomIds) || targetClassroomIds.length === 0) {
+      throw AppErrors.BadRequest('Hay que decir a qué secciones se copia el plan');
+    }
+
+    /**
+     * COPIAR UN PLAN ES ESCRIBIR EN LA SECCIÓN DE DESTINO
+     *
+     * Aquí solo se miraba el ROL: con ser profesor bastaba. Faltaba lo otro, que
+     * es lo que importa: que la sección sea suya.
+     *
+     * Lo que pasaba en el liceo, reproducido en PLAN-01: un profesor que da
+     * Matemáticas en 1ºB podía mandar su plan a 1ºA, que no es suya. Y copiar
+     * BORRA lo que había en el destino — así que el plan de la profesora de 1ºA
+     * desaparecía y en su lugar quedaba el de él. Respuesta: 200, "copiado".
+     *
+     * Se comprueba el origen (leer el plan ajeno también es ver lo que no es
+     * suyo) y CADA destino, antes de tocar nada: si uno solo no es suyo, no se
+     * copia ninguno.
+     */
+    await assertClassroomScope(db, user as any, sourceClassroomId, {
+      subjectId: sourceSubjectId,
+      accion: 'planificar',
+    });
+
+    for (const targetClassroomId of targetClassroomIds) {
+      await assertClassroomScope(db, user as any, targetClassroomId, {
+        subjectId: sourceSubjectId,
+        accion: 'planificar',
+      });
     }
 
     // Obtener plan origen
@@ -477,9 +557,12 @@ export async function copyPlan(
         }
 
         // Eliminar filas existentes del destino (sin actividades con calificaciones)
-        await tx.evaluationPlanRow.deleteMany({
-          where: { classroomId: targetClassroomId, subjectId: sourceSubjectId, lapso: sourceLapso }
-        });
+        await borrarGuardandoCopia(
+          tx,
+          'evaluationPlanRow',
+          { classroomId: targetClassroomId, subjectId: sourceSubjectId, lapso: sourceLapso },
+          quienBorra(request as any)
+        );
 
         // Copiar filas (sin activityId)
         for (const row of sourceRows) {
@@ -495,6 +578,87 @@ export async function copyPlan(
     return reply.send({ success: true, copiedCount });
   } catch (error) {
     logger.error('Error al copiar plan', { error });
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error;
+    return reply.status(500).send({ error: 'Error interno del servidor' });
+  }
+}
+
+// ============================================================
+// 5-bis. GET /copy-targets — A qué secciones se puede copiar este plan
+// ============================================================
+
+/**
+ * LA LISTA LA ARMA EL SERVIDOR, NO LA PANTALLA
+ *
+ * Copiar un plan **borra** el que hubiera en el destino. Por eso la pantalla no
+ * puede ofrecer secciones a ojo: lo que se ofrece tiene que ser exactamente lo
+ * que `copyPlan` va a aceptar, y eso solo lo sabe el servidor.
+ *
+ * Se aplica la misma regla que allí: el profesor solo ve las secciones donde él
+ * da **esa misma materia** (ser guía no basta para planificar); el admin, todas
+ * las que tengan la materia. Siempre dentro del mismo año escolar, y sin la
+ * sección de origen.
+ *
+ * Si alguien manda una sección que no está en esta lista, `copyPlan` la rechaza
+ * igual. Esto es para que nadie se encuentre un botón que no funciona.
+ */
+export async function getCopyTargets(
+  request: FastifyRequest<{ Querystring: { sourceClassroomId: string; subjectId: string } }>,
+  reply: FastifyReply
+) {
+  try {
+    const { sourceClassroomId, subjectId } = request.query;
+    const db = getDb(request);
+    const user = request.user as RequestUser;
+
+    if (!sourceClassroomId || !subjectId) {
+      throw AppErrors.BadRequest('Faltan la sección de origen y la materia');
+    }
+
+    if (!user?.userId || (user.role !== 'TEACHER' && user.role !== 'ADMIN')) {
+      throw AppErrors.Forbidden('No tienes permisos');
+    }
+
+    // Ver el plan de origen ya es ver algo que puede no ser suyo.
+    await assertClassroomScope(db, user as any, sourceClassroomId, {
+      subjectId,
+      accion: 'planificar',
+    });
+
+    const origen = await db.classroom.findUnique({
+      where: { id: sourceClassroomId },
+      select: { academicYearId: true },
+    });
+
+    const asignaciones = await db.classroomSubject.findMany({
+      where: {
+        subjectId,
+        classroomId: { not: sourceClassroomId },
+        // Un profesor solo puede planificar donde da esa materia. El admin, en
+        // cualquiera que la tenga.
+        ...(user.role === 'TEACHER' ? { teacherId: user.userId } : {}),
+        classroom: {
+          isActive: true,
+          // Copiar a otro año escolar no tiene sentido: las semanas del lapso
+          // son otras.
+          ...(origen?.academicYearId ? { academicYearId: origen.academicYearId } : {}),
+        },
+      },
+      select: {
+        classroom: { select: { id: true, name: true, grade: true, section: true } },
+      },
+    });
+
+    const secciones = asignaciones
+      .map((a: any) => a.classroom)
+      .filter(Boolean)
+      .sort((a: any, b: any) =>
+        a.grade === b.grade ? String(a.section).localeCompare(String(b.section)) : a.grade - b.grade
+      );
+
+    return reply.send({ classrooms: secciones });
+  } catch (error) {
+    logger.error('Error al listar secciones de destino', { error });
     if (error && typeof error === 'object' && 'statusCode' in error) throw error;
     return reply.status(500).send({ error: 'Error interno del servidor' });
   }
@@ -544,8 +708,11 @@ export async function getCalendarData(
     const end = new Date(endDate);
     const calendarData: any[] = [];
 
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dayOfWeek = d.getDay(); // 0=Sun, 1=Mon... 6=Sat
+    // `startDate`/`endDate` llegan como "YYYY-MM-DD" → medianoche UTC. Todo el
+    // recorrido tiene que ir en UTC: con getDay() (hora local), en
+    // America/Caracas (UTC-4) cada fecha recibía los bloques del día anterior.
+    for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+      const dayOfWeek = d.getUTCDay(); // 0=Dom, 1=Lun... 6=Sáb
       const dateStr = d.toISOString().split('T')[0];
 
       // Encontrar bloques para este día

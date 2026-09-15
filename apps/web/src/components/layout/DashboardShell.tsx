@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/auth.store';
+import { olvidarCredencial } from '@/lib/credencial-en-memoria';
 import {
     Home,
     Users,
@@ -14,7 +15,8 @@ import {
     Menu,
     X,
     GraduationCap,
-    Calendar
+    Calendar,
+    CalendarDays
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useInstituteConfig } from '@/hooks/useInstitute';
@@ -53,6 +55,9 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
     const handleLogout = async () => {
         // Clear cookies via API route
         await fetch('/api/auth/logout', { method: 'POST' });
+        // Y la llave que estaba en la memoria de la pestaña: si no, seguiría
+        // sirviendo hasta que caduque aunque la sesión esté cerrada.
+        olvidarCredencial();
         // Clear Zustand UI state
         zustandLogout();
         router.push('/login');
@@ -66,6 +71,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
         { name: 'Académico', href: '/dashboard/academico', icon: BookOpen, roles: ['ADMIN', 'TEACHER'] },
         { name: 'Materias', href: '/dashboard/materias', icon: Library, roles: ['ADMIN', 'TEACHER'] },
         { name: 'Horarios', href: '/dashboard/horarios', icon: Calendar, roles: ['ADMIN', 'TEACHER'] },
+        { name: 'Eventos', href: '/dashboard/eventos', icon: CalendarDays, roles: ['ADMIN'] },
         { name: 'Usuarios', href: '/dashboard/usuarios', icon: Users, roles: ['ADMIN'] },
         { name: 'Configuración', href: '/dashboard/configuracion', icon: Settings, roles: ['ADMIN'] },
     ];
@@ -118,7 +124,8 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                                     alt="Logo del Instituto"
                                     width={120}
                                     height={120}
-                                    className="object-contain"
+                                    className="object-contain max-h-20 w-auto"
+                                    unoptimized
                                 />
                             </div>
                         ) : (

@@ -51,7 +51,7 @@ export class AttendanceService {
     // Verificar que el estudiante existe y pertenece al instituto
     const student = await prisma.user.findUnique({
       where: { id: data.studentId },
-      select: { role: true, instituteId: true, isActive: true, classroomId: true }
+      select: { role: true, instituteId: true, isActive: true }
     });
 
     if (!student || !student.isActive) {
@@ -158,9 +158,9 @@ export class AttendanceService {
     const classroom = await prisma.classroom.findUnique({
       where: { id: data.classroomId },
       include: {
-        students: {
-          where: { isActive: true, role: UserRole.STUDENT },
-          select: { id: true }
+        studentClassrooms: {
+          where: { isActive: true },
+          select: { studentId: true }
         }
       }
     });
@@ -175,7 +175,7 @@ export class AttendanceService {
     }
 
     // Validar que todos los estudiantes pertenecen al aula
-    const classroomStudentIds = classroom.students.map(s => s.id);
+    const classroomStudentIds = classroom.studentClassrooms.map(sc => sc.studentId);
     const invalidStudents = data.attendances.filter(att => !classroomStudentIds.includes(att.studentId));
 
     if (invalidStudents.length > 0) {
@@ -522,23 +522,27 @@ export class AttendanceService {
     }
 
     // Obtener todos los estudiantes del aula
-    const students = await prisma.user.findMany({
+    const studentClassrooms = await prisma.studentClassroom.findMany({
       where: {
         classroomId,
-        isActive: true,
-        role: UserRole.STUDENT
+        isActive: true
       },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        studentCode: true
+      include: {
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            studentCode: true
+          }
+        }
       },
       orderBy: [
-        { lastName: 'asc' },
-        { firstName: 'asc' }
+        { student: { lastName: 'asc' } },
+        { student: { firstName: 'asc' } }
       ]
     });
+    const students = studentClassrooms.map(sc => sc.student).filter(Boolean);
 
     // Obtener registros de asistencia existentes
     const DailyAttendances = await prisma.dailyAttendance.findMany({
@@ -709,11 +713,10 @@ export class AttendanceService {
           studentId: true
         }
       }),
-      prisma.user.count({
+      prisma.studentClassroom.count({
         where: {
           classroomId,
-          isActive: true,
-          role: UserRole.STUDENT
+          isActive: true
         }
       })
     ]);

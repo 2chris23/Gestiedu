@@ -8,34 +8,31 @@ import { academicYearService, AcademicYear } from '@/services/academic-year.serv
 import { classroomService, Classroom } from '@/services/classroom.service';
 import GradeAccordion from '@/components/academic/GradeAccordion';
 import ClassroomModal from '@/components/classrooms/ClassroomModal';
-import AcademicYearModal from '@/components/academic/AcademicYearModal'; // Reusing existing modal
+import AcademicYearModal from '@/components/academic/AcademicYearModal';
 import { toast } from 'sonner';
 import AcademicStats from '@/components/academic/AcademicStats';
-import LapsoSelector from '@/components/academic/LapsoSelector'; // Fase 3.5 — filtro por lapso
+import LapsoSelector from '@/components/academic/LapsoSelector';
 import { useAuthStore } from '@/store/auth.store';
-import { YearSelector } from '@/components/navigation/YearSelector'; // Import new component
+import { YearSelector } from '@/components/navigation/YearSelector';
 
 export default function AcademicYearDashboard() {
     const confirmDialog = useConfirm();
     const params = useParams();
     const router = useRouter();
-    // Migrated param: year -> cycleId
     const cycleIdParam = decodeURIComponent(params.cycleId as string);
 
     const [year, setYear] = useState<AcademicYear | null>(null);
-    const [allCycles, setAllCycles] = useState<AcademicYear[]>([]); // For selector
+    const [allCycles, setAllCycles] = useState<AcademicYear[]>([]);
     const [classrooms, setClassrooms] = useState<Classroom[]>([]);
     const [gradeStats, setGradeStats] = useState<Record<number, any>>({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    // Fase 3.5 — filtro por lapso/momento (undefined = "Todo el ciclo")
     const [lapsoId, setLapsoId] = useState<string | undefined>(undefined);
     const { user } = useAuthStore();
     const isAdmin = (user?.role as string) === 'ADMIN' || (user?.role as string) === 'SUPERADMIN';
 
-    // Modal state for creating sections
     const [isClassroomModalOpen, setClassroomModalOpen] = useState(false);
-    const [isYearModalOpen, setYearModalOpen] = useState(false); // For editing year
+    const [isYearModalOpen, setYearModalOpen] = useState(false);
     const [selectedGradeForCreation, setSelectedGradeForCreation] = useState<number>(1);
     const [classroomToEdit, setClassroomToEdit] = useState<Classroom | null>(null);
 
@@ -44,7 +41,6 @@ export default function AcademicYearDashboard() {
             setLoading(true);
             setError(null);
 
-            // 1. Fetch Years to resolve the param (Name or ID)
             const allYears = await academicYearService.getAcademicYears();
             setAllCycles(allYears);
 
@@ -59,22 +55,23 @@ export default function AcademicYearDashboard() {
 
             setYear(foundYear);
 
-            // 2. Fetch Classrooms using the resolved Real ID
-            const classroomsData = await classroomService.getClassrooms(foundYear.id);
-            setClassrooms(Array.isArray(classroomsData) ? classroomsData : classroomsData.classrooms);
+            // Cargar aulas y estadísticas en paralelo con máxima velocidad
+            const [classroomsData, stats] = await Promise.all([
+                classroomService.getClassrooms(foundYear.id),
+                academicYearService.getAcademicYearStats(foundYear.id, lapsoId)
+            ]);
 
-            // 3. Fetch Year Stats (con filtro por lapso si aplica)
-            const stats = await academicYearService.getAcademicYearStats(foundYear.id, lapsoId);
+            setClassrooms(Array.isArray(classroomsData) ? classroomsData : classroomsData.classrooms);
             setGradeStats(stats);
 
-        } catch (error) {
-            console.error(error);
+        } catch (err) {
+            console.error(err);
             toast.error('Error al cargar datos del ciclo escolar');
-            setError(error instanceof Error ? error.message : 'Error desconocido');
+            setError(err instanceof Error ? err.message : 'Error desconocido');
         } finally {
             setLoading(false);
         }
-    }, [cycleIdParam]);
+    }, [cycleIdParam, lapsoId]);
 
     useEffect(() => {
         if (cycleIdParam) fetchData();
@@ -89,7 +86,6 @@ export default function AcademicYearDashboard() {
         setClassroomModalOpen(true);
     };
 
-    // Helper to group sections by grade
     const classroomsByGrade = useMemo(() => {
         const grouped: Record<number, Classroom[]> = {};
         [1, 2, 3, 4, 5].forEach(g => grouped[g] = []);
@@ -98,7 +94,6 @@ export default function AcademicYearDashboard() {
             if (grouped[c.grade]) grouped[c.grade].push(c);
         });
 
-        // Sort
         Object.keys(grouped).forEach(key => {
             grouped[Number(key)].sort((a, b) => a.section.localeCompare(b.section));
         });
@@ -118,8 +113,8 @@ export default function AcademicYearDashboard() {
             await classroomService.deleteClassroom(id);
             toast.success('Sección eliminada exitosamente');
             fetchData();
-        } catch (error) {
-            console.error(error);
+        } catch (err) {
+            console.error(err);
             toast.error('Error al eliminar sección');
         }
     };
@@ -134,7 +129,6 @@ export default function AcademicYearDashboard() {
         fetchData();
     };
 
-    // Calculate Global Stats
     const globalStats = useMemo(() => {
         const statsArray = Object.values(gradeStats);
         if (statsArray.length === 0) return null;
@@ -165,7 +159,6 @@ export default function AcademicYearDashboard() {
             weightedSumAttendance += attendance * current;
             totalObservations += s.observations;
 
-            // Track Min/Max only if grade has students
             if (current > 0) {
                 hasStudentData = true;
                 if (s.minAverage !== undefined) {
@@ -208,16 +201,14 @@ export default function AcademicYearDashboard() {
         );
     }
 
-    // Map cycles for selector
     const cyclesForSelector = allCycles.map(c => ({
-        id: c.name, // Using name as ID for URL consistency if that's how it's used
+        id: c.name,
         name: c.name,
         status: c.status
     }));
 
     return (
         <div className="min-h-screen bg-gray-50/50 pb-20">
-            {/* Header */}
             <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                     <div className="flex items-center gap-4 mb-4 justify-between">
@@ -226,21 +217,21 @@ export default function AcademicYearDashboard() {
                                 <ArrowLeft className="w-5 h-5" />
                             </button>
                             <div>
-                            <h1 className="text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
-                                {year.name}
-                                <YearSelector cycles={cyclesForSelector} />
-                                <LapsoSelector periods={(year.periods || []).map((p) => ({ id: p.id as string, name: p.name }))} value={lapsoId} onChange={setLapsoId} compact />
-                                {isAdmin && (
-                                    <button
-                                        onClick={() => router.push(`/dashboard/academico/${year.name}/promocion`)}
-                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition-colors"
-                                        title="Finalizar ciclo escolar (página de promoción con revisión)"
-                                    >
-                                        <GraduationCap className="w-3.5 h-3.5" />
-                                        Finalizar Ciclo Escolar
-                                    </button>
-                                )}
-                            </h1>
+                                <h1 className="text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
+                                    {year.name}
+                                    <YearSelector cycles={cyclesForSelector} />
+                                    <LapsoSelector periods={(year.periods || []).map((p) => ({ id: p.id as string, name: p.name }))} value={lapsoId} onChange={setLapsoId} compact />
+                                    {isAdmin && (
+                                        <button
+                                            onClick={() => router.push(`/dashboard/academico/${year.name}/promocion`)}
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition-colors"
+                                            title="Finalizar ciclo escolar (página de promoción con revisión)"
+                                        >
+                                            <GraduationCap className="w-3.5 h-3.5" />
+                                            Finalizar Ciclo Escolar
+                                        </button>
+                                    )}
+                                </h1>
                                 <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
                                     {(() => {
                                         const now = new Date();
@@ -276,7 +267,6 @@ export default function AcademicYearDashboard() {
                         </button>
                     </div>
 
-                    {/* Global KPI Cards */}
                     <div className="mt-6">
                         <AcademicStats stats={globalStats || undefined} />
                     </div>
@@ -302,7 +292,7 @@ export default function AcademicYearDashboard() {
                                 onEditSection={handleEditSection}
                                 onDeleteSection={handleDeleteSection}
                                 academicYearId={year.id}
-                                yearSlug={year.name} // IMPORTANT: Pass name so Section URL uses name
+                                yearSlug={year.name}
                                 stats={gradeStats[grade]?.stats}
                             />
                         ))}
@@ -323,11 +313,11 @@ export default function AcademicYearDashboard() {
             <AcademicYearModal
                 isOpen={isYearModalOpen}
                 onClose={() => setYearModalOpen(false)}
-                existingYears={[]} // Not needed for edit
+                existingYears={[]}
                 yearToEdit={year}
                 onSuccess={() => {
                     setYearModalOpen(false);
-                    fetchData(); // Refresh to show new status
+                    fetchData();
                 }}
             />
         </div>

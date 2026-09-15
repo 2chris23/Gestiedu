@@ -14,23 +14,32 @@ export function DynamicFavicon() {
 
     useEffect(() => {
         if (config?.favicon) {
-            // Actualizar favicon
-            let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
-
-            if (!link) {
-                link = document.createElement('link');
-                link.rel = 'icon';
-                document.head.appendChild(link);
-            }
-
             // Si el favicon es una ruta relativa (empieza con /uploads), agregar la URL del backend
             const faviconUrl = config.favicon.startsWith('/uploads')
                 ? `${BACKEND_URL}${config.favicon}`
                 : config.favicon;
 
-            link.href = faviconUrl;
+            const finalUrl = `${faviconUrl}?v=${encodeURIComponent(config.updatedAt || '1')}`;
+
+            // Remover iconos previos para evitar que el navegador mantenga el icono por defecto
+            const existingLinks = document.querySelectorAll("link[rel*='icon']");
+            existingLinks.forEach(el => el.remove());
+
+            // Crear y añadir nuevo link rel="icon"
+            const iconLink = document.createElement('link');
+            iconLink.rel = 'icon';
+            iconLink.type = faviconUrl.endsWith('.ico') ? 'image/x-icon' : 'image/png';
+            iconLink.href = finalUrl;
+            document.head.appendChild(iconLink);
+
+            // Crear y añadir link rel="shortcut icon" (para compatibilidad máxima)
+            const shortcutLink = document.createElement('link');
+            shortcutLink.rel = 'shortcut icon';
+            shortcutLink.type = iconLink.type;
+            shortcutLink.href = finalUrl;
+            document.head.appendChild(shortcutLink);
         }
-    }, [config?.favicon]);
+    }, [config?.favicon, config?.updatedAt]);
 
     return null; // Este componente no renderiza nada
 }
