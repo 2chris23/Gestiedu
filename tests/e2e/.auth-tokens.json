@@ -1,0 +1,198 @@
+{
+  "admin@testing.edu.ve:instituto-testing": {
+    "user": {
+      "id": "chkkhczcvpue6k1xorcnubwfo",
+      "email": "admin@testing.edu.ve",
+      "firstName": "Administrador",
+      "lastName": "General",
+      "role": "ADMIN",
+      "institute": {
+        "id": "inst-testing",
+        "name": "Instituto Testing",
+        "code": "INST-TEST"
+      }
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNoa2toY3pjdnB1ZTZrMXhvcmNudWJ3Zm8iLCJ1c2VySWQiOiJjaGtraGN6Y3ZwdWU2azF4b3JjbnVid2ZvIiwiZW1haWwiOiJhZG1pbkB0ZXN0aW5nLmVkdS52ZSIsInJvbGUiOiJBRE1JTiIsImluc3RpdHV0ZUlkIjoiaW5zdC10ZXN0aW5nIiwiaWF0IjoxNzg5NTA4MjY2LCJleHAiOjE3ODk1MTE4NjYsImF1ZCI6Imdlc3Rpb24tZXNjb2xhci1jbGllbnQiLCJpc3MiOiJnZXN0aW9uLWVzY29sYXItYXBpIn0.2B7PhCNpsY0WcuJAfe8FmFUsiysIx6UE6ClbsZpzp4o",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjaGtraGN6Y3ZwdWU2azF4b3JjbnVid2ZvIiwidG9rZW5JZCI6IjlmMDkxMmU0LTkxNzUtNDIyYy04NGM2LTQxOWY4ZDM3MWZhYSIsImlhdCI6MTc4OTUwODI2NiwiZXhwIjoxNzkwMTEzMDY2LCJhdWQiOiJnZXN0aW9uLWVzY29sYXItY2xpZW50IiwiaXNzIjoiZ2VzdGlvbi1lc2NvbGFyLWFwaSJ9.br58B-eyY36qi98G2p9czCQ3aTLoo-QOiFFpw7ggpYs",
+    "timestamp": 1789508266271
+  },
+  "profesor.ciencias@tuapp.com:instituto-testing": {
+    "user": {
+      "id": "V-10000006",
+      "email": "profesor.ciencias@tuapp.com",
+      "firstName": "Alejandro",
+      "lastName": "Silva",
+      "role": "TEACHER"
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IlYtMTAwMDAwMDYiLCJ1c2VySWQiOiJWLTEwMDAwMDA2IiwiZW1haWwiOiJwcm9mZXNvci5jaWVuY2lhc0B0dWFwcC5jb20iLCJyb2xlIjoiVEVBQ0hFUiIsImluc3RpdHV0ZUlkIjoiaW5zdC10ZXN0aW5nIiwiaWF0IjoxNzg5NTA4MjY1LCJleHAiOjE3ODk1MTE4NjUsImF1ZCI6Imdlc3Rpb24tZXNjb2xhci1jbGllbnQiLCJpc3MiOiJnZXN0aW9uLWVzY29sYXItYXBpIn0.kDTcJ3fu9_iOGwWvBhUQxozC2Z7UT1mFgItE8sOA_jM",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJWLTEwMDAwMDA2IiwidG9rZW5JZCI6Ijg2OWY0N2I4LTI5NjQtNGJkMS1iOTc1LWMwNTg0ODllM2ViOSIsImlhdCI6MTc4OTUwODI2NSwiZXhwIjoxNzkwMTEzMDY1LCJhdWQiOiJnZXN0aW9uLWVzY29sYXItY2xpZW50IiwiaXNzIjoiZ2VzdGlvbi1lc2NvbGFyLWFwaSJ9.mu-n2xlhzI2NVH3QqLC2UmC9-Y-50LxgU5hIxk5nNiI",
+    "timestamp": 1789508265398
+  },
+  "pwd_change_1789471870570@testing.edu.ve:instituto-testing": {
+    "user": {
+      "id": "V-96287213",
+      "email": "pwd_change_1789471870570@testing.edu.ve",
+      "firstName": "Test",
+      "lastName": "PasswordChange",
+      "role": "TEACHER"
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IlYtOTYyODcyMTMiLCJ1c2VySWQiOiJWLTk2Mjg3MjEzIiwiZW1haWwiOiJwd2RfY2hhbmdlXzE3ODk0NzE4NzA1NzBAdGVzdGluZy5lZHUudmUiLCJyb2xlIjoiVEVBQ0hFUiIsImluc3RpdHV0ZUlkIjoiaW5zdC10ZXN0aW5nIiwiaWF0IjoxNzg5NDcxODcwLCJleHAiOjE3ODk0NzU0NzAsImF1ZCI6Imdlc3Rpb24tZXNjb2xhci1jbGllbnQiLCJpc3MiOiJnZXN0aW9uLWVzY29sYXItYXBpIn0.g3ngfDXVVD5UXgBpKNT6LeA0zAtsreOibGib1hnlMnE",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJWLTk2Mjg3MjEzIiwidG9rZW5JZCI6ImIxN2RjMGVmLTBkODktNDQzMi05YmM1LTdhMmUxOTJkNGU3MyIsImlhdCI6MTc4OTQ3MTg3MCwiZXhwIjoxNzkwMDc2NjcwLCJhdWQiOiJnZXN0aW9uLWVzY29sYXItY2xpZW50IiwiaXNzIjoiZ2VzdGlvbi1lc2NvbGFyLWFwaSJ9.dmSHsD7yHta7lZYr4DYHzQp9vzLjEl_yRRbPBsffSLk",
+    "timestamp": 1789471870753
+  },
+  "est0575@testing.edu.ve:instituto-testing": {
+    "user": {
+      "id": "cbkemz1ynt6urwgwrs1rs7kmc",
+      "email": "est0575@testing.edu.ve",
+      "firstName": "Daniela",
+      "lastName": "Díaz",
+      "role": "STUDENT",
+      "institute": {
+        "id": "inst-testing",
+        "name": "Instituto Testing",
+        "code": "INST-TEST"
+      }
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNia2VtejF5bnQ2dXJ3Z3dyczFyczdrbWMiLCJ1c2VySWQiOiJjYmtlbXoxeW50NnVyd2d3cnMxcnM3a21jIiwiZW1haWwiOiJlc3QwNTc1QHRlc3RpbmcuZWR1LnZlIiwicm9sZSI6IlNUVURFTlQiLCJpbnN0aXR1dGVJZCI6Imluc3QtdGVzdGluZyIsImlhdCI6MTc4OTUwODI2NSwiZXhwIjoxNzg5NTExODY1LCJhdWQiOiJnZXN0aW9uLWVzY29sYXItY2xpZW50IiwiaXNzIjoiZ2VzdGlvbi1lc2NvbGFyLWFwaSJ9.E9atOBVCDmV7n9LNJMYdYJGLBVHxSsbMpN2dItKUqf4",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjYmtlbXoxeW50NnVyd2d3cnMxcnM3a21jIiwidG9rZW5JZCI6ImIxMzllOWJmLWI1OTItNGZmOC04MWE4LTY0ZmQxMTQ5Y2I0MCIsImlhdCI6MTc4OTUwODI2NSwiZXhwIjoxNzkwMTEzMDY1LCJhdWQiOiJnZXN0aW9uLWVzY29sYXItY2xpZW50IiwiaXNzIjoiZ2VzdGlvbi1lc2NvbGFyLWFwaSJ9.fAE42IOaVBPfiIcRy_cuZV5VV_QB6x9UaBeE_wW_5rQ",
+    "timestamp": 1789508265601
+  },
+  "tutor.prueba@testing.edu.ve:instituto-testing": {
+    "user": {
+      "id": "tut-prueba-001",
+      "email": "tutor.prueba@testing.edu.ve",
+      "firstName": "Carlos",
+      "lastName": "Perez Tutor",
+      "role": "TUTOR",
+      "institute": {
+        "id": "inst-testing",
+        "name": "Instituto Testing",
+        "code": "INST-TEST"
+      }
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6InR1dC1wcnVlYmEtMDAxIiwidXNlcklkIjoidHV0LXBydWViYS0wMDEiLCJlbWFpbCI6InR1dG9yLnBydWViYUB0ZXN0aW5nLmVkdS52ZSIsInJvbGUiOiJUVVRPUiIsImluc3RpdHV0ZUlkIjoiaW5zdC10ZXN0aW5nIiwiaWF0IjoxNzg5NTA3NzMxLCJleHAiOjE3ODk1MTEzMzEsImF1ZCI6Imdlc3Rpb24tZXNjb2xhci1jbGllbnQiLCJpc3MiOiJnZXN0aW9uLWVzY29sYXItYXBpIn0.AwuAGIiaqGUwra9CIDsM7bxtt-_3f8U6ULD7FlLNaBk",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ0dXQtcHJ1ZWJhLTAwMSIsInRva2VuSWQiOiIxYzFlYjEwMS0xY2QzLTRlMjctOTY1Mi1iZGQ2Yjk0OGU2NGEiLCJpYXQiOjE3ODk1MDc3MzEsImV4cCI6MTc5MDExMjUzMSwiYXVkIjoiZ2VzdGlvbi1lc2NvbGFyLWNsaWVudCIsImlzcyI6Imdlc3Rpb24tZXNjb2xhci1hcGkifQ.dIdEddBaXxGjE-tLKsQ67tBq_UsVjlOcyl-hzG-nb6Q",
+    "timestamp": 1789507731501
+  },
+  "profesor3@testing.edu.ve:instituto-testing": {
+    "user": {
+      "id": "cu102b4j2pfcs11g54j1jl72s",
+      "email": "profesor3@testing.edu.ve",
+      "firstName": "Matemática 1",
+      "lastName": "de",
+      "role": "TEACHER",
+      "institute": {
+        "id": "inst-testing",
+        "name": "Instituto Testing",
+        "code": "INST-TEST"
+      }
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImN1MTAyYjRqMnBmY3MxMWc1NGoxamw3MnMiLCJ1c2VySWQiOiJjdTEwMmI0ajJwZmNzMTFnNTRqMWpsNzJzIiwiZW1haWwiOiJwcm9mZXNvcjNAdGVzdGluZy5lZHUudmUiLCJyb2xlIjoiVEVBQ0hFUiIsImluc3RpdHV0ZUlkIjoiaW5zdC10ZXN0aW5nIiwiaWF0IjoxNzg5NTA3ODkxLCJleHAiOjE3ODk1MTE0OTEsImF1ZCI6Imdlc3Rpb24tZXNjb2xhci1jbGllbnQiLCJpc3MiOiJnZXN0aW9uLWVzY29sYXItYXBpIn0.ZNEDeFv7l65iZC5lGuFMMBt2GdfyMZiS0la5_mWCAa4",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjdTEwMmI0ajJwZmNzMTFnNTRqMWpsNzJzIiwidG9rZW5JZCI6IjBhOWIzMmE0LTFmNDktNGIwOS1hZGZmLTU5MTk5NjhiZjIzZiIsImlhdCI6MTc4OTUwNzg5MSwiZXhwIjoxNzkwMTEyNjkxLCJhdWQiOiJnZXN0aW9uLWVzY29sYXItY2xpZW50IiwiaXNzIjoiZ2VzdGlvbi1lc2NvbGFyLWFwaSJ9.qpjFL6iHPbxsj4Mdqbc48ufNRQS56Vimt1HIwBa2tmE",
+    "timestamp": 1789507891244
+  },
+  "profesor1@testing.edu.ve:instituto-testing": {
+    "user": {
+      "id": "ch1h15jlsb2hsby4dbew5ci17",
+      "email": "profesor1@testing.edu.ve",
+      "firstName": "Castellano 1",
+      "lastName": "de",
+      "role": "TEACHER",
+      "institute": {
+        "id": "inst-testing",
+        "name": "Instituto Testing",
+        "code": "INST-TEST"
+      }
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNoMWgxNWpsc2IyaHNieTRkYmV3NWNpMTciLCJ1c2VySWQiOiJjaDFoMTVqbHNiMmhzYnk0ZGJldzVjaTE3IiwiZW1haWwiOiJwcm9mZXNvcjFAdGVzdGluZy5lZHUudmUiLCJyb2xlIjoiVEVBQ0hFUiIsImluc3RpdHV0ZUlkIjoiaW5zdC10ZXN0aW5nIiwiaWF0IjoxNzg5NTA4MDQwLCJleHAiOjE3ODk1MTE2NDAsImF1ZCI6Imdlc3Rpb24tZXNjb2xhci1jbGllbnQiLCJpc3MiOiJnZXN0aW9uLWVzY29sYXItYXBpIn0.A_fguqz2kMqRNkfkkBjwx1TJgHxW-2r6qsI4U7N_uIY",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjaDFoMTVqbHNiMmhzYnk0ZGJldzVjaTE3IiwidG9rZW5JZCI6Ijk2MWU2NjEyLTkzN2EtNDBmYS1hYjJhLTdmYmMzMTc4MmNhOSIsImlhdCI6MTc4OTUwODA0MCwiZXhwIjoxNzkwMTEyODQwLCJhdWQiOiJnZXN0aW9uLWVzY29sYXItY2xpZW50IiwiaXNzIjoiZ2VzdGlvbi1lc2NvbGFyLWFwaSJ9.rX21GxRVKcdKvG3rFrl8qN5hnOyjPpeKFuUYK2GyGds",
+    "timestamp": 1789508040662
+  },
+  "est0297@testing.edu.ve:instituto-testing": {
+    "user": {
+      "id": "c47gow2auqa3p8j3d1tkuwak",
+      "email": "est0297@testing.edu.ve",
+      "firstName": "Cristóbal",
+      "lastName": "Rojas",
+      "role": "STUDENT",
+      "institute": {
+        "id": "inst-testing",
+        "name": "Instituto Testing",
+        "code": "INST-TEST"
+      }
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImM0N2dvdzJhdXFhM3A4ajNkMXRrdXdhayIsInVzZXJJZCI6ImM0N2dvdzJhdXFhM3A4ajNkMXRrdXdhayIsImVtYWlsIjoiZXN0MDI5N0B0ZXN0aW5nLmVkdS52ZSIsInJvbGUiOiJTVFVERU5UIiwiaW5zdGl0dXRlSWQiOiJpbnN0LXRlc3RpbmciLCJpYXQiOjE3ODk1MDgwNDIsImV4cCI6MTc4OTUxMTY0MiwiYXVkIjoiZ2VzdGlvbi1lc2NvbGFyLWNsaWVudCIsImlzcyI6Imdlc3Rpb24tZXNjb2xhci1hcGkifQ.KfLXkWQFpY5_hN2IabTIzXwd09kdNjZtH5wxHF6gGcg",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjNDdnb3cyYXVxYTNwOGozZDF0a3V3YWsiLCJ0b2tlbklkIjoiZmUzNzdkMzgtMDViMC00M2VkLWI2YTItYjRlNjcwNzYxMTliIiwiaWF0IjoxNzg5NTA4MDQyLCJleHAiOjE3OTAxMTI4NDIsImF1ZCI6Imdlc3Rpb24tZXNjb2xhci1jbGllbnQiLCJpc3MiOiJnZXN0aW9uLWVzY29sYXItYXBpIn0.TCz1faMujLrCk04tuxLDbO0L2O-fYCSSWNYWVHIM6tQ",
+    "timestamp": 1789508042181
+  },
+  "profesor21@testing.edu.ve:instituto-testing": {
+    "user": {
+      "id": "cux9czfqitpzwwzg1nimeja3n",
+      "email": "profesor21@testing.edu.ve",
+      "firstName": "Estudio Dirigido 1",
+      "lastName": "de",
+      "role": "TEACHER",
+      "institute": {
+        "id": "inst-testing",
+        "name": "Instituto Testing",
+        "code": "INST-TEST"
+      }
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImN1eDljemZxaXRwend3emcxbmltZWphM24iLCJ1c2VySWQiOiJjdXg5Y3pmcWl0cHp3d3pnMW5pbWVqYTNuIiwiZW1haWwiOiJwcm9mZXNvcjIxQHRlc3RpbmcuZWR1LnZlIiwicm9sZSI6IlRFQUNIRVIiLCJpbnN0aXR1dGVJZCI6Imluc3QtdGVzdGluZyIsImlhdCI6MTc4OTQ3MjI0OSwiZXhwIjoxNzg5NDc1ODQ5LCJhdWQiOiJnZXN0aW9uLWVzY29sYXItY2xpZW50IiwiaXNzIjoiZ2VzdGlvbi1lc2NvbGFyLWFwaSJ9.LcYhSOPZdvLE2eUXiOAsXcrGEqZQJaLZ1F4H4iXUjPA",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjdXg5Y3pmcWl0cHp3d3pnMW5pbWVqYTNuIiwidG9rZW5JZCI6ImFmZWM1MTBjLTI1NTUtNDdhMS1iNWRkLWRiMjAwM2I4MjllYiIsImlhdCI6MTc4OTQ3MjI0OSwiZXhwIjoxNzkwMDc3MDQ5LCJhdWQiOiJnZXN0aW9uLWVzY29sYXItY2xpZW50IiwiaXNzIjoiZ2VzdGlvbi1lc2NvbGFyLWFwaSJ9.Xgadgd4U31UcFLbxdIaV4RqGYi8873_562XfYbup9sY",
+    "timestamp": 1789472249423
+  },
+  "pwd_change_1789477281357@testing.edu.ve:instituto-testing": {
+    "user": {
+      "id": "V-55147038",
+      "email": "pwd_change_1789477281357@testing.edu.ve",
+      "firstName": "Test",
+      "lastName": "PasswordChange",
+      "role": "TEACHER"
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IlYtNTUxNDcwMzgiLCJ1c2VySWQiOiJWLTU1MTQ3MDM4IiwiZW1haWwiOiJwd2RfY2hhbmdlXzE3ODk0NzcyODEzNTdAdGVzdGluZy5lZHUudmUiLCJyb2xlIjoiVEVBQ0hFUiIsImluc3RpdHV0ZUlkIjoiaW5zdC10ZXN0aW5nIiwiaWF0IjoxNzg5NDc3MjgxLCJleHAiOjE3ODk0ODA4ODEsImF1ZCI6Imdlc3Rpb24tZXNjb2xhci1jbGllbnQiLCJpc3MiOiJnZXN0aW9uLWVzY29sYXItYXBpIn0.0DJSvmnW7sGjToK1vCc99HATlvYqXSt91R2OYPQFD4I",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJWLTU1MTQ3MDM4IiwidG9rZW5JZCI6IjJjNDNlMzlkLTIxYmEtNDA1Yi1hODgwLTRjYjJmNzE4NjUxNyIsImlhdCI6MTc4OTQ3NzI4MSwiZXhwIjoxNzkwMDgyMDgxLCJhdWQiOiJnZXN0aW9uLWVzY29sYXItY2xpZW50IiwiaXNzIjoiZ2VzdGlvbi1lc2NvbGFyLWFwaSJ9.WGwe-uX_GEqBdnRzeu1WImqkhqrcmE2l2l1pduUl1oY",
+    "timestamp": 1789477281541
+  },
+  "profesor2@testing.edu.ve:instituto-testing": {
+    "user": {
+      "id": "cnr8phs938m7u8p7vmohwvov6",
+      "email": "profesor2@testing.edu.ve",
+      "firstName": "Castellano 2",
+      "lastName": "de",
+      "role": "TEACHER",
+      "institute": {
+        "id": "inst-testing",
+        "name": "Instituto Testing",
+        "code": "INST-TEST"
+      }
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNucjhwaHM5MzhtN3U4cDd2bW9od3ZvdjYiLCJ1c2VySWQiOiJjbnI4cGhzOTM4bTd1OHA3dm1vaHd2b3Y2IiwiZW1haWwiOiJwcm9mZXNvcjJAdGVzdGluZy5lZHUudmUiLCJyb2xlIjoiVEVBQ0hFUiIsImluc3RpdHV0ZUlkIjoiaW5zdC10ZXN0aW5nIiwiaWF0IjoxNzg5NTA4MDQyLCJleHAiOjE3ODk1MTE2NDIsImF1ZCI6Imdlc3Rpb24tZXNjb2xhci1jbGllbnQiLCJpc3MiOiJnZXN0aW9uLWVzY29sYXItYXBpIn0.s-R8kPRuBqMYpFyXjcStpdCanZxoTITK1Fl0GYXWg7Q",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjbnI4cGhzOTM4bTd1OHA3dm1vaHd2b3Y2IiwidG9rZW5JZCI6IjIyNzc5Nzk2LTk5OWEtNGM1OC1hZTExLTZkYjMzZjc0M2NjMyIsImlhdCI6MTc4OTUwODA0MiwiZXhwIjoxNzkwMTEyODQyLCJhdWQiOiJnZXN0aW9uLWVzY29sYXItY2xpZW50IiwiaXNzIjoiZ2VzdGlvbi1lc2NvbGFyLWFwaSJ9._Owh85k-RvfyeLDD8A5PQaCx7SU0DDMlSOXT_o0Nqxw",
+    "timestamp": 1789508042533
+  },
+  "pwd_change_1789507611463@testing.edu.ve:instituto-testing": {
+    "user": {
+      "id": "V-87079865",
+      "email": "pwd_change_1789507611463@testing.edu.ve",
+      "firstName": "Test",
+      "lastName": "PasswordChange",
+      "role": "TEACHER"
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IlYtODcwNzk4NjUiLCJ1c2VySWQiOiJWLTg3MDc5ODY1IiwiZW1haWwiOiJwd2RfY2hhbmdlXzE3ODk1MDc2MTE0NjNAdGVzdGluZy5lZHUudmUiLCJyb2xlIjoiVEVBQ0hFUiIsImluc3RpdHV0ZUlkIjoiaW5zdC10ZXN0aW5nIiwiaWF0IjoxNzg5NTA3NjExLCJleHAiOjE3ODk1MTEyMTEsImF1ZCI6Imdlc3Rpb24tZXNjb2xhci1jbGllbnQiLCJpc3MiOiJnZXN0aW9uLWVzY29sYXItYXBpIn0.BQFKP0GtcWGEpTv0CHL65bxMW1ZZj03tdZEPnFuG_RM",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJWLTg3MDc5ODY1IiwidG9rZW5JZCI6IjE2MGY0NTRmLTQyMmItNDZhZC1hYmM2LTM1NmI2ZGZkYmYyYyIsImlhdCI6MTc4OTUwNzYxMSwiZXhwIjoxNzkwMTEyNDExLCJhdWQiOiJnZXN0aW9uLWVzY29sYXItY2xpZW50IiwiaXNzIjoiZ2VzdGlvbi1lc2NvbGFyLWFwaSJ9.MuC3-ALVidUAGvUz9IJp909L-mmsYkuTOxx4Lp_254Q",
+    "timestamp": 1789507611647
+  },
+  "pwd_change_1789508142063@testing.edu.ve:instituto-testing": {
+    "user": {
+      "id": "V-84312281",
+      "email": "pwd_change_1789508142063@testing.edu.ve",
+      "firstName": "Test",
+      "lastName": "PasswordChange",
+      "role": "TEACHER"
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IlYtODQzMTIyODEiLCJ1c2VySWQiOiJWLTg0MzEyMjgxIiwiZW1haWwiOiJwd2RfY2hhbmdlXzE3ODk1MDgxNDIwNjNAdGVzdGluZy5lZHUudmUiLCJyb2xlIjoiVEVBQ0hFUiIsImluc3RpdHV0ZUlkIjoiaW5zdC10ZXN0aW5nIiwiaWF0IjoxNzg5NTA4MTQyLCJleHAiOjE3ODk1MTE3NDIsImF1ZCI6Imdlc3Rpb24tZXNjb2xhci1jbGllbnQiLCJpc3MiOiJnZXN0aW9uLWVzY29sYXItYXBpIn0.be42cA9oRPqXPTHTEA0g2ZH-ZIsznz80fcMELp5BEAY",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJWLTg0MzEyMjgxIiwidG9rZW5JZCI6ImU3NzNlZTk3LTUzYjYtNGI5MS04ZDIwLWZkNTg3Mjc1MDhiZiIsImlhdCI6MTc4OTUwODE0MiwiZXhwIjoxNzkwMTEyOTQyLCJhdWQiOiJnZXN0aW9uLWVzY29sYXItY2xpZW50IiwiaXNzIjoiZ2VzdGlvbi1lc2NvbGFyLWFwaSJ9.-EQrd0piJCvOv2ozzN0TtxTkr63HWgBzxsIBE63fe4E",
+    "timestamp": 1789508142250
+  }
+}

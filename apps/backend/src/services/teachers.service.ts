@@ -199,17 +199,21 @@ export class TeachersService {
         const teacher = await prisma.user.findUnique({
             where: { id, role: 'TEACHER' },
             include: {
-                classroomsAsTeacher: {
+                teacherClassrooms: {
                     select: {
-                        id: true,
-                        name: true,
-                        grade: true,
-                        section: true,
-                        capacity: true,
-                        isActive: true,
-                        _count: {
+                        classroom: {
                             select: {
-                                students: true
+                                id: true,
+                                name: true,
+                                grade: true,
+                                section: true,
+                                capacity: true,
+                                isActive: true,
+                                _count: {
+                                    select: {
+                                        studentClassrooms: { where: { isActive: true } }
+                                    }
+                                }
                             }
                         }
                     }
@@ -217,6 +221,13 @@ export class TeachersService {
             }
         });
 
-        return teacher?.classroomsAsTeacher || [];
+        const classrooms = teacher?.teacherClassrooms?.map((tc: any) => ({
+            ...tc.classroom,
+            _count: {
+                students: tc.classroom._count?.studentClassrooms ?? 0
+            }
+        })) || [];
+
+        return classrooms;
     }
 }

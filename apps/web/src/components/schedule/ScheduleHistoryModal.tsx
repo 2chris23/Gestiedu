@@ -1,13 +1,17 @@
 'use client';
 
 import React, { useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, X, Info } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, X, Info, ListTodo } from 'lucide-react';
 import { ScheduleBlock } from '@/components/schedule/UniversalScheduleViewer';
+import { useClassActivities } from '@/hooks/useLiveClass';
 
 interface Props {
+    classroomId?: string;
     schedule: ScheduleBlock[];
     onSelectDay: (dateStr: string, dayKey: string) => void;
     onClose: () => void;
+    title?: string;
+    subtitle?: string;
 }
 
 const WEEK_HEADER = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -31,15 +35,26 @@ function toDateStr(d: Date): string {
  * Calendario mensual navegable (pasado/futuro, sin límite artificial). Los días
  * con clase se marcan con un punto índigo. Al elegir un día CON clase, la vista
  * principal "Hoy" se parametriza a esa fecha (mismo componente, fecha distinta).
- * Días sin clase (fin de semana o sin bloques) muestran el aviso
- * "Sin clases programadas ese día" y no salen del modal.
+ * Días sin clase (fin de semana o sin bloques) están deshabilitados.
  */
-export default function ScheduleHistoryModal({ schedule, onSelectDay, onClose }: Props) {
+export default function ScheduleHistoryModal({ classroomId, schedule, onSelectDay, onClose, title, subtitle }: Props) {
     const [month, setMonth] = useState(() => {
         const n = new Date();
         return new Date(n.getFullYear(), n.getMonth(), 1);
     });
     const [sinClases, setSinClases] = useState<string | null>(null);
+
+    // Obtener actividades de toda la sección para mostrar contadores combinados
+    const { data: activitiesData } = useClassActivities(classroomId || '');
+    const activities = activitiesData?.activities || [];
+
+    // Mapear actividades por fecha (dueDate o createdAt)
+    const activitiesByDate = new Map<string, number>();
+    for (const a of activities) {
+        const targetDate = a.dueDate ? new Date(a.dueDate) : new Date(a.createdAt);
+        const dStr = toDateStr(targetDate);
+        activitiesByDate.set(dStr, (activitiesByDate.get(dStr) || 0) + 1);
+    }
 
     const hasClassOn = (day: Date): boolean => {
         const dow = day.getDay(); // 0=dom..6=sáb
@@ -85,8 +100,8 @@ export default function ScheduleHistoryModal({ schedule, onSelectDay, onClose }:
                             <CalendarDays className="w-5 h-5" />
                         </div>
                         <div>
-                            <h3 className="text-base font-bold text-gray-900">Historial de Clases</h3>
-                            <p className="text-[11px] text-gray-500">Elige un día para ver su horario</p>
+                            <h3 className="text-base font-bold text-gray-900">{title || 'Historial de Clases'}</h3>
+                            <p className="text-[11px] text-gray-500">{subtitle || 'Elige un día con clase programada'}</p>
                         </div>
                     </div>
                     <button
@@ -137,32 +152,57 @@ export default function ScheduleHistoryModal({ schedule, onSelectDay, onClose }:
                         {cells.map((day, idx) => {
                             const inMonth = day.getMonth() === month.getMonth();
                             const withClass = hasClassOn(day);
+                            const isClickable = inMonth && withClass;
                             const isToday = toDateStr(day) === toDateStr(new Date());
+                            const dayActCount = activitiesByDate.get(toDateStr(day)) || 0;
+
                             return (
                                 <button
                                     key={idx}
                                     type="button"
-                                    onClick={() => handleDayClick(day)}
-                                    className={`relative h-9 rounded-lg text-xs font-bold transition-all flex items-center justify-center ${
+                                    disabled={!isClickable}
+                                    onClick={() => isClickable && handleDayClick(day)}
+                                    className={`relative h-10 rounded-lg text-xs font-bold transition-all flex flex-col items-center justify-center ${
                                         !inMonth
-                                            ? 'text-gray-300 hover:bg-gray-50'
-                                            : withClass
-                                            ? 'bg-indigo-50 text-indigo-900 hover:bg-indigo-100 hover:scale-105'
-                                            : 'text-gray-600 hover:bg-gray-100'
-                                    } ${isToday ? 'ring-2 ring-indigo-400' : ''}`}
+                                            ? 'text-gray-200 cursor-not-allowed opacity-25 select-none'
+                                            : !withClass
+                                            ? 'text-gray-300 opacity-40 cursor-not-allowed bg-gray-50/40 select-none'
+                                            : 'bg-indigo-50 text-indigo-900 hover:bg-indigo-100 hover:scale-105 cursor-pointer shadow-2xs font-extrabold'
+                                    } ${isToday && withClass ? 'ring-2 ring-indigo-400' : ''}`}
+                                    title={
+                                        !withClass
+                                            ? `Sin clase programada (${fmtDate(day)})`
+                                            : `${fmtDate(day)}: Clase programada`
+                                    }
                                 >
-                                    {day.getDate()}
-                                    {withClass && (
-                                        <span className="absolute bottom-1 w-1 h-1 rounded-full bg-indigo-500" />
-                                    )}
+                                    <span>{day.getDate()}</span>
+                                    <div className="flex items-center gap-0.5 mt-0.5">
+                                        {withClass && inMonth && (
+                                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                        )}
+                                        {dayActCount > 0 && inMonth && withClass && (
+                                            <span
+                                                className="px-1 py-0.2 bg-blue-600 text-white text-[8px] font-black rounded-full"
+                                                title={`${dayActCount} actividad(es) programadas`}
+                                            >
+                                                {dayActCount}
+                                            </span>
+                                        )}
+                                    </div>
                                 </button>
                             );
                         })}
                     </div>
 
-                    <div className="mt-4 flex items-center gap-2 text-[11px] text-gray-400">
-                        <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />
-                        Días con clase
+                    <div className="mt-4 flex items-center justify-between text-[11px] text-gray-400">
+                        <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />
+                            <span>Días con clase</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="px-1.5 py-0.2 bg-blue-600 text-white text-[9px] font-bold rounded-full inline-block">N</span>
+                            <span>Total actividades</span>
+                        </div>
                     </div>
                 </div>
             </div>

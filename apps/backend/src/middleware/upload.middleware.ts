@@ -61,13 +61,20 @@ export const upload: any = multer({
 export const deleteOldFile = (filePath: string | null) => {
     if (!filePath) return;
 
-    const fullPath = path.join(process.cwd(), 'public', filePath);
+    const cleanPath = filePath.replace(/^\/+/, '');
+    const pathsToTry = [
+        path.join(process.cwd(), cleanPath),
+        path.join(process.cwd(), 'public', cleanPath),
+    ];
 
-    if (fs.existsSync(fullPath)) {
-        try {
-            fs.unlinkSync(fullPath);
-        } catch (error) {
-            console.error('Error al eliminar archivo anterior:', error);
+    for (const p of pathsToTry) {
+        if (fs.existsSync(p)) {
+            try {
+                fs.unlinkSync(p);
+                break;
+            } catch (error) {
+                console.error('Error al eliminar archivo anterior:', error);
+            }
         }
     }
 };

@@ -200,9 +200,12 @@ const studentsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [authenticate, requireAdmin]
   }, createStudent as any);
 
+  // Sin `validateCUID`: el id de un estudiante es su CÉDULA (`User.id` es la CI,
+  // no un cuid), así que el validador rechazaba con 400 CUALQUIER estudiante real
+  // y dejaba la ruta inalcanzable. El resto de rutas /:id ya usa string simple.
   fastify.put('/:id', {
     schema: updateStudentSchema,
-    preHandler: [authenticate, requireAdmin, validateCUID('id')]
+    preHandler: [authenticate, requireAdmin]
   }, updateStudent as any);
 
   fastify.delete('/:id', {
@@ -223,9 +226,12 @@ const studentsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [authenticate, requireStudent]
   }, getMyProfileHandler);
 
+  // Los datos personales (nombre, correo, teléfono, dirección) los corrige SOLO
+  // el administrador: si cada quien edita su ficha, cualquiera puede poner un
+  // dato falso o un chiste en los registros del liceo.
   fastify.put('/profile/me', {
     schema: updateProfileSchema,
-    preHandler: [authenticate, requireStudent]
+    preHandler: [authenticate, requireAdmin]
   }, updateMyProfileHandler);
 
   // Rutas académicas para estudiantes

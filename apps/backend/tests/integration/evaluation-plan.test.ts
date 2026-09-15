@@ -29,8 +29,8 @@ import {
 const INSTITUTE_SLUG = 'test-institute';
 
 function gId(): string {
-    const id = createId();
-    return id.startsWith('c') ? id : `c${id}`;
+    // Siempre la 'c' delante: ver la nota de `tests/helpers.ts`.
+    return `c${createId()}`;
 }
 
 describe('Flujo 3 — Plan de evaluación', () => {

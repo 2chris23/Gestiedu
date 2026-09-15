@@ -5,6 +5,7 @@ import {
     SuperAdminJWTPayload,
 } from '../config/jwt';
 import { platformPrisma } from '../config/database';
+import { marcarGuardia } from './guardias';
 
 // Extend FastifyRequest to include superAdmin
 declare module 'fastify' {
@@ -89,3 +90,6 @@ export async function superAdminAuthMiddleware(
         });
     }
 }
+
+// Este guardia va antes de la revisión del formulario: ver middleware/guardias.ts
+marcarGuardia(superAdminAuthMiddleware);

@@ -3,6 +3,9 @@ import { logger } from '../utils/logger';
 import { randomUUID } from 'crypto';
 import { RequestUser } from '../types/fastify';
 import { planWeekNumberFromRange, planWeekRangeFromRange } from '../utils/plan-weeks';
+import { instituteTimezone, isFutureDate, todayInTimezone } from '../utils/school-time';
+import { assertClassroomScope } from '../services/authorization.service';
+import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 
 /**
  * Parsea una fecha de input <input type="date"> (YYYY-MM-DD) a mediodía LOCAL.
@@ -72,6 +75,14 @@ export async function getClassSessionById(
 
         return reply.status(200).send(session);
     } catch (error) {
+        // Los errores con motivo propio (permisos, no encontrado…) se responden tal
+        // cual: convertirlos en 500 esconde por qué se negó.
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
         logger.error('Error getting class session', {
             error: error instanceof Error ? error.message : String(error),
             sessionId: request.params.sessionId,
@@ -83,6 +94,44 @@ export async function getClassSessionById(
 /**
  * Actualizar detalles de una sesión de clase
  */
+/**
+ * SOLO SOBRE LAS CLASES PROPIAS
+ *
+ * Un profesor da nota, asistencia, actividades y observaciones **de las clases
+ * que imparte**. El profesor guía además puede sobre su sección. Esto no estaba
+ * comprobado en ninguna de las escrituras de esta pantalla.
+ */
+async function exigirClasePropia(
+    request: FastifyRequest,
+    classroomId: string,
+    subjectId: string | undefined,
+    accion: string
+): Promise<void> {
+    await assertClassroomScope(request.tenantPrisma, request.user as any, classroomId, {
+        subjectId,
+        accion,
+    });
+}
+
+/** Igual, pero partiendo de la actividad: primero se mira de qué clase es. */
+async function exigirActividadPropia(
+    request: FastifyRequest,
+    activityId: string,
+    accion: string
+): Promise<{ classroomId: string; subjectId: string | null } | null> {
+    const actividad = await request.tenantPrisma.classActivity.findUnique({
+        where: { id: activityId },
+        select: { classroomId: true, subjectId: true },
+    });
+    if (!actividad) return null;
+
+    await assertClassroomScope(request.tenantPrisma, request.user as any, actividad.classroomId, {
+        subjectId: actividad.subjectId ?? undefined,
+        accion,
+    });
+    return actividad;
+}
+
 export async function updateClassSession(
     request: FastifyRequest<UpdateClassSessionRequest>,
     reply: FastifyReply
@@ -104,6 +153,14 @@ export async function updateClassSession(
 
         return reply.status(200).send(session);
     } catch (error) {
+        // Los errores con motivo propio (permisos, no encontrado…) se responden tal
+        // cual: convertirlos en 500 esconde por qué se negó.
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
         logger.error('Error updating class session', {
             error: error instanceof Error ? error.message : String(error),
             sessionId: request.params.sessionId,
@@ -144,26 +201,40 @@ export async function getLiveClassDetail(
         const endOfDay = new Date(parsedDate);
         endOfDay.setUTCHours(23, 59, 59, 999);
 
+        let targetSubjectId = subjectId;
+        const sub = await prisma.subject.findFirst({
+            where: { OR: [{ id: subjectId }, { slug: subjectId }] },
+            select: { id: true, name: true, color: true, slug: true },
+        });
+        if (sub) {
+            targetSubjectId = sub.id;
+        }
+
         // 1. Sesión de clase existente para esta materia y fecha
         const session = await prisma.classSession.findFirst({
-            where: { classroomId, subjectId, date: { gte: startOfDay, lte: endOfDay } },
+            where: { classroomId, subjectId: targetSubjectId, date: { gte: startOfDay, lte: endOfDay } },
         });
 
         // 2. Materia y docente (vía ClassroomSubject)
         const classroomSubject = await prisma.classroomSubject.findFirst({
-            where: { classroomId, subjectId },
+            where: { classroomId, subjectId: targetSubjectId },
             include: {
                 subject: { select: { id: true, name: true, color: true, slug: true } },
                 teacher: { select: { id: true, firstName: true, lastName: true } },
             },
         });
 
-        // 3. Estudiantes de la sección
-        const students = await prisma.user.findMany({
-            where: { role: 'STUDENT', classroomId, isActive: true },
-            select: { id: true, firstName: true, lastName: true, avatar: true, studentCode: true },
-            orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+        // 3. Estudiantes de la sección (vía StudentClassroom oficial)
+        const enrollments = await prisma.studentClassroom.findMany({
+            where: { classroomId, isActive: true },
+            include: {
+                student: {
+                    select: { id: true, firstName: true, lastName: true, avatar: true, studentCode: true, isActive: true }
+                }
+            },
+            orderBy: [{ student: { lastName: 'asc' } }, { student: { firstName: 'asc' } }],
         });
+        const students = enrollments.map((e: any) => e.student).filter((s: any) => s && s.isActive);
 
         // 4. Asistencia de ese día para los estudiantes
         const attendances = await prisma.dailyAttendance.findMany({
@@ -191,7 +262,7 @@ export async function getLiveClassDetail(
         let weekRow: any = null;
 
         const meta = await prisma.evaluationPlanMetadata.findFirst({
-            where: { classroomId, subjectId },
+            where: { classroomId, subjectId: targetSubjectId },
         });
 
         if (meta) {
@@ -222,7 +293,7 @@ export async function getLiveClassDetail(
                 weekNumber = planWeekNumberFromRange(lapsoStart, dayDate);
 
                 const weekRows = await prisma.evaluationPlanRow.findMany({
-                    where: { classroomId, subjectId, lapso: meta.lapso, weekNumber },
+                    where: { classroomId, subjectId: targetSubjectId, lapso: meta.lapso, weekNumber },
                     orderBy: { orderIndex: 'asc' },
                 });
 
@@ -260,60 +331,55 @@ export async function getLiveClassDetail(
             }
         }
 
-        // 6. Actividades/tareas de la materia (TODAS — la clasificación se hace
-        // en 6.1 relativa a ESTA clase: fecha de la clase + sesión + fila del plan)
+        // 6. Actividades/tareas de la materia
         const activities = await prisma.classActivity.findMany({
-            where: { classroomId, subjectId },
+            where: { classroomId, subjectId: targetSubjectId },
+            include: {
+                classSession: {
+                    select: { id: true, date: true },
+                },
+            },
             orderBy: [{ isDone: 'asc' }, { createdAt: 'desc' }],
         });
 
-        // 6.1. Clasificación RELATIVA A ESTA CLASE (no global "hoy"):
-        //  - belongsToSession: creadas EN esta sesión (classSessionId) o vinculadas
-        //    a la fila EVALUATION de la semana de ESTA clase, o (legacy CURRENT sin
-        //    sesión) con fecha programada igual a la fecha de la clase.
-        //    → Una actividad "de hoy" creada el martes 25 NO aparece en el viernes 28.
-        //  - dueToday: NEXT con fecha programada de ESTA clase (o ya vencida en
-        //    una clase existente: se promociona a "hoy").
-        //  - La próxima clase muestra solo las NEXT con fecha FUTURA a esta clase
-        //    (dueDate > fecha de la clase); las de fecha pasada desaparecen.
+        // 6.1. Clasificación RELATIVA A ESTA CLASE:
+        // - "Clase de Hoy": tareas cuya fecha de entrega sea la fecha de esta clase (dueOnClassDate),
+        //   o actividades realizadas en esta misma sesión (target === 'CURRENT' && createdOnThisClass).
+        // - "Próxima Clase": actividades CREADAS / ASIGNADAS en ESTA sesión (createdOnThisClass)
+        //   para ser entregadas en una fecha futura. No se arrastran a todas las semanas arbitrariamente.
         const classDateNoon = dayDate;
-
-        // Día intencionado de un Date: los dueDate se guardan como medianoche
-        // UTC (o mediodía local) y en UTC-x el día local se corre ← se usa el
-        // día UTC para conocer el día REAL que eligió el docente.
         const dayOf = (dd: Date) => new Date(dd.getUTCFullYear(), dd.getUTCMonth(), dd.getUTCDate());
         const classDay = dayOf(classDateNoon);
 
         const activitiesWithDue = activities.map(a => {
+            const createdDay = a.classSession?.date ? dayOf(new Date(a.classSession.date)) : dayOf(new Date(a.createdAt));
             const boundToSession = Boolean(a.classSessionId && session?.id && a.classSessionId === session.id);
-            const dueDay = a.dueDate ? dayOf(a.dueDate) : null;
+            const createdOnThisClass = Boolean(boundToSession || createdDay.getTime() === classDay.getTime());
+
+            const dueDay = a.dueDate ? dayOf(new Date(a.dueDate)) : null;
             const dueOnClassDate = Boolean(dueDay && dueDay.getTime() === classDay.getTime());
 
-            // "Clase de Hoy" = actividades de la sesión EXACTA (o, para las
-            // legadas sin vínculo, la clase del día de su creación).
-            // NOTA (regresión reportada): antes la vinculación al planRow de la
-            // semana (boundToWeekRow) hacía visible una actividad creada el
-            // martes en la clase del viernes de la misma semana. Ahora NO.
-            const belongsToSession =
-                a.target === 'CURRENT'
-                    ? (boundToSession || (a.dueDate && dueOnClassDate) || dayOf(a.createdAt).getTime() === classDay.getTime())
-                    : false;
+            const dueToday = Boolean(dueOnClassDate || (a.target === 'CURRENT' && createdOnThisClass));
+            // REGLA DEL PRODUCTO — no cambiar sin hablarlo:
+            // Una actividad para la PRÓXIMA clase se anuncia SOLO en la clase donde
+            // se creó (`createdOnThisClass`). Dos motivos:
+            //   1. así se sabe en qué clase se mandó, y
+            //   2. si se anunciara en todas las clases anteriores, 'Próxima clase'
+            //      se llenaría de actividades acumuladas.
+            // El día que toca entregarla aparece como 'Clase de hoy' por su fecha
+            // (`dueOnClassDate`), esté donde esté el profesor.
+            const isFuture = Boolean(a.target === 'NEXT' && createdOnThisClass && !dueToday);
 
-            // NEXT se promueve a "hoy" SOLO el día EXACTO programado (dueDay ==
-            // día de la clase); si se programó para después → "próxima"; con
-            // fecha ya pasada desaparece de ambas vistas (regresión corregida).
-            const isDueToday = a.target === 'NEXT' ? dueOnClassDate : false;
-            const isFuture = a.target === 'NEXT'
-                ? (!a.dueDate || (dueDay ? dueDay.getTime() > classDay.getTime() : false))
-                : false;
-
-            return { ...a, belongsToSession, dueToday: Boolean(belongsToSession || isDueToday), isFuture: Boolean(isFuture) };
+            return {
+                ...a,
+                createdDate: createdDay.toISOString(),
+                createdOnThisClass,
+                belongsToSession: createdOnThisClass,
+                dueToday,
+                isFuture,
+            };
         });
-        // NUNCA en ambas: si su fecha ya pasó para esta clase, la sacamos de "próxima".
-        const activitiesFiltered = activitiesWithDue.map(a => ({
-            ...a,
-            isFuture: a.target === 'NEXT' && a.isFuture && !a.dueToday,
-        }));
+        const activitiesFiltered = activitiesWithDue;
 
         // 7. Involucrados: estudiantes de la sección + estudiantes externos agregados a la sesión
         const sessionInvolvedIds: string[] = session?.involvedStudentIds || [];
@@ -327,15 +393,71 @@ export async function getLiveClassDetail(
                     lastName: true,
                     avatar: true,
                     studentCode: true,
-                    classroom: {
+                    studentClassrooms: {
+                        where: { isActive: true },
+                        take: 1,
                         select: {
-                            name: true,
-                            academicYear: { select: { name: true } },
+                            classroom: {
+                                select: {
+                                    name: true,
+                                    academicYear: { select: { name: true } },
+                                },
+                            },
                         },
                     },
                 },
+            }).then(users => users.map(u => ({
+                ...u,
+                classroom: u.studentClassrooms?.[0]?.classroom || null
+            })))
+            : [];
+
+        // 7.1. Obtener conteo de observaciones por estudiante EN ESTA SESIÓN ESPECÍFICA
+        // Una observación pertenece a esta clase si está vinculada a session.id,
+        // o coincide con classroomId, targetSubjectId y la fecha de la clase (incluso si session aún no fue creada).
+        const obsDateLte = new Date(endOfDay.getTime() + 6 * 3600 * 1000); // margen para husos horarios locales (UTC-4 / UTC-5)
+        const obsSessionFilter: any = session?.id
+            ? {
+                OR: [
+                    { classSessionId: session.id },
+                    {
+                        classroomId,
+                        subjectId: targetSubjectId,
+                        date: { gte: startOfDay, lte: obsDateLte },
+                    },
+                ],
+            }
+            : {
+                classroomId,
+                subjectId: targetSubjectId,
+                date: { gte: startOfDay, lte: obsDateLte },
+            };
+
+        // Si existe sesión guardada, vincular en background cualquier observación huérfana de este día
+        if (session?.id) {
+            prisma.observation.updateMany({
+                where: {
+                    classroomId,
+                    subjectId: targetSubjectId,
+                    date: { gte: startOfDay, lte: obsDateLte },
+                    classSessionId: null,
+                },
+                data: { classSessionId: session.id },
+            }).catch(() => {});
+        }
+
+        const allStudentIds = [...studentsWithAttendance.map(s => s.id), ...externalIds];
+        const studentObsCounts = allStudentIds.length > 0
+            ? await prisma.observation.groupBy({
+                by: ['studentId'],
+                where: {
+                    studentId: { in: allStudentIds },
+                    ...obsSessionFilter,
+                },
+                _count: { id: true },
             })
             : [];
+        const studentObsMap = new Map(studentObsCounts.map(o => [o.studentId, o._count.id]));
 
         const involvedStudents = [
             ...studentsWithAttendance.map(s => ({
@@ -347,6 +469,7 @@ export async function getLiveClassDetail(
                 status: s.status,
                 external: false,
                 originClassroom: null as string | null,
+                observationsCount: studentObsMap.get(s.id) || 0,
             })),
             ...externalStudents.map((s: any) => ({
                 id: s.id,
@@ -359,8 +482,61 @@ export async function getLiveClassDetail(
                 originClassroom: s.classroom
                     ? `${s.classroom.name}${s.classroom.academicYear ? ` · ${s.classroom.academicYear.name}` : ''}`
                     : null,
+                observationsCount: studentObsMap.get(s.id) || 0,
             })),
         ];
+
+        // 7.2. Obtener observaciones registradas para esta sesión de clase
+        let sessionObservations: any[] = [];
+        const rawSessionObs = await prisma.observation.findMany({
+            where: obsSessionFilter,
+            include: {
+                student: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        studentCode: true,
+                        avatar: true,
+                    },
+                },
+                createdBy: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                    },
+                },
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        const groupedObsMap = new Map<string, any>();
+        for (const obs of rawSessionObs) {
+            const key = obs.groupId || obs.id;
+            if (!groupedObsMap.has(key)) {
+                groupedObsMap.set(key, {
+                    id: obs.id,
+                    groupId: obs.groupId,
+                    title: obs.title,
+                    description: obs.description,
+                    type: obs.type,
+                    date: obs.date,
+                    createdAt: obs.createdAt,
+                    teacher: obs.createdBy ? `${obs.createdBy.firstName} ${obs.createdBy.lastName}` : null,
+                    students: [],
+                });
+            }
+            if (obs.student) {
+                groupedObsMap.get(key).students.push({
+                    id: obs.student.id,
+                    name: `${obs.student.firstName} ${obs.student.lastName}`,
+                    studentCode: obs.student.studentCode,
+                    avatar: obs.student.avatar,
+                });
+            }
+        }
+        sessionObservations = Array.from(groupedObsMap.values());
 
         return reply.status(200).send({
             session: session ? {
@@ -383,8 +559,17 @@ export async function getLiveClassDetail(
             planLapso: planLapso || '1',
             weekRow,
             activities: activitiesFiltered,
+            sessionObservations,
         });
     } catch (error) {
+        // Los errores con motivo propio (permisos, no encontrado…) se responden tal
+        // cual: convertirlos en 500 esconde por qué se negó.
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
         logger.error('Error getting live class detail', {
             error: error instanceof Error ? error.message : String(error),
         });
@@ -403,23 +588,51 @@ export async function createClassSession(
         const { classroomId, subjectId, date, topic, observations, startTime, endTime } = request.body;
         const prisma = request.tenantPrisma;
 
+        // La fecha la decide el servidor: con el reloj del dispositivo adelantado
+        // (a mano o por VPN) se podría abrir la clase de un día que no ha llegado.
+        const zonaLiceo = await instituteTimezone(prisma);
+        if (isFutureDate(date, zonaLiceo)) {
+            return reply.status(400).send({
+                error: 'No se puede registrar una clase de una fecha futura',
+                code: 'FUTURE_DATE',
+                today: todayInTimezone(zonaLiceo),
+            });
+        }
+
         const parsedDate = new Date(date);
+        const startOfDay = new Date(parsedDate);
+        startOfDay.setUTCHours(0, 0, 0, 0);
+
+        const sessionData: any = { topic, observations, startTime, endTime };
         
-        const session = await prisma.classSession.create({
-            data: {
+        const session = await prisma.classSession.upsert({
+            where: {
+                classroomId_subjectId_date: {
+                    classroomId,
+                    subjectId,
+                    date: startOfDay,
+                },
+            },
+            update: sessionData,
+            create: {
                 publicId: randomUUID(),
                 classroomId,
                 subjectId,
-                date: parsedDate,
-                topic,
-                observations,
-                startTime,
-                endTime
-            }
+                date: startOfDay,
+                ...sessionData,
+            },
         });
 
         return reply.status(201).send(session);
     } catch (error) {
+        // Los errores con motivo propio (permisos, no encontrado…) se responden tal
+        // cual: convertirlos en 500 esconde por qué se negó.
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
         logger.error('Error creating class session', {
             error: error instanceof Error ? error.message : String(error)
         });
@@ -456,75 +669,140 @@ export async function saveLiveClassSession(
             return reply.status(400).send({ error: 'Faltan parámetros requeridos: classroomId, subjectId, date' });
         }
 
+        await exigirClasePropia(request, classroomId, subjectId, 'dar clase');
+
         const parsedDate = new Date(date);
         const startOfDay = new Date(parsedDate);
         startOfDay.setUTCHours(0, 0, 0, 0);
-        const endOfDay = new Date(parsedDate);
-        endOfDay.setUTCHours(23, 59, 59, 999);
 
-        const result = await prisma.$transaction(async (tx: any) => {
-            // 1. Crear o actualizar sesión
-            const existing = await tx.classSession.findFirst({
-                where: { classroomId, subjectId, date: { gte: startOfDay, lte: endOfDay } },
-            });
-
+        const result = await prisma.$transaction(
+            async (tx: any) => {
             const sessionData: any = { topic, observations, startTime, endTime };
             if (observationsTitle !== undefined) sessionData.observationsTitle = observationsTitle;
             if (involvedStudentIds !== undefined) sessionData.involvedStudentIds = involvedStudentIds;
 
-            let session;
-            if (existing) {
-                session = await tx.classSession.update({
-                    where: { id: existing.id },
-                    data: sessionData,
-                });
-            } else {
-                session = await tx.classSession.create({
-                    data: {
-                        publicId: randomUUID(),
+            // 1. Crear o actualizar sesión de forma atómica con ON CONFLICT
+            const session = await tx.classSession.upsert({
+                where: {
+                    classroomId_subjectId_date: {
                         classroomId,
                         subjectId,
-                        date: parsedDate,
-                        ...sessionData,
+                        date: startOfDay,
                     },
-                });
-            }
+                },
+                update: sessionData,
+                create: {
+                    publicId: randomUUID(),
+                    classroomId,
+                    subjectId,
+                    date: startOfDay,
+                    ...sessionData,
+                },
+            });
 
-            // 2. Registrar asistencia de estudiantes
-            for (const att of attendances) {
-                const existingAttendance = await tx.dailyAttendance.findFirst({
-                    where: { studentId: att.studentId, date: { gte: startOfDay, lte: endOfDay } },
-                });
+            // 2. Registrar la asistencia EN BLOQUE
+            //
+            // Antes se hacía una consulta por alumno, una detrás de otra. Con 40
+            // alumnos son 40 viajes a la base dentro del presupuesto de 5 segundos
+            // que Prisma le da a una transacción; bajo carga se pasaba y la clase
+            // entera se perdía ("Transaction already closed"). En la prueba de
+            // escrituras eran 648 clases perdidas en 20 minutos.
+            //
+            // Así son unas pocas operaciones sin importar si la sección tiene 10
+            // alumnos o 40.
+            if (attendances.length > 0) {
+                const idsDeAlumnos = attendances.map((a) => a.studentId);
 
-                if (existingAttendance) {
-                    await tx.dailyAttendance.update({
-                        where: { id: existingAttendance.id },
-                        data: {
-                            status: att.status,
-                            comments: att.comments,
-                            classSessionId: session.id,
-                        },
-                    });
-                } else {
-                    await tx.dailyAttendance.create({
-                        data: {
-                            studentId: att.studentId,
+                const yaTenian = new Set(
+                    (
+                        await tx.dailyAttendance.findMany({
+                            where: { date: startOfDay, studentId: { in: idsDeAlumnos } },
+                            select: { studentId: true },
+                        })
+                    ).map((a: { studentId: string }) => a.studentId)
+                );
+
+                const nuevas = attendances.filter((a) => !yaTenian.has(a.studentId));
+                if (nuevas.length > 0) {
+                    await tx.dailyAttendance.createMany({
+                        data: nuevas.map((a) => ({
+                            studentId: a.studentId,
                             classroomId,
-                            status: att.status,
-                            comments: att.comments,
-                            date: parsedDate,
+                            status: a.status,
+                            comments: a.comments,
+                            date: startOfDay,
                             teacherId: user?.userId,
+                            classSessionId: session.id,
+                        })),
+                        skipDuplicates: true,
+                    });
+                }
+
+                // Las que ya estaban se corrigen agrupadas por lo que se les pone:
+                // casi siempre son dos o tres grupos (presente, ausente, tarde).
+                const porLoQueSeLesPone = new Map<string, string[]>();
+                for (const a of attendances) {
+                    if (!yaTenian.has(a.studentId)) continue;
+                    const clave = `${a.status}\u0000${a.comments ?? ''}`;
+                    const grupo = porLoQueSeLesPone.get(clave);
+                    if (grupo) grupo.push(a.studentId);
+                    else porLoQueSeLesPone.set(clave, [a.studentId]);
+                }
+
+                for (const [clave, ids] of porLoQueSeLesPone) {
+                    const [status, comentario] = clave.split('\u0000');
+                    await tx.dailyAttendance.updateMany({
+                        where: { date: startOfDay, studentId: { in: ids } },
+                        data: {
+                            status: status as any,
+                            comments: comentario === '' ? null : comentario,
                             classSessionId: session.id,
                         },
                     });
                 }
             }
 
-            return session;
-        });
+            // 3. Vincular observaciones de esta sección y materia creadas en esta fecha que no tenían classSessionId
+            const obsDateLte = new Date(startOfDay.getTime() + 30 * 3600 * 1000);
+            await tx.observation.updateMany({
+                where: {
+                    classroomId,
+                    subjectId,
+                    date: { gte: startOfDay, lte: obsDateLte },
+                    classSessionId: null,
+                },
+                data: { classSessionId: session.id },
+            });
+
+                return session;
+            },
+            {
+                // Bajo carga la base responde más lento; con el presupuesto justo de
+                // 5 s la clase se perdía entera. Ahora la operación es corta, pero se
+                // le deja aire para no perder el trabajo del profesor por un pico.
+                timeout: 20000,
+                maxWait: 10000,
+            }
+        );
+
+        // Guardar la clase mueve la asistencia de esa sección: le toca a esos
+        // alumnos, a sus representantes y al personal de la sección. A los demás
+        // no les cambió nada.
+        request.aQuienAfecta = {
+            studentIds: (attendances || []).map((a) => a.studentId).filter(Boolean),
+            classroomId,
+        };
 
         return reply.status(200).send({ success: true, session: result });
     } catch (error) {
+        // Los errores con motivo propio (permisos, no encontrado…) se responden tal
+        // cual: convertirlos en 500 esconde por qué se negó.
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
         logger.error('Error saving live class session', {
             error: error instanceof Error ? error.message : String(error),
         });
@@ -547,13 +825,33 @@ export async function getClassActivities(
             return reply.status(400).send({ error: 'Faltan parámetros: classroomId, subjectId' });
         }
 
+        let targetSubjectId = subjectId;
+        const sub = await prisma.subject.findFirst({
+            where: { OR: [{ id: subjectId }, { slug: subjectId }] },
+            select: { id: true },
+        });
+        if (sub) targetSubjectId = sub.id;
+
         const activities = await prisma.classActivity.findMany({
-            where: { classroomId, subjectId },
+            where: { classroomId, subjectId: targetSubjectId },
+            include: {
+                classSession: {
+                    select: { id: true, date: true, startTime: true, endTime: true },
+                },
+            },
             orderBy: [{ isDone: 'asc' }, { createdAt: 'desc' }],
         });
 
         return reply.status(200).send({ activities });
     } catch (error) {
+        // Los errores con motivo propio (permisos, no encontrado…) se responden tal
+        // cual: convertirlos en 500 esconde por qué se negó.
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
         logger.error('Error getting class activities', {
             error: error instanceof Error ? error.message : String(error),
         });
@@ -602,10 +900,19 @@ export async function createClassActivity(
             return reply.status(400).send({ error: 'Faltan parámetros requeridos' });
         }
 
+        let targetSubjectId = subjectId;
+        const sub = await prisma.subject.findFirst({
+            where: { OR: [{ id: subjectId }, { slug: subjectId }] },
+            select: { id: true },
+        });
+        if (sub) targetSubjectId = sub.id;
+
+        await exigirClasePropia(request, classroomId, targetSubjectId, 'dejar actividades');
+
         const activity = await prisma.classActivity.create({
             data: {
                 classroomId,
-                subjectId,
+                subjectId: targetSubjectId,
                 title,
                 description,
                 type,
@@ -621,6 +928,14 @@ export async function createClassActivity(
 
         return reply.status(201).send({ activity });
     } catch (error) {
+        // Los errores con motivo propio (permisos, no encontrado…) se responden tal
+        // cual: convertirlos en 500 esconde por qué se negó.
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
         logger.error('Error creating class activity', {
             error: error instanceof Error ? error.message : String(error),
         });
@@ -665,6 +980,11 @@ export async function updateClassActivity(
         } = request.body;
         const prisma = request.tenantPrisma;
 
+        const propia = await exigirActividadPropia(request, activityId, 'cambiar actividades');
+        if (!propia) {
+            return reply.status(404).send({ error: 'Actividad no encontrada' });
+        }
+
         const activity = await prisma.classActivity.update({
             where: { id: activityId },
             data: {
@@ -683,6 +1003,14 @@ export async function updateClassActivity(
 
         return reply.status(200).send({ activity });
     } catch (error) {
+        // Los errores con motivo propio (permisos, no encontrado…) se responden tal
+        // cual: convertirlos en 500 esconde por qué se negó.
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
         logger.error('Error updating class activity', {
             error: error instanceof Error ? error.message : String(error),
         });
@@ -713,6 +1041,8 @@ export async function saveClassActivityGrades(
             return reply.status(404).send({ error: 'Actividad no encontrada' });
         }
 
+        await exigirActividadPropia(request, activityId, 'dar notas');
+
         let existingScores: Record<string, any> = {};
         if (activity.scores) {
             try {
@@ -730,8 +1060,25 @@ export async function saveClassActivityGrades(
             },
         });
 
+        // A quién le toca: a los alumnos que recibieron nota y al personal de la
+        // sección. Antes se avisaba al liceo entero: con los profesores
+        // calificando a la vez, eso manda a todos los lectores a la base de datos
+        // sin que a ninguno le haya cambiado nada.
+        request.aQuienAfecta = {
+            studentIds: Object.keys(scores || {}),
+            classroomId: (activity as any)?.classroomId || undefined,
+        };
+
         return reply.status(200).send({ success: true, activity: updated });
     } catch (error) {
+        // Los errores con motivo propio (permisos, no encontrado…) se responden tal
+        // cual: convertirlos en 500 esconde por qué se negó.
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
         logger.error('Error saving activity grades', {
             error: error instanceof Error ? error.message : String(error),
         });
@@ -750,10 +1097,23 @@ export async function deleteClassActivity(
         const { activityId } = request.params;
         const prisma = request.tenantPrisma;
 
-        await prisma.classActivity.delete({ where: { id: activityId } });
+        const propia = await exigirActividadPropia(request, activityId, 'borrar actividades');
+        if (!propia) {
+            return reply.status(404).send({ error: 'Actividad no encontrada' });
+        }
+
+        await borrarGuardandoCopia(prisma, 'classActivity', { id: activityId }, quienBorra(request as any));
 
         return reply.status(200).send({ success: true });
     } catch (error) {
+        // Los errores con motivo propio (permisos, no encontrado…) se responden tal
+        // cual: convertirlos en 500 esconde por qué se negó.
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
         logger.error('Error deleting class activity', {
             error: error instanceof Error ? error.message : String(error),
         });
@@ -797,7 +1157,7 @@ export async function getLiveOverview(
         });
         const yearStart = classroom?.academicYear?.startDate ? new Date(classroom.academicYear.startDate) : null;
 
-        const result: Record<string, { subjectName: string; color?: string; weekNumber?: number; temaGenerador?: string; firstColumnLabel?: string; activitiesCount?: number }> = {};
+        const result: Record<string, { subjectName: string; color?: string; weekNumber?: number; temaGenerador?: string; firstColumnLabel?: string; activitiesCount?: number; todayActivitiesCount?: number; nextActivitiesCount?: number }> = {};
 
         for (const cs of subjects) {
             const meta = await prisma.evaluationPlanMetadata.findFirst({
@@ -827,21 +1187,37 @@ export async function getLiveOverview(
                 }
             }
 
-            if (!temaGenerador) {
-                const anyRow = await prisma.evaluationPlanRow.findFirst({
-                    where: { classroomId, subjectId: cs.subject.id },
-                    orderBy: { weekNumber: 'asc' },
-                });
-                temaGenerador = anyRow?.title || undefined;
-            }
-
-            // Contar actividades registradas para esta materia en la sección
-            const activitiesCount = await prisma.classActivity.count({
+            // Actividades de esta materia en la sección para la fecha dada
+            const allActivities = await prisma.classActivity.findMany({
                 where: {
                     classroomId,
                     subjectId: cs.subject.id,
                 },
             });
+
+            const dayOf = (dd: Date) => new Date(dd.getUTCFullYear(), dd.getUTCMonth(), dd.getUTCDate());
+            const classDay = dayOf(dayDate);
+
+            let todayActivitiesCount = 0;
+            let nextActivitiesCount = 0;
+
+            for (const a of allActivities) {
+                const dueDay = a.dueDate ? dayOf(a.dueDate) : null;
+                const isDueToday = Boolean(dueDay && dueDay.getTime() === classDay.getTime());
+                const isCreatedToday = dayOf(a.createdAt).getTime() === classDay.getTime();
+
+                if (a.target === 'CURRENT') {
+                    if (isDueToday || isCreatedToday) todayActivitiesCount++;
+                } else if (a.target === 'NEXT') {
+                    if (isDueToday) {
+                        todayActivitiesCount++;
+                    } else if (!a.dueDate || (dueDay && dueDay.getTime() > classDay.getTime())) {
+                        nextActivitiesCount++;
+                    }
+                }
+            }
+
+            const activitiesCount = allActivities.length;
 
             // Obtener el nombre de la primera columna del plan
             let firstColumnLabel = 'Tema Generador';
@@ -861,11 +1237,21 @@ export async function getLiveOverview(
                 temaGenerador,
                 firstColumnLabel,
                 activitiesCount,
+                todayActivitiesCount,
+                nextActivitiesCount,
             };
         }
 
         return reply.status(200).send({ overview: result });
     } catch (error) {
+        // Los errores con motivo propio (permisos, no encontrado…) se responden tal
+        // cual: convertirlos en 500 esconde por qué se negó.
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
         logger.error('Error getting live overview', {
             error: error instanceof Error ? error.message : String(error),
         });
@@ -955,6 +1341,14 @@ export async function suspendClassSession(
             mergedTemaGenerador: result.mergedTemaGenerador,
         });
     } catch (error) {
+        // Los errores con motivo propio (permisos, no encontrado…) se responden tal
+        // cual: convertirlos en 500 esconde por qué se negó.
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
         logger.error('Error suspending class session', {
             error: error instanceof Error ? error.message : String(error),
         });
@@ -1100,11 +1494,17 @@ export async function searchStudentsForSession(
                 lastName: true,
                 avatar: true,
                 studentCode: true,
-                classroom: {
+                studentClassrooms: {
+                    where: { isActive: true },
+                    take: 1,
                     select: {
-                        id: true,
-                        name: true,
-                        academicYear: { select: { name: true } },
+                        classroom: {
+                            select: {
+                                id: true,
+                                name: true,
+                                academicYear: { select: { name: true } },
+                            },
+                        },
                     },
                 },
             },
@@ -1112,19 +1512,30 @@ export async function searchStudentsForSession(
             take: 50,
         });
 
-        const mapped = students.map((s: any) => ({
-            id: s.id,
-            firstName: s.firstName,
-            lastName: s.lastName,
-            avatar: s.avatar,
-            studentCode: s.studentCode,
-            classroomName: s.classroom?.name || null,
-            academicYearName: s.classroom?.academicYear?.name || null,
-            classroomId: s.classroom?.id || null,
-        }));
+        const mapped = students.map((s: any) => {
+            const activeClassroom = s.studentClassrooms?.[0]?.classroom || null;
+            return {
+                id: s.id,
+                firstName: s.firstName,
+                lastName: s.lastName,
+                avatar: s.avatar,
+                studentCode: s.studentCode,
+                classroomName: activeClassroom?.name || null,
+                academicYearName: activeClassroom?.academicYear?.name || null,
+                classroomId: activeClassroom?.id || null,
+            };
+        });
 
         return reply.status(200).send({ students: mapped });
     } catch (error) {
+        // Los errores con motivo propio (permisos, no encontrado…) se responden tal
+        // cual: convertirlos en 500 esconde por qué se negó.
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
         logger.error('Error searching students for session', {
             error: error instanceof Error ? error.message : String(error),
         });
@@ -1161,6 +1572,8 @@ export async function savePlanWeekRow(
         if (!classroomId || !subjectId || !date) {
             return reply.status(400).send({ error: 'Faltan parámetros requeridos: classroomId, subjectId, date' });
         }
+
+        await exigirClasePropia(request, classroomId, subjectId, 'planificar');
 
         const parsedDate = new Date(date);
         if (isNaN(parsedDate.getTime())) {
@@ -1255,6 +1668,14 @@ export async function savePlanWeekRow(
 
         return reply.status(200).send({ success: true, row: savedRow, weekNumber });
     } catch (error) {
+        // Los errores con motivo propio (permisos, no encontrado…) se responden tal
+        // cual: convertirlos en 500 esconde por qué se negó.
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
         logger.error('Error saving plan week row', {
             error: error instanceof Error ? error.message : String(error),
         });

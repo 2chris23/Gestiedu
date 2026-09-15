@@ -21,8 +21,8 @@ import {
 
 /** Genera un ID compatible con los schemas zod `.cuid()`. */
 function gId(): string {
-    const id = createId();
-    return id.startsWith('c') ? id : `c${id}`;
+    // Siempre la 'c' delante: ver la nota de `tests/helpers.ts`.
+    return `c${createId()}`;
 }
 
 /**
@@ -118,7 +118,6 @@ describe('Jerarquía de agregación (N3-N6) + roster', () => {
         await prisma.studentClassroom.create({
             data: { studentId: s1.user.id, classroomId: classroom.id, academicYearId: year.id, isActive: true },
         });
-        await prisma.user.update({ where: { id: s1.user.id }, data: { classroomId: classroom.id } });
         student1 = s1.user;
 
         // Plan de evaluación: 3 criterios que suman 20 (4 + 8 + 8)
@@ -197,7 +196,6 @@ describe('Jerarquía de agregación (N3-N6) + roster', () => {
         await prisma.studentClassroom.create({
             data: { studentId: s2.user.id, classroomId: classroom.id, academicYearId: year.id, isActive: true },
         });
-        await prisma.user.update({ where: { id: s2.user.id }, data: { classroomId: classroom.id } });
 
         const n4 = await sectionAverage(prisma, classroom.id);
         expect(n4.average).toBe(20); // el sin notas no cuenta como 0

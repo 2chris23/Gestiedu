@@ -78,9 +78,9 @@ describe('Flujo 1 — Ciclo de vida de autenticación', () => {
         const wrongPassword = await login(user.email, 'WrongPassword123!');
         const unknownEmail = await login(`noexiste-${Date.now()}@test.com`, PASSWORD);
 
-        // Ambos devuelven el mismo status
-        expect(wrongPassword.status).toBe(400);
-        expect(unknownEmail.status).toBe(400);
+        // Ambos devuelven el mismo status (401: credenciales inválidas)
+        expect(wrongPassword.status).toBe(401);
+        expect(unknownEmail.status).toBe(401);
 
         // Mismo código y mensaje — no filtra si el email existe
         expect(wrongPassword.body.code).toBe(unknownEmail.body.code);
@@ -100,7 +100,11 @@ describe('Flujo 1 — Ciclo de vida de autenticación', () => {
         const crossTenant = await request(server.server)
             .get('/api/auth/profile')
             .set('Authorization', `Bearer ${token}`)
-            .set('X-Institute-Slug', 'instituto-educativo-demo')
+            // Un instituto DISTINTO al del token. Se usa la cabecera de id
+            // porque no depende de que ese instituto exista en la base de
+            // plataforma del entorno de pruebas: el middleware compara el
+            // instituto pedido con el del token y corta si no coinciden.
+            .set('X-Institute-ID', 'otro-instituto')
             .expect(401);
 
         expect(crossTenant.body.code).toBe('TENANT_MISMATCH');
@@ -181,7 +185,7 @@ describe('Flujo 1 — Ciclo de vida de autenticación', () => {
         await refresh(d2.body.tokens.refreshToken).expect(401);
 
         // La contraseña vieja ya no funciona
-        await login(user.email, PASSWORD).expect(400);
+        await login(user.email, PASSWORD).expect(401);
         // La nueva sí
         await login(user.email, NEW_PASSWORD).expect(200);
     });

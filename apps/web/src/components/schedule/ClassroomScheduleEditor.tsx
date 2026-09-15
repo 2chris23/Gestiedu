@@ -6,7 +6,7 @@ import { DndContext, useDraggable, useDroppable, DragEndEvent, DragOverlay } fro
 import { useBulkUpdateSchedule, useAutoGenerateSchedule } from '@/hooks/useSchedules';
 import { useSchedulePeriods } from '@/hooks/useSchedulePeriods';
 import { toast } from 'sonner';
-import { Loader2, Wand2, Save, X, Trash2, Coffee } from 'lucide-react';
+import { Loader2, Wand2, Save, X, Trash2, Coffee, Shuffle, AlertCircle } from 'lucide-react';
 
 interface ClassroomScheduleEditorProps {
     classroomId: string;
@@ -96,6 +96,7 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
     const [deletedIds, setDeletedIds] = useState<string[]>([]);
     const [isDirty, setIsDirty] = useState(false);
     const [activeDragData, setActiveDragData] = useState<any>(null);
+    const [isRandomizeModalOpen, setIsRandomizeModalOpen] = useState(false);
     const confirmDialog = useConfirm();
     
     const bulkUpdate = useBulkUpdateSchedule(classroomId);
@@ -238,23 +239,61 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
         }));
 
         try {
-            await bulkUpdate.mutateAsync({ blocks: payloadBlocks, deleteIds: deletedIds });
-            toast.success('Horario guardado correctamente');
+            const res = await bulkUpdate.mutateAsync({ blocks: payloadBlocks, deleteIds: deletedIds });
+            // Los choques heredados (bloques que este guardado no tocó) ya no
+            // bloquean: el horario se guardó, pero se avisa para poder resolverlos.
+            if (res?.warnings?.length) {
+                toast.warning(
+                    `Horario guardado. Arrastra ${res.warnings.length} ${res.warnings.length === 1 ? 'choque heredado' : 'choques heredados'}: ${res.warnings[0]}`
+                );
+            } else {
+                toast.success('Horario guardado correctamente');
+            }
             setIsDirty(false);
             setDeletedIds([]);
         } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Error al guardar horario');
+            const data = error.response?.data;
+            // Un choque NUEVO sí bloquea: decir cuál, no solo "no se guardó".
+            if (data?.code === 'SCHEDULE_CONFLICT' && data.conflicts?.length) {
+                toast.error(`No se guardó: ${data.conflicts[0].message}`);
+                return;
+            }
+            toast.error(data?.error || 'Error al guardar horario');
         }
     };
 
-    const handleAutoGenerate = async () => {
-        if (await confirmDialog({ title: '¿Estás seguro? Esto sobrescribirá el horario actual.' })) {
-            try {
-                await autoGenerate.mutateAsync(classroomId);
-                toast.success('Horario generado automáticamente');
-            } catch (error: any) {
-                toast.error(error.response?.data?.error || 'Error al generar horario');
+    const handleConfirmRandomize = async () => {
+        try {
+            const res = await autoGenerate.mutateAsync(classroomId);
+            if (res?.scheduleBlocks && Array.isArray(res.scheduleBlocks)) {
+                const mapped = res.scheduleBlocks.map((b: any) => ({
+                    id: b.id,
+                    cellId: `${b.dayOfWeek}-${b.startTime}`,
+                    classroomSubjectId: b.classroomSubject?.id,
+                    subjectName: b.classroomSubject?.subject?.name,
+                    teacherName: b.classroomSubject?.teacher ? `${b.classroomSubject.teacher.firstName} ${b.classroomSubject.teacher.lastName}` : 'Sin Prof.',
+                    color: b.classroomSubject?.subject?.color,
+                    dayOfWeek: b.dayOfWeek,
+                    startTime: b.startTime,
+                    endTime: b.endTime
+                }));
+                setBlocks(mapped);
+                setIsDirty(false);
+                setDeletedIds([]);
             }
+            // El generador ya no coloca una clase si su profesor está ocupado en
+            // otra sección: lo que no cupo se informa en vez de crear un choque.
+            if (res?.unplaced?.length) {
+                const names = Array.from(new Set(res.unplaced.map((u: any) => u.subject))).slice(0, 3).join(', ');
+                toast.warning(
+                    `Horario reorganizado. ${res.unplaced.length} ${res.unplaced.length === 1 ? 'bloque quedó' : 'bloques quedaron'} sin colocar porque el profesor está ocupado en otra sección (${names}). Colócalos a mano.`
+                );
+            } else {
+                toast.success('Horario reorganizado al azar y apilado correctamente');
+            }
+            setIsRandomizeModalOpen(false);
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Error al ordenar horario al azar');
         }
     };
 
@@ -301,12 +340,13 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
 
                         <div className="mt-6 pt-4 border-t border-gray-100 space-y-3">
                             <button
-                                onClick={handleAutoGenerate}
+                                type="button"
+                                onClick={() => setIsRandomizeModalOpen(true)}
                                 disabled={autoGenerate.isPending}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg text-sm font-semibold hover:from-purple-700 hover:to-indigo-700 transition-colors disabled:opacity-50"
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-xs font-bold hover:from-purple-700 hover:to-indigo-700 shadow-xs transition-all disabled:opacity-50 cursor-pointer"
                             >
-                                {autoGenerate.isPending ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
-                                Auto-Generar
+                                {autoGenerate.isPending ? <Loader2 size={16} className="animate-spin" /> : <Shuffle size={16} />}
+                                Ordenar al azar
                             </button>
                             <button
                                 onClick={handleSave}
@@ -403,6 +443,61 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
                     </div>
                 ) : null}
             </DragOverlay>
+
+            {/* Modal de confirmación para Ordenar al Azar */}
+            {isRandomizeModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+                    <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                                <Shuffle size={24} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-base text-gray-900">
+                                    ¿Ordenar horario al azar?
+                                </h3>
+                                <p className="text-xs text-gray-500">
+                                    Reorganización automática y continua
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1.5 leading-relaxed">
+                            <p className="font-semibold flex items-center gap-1.5 text-amber-800">
+                                <AlertCircle size={14} className="shrink-0" />
+                                <span>Atención: Cambio en la distribución semanal</span>
+                            </p>
+                            <p>
+                                Esta opción reorganizará todas las clases de la sección de forma aleatoria.
+                                Las materias quedarán <strong>estrictamente apiladas de forma continua</strong> desde la primera hora escolar (sin horas libres intermedias ni huecos), respetando los horarios de los profesores sin colisiones.
+                            </p>
+                            <p className="text-amber-700 font-medium">
+                                El horario actual de esta sección será reemplazado.
+                            </p>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => setIsRandomizeModalOpen(false)}
+                                disabled={autoGenerate.isPending}
+                                className="px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmRandomize}
+                                disabled={autoGenerate.isPending}
+                                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+                            >
+                                {autoGenerate.isPending ? <Loader2 size={15} className="animate-spin" /> : <Shuffle size={15} />}
+                                Sí, ordenar al azar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </DndContext>
     );
 }

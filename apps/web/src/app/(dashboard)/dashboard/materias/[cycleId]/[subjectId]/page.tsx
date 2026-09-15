@@ -8,7 +8,6 @@ import { SubjectHeader } from '@/components/subject/SubjectHeader';
 import { SubjectKPIs } from '@/components/subject/SubjectKPIs';
 import { SectionDistributionTable } from '@/components/subject/SectionDistributionTable';
 import { TeachersSidebar } from '@/components/subject/TeachersSidebar';
-import { SubjectResources } from '@/components/subject/SubjectResources';
 import { Loader2, AlertCircle, BookOpen } from 'lucide-react';
 import Link from 'next/link';
 
@@ -71,10 +70,18 @@ export default function SubjectDashboard() {
     const sections = subject.sections || [];
     const teachers = subject.teachers || [];
 
+    const sectionsWithAvg = sections.filter((s: any) => s.average && s.average > 0);
+    const averageGrade = sectionsWithAvg.length > 0
+        ? Math.round((sectionsWithAvg.reduce((sum: number, s: any) => sum + s.average, 0) / sectionsWithAvg.length) * 10) / 10
+        : 0;
+    const approvalRate = sectionsWithAvg.length > 0
+        ? Math.round((sectionsWithAvg.filter((s: any) => s.average >= 10).length / sectionsWithAvg.length) * 100)
+        : 0;
+
     const metrics = {
         totalStudents: subject.totalStudents || 0,
-        averageGrade: 0, // TODO: Calculate from grades
-        approvalRate: 0, // TODO: Calculate from grades
+        averageGrade,
+        approvalRate,
         activeSections: subject.sectionCount || sections.length
     };
 
@@ -100,7 +107,7 @@ export default function SubjectDashboard() {
                         {sections.length > 0 ? (
                             <SectionDistributionTable
                                 sections={sections}
-                                subjectId={subjectId}
+                                subjectId={subject.id}
                                 cycleId={cycleName}
                             />
                         ) : (
@@ -121,7 +128,7 @@ export default function SubjectDashboard() {
                         )}
                     </div>
 
-                    {/* Sidebar: Teachers & Resources */}
+                    {/* Sidebar: Teachers */}
                     <div className="space-y-6">
                         {teachers.length > 0 ? (
                             <TeachersSidebar teachers={teachers} />
@@ -131,7 +138,6 @@ export default function SubjectDashboard() {
                                 <p className="text-sm text-gray-500">No hay profesores asignados aún.</p>
                             </div>
                         )}
-                        <SubjectResources resources={[]} />
                     </div>
                 </div>
             </div>

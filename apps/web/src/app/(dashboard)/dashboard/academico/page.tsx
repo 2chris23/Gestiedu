@@ -1,33 +1,25 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
-import { academicYearService, AcademicYear } from '@/services/academic-year.service';
+import { useAcademicYears } from '@/hooks/useAcademicYears';
 import AcademicYearModal from '@/components/academic/AcademicYearModal';
 import AcademicTimeline from '@/components/academic/AcademicTimeline';
 import { toast } from 'sonner';
 
 export default function AcademicPage() {
-    const [years, setYears] = useState<AcademicYear[]>([]);
-    const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const queryClient = useQueryClient();
 
-    const loadYears = async () => {
-        try {
-            setLoading(true);
-            const data = await academicYearService.getAcademicYears();
-            setYears(data);
-        } catch (error) {
-            console.error(error);
-            toast.error('Error al cargar años escolares');
-        } finally {
-            setLoading(false);
-        }
-    };
+    // Con caché: al volver a esta pantalla los ciclos aparecen al instante y se
+    // refrescan por detrás. Antes se pedían a mano en cada entrada y había que
+    // esperar al esqueleto de carga todas las veces.
+    const { data: years = [], isLoading: loading, error } = useAcademicYears();
 
-    useEffect(() => {
-        loadYears();
-    }, []);
+    if (error) toast.error('Error al cargar años escolares');
+
+    const loadYears = () => queryClient.invalidateQueries({ queryKey: ['academicYears'] });
 
     return (
         <div className="space-y-6">

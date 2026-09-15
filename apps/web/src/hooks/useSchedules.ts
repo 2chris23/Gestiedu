@@ -135,6 +135,141 @@ export function useTeacherScheduleBlocks(teacherId: string) {
 }
 
 /**
+ * Materias que el admin le asignó al profesor (sección + materia + bloques
+ * semanales). Es lo que alimenta la barra lateral arrastrable del editor y el
+ * contador de bloques restantes.
+ */
+export function useTeacherClassroomSubjects(teacherId: string) {
+    return useQuery({
+        queryKey: ['teacherClassroomSubjects', teacherId],
+        queryFn: async () => {
+            const response = await api.get(`/schedules/teacher/${teacherId}/subjects`);
+            return response.data.classroomSubjects;
+        },
+        enabled: !!teacherId,
+        staleTime: 5 * 60 * 1000,
+    });
+}
+
+/**
+ * Guarda los movimientos hechos en el horario de un profesor.
+ *
+ * Escribe sobre los MISMOS `ScheduleBlock` que ve el horario de la sección: por
+ * eso invalida también las consultas de sección, o la otra vista se quedaría
+ * mostrando el bloque en su sitio anterior.
+ */
+export function useBulkUpdateTeacherSchedule(teacherId: string) {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (payload: {
+            blocks: Array<{
+                id?: string;
+                classroomSubjectId: string;
+                dayOfWeek: number;
+                startTime: string;
+                endTime: string;
+            }>;
+            deleteIds?: string[];
+        }) => {
+            const response = await api.post(`/schedules/teacher/${teacherId}/bulk`, payload);
+            return response.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['teacherScheduleBlocks', teacherId] });
+            queryClient.invalidateQueries({ queryKey: ['teacherClassroomSubjects', teacherId] });
+            queryClient.invalidateQueries({ queryKey: ['schedule', 'classroom'] });
+            queryClient.invalidateQueries({ queryKey: ['scheduleSummary'] });
+        },
+    });
+}
+
+/**
+ * Coloca al azar los bloques que le faltan al profesor.
+ *
+ * Las franjas se envían desde el cliente porque salen de la configuración del
+ * instituto (`useSchedulePeriods`), que cada liceo puede cambiar.
+ */
+export function useAutoFillTeacherSchedule(teacherId: string) {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (payload: {
+            periods: Array<{ startTime: string; endTime: string }>;
+            days?: number[];
+        }) => {
+            const response = await api.post(`/schedules/teacher/${teacherId}/auto-fill`, payload);
+            return response.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['teacherScheduleBlocks', teacherId] });
+            queryClient.invalidateQueries({ queryKey: ['teacherClassroomSubjects', teacherId] });
+            queryClient.invalidateQueries({ queryKey: ['schedule', 'classroom'] });
+            queryClient.invalidateQueries({ queryKey: ['scheduleSummary'] });
+        },
+    });
+}
+
+/**
+ * Horas personales del profesor (planificación, guardia…).
+ *
+ * A diferencia de las clases, que se guardan en lote al pulsar "Guardar
+ * Cambios", estas se persisten de inmediato: son registros independientes que
+ * no pertenecen a ninguna sección, así que no tiene sentido mezclarlas en el
+ * lote del horario de clases.
+ */
+export function usePersonalBlockMutations(teacherId: string) {
+    const queryClient = useQueryClient();
+
+    const invalidate = () => {
+        queryClient.invalidateQueries({ queryKey: ['teacherScheduleBlocks', teacherId] });
+        queryClient.invalidateQueries({ queryKey: ['schedule', 'classroom'] });
+    };
+
+    const create = useMutation({
+        mutationFn: async (payload: {
+            dayOfWeek: number;
+            startTime: string;
+            endTime: string;
+            title: string;
+            notes?: string;
+        }) => {
+            const response = await api.post(`/schedules/teacher/${teacherId}/personal-blocks`, payload);
+            return response.data;
+        },
+        onSuccess: invalidate,
+    });
+
+    const update = useMutation({
+        mutationFn: async ({
+            id,
+            ...payload
+        }: {
+            id: string;
+            dayOfWeek?: number;
+            startTime?: string;
+            endTime?: string;
+            title?: string;
+            notes?: string;
+        }) => {
+            const response = await api.put(`/schedules/personal-blocks/${id}`, payload);
+            return response.data;
+        },
+        onSuccess: invalidate,
+    });
+
+    const remove = useMutation({
+        mutationFn: async (id: string) => {
+            const response = await api.delete(`/schedules/personal-blocks/${id}`);
+            return response.data;
+        },
+        onSuccess: invalidate,
+    });
+
+    return { create, update, remove };
+}
+
+/**
  * Transforma datos de horario de profesor al formato del viewer
  */
 export function transformTeacherScheduleData(data: any[] | undefined): ScheduleBlock[] {
@@ -160,7 +295,11 @@ export interface ClassSessionHistory {
     endTime: string;
     subject: { id: string; name: string; color: string };
     teacher?: { id: string; firstName: string; lastName: string };
+    /** La clase se dio y quedó registrada. Falso si fue suspendida. */
     isRecorded: boolean;
+    /** Suspendida (por un profesor o por un evento del liceo). */
+    isSuspended?: boolean;
+    suspendedReason?: string | null;
     isExtra?: boolean;
     sessionInfo: {
         id: string;

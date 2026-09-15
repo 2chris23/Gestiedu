@@ -3,6 +3,7 @@
 import { useEffect, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSuperAdminAuthStore } from '@/store/superadmin-auth.store';
+import { superAdminFetch } from '@/lib/superadmin-fetch';
 import Link from 'next/link';
 
 interface SuperAdminLayoutProps {
@@ -20,39 +21,19 @@ export default function SuperAdminLayout({ children }: SuperAdminLayoutProps) {
         // En la página de login no necesitamos verificar auth
         if (isLoginPage) return;
 
-        // Si ya tenemos el superAdmin en el store (persist), no hacer fetch innecesario
-        if (superAdmin) return;
-
-        // Verificar si existe en localStorage
-        try {
-            const stored = typeof window !== 'undefined' ? localStorage.getItem('superadmin-auth') : null;
-            if (stored) {
-                const parsed = JSON.parse(stored);
-                if (parsed.state?.superAdmin) {
-                    setSuperAdmin(parsed.state.superAdmin);
-                    return;
+        // Verificar o refrescar la sesión del superadmin contra el servidor
+        superAdminFetch('/api/superadmin/auth/me')
+            .then(async (res) => {
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data) setSuperAdmin(data);
+                } else if (res.status === 401) {
+                    logout();
+                    router.push('/superadmin/login');
                 }
-            }
-        } catch {}
-
-        // Cargar datos del superadmin desde la cookie del servidor
-        fetch('/api/superadmin/auth/me')
-            .then((res) => {
-                if (res.ok) return res.json();
-                if (res.status === 401) {
-                    const hasCookie = typeof document !== 'undefined' && document.cookie.includes('superadmin_access_token');
-                    if (!hasCookie) {
-                        logout();
-                        router.push('/superadmin/login');
-                    }
-                }
-                return null;
-            })
-            .then((data) => {
-                if (data) setSuperAdmin(data);
             })
             .catch(() => {});
-    }, [superAdmin, setSuperAdmin, router, logout, isLoginPage]);
+    }, [router, logout, isLoginPage, setSuperAdmin]);
 
     const handleLogout = async () => {
         try {
@@ -75,6 +56,7 @@ export default function SuperAdminLayout({ children }: SuperAdminLayoutProps) {
         { href: '/superadmin/institutes', label: 'Institutos', icon: '🏫' },
         { href: '/superadmin/plans', label: 'Planes y Tarifas', icon: '💎' },
         { href: '/superadmin/metrics', label: 'Métricas de Caché', icon: '⚡' },
+        { href: '/superadmin/migraciones', label: 'Migraciones', icon: '🗃️' },
     ];
 
     return (

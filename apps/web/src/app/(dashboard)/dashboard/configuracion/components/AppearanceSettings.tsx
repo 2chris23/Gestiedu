@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Save, Plus, Palette as PaletteIcon } from 'lucide-react';
 import { ColorPicker, ColorCard, ImageUpload } from '@/components/ui';
@@ -13,7 +13,6 @@ import {
     useRemoveColorFromPalette,
     useUpdateColorInPalette
 } from '@/hooks/useInstitute';
-import { toast } from 'sonner';
 
 export function AppearanceSettings() {
     const confirmDialog = useConfirm();
@@ -31,20 +30,38 @@ export function AppearanceSettings() {
     const [editingColorIndex, setEditingColorIndex] = useState<number | null>(null);
     const [editingColor, setEditingColor] = useState('');
 
-    // Actualizar colores cuando se carga la config
-    useState(() => {
-        if (config) {
-            setPrimaryColor(config.primaryColor || '#4F46E5');
-            setSecondaryColor(config.secondaryColor || '#3B82F6');
-        }
-    });
+    // Archivos seleccionados pendientes de guardar
+    const [pendingFavicon, setPendingFavicon] = useState<File | null>(null);
+    const [pendingLogo, setPendingLogo] = useState<File | null>(null);
 
-    const handleFaviconUpload = (file: File) => {
-        uploadLogosMutation.mutate({ favicon: file });
+    // Actualizar colores cuando se carga la config
+    useEffect(() => {
+        if (config) {
+            if (config.primaryColor) setPrimaryColor(config.primaryColor);
+            if (config.secondaryColor) setSecondaryColor(config.secondaryColor);
+        }
+    }, [config]);
+
+    const hasPendingLogos = !!pendingFavicon || !!pendingLogo;
+
+    const handleSaveLogos = async () => {
+        if (!hasPendingLogos) return;
+
+        try {
+            await uploadLogosMutation.mutateAsync({
+                favicon: pendingFavicon || undefined,
+                logo: pendingLogo || undefined,
+            });
+            setPendingFavicon(null);
+            setPendingLogo(null);
+        } catch (error) {
+            console.error('Error al guardar logos:', error);
+        }
     };
 
-    const handleLogoUpload = (file: File) => {
-        uploadLogosMutation.mutate({ logo: file });
+    const handleDiscardLogos = () => {
+        setPendingFavicon(null);
+        setPendingLogo(null);
     };
 
     const handleSaveColors = () => {
@@ -89,29 +106,83 @@ export function AppearanceSettings() {
         <div className="space-y-8">
             {/* Logos del Instituto */}
             <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Logos del Instituto</h3>
-                <p className="text-sm text-gray-600 mb-6">
-                    Personaliza los logos de tu instituto para el sistema
-                </p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                    <div>
+                        <h3 className="text-lg font-semibold text-gray-900">Logos del Instituto</h3>
+                        <p className="text-sm text-gray-600 mt-0.5">
+                            Personaliza el escudo escolar y el favicon visible en las pestañas del navegador
+                        </p>
+                    </div>
+
+                    {hasPendingLogos && (
+                        <button
+                            type="button"
+                            onClick={handleDiscardLogos}
+                            disabled={uploadLogosMutation.isPending}
+                            className="text-xs text-gray-600 hover:text-red-700 bg-gray-100 hover:bg-red-50 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors self-start sm:self-auto"
+                        >
+                            Descartar cambios pendientes
+                        </button>
+                    )}
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Favicon */}
                     <ImageUpload
-                        label="Favicon (16x16 o 32x32)"
+                        label="Favicon de la Pestaña (16×16 o 32×32)"
+                        description="Icono cuadrado mostrado en la pestaña y marcadores del navegador"
                         currentImage={config?.favicon}
-                        onUpload={handleFaviconUpload}
-                        accept="image/png,image/x-icon"
+                        selectedFile={pendingFavicon}
+                        onFileSelect={(file) => setPendingFavicon(file)}
+                        accept="image/png,image/x-icon,.ico"
                         maxSize={1}
                     />
 
                     {/* Logo Principal */}
                     <ImageUpload
-                        label="Escudo del Instituto (200x200 mínimo)"
+                        label="Escudo del Instituto (200×200 mínimo)"
+                        description="Insignia oficial mostrada en la barra lateral, boletines y reportes"
                         currentImage={config?.logo}
-                        onUpload={handleLogoUpload}
+                        selectedFile={pendingLogo}
+                        onFileSelect={(file) => setPendingLogo(file)}
                         accept="image/png,image/jpeg,image/jpg"
                         maxSize={2}
                     />
+                </div>
+
+                {/* Botón para Guardar Logos */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-6 pt-4 border-t border-gray-200">
+                    <div className="text-xs text-gray-500">
+                        {hasPendingLogos ? (
+                            <span className="inline-flex items-center gap-1.5 text-amber-800 font-medium bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
+                                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                                Tienes imágenes seleccionadas. Haz clic en &quot;Guardar Logos&quot; para aplicarlas.
+                            </span>
+                        ) : (
+                            <span>
+                                Los logos guardados se actualizan automáticamente en la barra lateral y en el favicon de la pestaña.
+                            </span>
+                        )}
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={handleSaveLogos}
+                        disabled={!hasPendingLogos || uploadLogosMutation.isPending}
+                        className="inline-flex items-center justify-center px-6 py-2.5 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                        {uploadLogosMutation.isPending ? (
+                            <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                Guardando logos...
+                            </>
+                        ) : (
+                            <>
+                                <Save className="w-4 h-4 mr-2" />
+                                Guardar Logos
+                            </>
+                        )}
+                    </button>
                 </div>
             </div>
 

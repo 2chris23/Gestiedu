@@ -1,9 +1,35 @@
 import winston from 'winston';
 import { config } from '../config/environment';
 
+/**
+ * EN PRODUCCIÓN NO SE ESCRIBE UN RENGLÓN POR CONSULTA.
+ *
+ * `LOG_LEVEL=debug` está bien mientras se programa. Pero si ese `.env` viaja al
+ * servidor, la aplicación se pone a escribir una línea por cada acierto y fallo
+ * de caché: en una medición de 20 minutos fueron 344.543 líneas, la mitad de
+ * todo el registro.
+ *
+ * Cuesta CPU (armar y escribir texto en vez de atender gente), cuesta disco —que
+ * en un alojamiento se llena y tumba la aplicación— y cuesta privacidad, porque
+ * esas líneas llevan cédulas de alumnos dentro.
+ *
+ * Así que en producción el registro nunca baja de "info", diga lo que diga el
+ * archivo. Para diagnosticar algo puntual en el servidor está LOG_LEVEL_FORZADO,
+ * que hay que poner a mano y a sabiendas.
+ */
+function nivelSeguro(): string {
+  const pedido = config.logging.level;
+  if (config.nodeEnv !== 'production') return pedido;
+
+  if (process.env.LOG_LEVEL_FORZADO) return process.env.LOG_LEVEL_FORZADO;
+
+  const demasiadoHabladores = ['debug', 'silly', 'verbose'];
+  return demasiadoHabladores.includes(pedido) ? 'info' : pedido;
+}
+
 // Configuración del logger según el entorno
 const loggerConfig: winston.LoggerOptions = {
-  level: config.logging.level,
+  level: nivelSeguro(),
   format: winston.format.combine(
     winston.format.timestamp({
       format: 'YYYY-MM-DD HH:mm:ss',

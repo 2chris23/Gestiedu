@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '@/store/auth.store';
+import { conseguirCredencial, guardarCredencial, olvidarCredencial } from './credencial-en-memoria';
 import { API_URL } from '@/config/env';
 
 // Asegurar que la baseURL del cliente axios siempre tenga el prefijo /api
@@ -19,20 +20,32 @@ const api = axios.create({
 api.interceptors.request.use(
     async (config) => {
 
-        // Read token and institute slug from cookies (client-side)
         if (typeof document !== 'undefined') {
+            /**
+             * LA CREDENCIAL SALE DE LA MEMORIA, NO DE LAS COOKIES
+             *
+             * Antes se leía de `document.cookie`, y para eso la cookie tenía que
+             * estar abierta a la página. Cualquier cosa que consiguiera ejecutar
+             * código allí se la llevaba con una línea. Ahora vive solo en la
+             * memoria de la pestaña: ver `lib/credencial-en-memoria.ts`.
+             *
+             * Si no hay (por ejemplo, al recargar), se pide una nueva con la
+             * llave larga, que sigue guardada donde la página no la ve.
+             */
+            const token = await conseguirCredencial();
+            if (token) {
+                config.headers.Authorization = `Bearer ${token}`;
+            }
+
+            // El liceo sí se lee de la cookie: no es una credencial, solo dice
+            // a qué liceo se pregunta, y el servidor no se fía de ella para
+            // nada (manda el liceo del token).
             const cookies = document.cookie.split(';').reduce((acc, cookie) => {
                 const [key, value] = cookie.trim().split('=');
                 acc[key] = decodeURIComponent(value || '');
                 return acc;
             }, {} as Record<string, string>);
 
-            const token = cookies['access_token'];
-            if (token) {
-                config.headers.Authorization = `Bearer ${token}`;
-            }
-
-            // Enviar slug del instituto para resolución de tenant en el backend
             const slug = cookies['institute_slug'];
             if (slug) {
                 config.headers['X-Institute-Slug'] = slug;
@@ -95,10 +108,12 @@ api.interceptors.response.use(
                 const refreshData = await refreshResponse.json().catch(() => ({}));
                 const newAccessToken = refreshData.accessToken;
 
-                // Actualizar token en document.cookie y en la cabecera
-                if (newAccessToken && typeof document !== 'undefined') {
-                    document.cookie = `access_token=${newAccessToken}; path=/; max-age=900; SameSite=Lax`;
-                }
+                // La cookie ya viene puesta en la respuesta de /api/auth/refresh,
+                // con `Secure` en producción. Reescribirla aquí a mano le quitaba
+                // esa marca cada diez minutos, que es cada vez que se renueva.
+                // La llave nueva se queda en memoria para las siguientes
+                // peticiones; si no, cada una volvería a renovar.
+                guardarCredencial(newAccessToken);
 
                 if (newAccessToken && originalRequest.headers) {
                     originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
@@ -110,6 +125,7 @@ api.interceptors.response.use(
 
             // Refresh falló — desloguear una sola vez
             flushRefreshQueue(false);
+            olvidarCredencial();
             useAuthStore.getState().logout();
             if (typeof window !== 'undefined') {
                 window.location.href = '/login';
@@ -117,6 +133,7 @@ api.interceptors.response.use(
             return Promise.reject(error);
         } catch (refreshError) {
             flushRefreshQueue(false);
+            olvidarCredencial();
             useAuthStore.getState().logout();
             if (typeof window !== 'undefined') {
                 window.location.href = '/login';

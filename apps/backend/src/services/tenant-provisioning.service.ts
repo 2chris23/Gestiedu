@@ -4,6 +4,7 @@ import path from 'path';
 import { Client } from 'pg';
 import bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
+import { buildTenantDatabaseUrl } from '../config/tenant-db-url';
 
 const execAsync = promisify(exec);
 
@@ -30,7 +31,8 @@ export interface InstituteSeedData {
     id: string;
     name: string;
     code: string;
-    email: string;
+    /** Opcional: un instituto puede no tener email de contacto. */
+    email: string | null;
     slug: string;
     subdomain?: string | null;
     status?: 'ACTIVE' | 'SUSPENDED' | 'PENDING' | 'INACTIVE';
@@ -64,7 +66,18 @@ export class TenantProvisioningService {
      */
     private static buildDatabaseUrl(dbName: string): string {
         const { user, password, host, port } = this.getConnectionCredentials();
-        return `postgresql://${user}:${password}@${host}:${port}/${dbName}`;
+        // 'direct': el alta crea el esquema con Prisma Migrate, que necesita una
+        // conexión directa a PostgreSQL y no puede pasar por PgBouncer.
+        return buildTenantDatabaseUrl(
+            {
+                databaseUser: user,
+                databasePassword: password,
+                databaseHost: host,
+                databasePort: port,
+                databaseName: dbName,
+            },
+            'direct'
+        );
     }
 
     /**

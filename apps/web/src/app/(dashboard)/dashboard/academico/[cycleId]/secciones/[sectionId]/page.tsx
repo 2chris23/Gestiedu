@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, use } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
+import { conseguirCredencial } from '@/lib/credencial-en-memoria';
 import {
     ChevronLeft, MoreVertical, Calendar, Clock,
     BookOpen, Users, GraduationCap, Bell, Search,
@@ -11,7 +12,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useStudents, useAvailableStudents, useAssignStudent } from '@/hooks/useStudents';
-import { useClassroomBySlug } from '@/hooks/useClassrooms';
+import { useClassroomBySlug, useClassroomStats } from '@/hooks/useClassrooms';
+import AcademicStats from '@/components/academic/AcademicStats';
 import { useClassroomSubjects, useClassroomSubjectsStats } from '@/hooks/useClassroomSubjects';
 import { SectionStudent } from '@/services/students.service';
 import { API_URL } from '@/config/env';
@@ -22,12 +24,15 @@ import { toast } from 'sonner';
 import RemoveStudentSecureModal from '@/components/academic/RemoveStudentSecureModal';
 import AssignTeacherModal from '@/components/academic/AssignTeacherModal';
 import { AssignSubjectModal } from '@/components/academic/AssignSubjectModal';
+import { getAcademicRisk } from '@/utils/academicRisk';
 import { SubjectCard } from '@/components/academic/SubjectCard';
 import { useAuthStore } from '@/store/auth.store';
+import { useRouter } from 'next/navigation';
 
 // Params refactored: year -> cycleId, slug -> sectionId
 export default function SectionPage({ params }: { params: Promise<{ cycleId: string, sectionId: string }> }) {
     const { cycleId, sectionId } = use(params);
+    const router = useRouter();
     const [activeTab, setActiveTab] = useState('estudiantes');
     const [page, setPage] = useState(1);
     const [limit] = useState(20);
@@ -39,6 +44,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     const classroomId = classroom?.id;
 
     const { data: studentsData, isLoading } = useStudents(classroomId || '', { page, limit });
+    const { data: classroomStats } = useClassroomStats(classroomId || sectionId);
     const { data: subjectsData, isLoading: isLoadingSubjects } = useClassroomSubjects(classroomId || '');
     const assignMutation = useAssignStudent();
 
@@ -90,32 +96,85 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
 
     const sortedStudents = [...filteredStudents].sort((a: SectionStudent, b: SectionStudent) => {
         if (!sortColumn) return 0;
-        let aValue: string, bValue: string;
+        let comparison = 0;
 
         switch (sortColumn) {
-            case 'nombre':
-                aValue = `${a.firstName} ${a.lastName}`.toLowerCase();
-                bValue = `${b.firstName} ${b.lastName}`.toLowerCase();
+            case 'nombre': {
+                const aName = `${a.firstName || ''} ${a.lastName || ''}`.trim().toLowerCase();
+                const bName = `${b.firstName || ''} ${b.lastName || ''}`.trim().toLowerCase();
+                comparison = aName.localeCompare(bName, 'es', { sensitivity: 'base' });
                 break;
-            case 'cedula':
-                aValue = a.id || '';
-                bValue = b.id || '';
+            }
+            case 'cedula': {
+                const aCode = (a.studentCode || a.id || '').toLowerCase();
+                const bCode = (b.studentCode || b.id || '').toLowerCase();
+                comparison = aCode.localeCompare(bCode, 'es', { numeric: true, sensitivity: 'base' });
                 break;
+            }
+            case 'riesgo': {
+                const aFailed = (a as any).failedSubjectsCount || 0;
+                const bFailed = (b as any).failedSubjectsCount || 0;
+                if (aFailed !== bFailed) {
+                    comparison = aFailed - bFailed;
+                    break;
+                }
+                const getRiskWeight = (s: SectionStudent) => {
+                    const risk = getAcademicRisk(s.average, 10);
+                    switch (risk.level) {
+                        case 'ALTO': return 3;
+                        case 'MEDIO': return 2;
+                        case 'BAJO': return 1;
+                        case 'SIN_CALIFICAR': return 0;
+                        default: return 0;
+                    }
+                };
+                const aRisk = getRiskWeight(a);
+                const bRisk = getRiskWeight(b);
+                comparison = aRisk - bRisk;
+                if (comparison === 0) {
+                    const aAvg = typeof a.average === 'number' && !isNaN(a.average) ? a.average : 0;
+                    const bAvg = typeof b.average === 'number' && !isNaN(b.average) ? b.average : 0;
+                    comparison = aAvg - bAvg;
+                }
+                break;
+            }
+            case 'promedio': {
+                const aAvg = typeof a.average === 'number' && !isNaN(a.average) ? a.average : -1;
+                const bAvg = typeof b.average === 'number' && !isNaN(b.average) ? b.average : -1;
+                comparison = aAvg - bAvg;
+                break;
+            }
+            case 'asistencia': {
+                const aAtt = typeof a.attendancePercentage === 'number' && !isNaN(a.attendancePercentage) ? a.attendancePercentage : 0;
+                const bAtt = typeof b.attendancePercentage === 'number' && !isNaN(b.attendancePercentage) ? b.attendancePercentage : 0;
+                comparison = aAtt - bAtt;
+                break;
+            }
+            case 'observaciones': {
+                const aObs = typeof (a as any).observationsCount === 'number' && !isNaN((a as any).observationsCount) ? (a as any).observationsCount : 0;
+                const bObs = typeof (b as any).observationsCount === 'number' && !isNaN((b as any).observationsCount) ? (b as any).observationsCount : 0;
+                comparison = aObs - bObs;
+                break;
+            }
             default:
                 return 0;
         }
 
-        if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-        if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-        return 0;
+        if (comparison === 0) {
+            const aName = `${a.firstName || ''} ${a.lastName || ''}`.trim().toLowerCase();
+            const bName = `${b.firstName || ''} ${b.lastName || ''}`.trim().toLowerCase();
+            return aName.localeCompare(bName, 'es', { sensitivity: 'base' });
+        }
+
+        return sortDirection === 'asc' ? comparison : -comparison;
     });
 
     const handleSort = (column: string) => {
         if (sortColumn === column) {
-            setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+            setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
         } else {
             setSortColumn(column);
-            setSortDirection('asc');
+            setSortDirection(column === 'nombre' || column === 'cedula' ? 'asc' : 'desc');
         }
     };
 
@@ -209,13 +268,9 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
         if (!studentToRemove || !classroomId) return;
 
         try {
-            // Read token from cookies
-            const cookies = document.cookie.split(';').reduce((acc, cookie) => {
-                const [key, value] = cookie.trim().split('=');
-                acc[key] = value;
-                return acc;
-            }, {} as Record<string, string>);
-            const token = cookies['access_token'];
+            // La credencial ya no está en las cookies: vive en la memoria de
+            // la pestaña. Ver `lib/credencial-en-memoria.ts`.
+            const token = await conseguirCredencial();
             if (!token) {
                 throw new Error('Tu sesión ha expirado. Por favor, inicia sesión nuevamente.');
             }
@@ -353,6 +408,11 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                         </div>
                     </div>
                 </div>
+
+                {/* Estadísticas Académicas de la Sección */}
+                <div className="mt-6 pt-6 border-t border-gray-100">
+                    <AcademicStats stats={classroomStats} averageTitle="Promedio Sección" />
+                </div>
             </header>
 
             {/* Sección de Horario - Siempre visible */}
@@ -369,7 +429,6 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                             { id: 'estudiantes', label: 'Estudiantes', icon: Users },
                             { id: 'materias', label: 'Materias', icon: BookOpen },
                             { id: 'calificaciones', label: 'Calificaciones', icon: GraduationCap },
-                            { id: 'asistencia', label: 'Historial de Asistencia', icon: Calendar },
                             { id: 'incidencias', label: 'Incidencias', icon: Bell },
                         ].map((tab) => {
                             const Icon = tab.icon;
@@ -446,28 +505,66 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                         <tr><td colSpan={7} className="px-6 py-4 text-center text-gray-500">{searchTerm ? 'No se encontraron estudiantes.' : 'No hay estudiantes inscritos.'}</td></tr>
                                     ) : (
                                         sortedStudents.map((student: SectionStudent) => (
-                                            <tr key={student.id} className="hover:bg-gray-50">
+                                            <tr
+                                                key={student.id}
+                                                onClick={() => router.push(`/dashboard/usuarios/${student.id}`)}
+                                                className="hover:bg-indigo-50/40 cursor-pointer transition-colors group"
+                                            >
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div className="flex items-center">
-                                                        <div className="flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center font-bold text-sm bg-indigo-100 text-indigo-600">
-                                                            {student.firstName?.[0]}{student.lastName?.[0]}
+                                                        <div className="flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center font-bold text-sm bg-indigo-100 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                                             {student.firstName?.[0]}{student.lastName?.[0]}
                                                         </div>
                                                         <div className="ml-4">
-                                                            <div className="text-sm font-medium text-gray-900">{student.firstName} {student.lastName}</div>
+                                                            <div className="text-sm font-medium text-gray-900 group-hover:text-indigo-600 transition-colors flex items-center gap-1.5">
+                                                                {student.firstName} {student.lastName}
+                                                                <span className="text-[11px] text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity font-normal">↗</span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.studentCode || student.id}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{student.studentCode || student.id}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-600">Sin Calificar</span>
+                                                    {(() => {
+                                                        const failedCount = (student as any).failedSubjectsCount || 0;
+                                                        if (failedCount > 0) {
+                                                            return (
+                                                                <span
+                                                                    className="px-2.5 py-0.5 inline-flex items-center gap-1.5 text-xs leading-5 font-semibold rounded-full bg-rose-50 text-rose-700 border border-rose-200"
+                                                                    title={`${failedCount} ${failedCount === 1 ? 'materia con calificación menor a' : 'materias con calificación menor a'} 10 pts`}
+                                                                >
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                                                    <span>Riesgo Alto</span>
+                                                                    <span className="text-[11px] font-medium text-rose-600">
+                                                                        ({failedCount} {failedCount === 1 ? 'materia < 10' : 'materias < 10'})
+                                                                    </span>
+                                                                </span>
+                                                            );
+                                                        }
+                                                        const risk = getAcademicRisk(student.average, 10);
+                                                        return (
+                                                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${risk.className}`}>
+                                                                {risk.label}
+                                                            </span>
+                                                        );
+                                                    })()}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className="px-2 py-0.5 inline-flex text-sm font-medium rounded bg-gray-100 text-gray-500">Sin calificar</span>
+                                                    {student.average ? (
+                                                        <span className="px-2 py-0.5 inline-flex text-sm font-semibold rounded bg-indigo-50 text-indigo-700">{student.average.toFixed(1)}</span>
+                                                    ) : (
+                                                        <span className="px-2 py-0.5 inline-flex text-sm font-medium rounded bg-gray-100 text-gray-500">Sin calificar</span>
+                                                    )}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div className="flex items-center">
-                                                        <span className="text-sm text-gray-900 mr-2">0%</span>
-                                                        <div className="w-16 h-1.5 bg-gray-200 rounded-full"></div>
+                                                        <span className="text-sm text-gray-900 mr-2">{student.attendancePercentage != null ? `${student.attendancePercentage}%` : '0%'}</span>
+                                                        <div className="w-16 h-1.5 bg-gray-200 rounded-full">
+                                                            <div
+                                                                className="h-1.5 bg-emerald-500 rounded-full"
+                                                                style={{ width: `${student.attendancePercentage || 0}%` }}
+                                                            ></div>
+                                                        </div>
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

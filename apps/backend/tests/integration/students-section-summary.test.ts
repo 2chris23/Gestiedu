@@ -15,8 +15,8 @@ import {
 
 /** Genera un ID compatible con los schemas zod `.cuid()` (regex /^c[^\s-]{8,}$/). */
 function gId(): string {
-    const id = createId();
-    return id.startsWith('c') ? id : `c${id}`;
+    // Siempre la 'c' delante: ver la nota de `tests/helpers.ts`.
+    return `c${createId()}`;
 }
 
 /**
@@ -113,10 +113,6 @@ describe('Bug 2 — Resumen de sección (Promedio/Asistencia) con Clase en Vivo'
                     academicYearId: year.id,
                     isActive: true,
                 },
-            });
-            await prisma.user.update({
-                where: { id: stu.user.id },
-                data: { classroomId: classroom.id },
             });
         }
         student1 = s1.user;

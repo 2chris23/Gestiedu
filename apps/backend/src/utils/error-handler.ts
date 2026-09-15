@@ -10,8 +10,14 @@ export function handlePrismaError(
     request: FastifyRequest,
     reply: FastifyReply
 ): FastifyReply {
-    // Errores conocidos de Prisma
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    // Por FORMA, no con `instanceof`: el cliente de cada liceo llega envuelto
+    // por la extensión de aislamiento y el error deja de reconocerse, así que un
+    // duplicado acababa devolviendo 500 en vez de 409.
+    const esErrorPrisma =
+        error instanceof Prisma.PrismaClientKnownRequestError ||
+        (typeof error?.code === 'string' && /^P\d{4}$/.test(error.code));
+
+    if (esErrorPrisma) {
         switch (error.code) {
             case 'P2002': // Unique constraint violation
                 return reply.status(409).send({

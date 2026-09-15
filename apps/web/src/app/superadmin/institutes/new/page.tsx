@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import SuperAdminLayout from '../../layout';
+import { superAdminFetch } from '@/lib/superadmin-fetch';
 
 export default function NewInstitutePage() {
     const router = useRouter();
@@ -13,14 +14,14 @@ export default function NewInstitutePage() {
 
     // Form data
     const [formData, setFormData] = useState({
-        // Instituto
         name: '',
         code: '',
+        subdomain: '',
+        environment: 'DEVELOPMENT',
+        plan: 'BASIC',
         email: '',
         phone: '',
         address: '',
-        subdomain: '',
-        // Admin
         adminCI: '',
         adminName: '',
         adminEmail: '',
@@ -55,14 +56,12 @@ export default function NewInstitutePage() {
         setLoading(true);
 
         try {
-            const response = await fetch(
+            const response = await superAdminFetch(
                 `/api/superadmin/institutes`,
                 {
                     method: 'POST',
-                    credentials: 'include',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${document.cookie.split('superadmin_access_token=')[1]?.split(';')[0]}`,
                     },
                     body: JSON.stringify({
                         name: formData.name,
@@ -402,10 +401,12 @@ export default function NewInstitutePage() {
                                     setFormData({
                                         name: '',
                                         code: '',
+                                        subdomain: '',
+                                        environment: 'DEVELOPMENT',
+                                        plan: 'BASIC',
                                         email: '',
                                         phone: '',
                                         address: '',
-                                        subdomain: '',
                                         adminCI: '',
                                         adminName: '',
                                         adminEmail: '',

@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { authenticate, requireTeacher, verifyInstitute as verifyTenant } from '../middleware/auth.middleware';
+import { assertClassroomScope } from '../services/authorization.service';
 import {
   createAttendance,
   updateAttendance,
@@ -21,7 +22,8 @@ const attendanceRoutes: FastifyPluginAsync = async (fastify) => {
         type: 'string',
         enum: ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED']
       },
-      comment: { type: 'string', nullable: true },
+      // `comments`, igual que la columna: con `comment` el texto se perdía
+      comments: { type: 'string', nullable: true },
       date: { type: 'string', format: 'date' },
       // BUG FIX: los IDs de estudiantes/aulas son cédulas/cuids, NO uuids.
       // El format 'uuid' rechazaba cualquier request real.
@@ -37,7 +39,8 @@ const attendanceRoutes: FastifyPluginAsync = async (fastify) => {
     properties: {
       id: { type: 'string' },
       status: { type: 'string' },
-      comment: { type: 'string', nullable: true },
+      // `comments`, igual que la columna: con `comment` el texto se perdía
+      comments: { type: 'string', nullable: true },
       date: { type: 'string', format: 'date-time' },
       studentId: { type: 'string' },
       classroomId: { type: 'string' },
@@ -76,7 +79,7 @@ const attendanceRoutes: FastifyPluginAsync = async (fastify) => {
         params: {
           type: 'object',
           properties: {
-            id: { type: 'string', format: 'uuid' },
+            id: { type: 'string', },
           },
           required: ['id'],
         },
@@ -108,7 +111,7 @@ const attendanceRoutes: FastifyPluginAsync = async (fastify) => {
         params: {
           type: 'object',
           properties: {
-            id: { type: 'string', format: 'uuid' },
+            id: { type: 'string', },
           },
           required: ['id'],
         },
@@ -131,7 +134,7 @@ const attendanceRoutes: FastifyPluginAsync = async (fastify) => {
         params: {
           type: 'object',
           properties: {
-            id: { type: 'string', format: 'uuid' },
+            id: { type: 'string', },
           },
           required: ['id'],
         },
@@ -152,14 +155,12 @@ const attendanceRoutes: FastifyPluginAsync = async (fastify) => {
         params: {
           type: 'object',
           properties: {
-            classroomId: { type: 'string', format: 'uuid' },
+            classroomId: { type: 'string', },
             date: { type: 'string', format: 'date' },
           },
           required: ['classroomId', 'date'],
         },
-        response: {
-          200: attendancesResponseSchema,
-        },
+        
       },
       preHandler: [authenticate, verifyTenant],
     },
@@ -179,21 +180,19 @@ const attendanceRoutes: FastifyPluginAsync = async (fastify) => {
         params: {
           type: 'object',
           properties: {
-            studentId: { type: 'string', format: 'uuid' },
+            studentId: { type: 'string', },
           },
           required: ['studentId'],
         },
         querystring: {
           type: 'object',
           properties: {
-            classroomId: { type: 'string', format: 'uuid' },
+            classroomId: { type: 'string', },
             startDate: { type: 'string', format: 'date' },
             endDate: { type: 'string', format: 'date' },
           },
         },
-        response: {
-          200: attendancesResponseSchema,
-        },
+        
       },
       preHandler: [authenticate, verifyTenant],
     },
@@ -208,7 +207,7 @@ const attendanceRoutes: FastifyPluginAsync = async (fastify) => {
         params: {
           type: 'object',
           properties: {
-            classroomId: { type: 'string', format: 'uuid' },
+            classroomId: { type: 'string', },
           },
           required: ['classroomId'],
         },
@@ -219,15 +218,35 @@ const attendanceRoutes: FastifyPluginAsync = async (fastify) => {
             endDate: { type: 'string', format: 'date' },
           },
         },
-        response: {
-          200: attendancesResponseSchema,
-        },
+        
       },
       preHandler: [authenticate, verifyTenant],
     },
+    /**
+     * LA ASISTENCIA DE UNA SECCIÓN ES DE QUIEN LA LLEVA
+     *
+     * Esta ruta solo preguntaba «¿quién eres?». Con eso, un alumno con su
+     * sesión normal leía la asistencia completa de cualquier sección del liceo
+     * —quién falta, quién llega tarde, las justificaciones— y un profesor, la de
+     * secciones que no imparte.
+     *
+     * `assertClassroomScope` deja pasar al administrador y al profesor que
+     * imparte ahí o es su guía, y a nadie más. El alumno ve la SUYA, que tiene
+     * su propia ruta (`/api/attendance/student/:studentId`).
+     *
+     * Lo cazó `puertas-sin-cerradura` (PUERTA-04 y PUERTA-05).
+     */
     async (request, reply) => {
       const { classroomId } = request.params as { classroomId: string };
       const { startDate, endDate } = (request.query || {}) as { startDate?: string; endDate?: string };
+
+      await assertClassroomScope(
+        (request as any).tenantPrisma,
+        request.user as any,
+        classroomId,
+        { accion: 'ver la asistencia' }
+      );
+
       (request as any).query = { classroomId, startDate, endDate, page: 1, limit: 100 };
       return getAttendances(request as any, reply);
     }
@@ -241,35 +260,35 @@ const attendanceRoutes: FastifyPluginAsync = async (fastify) => {
         params: {
           type: 'object',
           properties: {
-            studentId: { type: 'string', format: 'uuid' },
+            studentId: { type: 'string', },
           },
           required: ['studentId'],
         },
         querystring: {
           type: 'object',
           properties: {
-            classroomId: { type: 'string', format: 'uuid' },
+            classroomId: { type: 'string', },
             startDate: { type: 'string', format: 'date' },
             endDate: { type: 'string', format: 'date' },
           },
         },
-        response: {
-          200: {
-            type: 'object',
-            properties: {
-              studentId: { type: 'string', format: 'uuid' },
-              totalDays: { type: 'integer' },
-              present: { type: 'integer' },
-              absent: { type: 'integer' },
-              late: { type: 'integer' },
-              justified: { type: 'integer' },
-              presentPercentage: { type: 'number' },
-              absentPercentage: { type: 'number' },
-              latePercentage: { type: 'number' },
-              justifiedPercentage: { type: 'number' },
-            },
-          },
-        },
+        /**
+         * SIN PLANTILLA DE RESPUESTA, A PROPÓSITO
+         *
+         * Aquí había una que decía que la respuesta era
+         * `{ studentId, totalDays, present, absent, late, justified, ... }`,
+         * todo en el primer nivel. Pero el código que la atiende
+         * (`getStudentAttendance`, el mismo de `/student/:studentId`) devuelve
+         * `{ student, attendances, summary }`.
+         *
+         * Fastify solo deja pasar lo que la plantilla declara. Como no coincidía
+         * ni un solo campo, la ruta respondía **200 con `{}`**: el resumen de
+         * asistencia de un alumno se pedía, contestaba "todo bien" y no traía
+         * nada. Un 200 vacío es peor que un error, porque nadie lo mira.
+         *
+         * Se quita, como en la ruta hermana de arriba, que nunca la tuvo. Lo
+         * vigila CAL-06.
+         */
       },
       preHandler: [authenticate, verifyTenant],
     },
@@ -284,7 +303,7 @@ const attendanceRoutes: FastifyPluginAsync = async (fastify) => {
         params: {
           type: 'object',
           properties: {
-            classroomId: { type: 'string', format: 'uuid' },
+            classroomId: { type: 'string', },
           },
           required: ['classroomId'],
         },
@@ -299,7 +318,7 @@ const attendanceRoutes: FastifyPluginAsync = async (fastify) => {
           200: {
             type: 'object',
             properties: {
-              classroomId: { type: 'string', format: 'uuid' },
+              classroomId: { type: 'string', },
               totalStudents: { type: 'integer' },
               totalDays: { type: 'integer' },
               averagePresentPercentage: { type: 'number' },
@@ -311,7 +330,7 @@ const attendanceRoutes: FastifyPluginAsync = async (fastify) => {
                 items: {
                   type: 'object',
                   properties: {
-                    studentId: { type: 'string', format: 'uuid' },
+                    studentId: { type: 'string', },
                     studentName: { type: 'string' },
                     present: { type: 'integer' },
                     absent: { type: 'integer' },
@@ -347,14 +366,14 @@ const attendanceRoutes: FastifyPluginAsync = async (fastify) => {
         body: {
           type: 'object',
           properties: {
-            classroomId: { type: 'string', format: 'uuid' },
+            classroomId: { type: 'string', },
             date: { type: 'string', format: 'date' },
             attendances: {
               type: 'array',
               items: {
                 type: 'object',
                 properties: {
-                  studentId: { type: 'string', format: 'uuid' },
+                  studentId: { type: 'string', },
                   status: {
                     type: 'string',
                     enum: ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED']

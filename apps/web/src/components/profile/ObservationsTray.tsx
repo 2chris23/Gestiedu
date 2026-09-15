@@ -1,6 +1,7 @@
 
-import React from 'react';
-import { MessageSquare, ThumbsUp, ThumbsDown, AlertCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { MessageSquare, ThumbsUp, ThumbsDown, AlertCircle, Eye } from 'lucide-react';
+import StudentObservationsModal from '@/components/observations/StudentObservationsModal';
 
 export interface Observation {
     id: string;
@@ -12,6 +13,8 @@ export interface Observation {
 }
 
 export interface ObservationsTrayProps {
+    studentId?: string;
+    studentName?: string;
     observations?: {
         id: string;
         title: string;
@@ -21,7 +24,8 @@ export interface ObservationsTrayProps {
     }[];
 }
 
-export default function ObservationsTray({ observations }: ObservationsTrayProps) {
+export default function ObservationsTray({ studentId, studentName, observations }: ObservationsTrayProps) {
+    const [isModalOpen, setIsModalOpen] = useState(false);
     // Usar solo datos reales del API, sin fallback a datos simulados
     const displayObservations: Observation[] = observations?.map(obs => ({
         id: obs.id,
@@ -40,7 +44,17 @@ export default function ObservationsTray({ observations }: ObservationsTrayProps
                     <MessageSquare size={18} className="text-amber-500" />
                     Observaciones
                 </h3>
-                <span className="text-xs font-medium text-gray-400">Últimas {displayObservations.length}</span>
+                {studentId ? (
+                    <button
+                        type="button"
+                        onClick={() => setIsModalOpen(true)}
+                        className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+                    >
+                        Ver todas ({displayObservations.length})
+                    </button>
+                ) : (
+                    <span className="text-xs font-medium text-gray-400">Últimas {displayObservations.length}</span>
+                )}
             </div>
 
             <div className="space-y-4 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar">
@@ -52,7 +66,15 @@ export default function ObservationsTray({ observations }: ObservationsTrayProps
                     </div>
                 ) : (
                     displayObservations.map(obs => (
-                        <div key={obs.id} className="group relative pl-4 pb-4 border-l-2 border-gray-100 last:pb-0 last:border-0">
+                        <div
+                            key={obs.id}
+                            onClick={() => {
+                                if (studentId) setIsModalOpen(true);
+                            }}
+                            className={`group relative pl-4 pb-4 border-l-2 border-gray-100 last:pb-0 last:border-0 ${
+                                studentId ? 'cursor-pointer' : ''
+                            }`}
+                        >
                             <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 border-white shadow-sm flex items-center justify-center
                                 ${obs.type === 'positive' ? 'bg-green-100 text-green-600' :
                                     obs.type === 'negative' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}
@@ -61,7 +83,7 @@ export default function ObservationsTray({ observations }: ObservationsTrayProps
                                     obs.type === 'negative' ? <ThumbsDown size={8} /> : <AlertCircle size={8} />}
                             </div>
 
-                            <div className="bg-gray-50/50 p-3 rounded-lg hover:bg-gray-50 transition-colors">
+                            <div className="bg-gray-50/50 p-3 rounded-lg hover:bg-indigo-50/40 hover:border-indigo-100 border border-transparent transition-all">
                                 <div className="flex justify-between items-start mb-1">
                                     <span className="text-sm font-bold text-gray-700">{obs.title}</span>
                                     <span className="text-[10px] text-gray-400 bg-white px-1.5 py-0.5 rounded border border-gray-100">{obs.date}</span>
@@ -76,6 +98,19 @@ export default function ObservationsTray({ observations }: ObservationsTrayProps
                     ))
                 )}
             </div>
+
+            {/* Modal para ver todas las observaciones con co-involucrados */}
+            {studentId && (
+                <StudentObservationsModal
+                    isOpen={isModalOpen}
+                    onClose={() => setIsModalOpen(false)}
+                    student={{
+                        id: studentId,
+                        firstName: studentName || 'Estudiante',
+                        lastName: '',
+                    }}
+                />
+            )}
         </div>
     );
 }

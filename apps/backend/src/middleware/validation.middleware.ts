@@ -136,6 +136,37 @@ export function sanitizeInput(
 /**
  * Validar formato de ID de Prisma (CUID)
  */
+/**
+ * Valida el id de un USUARIO en la URL.
+ *
+ * En este sistema el id de un usuario es su cédula (p. ej. "V12345678"), no un
+ * CUID. Usar `validateCUID` para estos parámetros rechazaba con 400 cualquier
+ * petición real antes de llegar al controlador.
+ */
+export function validateUserId(paramName: string = 'id') {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const id = (request.params as any)?.[paramName];
+
+    if (!id) {
+      return reply.status(400).send({
+        error: 'ID requerido',
+        message: `El parámetro ${paramName} es requerido`,
+        code: 'MISSING_ID',
+      });
+    }
+
+    // Cédulas y también los ids generados internamente; nada raro que pueda
+    // acabar en una consulta.
+    if (!/^[A-Za-z0-9_-]{3,40}$/.test(id)) {
+      return reply.status(400).send({
+        error: 'ID inválido',
+        message: `El parámetro ${paramName} no tiene un formato válido`,
+        code: 'INVALID_ID',
+      });
+    }
+  };
+}
+
 export function validateCUID(paramName: string = 'id') {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     const id = (request.params as any)?.[paramName];

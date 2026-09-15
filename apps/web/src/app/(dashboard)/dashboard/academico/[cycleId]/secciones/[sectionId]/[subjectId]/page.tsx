@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -10,7 +10,13 @@ import {
     ChevronRight, Home, UserCircle
 } from 'lucide-react';
 import { useClassroomBySlug } from '@/hooks/useClassrooms';
-import { useClassroomSubjectDetail } from '@/hooks/useClassroomSubjects';
+import { useClassroomSubjectDetail, useClassroomSubjectsStats } from '@/hooks/useClassroomSubjects';
+import { useStudents } from '@/hooks/useStudents';
+import { useAcademicConfig } from '@/hooks/useAcademicConfig';
+import AcademicStats from '@/components/academic/AcademicStats';
+import LapsoSelector from '@/components/academic/LapsoSelector';
+import SubjectActivitiesTab from '@/components/subject/SubjectActivitiesTab';
+import SubjectObservationsTab from '@/components/subject/SubjectObservationsTab';
 
 const DAY_NAMES: Record<number, string> = {
     0: 'Domingo',
@@ -29,13 +35,67 @@ export default function SectionSubjectDashboard() {
     const { cycleId, sectionId, subjectId } = params as { cycleId: string; sectionId: string; subjectId: string };
     const [activeTab, setActiveTab] = useState('estudiantes');
     const [searchTerm, setSearchTerm] = useState('');
+    const [lapsoId, setLapsoId] = useState<string | undefined>(undefined);
 
     // Resolver classroom por slug (con año para desambiguar entre ciclos con mismo slug base)
     const { data: classroom, isLoading: isLoadingClassroom } = useClassroomBySlug(sectionId, cycleId);
     const classroomId = classroom?.id || '';
 
-    // Obtener detalle de materia real
+    const periods = useMemo(() => {
+        return ((classroom as any)?.academicYear?.periods || []).map((p: any) => ({
+            id: p.id as string,
+            name: p.name as string,
+        }));
+    }, [classroom]);
+
+    const { data: academicConfig } = useAcademicConfig();
+    const passingGrade = academicConfig?.notaMinimaAprobatoria ?? academicConfig?.passingGrade ?? 10;
+
     const { data: classroomSubject, isLoading: isLoadingSubject } = useClassroomSubjectDetail(classroomId, subjectId);
+    const realSubjectId = classroomSubject?.subject?.id || classroomSubject?.subjectId;
+
+    const { data: studentsData } = useStudents(classroomId || '', { page: 1, limit: 100, periodId: lapsoId, subjectId: realSubjectId });
+    const students = studentsData?.students || studentsData?.users || [];
+
+    const { data: subjectsWithStats } = useClassroomSubjectsStats(classroomId, lapsoId);
+
+    const currentSubjectStats = useMemo(() => {
+        if (!subjectsWithStats || subjectsWithStats.length === 0) return null;
+        return subjectsWithStats.find(
+            (s: any) => s.id === subjectId || s.code === classroomSubject?.subject?.code || s.slug === subjectId || s.id === classroomSubject?.subjectId
+        );
+    }, [subjectsWithStats, subjectId, classroomSubject]);
+
+    const subjectAcademicStats = useMemo(() => {
+        const capacity = classroom?.capacity || 35;
+        const count = (classroom as any)?.studentCount || (classroom as any)?._count?.students || students.length || 0;
+
+        const validAverages = students
+            .map((s: any) => s.average)
+            .filter((a: any): a is number => a !== undefined && a !== null && !isNaN(a) && a > 0);
+
+        const minScore = validAverages.length > 0 ? Math.min(...validAverages) : 0;
+        const maxScore = validAverages.length > 0 ? Math.max(...validAverages) : 0;
+
+        const calculatedAvg = validAverages.length > 0
+            ? Math.round((validAverages.reduce((acc: number, curr: number) => acc + curr, 0) / validAverages.length) * 10) / 10
+            : 0;
+
+        const avg = currentSubjectStats?.stats?.average ?? calculatedAvg;
+        const attendance = currentSubjectStats?.stats?.attendance ?? 0;
+        const atRisk = currentSubjectStats?.stats?.atRiskStudents ?? students.filter((s: any) => s.average && s.average < passingGrade).length;
+        const obs = currentSubjectStats?.stats?.observations ?? 0;
+
+        return {
+            average: avg || 0,
+            minAverage: minScore > 0 ? Math.round(minScore * 10) / 10 : undefined,
+            maxAverage: maxScore > 0 ? Math.round(maxScore * 10) / 10 : undefined,
+            riskCount: atRisk,
+            occupancy: `${count}/${capacity}`,
+            attendance: `${attendance}%`,
+            observations: obs
+        };
+    }, [currentSubjectStats, students, classroom, passingGrade]);
 
     const isLoading = isLoadingClassroom || isLoadingSubject;
 
@@ -186,83 +246,78 @@ export default function SectionSubjectDashboard() {
             </header>
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-                {/* Schedule Cards */}
-                {schedule.length > 0 && (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-                            <div className="flex items-center justify-between mb-4">
+                {/* Reconstructed Top Section: Grid with Subject Stats (Blue Box) and Schedule (Red Box) */}
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 mb-8 items-stretch">
+                    {/* ZONA AZUL: Tarjetas de Rendimiento y Estadísticas de la Materia */}
+                    <div className="xl:col-span-8 flex flex-col justify-between">
+                        <AcademicStats
+                            stats={subjectAcademicStats}
+                            averageTitle="Promedio Materia"
+                            className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 h-full"
+                        />
+                    </div>
+
+                    {/* ZONA ROJA: Horario de Clases Compacto */}
+                    <div className="xl:col-span-4 flex flex-col">
+                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between h-full">
+                            <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-100">
                                 <div className="flex items-center gap-2">
-                                    <Clock className="w-5 h-5 text-gray-400" />
-                                    <h2 className="font-semibold text-gray-900">Horario de Clases</h2>
+                                    <div className="p-1.5 rounded-lg text-indigo-600 bg-indigo-50">
+                                        <Clock className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                                        Horario de Clases
+                                    </span>
                                 </div>
+                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                                    {hoursPerWeek}h Semanales
+                                </span>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {schedule.map((block: any) => (
-                                    <div
-                                        key={block.id}
-                                        className="rounded-xl p-4 text-white shadow-lg"
-                                        style={{ background: `linear-gradient(135deg, ${block.color} 0%, ${block.color}dd 100%)` }}
-                                    >
-                                        <div className="flex items-center justify-between mb-3">
-                                            <h3 className="font-bold text-lg">{block.day}</h3>
-                                            <span className="px-2 py-0.5 bg-white/20 rounded text-xs font-medium flex items-center gap-1">
-                                                <MapPin className="w-3 h-3" /> {block.classroom}
+
+                            {schedule.length > 0 ? (
+                                <div className="space-y-1.5 flex-1 flex flex-col justify-between overflow-y-auto pr-1">
+                                    {schedule.map((block: any) => (
+                                        <div
+                                            key={block.id}
+                                            className="flex items-center justify-between px-2.5 py-1 rounded-lg border text-xs transition-all hover:bg-gray-50/50"
+                                            style={{
+                                                borderColor: `${block.color}30`,
+                                                backgroundColor: `${block.color}08`
+                                            }}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <span
+                                                    className="w-2 h-2 rounded-full flex-shrink-0"
+                                                    style={{ backgroundColor: block.color }}
+                                                />
+                                                <span className="font-bold text-gray-800 text-[11px]">{block.day}</span>
+                                                <span className="text-[10px] text-gray-500 font-medium">
+                                                    {block.startTime} - {block.endTime}
+                                                </span>
+                                            </div>
+                                            <span className="text-[10px] font-semibold text-gray-600 bg-white/90 px-1.5 py-0.5 rounded border border-gray-200/60 shadow-2xs">
+                                                {block.classroom}
                                             </span>
                                         </div>
-                                        <div className="flex items-center gap-2 mb-3 bg-white/10 rounded-lg px-3 py-2 w-fit">
-                                            <Clock className="w-4 h-4" />
-                                            <span className="font-medium text-sm">{block.startTime} - {block.endTime}</span>
-                                        </div>
-                                        {block.content && (
-                                            <div className="mt-3 pt-3 border-t border-white/20">
-                                                <p className="text-[10px] uppercase tracking-wide opacity-80 flex items-center gap-1">
-                                                    <BookOpen className="w-3 h-3" /> Contenido
-                                                </p>
-                                                <p className="font-medium text-sm mt-1">{block.content}</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Weekly Blocks Info */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-                            <div className="flex items-center gap-2 mb-4">
-                                <TrendingUp className="w-5 h-5 text-gray-400" />
-                                <p className="text-xs text-gray-500 uppercase tracking-wide">Bloques Semanales</p>
-                            </div>
-                            <div className="flex items-baseline gap-3 mb-3">
-                                <span className="text-3xl font-bold text-indigo-600">{classroomSubject.weeklyBlocks || 0}</span>
-                                <span className="text-gray-500 text-sm">bloques</span>
-                            </div>
-                            <p className="text-sm text-gray-500">
-                                <span className="font-semibold">{hoursPerWeek}h</span> semanales de clase
-                            </p>
-                            <p className="text-sm text-gray-500 mt-2">
-                                <span className="font-semibold">{schedule.length}</span> sesiones programadas
-                            </p>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="py-6 text-center text-gray-400 text-xs flex flex-col items-center justify-center flex-1">
+                                    <Clock className="w-6 h-6 mb-1 text-gray-300" />
+                                    <span>Sin horario configurado</span>
+                                </div>
+                            )}
                         </div>
                     </div>
-                )}
-
-                {schedule.length === 0 && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-8 text-center">
-                        <Clock className="mx-auto h-10 w-10 text-gray-300" />
-                        <h3 className="mt-2 text-sm font-medium text-gray-900">Sin horario configurado</h3>
-                        <p className="mt-1 text-sm text-gray-500">
-                            Configura el horario desde la sección para agregar bloques de clase.
-                        </p>
-                    </div>
-                )}
+                </div>
 
                 {/* Tabs */}
                 <div className="border-b border-gray-200 mb-6">
                     <nav className="-mb-px flex space-x-8">
                         {[
                             { id: 'estudiantes', label: 'Estudiantes', icon: Users },
+                            { id: 'actividades', label: 'Actividades', icon: Clock },
                             { id: 'calificaciones', label: 'Calificaciones', icon: GraduationCap },
-                            { id: 'clases', label: 'Historial de Clases', icon: Calendar },
                             { id: 'observaciones', label: 'Observaciones', icon: Bell },
                         ].map((tab) => {
                             const Icon = tab.icon;
@@ -292,21 +347,40 @@ export default function SectionSubjectDashboard() {
                         </div>
                         <h3 className="text-lg font-bold text-gray-900 mb-2">Lista de Estudiantes</h3>
                         <p className="text-gray-500">
-                            La lista de estudiantes con calificaciones por materia está en desarrollo.
-                            <br />
-                            Puedes ver todos los estudiantes de la sección desde la pestaña principal.
+                            La lista de estudiantes con calificaciones por materia está disponible en la vista principal.
                         </p>
                         <Link
-                            href={`/dashboard/academico/${cycleId}/secciones/${sectionId}`}
+                            href={`/dashboard/academico/${cycleId}/${sectionId}/${subjectId}`}
                             className="mt-4 inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
                         >
-                            Ver sección completa
+                            Ir al panel interactivo de la materia
                         </Link>
                     </div>
                 )}
 
+                {/* Actividades Tab */}
+                {activeTab === 'actividades' && (
+                    <SubjectActivitiesTab
+                        classroomId={classroomId}
+                        subjectId={classroomSubject.subject.id}
+                        cycleId={cycleId}
+                        sectionId={sectionId}
+                    />
+                )}
+
+                {/* Observaciones Tab */}
+                {activeTab === 'observaciones' && (
+                    <SubjectObservationsTab
+                        classroomId={classroomId}
+                        subjectId={classroomSubject.subject.id}
+                        periodId={lapsoId}
+                        onPeriodChange={setLapsoId}
+                        periods={periods}
+                    />
+                )}
+
                 {/* Placeholder for other tabs */}
-                {(activeTab === 'calificaciones' || activeTab === 'clases' || activeTab === 'observaciones') && (
+                {activeTab === 'calificaciones' && (
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
                         <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                             <FileText className="w-8 h-8 text-gray-400" />

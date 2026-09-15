@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { TrendingUp, TrendingDown, Clock, AlertTriangle, GraduationCap, Award } from 'lucide-react';
+import { useAcademicConfig } from '@/hooks/useAcademicConfig';
 
 interface Props {
     average: number;
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export default function StudentAcademicStats({ average, attendance, observations, riskSubjects }: Props) {
+    const { data: academicConfig } = useAcademicConfig();
+    const passingGrade = academicConfig?.notaMinimaAprobatoria ?? academicConfig?.passingGrade ?? 10;
     return (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {/* Promedio */}
@@ -75,7 +78,7 @@ export default function StudentAcademicStats({ average, attendance, observations
                     <h3 className="text-2xl font-bold text-gray-900">{riskSubjects}</h3>
                     <span className="text-xs text-gray-500">Materias</span>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">Con promedio &lt; 10</p>
+                <p className="text-xs text-gray-400 mt-1">Con promedio &lt; {passingGrade}</p>
             </div>
         </div>
     );

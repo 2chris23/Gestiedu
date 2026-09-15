@@ -148,9 +148,12 @@ const teachersRoutes: FastifyPluginAsync = async (fastify) => {
     return (getTeacherById as any)(request as any, reply);
   });
 
+  // Los datos personales (nombre, correo, teléfono, dirección) los corrige SOLO
+  // el administrador: si cada quien edita su ficha, cualquiera puede poner un
+  // dato falso o un chiste en los registros del liceo.
   fastify.put('/profile/me', {
     schema: updateProfileSchema,
-    preHandler: [authenticate, requireTeacher, validateBody(validators.updateUserSchema)]
+    preHandler: [authenticate, requireAdmin, validateBody(validators.updateUserSchema)]
   }, async (request, reply) => {
     const id = request.user!.userId;
     (request as any).params = { id };
@@ -185,7 +188,9 @@ const teachersRoutes: FastifyPluginAsync = async (fastify) => {
             name: true,
             grade: true,
             section: true,
-            _count: { select: { students: true } }
+            // La relación se llama `studentClassrooms`; contarla como `students`
+            // hacía que esta pantalla respondiera 400 siempre.
+            _count: { select: { studentClassrooms: { where: { isActive: true } } } }
           }
         }
       }
@@ -193,7 +198,14 @@ const teachersRoutes: FastifyPluginAsync = async (fastify) => {
     if (!teacher) {
       return reply.status(404).send({ error: 'Profesor no encontrado', code: 'TEACHER_NOT_FOUND' });
     }
-    return reply.status(200).send({ classrooms: teacher.classroomsAsTeacher });
+
+    // Hacia afuera se llama `students`, como en el resto del sistema.
+    const classrooms = teacher.classroomsAsTeacher.map((c: any) => ({
+      ...c,
+      _count: { students: c._count?.studentClassrooms ?? 0 },
+    }));
+
+    return reply.status(200).send({ classrooms });
   });
 
   // Dashboard de profesores

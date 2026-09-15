@@ -5,6 +5,8 @@ import {
   createUser,
   updateUser,
   deleteUser,
+  archiveUser,
+  unarchiveUser,
   getUsersByRole,
   getUserProfile,
   updateUserProfile,
@@ -86,21 +88,24 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
         limit: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
         role: { type: 'string', enum: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
         search: { type: 'string' },
-        isActive: { type: 'boolean' }
+        isActive: { type: 'boolean' },
+        status: { type: 'string', enum: ['ACTIVE', 'ARCHIVED', 'ALL'] }
       }
     }
   };
 
-  // Rutas públicas (requieren autenticación básica)
+  // El directorio del liceo es del administrador: antes cualquier estudiante
+  // autenticado podía listar a todo el mundo con sus correos.
   fastify.get('/', {
     schema: getUsersQuerySchema,
-    preHandler: [authenticate]
+    preHandler: [authenticate, requireAdmin]
   }, getUsers as any);
 
   fastify.get('/stats', {
     preHandler: [authenticate, requireAdmin]
   }, getUserStats as any);
 
+  // Igual que el listado: la lista por rol es del administrador
   fastify.get('/role/:role', {
     schema: {
       params: {
@@ -111,7 +116,7 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
     },
-    preHandler: [authenticate, requireTeacher]
+    preHandler: [authenticate, requireAdmin]
   }, getUsersByRole as any);
 
   fastify.get('/:id', {
@@ -124,7 +129,7 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
     },
-    preHandler: [authenticate]
+    preHandler: [authenticate, requireSelfOrAdmin('id')]
   }, getUser as any);
 
   // Rutas para administradores
@@ -150,6 +155,32 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
     },
     preHandler: [authenticate, requireAdmin]
   }, deleteUser as any);
+
+  fastify.post('/:id/archive', {
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      }
+    },
+    preHandler: [authenticate, requireAdmin]
+  }, archiveUser as any);
+
+  fastify.post('/:id/unarchive', {
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      }
+    },
+    preHandler: [authenticate, requireAdmin]
+  }, unarchiveUser as any);
 
   fastify.patch('/:id/status', {
     schema: {
@@ -188,7 +219,10 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
     },
-    preHandler: [authenticate]
+  // Los datos personales (nombre, correo, teléfono, dirección) los corrige SOLO
+  // el administrador: si cada quien edita su ficha, cualquiera puede poner un
+  // dato falso o un chiste en los registros del liceo.
+    preHandler: [authenticate, requireAdmin]
   }, updateUserProfile as any);
 };
 

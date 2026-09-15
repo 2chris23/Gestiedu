@@ -3,6 +3,10 @@ import { Printer } from 'lucide-react';
 import Link from 'next/link';
 
 export interface ScheduleBlock {
+    id?: string;
+    /** Aula donde se da la clase, si la vista la conoce. */
+    classroom?: string;
+    content?: string;
     day: string;
     startTime: string;
     endTime: string;

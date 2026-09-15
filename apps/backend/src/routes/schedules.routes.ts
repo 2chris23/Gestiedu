@@ -9,7 +9,7 @@ import {
   getTeacherSchedules
 } from '../controllers/schedules.controller';
 import { authenticate, requireAdmin, requireTeacher } from '../middleware/auth.middleware';
-import { validateBody, validateParams, validateCUID } from '../middleware/validation.middleware';
+import { validateBody, validateParams, validateCUID, validateUserId } from '../middleware/validation.middleware';
 import { createScheduleSchema as zCreateScheduleSchema, updateScheduleSchema as zUpdateScheduleSchema } from '../utils/validators';
 
 const schedulesRoutes: FastifyPluginAsync = async (fastify) => {
@@ -121,7 +121,7 @@ const schedulesRoutes: FastifyPluginAsync = async (fastify) => {
         properties: { teacherId: { type: 'string' } }
       }
     },
-    preHandler: [authenticate, requireTeacher, validateCUID('teacherId')]
+    preHandler: [authenticate, requireTeacher, validateUserId('teacherId')]
   }, getTeacherSchedules as any);
 
   // Rutas para crear, actualizar, eliminar

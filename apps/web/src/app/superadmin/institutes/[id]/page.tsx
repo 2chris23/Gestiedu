@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useRouter, useParams } from 'next/navigation';
+import { useSuperAdminAuthStore } from '@/store/superadmin-auth.store';
+import { superAdminFetch } from '@/lib/superadmin-fetch';
 import SuperAdminLayout from '../../layout';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -45,13 +47,6 @@ interface PlanConfig {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '');
-
-function getAuthHeader() {
-    const token = document.cookie.split('superadmin_access_token=')[1]?.split(';')[0];
-    return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
-}
 
 function usagePct(current: number, max: number) {
     return Math.min(Math.round((current / max) * 100), 100);
@@ -145,9 +140,9 @@ function ChangePlanModal({
         setSaving(true);
         setError('');
         try {
-            const res = await fetch(`/api/superadmin/institutes/${institute.id}/plan`, {
+            const res = await superAdminFetch(`/api/superadmin/institutes/${institute.id}/plan`, {
                 method: 'PUT',
-                headers: getAuthHeader(),
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ plan: selected }),
             });
             const data = await res.json();
@@ -293,14 +288,8 @@ export default function InstituteDetailPage() {
         if (!id) return;
         try {
             const [instRes, plansRes] = await Promise.all([
-                fetch(`/api/superadmin/institutes/${id}`, {
-                    credentials: 'include',
-                    headers: getAuthHeader(),
-                }),
-                fetch(`/api/superadmin/institutes/plans`, {
-                    credentials: 'include',
-                    headers: getAuthHeader(),
-                }),
+                superAdminFetch(`/api/superadmin/institutes/${id}`),
+                superAdminFetch(`/api/superadmin/institutes/plans`),
             ]);
 
             if (instRes.ok) {
@@ -333,10 +322,9 @@ export default function InstituteDetailPage() {
         setError('');
         setSaving(true);
         try {
-            const res = await fetch(`/api/superadmin/institutes/${id}`, {
+            const res = await superAdminFetch(`/api/superadmin/institutes/${id}`, {
                 method: 'PATCH',
-                credentials: 'include',
-                headers: getAuthHeader(),
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData),
             });
             if (res.ok) {

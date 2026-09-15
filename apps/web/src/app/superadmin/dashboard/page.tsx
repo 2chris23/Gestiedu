@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useConfirm } from '@/hooks/useConfirm';
 import Link from 'next/link';
+import { superAdminFetch } from '@/lib/superadmin-fetch';
 
 interface Stats {
     totalInstitutes: number;
@@ -27,13 +28,6 @@ interface CacheMetrics {
     requestsPerMinute?: number;
 }
 
-function getAuthHeader() {
-    if (typeof document === 'undefined') return '';
-    return document.cookie.split('superadmin_access_token=')[1]?.split(';')[0] || '';
-}
-
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '');
-
 export default function SuperAdminDashboardPage() {
     const confirmDialog = useConfirm();
     const [stats, setStats] = useState<Stats | null>(null);
@@ -45,11 +39,10 @@ export default function SuperAdminDashboardPage() {
 
     const fetchStats = useCallback(async () => {
         try {
-            const response = await fetch(`/api/superadmin/stats`, {
-                credentials: 'include',
-                headers: { 'Authorization': `Bearer ${getAuthHeader()}` },
-            });
-            if (response.ok) setStats(await response.json());
+            const response = await superAdminFetch('/api/superadmin/stats');
+            if (response.ok) {
+                setStats(await response.json());
+            }
         } catch (error) {
             console.error('Error fetching stats:', error);
         } finally {
@@ -59,10 +52,7 @@ export default function SuperAdminDashboardPage() {
 
     const fetchCacheMetrics = useCallback(async () => {
         try {
-            const response = await fetch(`/api/superadmin/metrics/cache`, {
-                credentials: 'include',
-                headers: { 'Authorization': `Bearer ${getAuthHeader()}` },
-            });
+            const response = await superAdminFetch('/api/superadmin/metrics/cache');
             if (response.ok) {
                 const data = await response.json();
                 setCacheMetrics(data.metrics);
@@ -79,10 +69,8 @@ export default function SuperAdminDashboardPage() {
         setResetting(true);
         setResetMsg('');
         try {
-            const response = await fetch(`/api/superadmin/metrics/cache/reset`, {
+            const response = await superAdminFetch('/api/superadmin/metrics/cache/reset', {
                 method: 'POST',
-                credentials: 'include',
-                headers: { 'Authorization': `Bearer ${getAuthHeader()}` },
             });
             if (response.ok) {
                 setResetMsg('✅ Métricas reseteadas.');

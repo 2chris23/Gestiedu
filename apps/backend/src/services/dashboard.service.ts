@@ -2,15 +2,113 @@ import { PrismaClient } from '@prisma/client';
 import { UserRole } from '../utils/prisma-enums';
 import { gradesService } from './grades.service';
 import { AdminDashboardDto, TeacherDashboardDto, StudentDashboardDto, TutorDashboardDto } from '../dto/dashboard-response.dto';
+import { getAcademicConfig, DEFAULT_ACADEMIC_CONFIG } from './promotion/close-cycle.service';
+
+/**
+ * QUÉ PERIODO SE MIRA: EL LAPSO EN CURSO, Y APARTE EL CICLO
+ *
+ * La asistencia y las observaciones se contaban **desde siempre**. Un alumno de
+ * quinto año arrastraba sus cinco años en el mismo porcentaje: el número no
+ * decía nada de cómo va ahora, y encima el trabajo crecía cada año que pasaba.
+ *
+ * Ahora se mira el lapso en curso —que es lo que le importa a un liceo— y se
+ * ofrece aparte la cifra del ciclo completo.
+ *
+ * **Nada se deja de guardar.** Los años anteriores siguen enteros en la base y
+ * en el expediente del alumno; lo único que cambia es qué se suma en el panel de
+ * hoy.
+ */
+interface Ventana {
+    desde?: Date;
+    hasta?: Date;
+}
+
+interface VentanaDelAlumno {
+    /** El lapso que corre hoy. Si no se puede saber, cae al ciclo. */
+    lapso: Ventana;
+    /** El ciclo escolar completo. */
+    ciclo: Ventana;
+    /** Los lapsos del ciclo, para acotar lo que se guarda por `periodId`. */
+    lapsosDelCiclo: string[];
+}
+
+/** Convierte una ventana en un filtro de Prisma sobre el campo de fecha que sea. */
+function comoFecha(campo: string, v: Ventana): Record<string, unknown> {
+    if (!v?.desde && !v?.hasta) return {};
+    const rango: Record<string, Date> = {};
+    if (v.desde) rango.gte = v.desde;
+    if (v.hasta) rango.lte = v.hasta;
+    return { [campo]: rango };
+}
+
+/**
+ * Busca el lapso que contiene el día de hoy dentro del ciclo del alumno.
+ *
+ * Si ninguno lo contiene (vacaciones, por ejemplo) se usa el último que ya
+ * empezó; y si tampoco hay, se usa el ciclo entero. Nunca devuelve vacío: una
+ * ventana sin límites contaría desde siempre, que es justo lo que se corrige.
+ */
+async function ventanaDelLapsoYCiclo(db: any, academicYearId: string | null): Promise<VentanaDelAlumno> {
+    if (!academicYearId) return { lapso: {}, ciclo: {}, lapsosDelCiclo: [] };
+
+    const anio = await db.academicYear.findUnique({
+        where: { id: academicYearId },
+        select: {
+            startDate: true,
+            endDate: true,
+            periods: { select: { id: true, startDate: true, endDate: true }, orderBy: { startDate: 'asc' } },
+        },
+    });
+    if (!anio) return { lapso: {}, ciclo: {}, lapsosDelCiclo: [] };
+
+    const ciclo: Ventana = { desde: anio.startDate ?? undefined, hasta: anio.endDate ?? undefined };
+    const lapsosDelCiclo: string[] = (anio.periods || []).map((p: any) => p.id).filter(Boolean);
+    const hoy = new Date();
+
+    const enCurso = (anio.periods || []).find(
+        (p: any) => p.startDate && p.endDate && p.startDate <= hoy && hoy <= p.endDate
+    );
+    if (enCurso) return { lapso: { desde: enCurso.startDate, hasta: enCurso.endDate }, ciclo, lapsosDelCiclo };
+
+    const yaEmpezados = (anio.periods || []).filter((p: any) => p.startDate && p.startDate <= hoy);
+    const ultimo = yaEmpezados[yaEmpezados.length - 1];
+    if (ultimo) return { lapso: { desde: ultimo.startDate, hasta: ultimo.endDate ?? undefined }, ciclo, lapsosDelCiclo };
+
+    return { lapso: ciclo, ciclo, lapsosDelCiclo };
+}
+
+/** Porcentaje de asistencia de un alumno dentro de una ventana de fechas. */
+async function porcentajeDeAsistencia(db: any, studentId: string, v: Ventana): Promise<number> {
+    const donde = { studentId, ...comoFecha('date', v) };
+    const [total, presentes] = await Promise.all([
+        db.dailyAttendance.count({ where: donde }),
+        db.dailyAttendance.count({ where: { ...donde, status: { in: ['PRESENT', 'LATE'] } } }),
+    ]);
+    return total > 0 ? (presentes * 100.0) / total : 0;
+}
+
 
 export class DashboardService {
     /**
      * Dashboard para Administradores (IMPLEMENTADO)
      */
-    async getAdminDashboard(db: PrismaClient): Promise<AdminDashboardDto> {
+    async getAdminDashboard(db: PrismaClient, instituteId?: string): Promise<AdminDashboardDto> {
+        let minPassing = 10;
+        if (instituteId) {
+            try {
+                const config = await getAcademicConfig(instituteId);
+                minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
+            } catch {
+                minPassing = 10;
+            }
+        }
+        const activeYear = await db.academicYear.findFirst({
+            where: { status: 'ACTIVE' },
+            select: { id: true, name: true }
+        });
+
         // TODAS las queries en paralelo (incluyendo activity y alerts, que antes eran secuenciales)
         const [
-            activeYear,
             totalStudents,
             totalTeachers,
             totalClassrooms,
@@ -20,11 +118,6 @@ export class DashboardService {
             recentActivity,
             alerts
         ] = await Promise.all([
-            db.academicYear.findFirst({
-                where: { status: 'ACTIVE' },
-                select: { id: true, name: true }
-            }),
-
             db.user.count({ where: { role: UserRole.STUDENT, isActive: true } }),
             db.user.count({ where: { role: UserRole.TEACHER, isActive: true } }),
             db.classroom.count({ where: { isActive: true } }),
@@ -45,13 +138,22 @@ export class DashboardService {
                 return [{ avgAttendance: total > 0 ? (present * 100.0) / total : 0 }];
             })(),
 
+            // Estudiantes en riesgo: consistente con la vista de Ciclo Escolar (materias aplazadas < minPassing en el ciclo activo)
             (async () => {
-                const gradesGrouped = await db.grade.groupBy({
-                    by: ['studentId'],
+                if (!activeYear) return [{ count: 0 }];
+                const studentSubjectAverages = await db.grade.groupBy({
+                    by: ['studentId', 'subjectId'],
+                    where: {
+                        period: { academicYearId: activeYear.id },
+                        score: { not: null }
+                    },
                     _avg: { score: true },
-                    having: { score: { _avg: { lt: 10 } } }
+                    having: {
+                        score: { _avg: { lt: minPassing } }
+                    }
                 });
-                return [{ count: gradesGrouped.length }];
+                const uniqueStudents = new Set(studentSubjectAverages.map(s => s.studentId));
+                return [{ count: uniqueStudents.size }];
             })(),
 
             db.activity.count({
@@ -125,7 +227,7 @@ export class DashboardService {
             },
             select: {
                 id: true, name: true, grade: true, section: true,
-                _count: { select: { students: true } }
+                _count: { select: { studentClassrooms: { where: { isActive: true } } } }
             }
         });
 
@@ -144,11 +246,11 @@ export class DashboardService {
             where: { createdBy: userId, isActive: true, grades: { none: {} } }
         });
 
-        const totalStudents = classrooms.reduce((sum, c) => sum + c._count.students, 0);
+        const totalStudents = classrooms.reduce((sum, c) => sum + (c._count?.studentClassrooms || 0), 0);
 
         return {
             teacher: { id: teacher.id, fullName: `${teacher.firstName} ${teacher.lastName}`, specialization: teacher.specialization },
-            classrooms: classrooms.map(c => ({ id: c.id, name: c.name, grade: c.grade, section: c.section, studentCount: c._count.students })),
+            classrooms: classrooms.map(c => ({ id: c.id, name: c.name, grade: c.grade, section: c.section, studentCount: c._count?.studentClassrooms || 0 })),
             upcomingActivities: upcomingActivities.map(a => ({
                 id: a.id, title: a.title, type: a.type,
                 dueDate: a.dueDate?.toISOString() || '',
@@ -162,41 +264,75 @@ export class DashboardService {
     /**
      * Dashboard para Estudiantes (IMPLEMENTADO)
      */
-    async getStudentDashboard(userId: string, db: PrismaClient): Promise<StudentDashboardDto> {
+    async getStudentDashboard(userId: string, db: PrismaClient, instituteId?: string): Promise<StudentDashboardDto> {
+        let minPassing = 10;
+        if (instituteId) {
+            try {
+                const config = await getAcademicConfig(instituteId);
+                minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
+            } catch {
+                minPassing = 10;
+            }
+        }
+
         const student = await db.user.findUnique({
-            where: { id: userId },
-            select: {
-                id: true, firstName: true, lastName: true, avatar: true,
-                classroom: {
-                    select: {
-                        id: true, grade: true, section: true,
-                        teacher: { select: { firstName: true, lastName: true } }
+            where: { id: userId, role: UserRole.STUDENT },
+            include: {
+                studentClassrooms: {
+                    where: { isActive: true },
+                    orderBy: [
+                        { academicYear: { startDate: 'desc' } },
+                        { createdAt: 'desc' }
+                    ],
+                    include: {
+                        classroom: {
+                            include: {
+                                teacher: true,
+                                academicYear: true
+                            }
+                        },
+                        academicYear: true
                     }
                 }
             }
         });
 
-        if (!student) throw new Error('Estudiante no encontrado');
+        if (!student) {
+            throw new Error('Estudiante no encontrado');
+        }
+
+        const activeClassroom = student.studentClassrooms?.[0]?.classroom || null;
+        const activeClassroomId = student.studentClassrooms?.[0]?.classroomId || null;
+        const anioActivoId = student.studentClassrooms?.[0]?.academicYearId || null;
+
+        // Asistencia y observaciones se miran POR LAPSO EN CURSO, y aparte por
+        // ciclo. Antes se contaban desde siempre: un alumno de 5º año arrastraba
+        // sus cinco años en el mismo porcentaje, así que el número no decía nada
+        // del momento y además crecía el trabajo cada año que pasaba.
+        const ventana = await ventanaDelLapsoYCiclo(db, anioActivoId);
 
         const [gradesStats, attendanceStats, observationsCount, periodAverages] = await Promise.all([
             (async () => {
-                // CORRECCIÓN (jerarquía): el promedio por materia del estudiante es
-                // NIVEL 2 (criterios ponderados + notas de Clase en Vivo). Antes:
-                // AVG(score) simple sobre la tabla grades — que además era la ÚNICA
-                // fuente de materias: una estudiante con notas SOLO en
-                // ClassActivity.scores salía con 0 materias y promedio 0.
+                // Solo las materias DE ESTE CICLO.
+                //
+                // Antes se sacaban las de todo su historial. Una materia de un año
+                // anterior se colaba en el panel de hoy con promedio 0, y ese 0
+                // parece un aplazado cuando en realidad significa "esta materia no
+                // es de este año". No se pierde nada: los años anteriores siguen
+                // enteros en la base y en el expediente del alumno.
                 const grades = await db.grade.groupBy({
                     by: ['subjectId'],
-                    where: { studentId: userId },
+                    where: {
+                        studentId: userId,
+                        ...(ventana.lapsosDelCiclo.length > 0
+                            ? { periodId: { in: ventana.lapsosDelCiclo } }
+                            : {}),
+                    },
                     _avg: { score: true }
                 });
-                const student = await db.user.findUnique({
-                    where: { id: userId },
-                    select: { classroomId: true },
-                });
-                const classActs = student?.classroomId
+                const classActs = activeClassroomId
                     ? await db.classActivity.findMany({
-                        where: { classroomId: student.classroomId, scores: { not: undefined } },
+                        where: { classroomId: activeClassroomId, scores: { not: undefined } },
                         select: { subjectId: true, scores: true },
                     })
                     : [];
@@ -212,60 +348,95 @@ export class DashboardService {
                 const subjectIds = [...new Set([...grades.map((g: any) => g.subjectId), ...classActSubjectIds])];
                 const subjects = await db.subject.findMany({ where: { id: { in: subjectIds } }, select: { id: true, name: true, color: true } });
                 return Promise.all(subjects.map(async (s: any) => {
-                    const level2 = await gradesService.calculateWeightedSubjectAverage(db as PrismaClient, userId, s.id);
+                    // Se le pasan los lapsos ya sabidos: sin esto, cada materia
+                    // repetía la misma consulta para averiguarlos.
+                    const level2 = await gradesService.calculateWeightedSubjectAverage(
+                        db as PrismaClient,
+                        userId,
+                        s.id,
+                        undefined,
+                        ventana.lapsosDelCiclo
+                    );
                     return { subjectId: s.id, subjectName: s.name, subjectColor: s.color || '#666', average: level2 };
                 }));
             })(),
 
             (async () => {
-                const total = await db.dailyAttendance.count({ where: { studentId: userId } });
-                const present = await db.dailyAttendance.count({ where: { studentId: userId, status: { in: ['PRESENT', 'LATE'] } } });
-                return [{ attendancePercentage: total > 0 ? (present * 100.0) / total : 0 }];
+                const [lapso, ciclo] = await Promise.all([
+                    porcentajeDeAsistencia(db, userId, ventana.lapso),
+                    porcentajeDeAsistencia(db, userId, ventana.ciclo),
+                ]);
+                return [{ attendancePercentage: lapso, attendancePercentageCiclo: ciclo }];
             })(),
 
-            db.observation.count({ where: { studentId: userId } }),
-
-            // Promedio real por lapso (para el gráfico de evolución del estudiante)
-            // CORRECCIÓN: por cada (periodo, materia) se usa el NIVEL 2 con el
-            // lapso explícito; la nota del periodo = promedio de materias con nota
-            // en ese lapso (antes: AVG simple por periodo).
             (async () => {
-                const grouped = await db.grade.groupBy({
-                    by: ['periodId', 'subjectId'],
-                    where: { studentId: userId },
-                    _count: { _all: true }
-                });
-                if (grouped.length === 0) return [];
+                const [lapso, ciclo] = await Promise.all([
+                    db.observation.count({ where: { studentId: userId, ...comoFecha('date', ventana.lapso) } }),
+                    db.observation.count({ where: { studentId: userId, ...comoFecha('date', ventana.ciclo) } }),
+                ]);
+                return { lapso, ciclo };
+            })(),
 
+            (async () => {
                 const periods = await db.period.findMany({
-                    where: { id: { in: [...new Set(grouped.map(g => g.periodId))] } },
-                    select: { id: true, name: true, startDate: true }
+                    where: { academicYear: { status: 'ACTIVE' } },
+                    orderBy: { startDate: 'asc' }
                 });
+
+                /**
+                 * EL PROMEDIO DEL LAPSO SE HACE POR MATERIA, NO POR NOTA
+                 *
+                 * Aquí se recorrían **las filas de notas**: por cada nota del
+                 * alumno se pedía el promedio de esa materia en ese lapso y se
+                 * metía en la lista. O sea, una materia con cinco notas metía
+                 * cinco veces el MISMO número, y una con dos, dos veces. Al
+                 * hacer la media de esa lista, las materias con más
+                 * evaluaciones pesaban más que las demás.
+                 *
+                 * El promedio del lapso que ve el alumno salía mal, sin más. La
+                 * regla está escrita en `docs/MAPA_DE_CALCULOS.md`: cada nivel
+                 * es la media de las **entidades** del nivel de abajo —una
+                 * materia, una vez—, no de sus filas.
+                 *
+                 * De paso: se pedían las notas de TODOS los años del alumno y
+                 * se calculaba una por una, para tirar después las que no eran
+                 * de este año. Ahora se piden solo las del año activo y se
+                 * calcula una vez por materia y lapso, en paralelo.
+                 */
+                const idsDeLapsos = periods.map(p => p.id);
+                const gradesByPeriod = idsDeLapsos.length === 0 ? [] : await db.grade.findMany({
+                    where: { studentId: userId, periodId: { in: idsDeLapsos } },
+                    select: { periodId: true, subjectId: true }
+                });
+
+                const pares = new Map<string, { periodId: string; subjectId: string }>();
+                for (const g of gradesByPeriod) {
+                    pares.set(`${g.periodId}|${g.subjectId}`, { periodId: g.periodId, subjectId: g.subjectId });
+                }
 
                 const avgByPeriod = new Map<string, number[]>();
-                for (const g of grouped) {
-                    const n2 = await gradesService.calculateWeightedSubjectAverage(
-                        db as PrismaClient, userId, g.subjectId, g.periodId
-                    );
-                    if (n2 > 0) {
-                        const list = avgByPeriod.get(g.periodId) || [];
-                        list.push(n2);
-                        avgByPeriod.set(g.periodId, list);
+                const calculados = await Promise.all(
+                    [...pares.values()].map(async (par) => ({
+                        periodId: par.periodId,
+                        promedio: await gradesService.calculateWeightedSubjectAverage(
+                            db as PrismaClient, userId, par.subjectId, par.periodId
+                        ),
+                    }))
+                );
+                for (const c of calculados) {
+                    if (c.promedio > 0) {
+                        if (!avgByPeriod.has(c.periodId)) avgByPeriod.set(c.periodId, []);
+                        avgByPeriod.get(c.periodId)!.push(c.promedio);
                     }
                 }
 
-                const results = [...avgByPeriod.entries()].map(([periodId, avgs]) => {
-                    const p = periods.find(pp => pp.id === periodId);
-                    const average = avgs.reduce((a, b) => a + b, 0) / avgs.length;
-                    return {
-                        periodId,
-                        periodName: p?.name || 'Lapso',
-                        startDate: p?.startDate?.getTime() ?? 0,
-                        average: parseFloat(average.toFixed(1))
-                    };
+                return periods.map(p => {
+                    const grades = avgByPeriod.get(p.id) || [];
+                    const average = grades.length > 0
+                        ? grades.reduce((a, b) => a + b, 0) / grades.length
+                        : 0;
+                    return { periodId: p.id, periodName: p.name, average: Math.round(average * 10) / 10 };
                 });
-                return results.sort((a, b) => a.startDate - b.startDate)
-                    .map(({ periodId, periodName, average }) => ({ periodId, periodName, average }));
             })()
         ]);
 
@@ -275,18 +446,19 @@ export class DashboardService {
                 name: s.subjectName,
                 average: parseFloat(Number(s.average || 0).toFixed(1)),
                 color: s.subjectColor || '#666',
-                status: (s.average || 0) >= 10 ? 'Aprobado' : 'Reprobado'
+                status: (s.average || 0) >= minPassing ? 'Aprobado' : 'Reprobado'
             }))
             : [];
 
-        const globalAverage = subjects.length > 0
-            ? parseFloat((subjects.reduce((sum, s) => sum + (s.average || 0), 0) / subjects.length).toFixed(1))
+        const validSubjects = subjects.filter((s: any) => s.average > 0);
+        const globalAverage = validSubjects.length > 0
+            ? Math.round((validSubjects.reduce((acc: number, s: any) => acc + s.average, 0) / validSubjects.length) * 10) / 10
             : 0;
 
-        const failedSubjects = subjects.filter(s => s.average < 10).length;
+        const failedSubjects = subjects.filter(s => s.average > 0 && s.average < minPassing).length;
 
-        const upcomingActivities = student.classroom?.id ? await db.activity.findMany({
-            where: { dueDate: { gte: new Date() }, isActive: true, classroomId: student.classroom.id },
+        const upcomingActivities = activeClassroomId ? await db.activity.findMany({
+            where: { dueDate: { gte: new Date() }, isActive: true, classroomId: activeClassroomId },
             take: 5,
             orderBy: { dueDate: 'asc' },
             select: {
@@ -307,11 +479,13 @@ export class DashboardService {
                 id: student.id,
                 fullName: `${student.firstName} ${student.lastName}`,
                 avatar: student.avatar,
-                currentSection: student.classroom ? {
-                    id: student.classroom.id,
-                    name: `${student.classroom.grade}° ${student.classroom.section}`,
-                    guideTeacher: student.classroom.teacher
-                        ? `${student.classroom.teacher.firstName} ${student.classroom.teacher.lastName}`
+                currentSection: activeClassroom ? {
+                    id: activeClassroom.id,
+                    name: `${activeClassroom.grade}° ${activeClassroom.section}`,
+                    academicYearName: student.studentClassrooms?.[0]?.academicYear?.name || activeClassroom.academicYear?.name || null,
+                    academicYearId: student.studentClassrooms?.[0]?.academicYearId || activeClassroom.academicYear?.id || null,
+                    guideTeacher: activeClassroom.teacher
+                        ? `${activeClassroom.teacher.firstName} ${activeClassroom.teacher.lastName}`
                         : null
                 } : null
             },
@@ -319,7 +493,9 @@ export class DashboardService {
                 globalAverage,
                 failedSubjects,
                 attendancePercentage: Math.round(attendanceStats[0]?.attendancePercentage || 0),
-                totalObservations: observationsCount
+                attendancePercentageCiclo: Math.round(attendanceStats[0]?.attendancePercentageCiclo || 0),
+                totalObservations: (observationsCount as any)?.lapso ?? 0,
+                totalObservationsCiclo: (observationsCount as any)?.ciclo ?? 0
             },
             subjects,
             periodAverages,
@@ -340,18 +516,40 @@ export class DashboardService {
     /**
      * Dashboard para Tutores (IMPLEMENTADO)
      */
-    async getTutorDashboard(userId: string, db: PrismaClient): Promise<TutorDashboardDto> {
+    async getTutorDashboard(userId: string, db: PrismaClient, instituteId?: string): Promise<TutorDashboardDto> {
+        let minPassing = 10;
+        // Desde qué porcentaje se le avisa al representante. Lo pone el liceo;
+        // 80 es solo el punto de partida. Ver `AcademicConfig.asistenciaMinima`.
+        let asistenciaMinima = DEFAULT_ACADEMIC_CONFIG.asistenciaMinima;
+        if (instituteId) {
+            try {
+                const config = await getAcademicConfig(instituteId);
+                minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
+                asistenciaMinima = config.asistenciaMinima;
+            } catch {
+                minPassing = 10;
+            }
+        }
+
         const tutor = await db.user.findUnique({
             where: { id: userId },
-            select: {
-                id: true, firstName: true, lastName: true,
+            include: {
                 children: {
-                    select: {
-                        relationship: true,
+                    include: {
                         student: {
                             select: {
                                 id: true, firstName: true, lastName: true, avatar: true,
-                                classroom: { select: { grade: true, section: true } }
+                                studentClassrooms: {
+                                    where: { isActive: true },
+                                    take: 1,
+                                    select: {
+                                        // Hace falta para acotar al lapso y al ciclo en curso.
+                                        // Sin este campo, el filtro de más abajo se queda vacío
+                                        // y se vuelve a contar toda la vida escolar — en silencio.
+                                        academicYearId: true,
+                                        classroom: { select: { grade: true, section: true } }
+                                    }
+                                }
                             }
                         }
                     }
@@ -362,25 +560,43 @@ export class DashboardService {
         if (!tutor) throw new Error('Tutor no encontrado');
 
         const childrenWithStats = await Promise.all(
-            tutor.children.map(async (child) => {
+            tutor.children.map(async (child: any) => {
+                // El representante ve cómo va su hijo AHORA: lapso en curso para la
+                // asistencia, ciclo en curso para el promedio. Antes se sumaba toda
+                // la vida escolar del alumno, así que un quinto año arrastraba sus
+                // cinco años y el número no servía para decidir nada.
+                const ventanaHijo = await ventanaDelLapsoYCiclo(
+                    db,
+                    child.student.studentClassrooms?.[0]?.academicYearId ?? null
+                );
+
                 const [stats] = await (async () => {
-                    const [gradeAgg, totalAtt, presentAtt] = await Promise.all([
-                        db.grade.aggregate({ where: { studentId: child.student.id }, _avg: { score: true } }),
-                        db.dailyAttendance.count({ where: { studentId: child.student.id } }),
-                        db.dailyAttendance.count({ where: { studentId: child.student.id, status: { in: ['PRESENT', 'LATE'] } } })
+                    const [gradeAgg, asistencia] = await Promise.all([
+                        db.grade.aggregate({
+                            where: {
+                                studentId: child.student.id,
+                                ...(ventanaHijo.lapsosDelCiclo.length > 0
+                                    ? { periodId: { in: ventanaHijo.lapsosDelCiclo } }
+                                    : {}),
+                            },
+                            _avg: { score: true },
+                        }),
+                        porcentajeDeAsistencia(db, child.student.id, ventanaHijo.lapso),
                     ]);
                     return [{
                         average: gradeAgg._avg.score ?? 0,
-                        attendancePercentage: totalAtt > 0 ? (presentAtt * 100.0) / totalAtt : 0
+                        attendancePercentage: asistencia,
                     }];
                 })();
+
+                const childClassroom = child.student.studentClassrooms?.[0]?.classroom;
 
                 return {
                     id: child.student.id,
                     fullName: `${child.student.firstName} ${child.student.lastName}`,
                     avatar: child.student.avatar,
-                    classroom: child.student.classroom
-                        ? `${child.student.classroom.grade}° ${child.student.classroom.section}`
+                    classroom: childClassroom
+                        ? `${childClassroom.grade}° ${childClassroom.section}`
                         : null,
                     average: parseFloat(Number(stats?.average || 0).toFixed(1)),
                     attendancePercentage: Math.round(Number(stats?.attendancePercentage || 0)),
@@ -390,12 +606,12 @@ export class DashboardService {
         );
 
         const alerts = childrenWithStats
-            .filter(c => c.average < 10 || c.attendancePercentage < 80)
+            .filter(c => (c.average > 0 && c.average < minPassing) || c.attendancePercentage < asistenciaMinima)
             .map(c => ({
                 studentId: c.id,
                 studentName: c.fullName,
-                type: c.average < 10 ? 'ACADEMIC' : 'ATTENDANCE',
-                message: c.average < 10
+                type: (c.average > 0 && c.average < minPassing) ? 'ACADEMIC' : 'ATTENDANCE',
+                message: (c.average > 0 && c.average < minPassing)
                     ? `Promedio bajo: ${c.average}`
                     : `Asistencia baja: ${c.attendancePercentage}%`,
                 date: new Date().toISOString()

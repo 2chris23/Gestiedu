@@ -493,10 +493,18 @@ class ActivitiesService {
       throw new Error('Actividad no encontrada');
     }
 
-    // Verificar si la actividad tiene calificaciones
+    // Eliminar calificaciones asociadas en cascada para no dejar registros huérfanos
     if (activity._count.grades > 0) {
-      throw new Error('No se puede eliminar una actividad que tiene calificaciones');
+      await prisma.grade.deleteMany({
+        where: { activityId: id },
+      });
     }
+
+    // Desvincular de plan de evaluación si existiera
+    await prisma.evaluationPlanRow.updateMany({
+      where: { activityId: id },
+      data: { activityId: null },
+    });
 
     // Eliminar actividad
     await prisma.activity.delete({

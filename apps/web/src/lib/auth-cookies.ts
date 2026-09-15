@@ -35,7 +35,19 @@ export async function setAuthCookies(
     const cookieStore = await cookies();
 
     cookieStore.set(ACCESS_TOKEN_COOKIE, accessToken, {
-        httpOnly: false, // Not HttpOnly so axios interceptor can read it via document.cookie
+    /**
+     * CERRADA A LA PÁGINA, ABIERTA AL GUARDIÁN
+     *
+     * Estaba en `false` con este comentario al lado: *"Not HttpOnly so axios
+     * interceptor can read it via document.cookie"*. Se dejó abierta a
+     * propósito porque hacía falta leerla desde el navegador.
+     *
+     * Ya no hace falta: la llave corta vive en la memoria de la pestaña
+     * (`lib/credencial-en-memoria.ts`). La cookie se queda porque la lee el
+     * guardián de pantallas (`proxy.ts`), que corre en el servidor. Desde la
+     * página ya no se ve.
+     */
+    httpOnly: true,
         secure: SECURE,
         sameSite: 'lax',
         path: '/',
@@ -106,7 +118,9 @@ export async function getUserFromCookies(): Promise<CookieUser | null> {
 export async function setAccessTokenCookie(accessToken: string) {
     const cookieStore = await cookies();
     cookieStore.set(ACCESS_TOKEN_COOKIE, accessToken, {
-        httpOnly: false, // Not HttpOnly so axios interceptor can read it via document.cookie
+        // Ver la nota de `setAuthCookies`: cerrada a la página, la lee el
+        // guardián de pantallas desde el servidor.
+        httpOnly: true,
         secure: SECURE,
         sameSite: 'lax',
         path: '/',

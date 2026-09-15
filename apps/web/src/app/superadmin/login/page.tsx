@@ -33,12 +33,10 @@ export default function SuperAdminLoginPage() {
                 return;
             }
 
-            if (data.accessToken && typeof document !== 'undefined') {
-                document.cookie = `superadmin_access_token=${data.accessToken}; path=/; max-age=604800; SameSite=Lax`;
-                document.cookie = `superadmin_data=${encodeURIComponent(JSON.stringify(data.superAdmin))}; path=/; max-age=604800; SameSite=Lax`;
-            }
-
-            setSuperAdmin(data.superAdmin);
+            // Las cookies ya vienen puestas en la respuesta de
+            // /api/superadmin/auth/login, con `Secure` en producción. Al
+            // reescribirlas aquí a mano perdían esa marca.
+            setSuperAdmin(data.superAdmin, data.accessToken);
 
             // Redirección inmediata
             window.location.href = '/superadmin/dashboard';

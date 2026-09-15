@@ -3,6 +3,8 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { BACKEND_URL } from '@/config/env';
+import { guardarCredencial } from '@/lib/credencial-en-memoria';
 
 interface InstituteInfo {
     id: string;
@@ -52,17 +54,31 @@ export default function InstituteLoginPage() {
         setError('');
 
         try {
-            const response = await fetch(
-                `${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api').replace(/\/api$/, '')}/api/auth/login`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Institute-Slug': slug,
-                    },
-                    body: JSON.stringify(formData),
-                }
-            );
+            /**
+             * SE ENTRA POR LA MISMA PUERTA QUE TODOS
+             *
+             * Antes esta pantalla hablaba directamente con el servidor de datos
+             * y se guardaba las llaves ella misma:
+             *
+             *     document.cookie = `refresh_token=${refreshToken}; path=/; ...`
+             *
+             * Escritas así, desde el navegador, las llaves **no se pueden marcar**
+             * `httpOnly` (que ningún programa de la página las lea) ni `Secure`
+             * (que no viajen por conexión sin cifrar). O sea: la llave larga —la
+             * que sirve para entrar durante semanas— quedaba a la vista.
+             *
+             * Ahora se entra por `/api/auth/login`, igual que en la pantalla
+             * principal. Esa puerta corre en el servidor y es la que deja las
+             * cookies bien puestas, marcas incluidas.
+             */
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Institute-Slug': slug,
+                },
+                body: JSON.stringify({ ...formData, instituteSlug: slug }),
+            });
 
             const data = await response.json();
 
@@ -71,21 +87,9 @@ export default function InstituteLoginPage() {
                 return;
             }
 
-            // El backend devuelve { user, tokens: { accessToken, refreshToken, ... } }
-            const accessToken = data.tokens?.accessToken || data.accessToken;
-            const refreshToken = data.tokens?.refreshToken || data.refreshToken;
-
-            if (!accessToken) {
-                setError('No se recibió token de acceso del servidor');
-                return;
-            }
-
-            const maxAge = 60 * 60 * 24 * 7;
-            document.cookie = `access_token=${accessToken}; path=/; max-age=${maxAge}`;
-            if (refreshToken) {
-                document.cookie = `refresh_token=${refreshToken}; path=/; max-age=${maxAge}`;
-            }
-            document.cookie = `institute_slug=${slug}; path=/; max-age=${maxAge}`;
+            // La llave corta se queda solo en la memoria de la pestaña.
+            // Ver `lib/credencial-en-memoria.ts`.
+            guardarCredencial(data?.tokens?.accessToken || data?.accessToken);
 
             router.push('/dashboard');
         } catch {
@@ -177,7 +181,14 @@ export default function InstituteLoginPage() {
                                 style={{ backgroundColor: `${primaryColor}15`, border: `1.5px solid ${primaryColor}35` }}
                             >
                                 {institute?.logo ? (
-                                    <Image src={institute.logo} alt={institute.name} width={48} height={48} className="rounded-xl object-contain" />
+                                    <Image
+                                        src={institute.logo.startsWith('/uploads') ? `${BACKEND_URL}${institute.logo}` : institute.logo}
+                                        alt={institute.name}
+                                        width={48}
+                                        height={48}
+                                        className="rounded-xl object-contain max-h-12 w-auto"
+                                        unoptimized
+                                    />
                                 ) : (
                                     <svg className="w-8 h-8" fill="none" stroke={primaryColor} viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 14l9-5-9-5-9 5 9 5z" />

@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import {
     ListTodo, Plus, CheckCircle2, Circle, Trash2, Calendar,
     Tag, Award, Clock, Sparkles, X, Loader2, ArrowRight,
-    Edit3, Check, CheckSquare
+    Edit3, Check, CheckSquare, ExternalLink
 } from 'lucide-react';
 import { ClassActivity, useCreateClassActivity, useUpdateClassActivity, useDeleteClassActivity } from '@/hooks/useLiveClass';
 import { toast } from 'sonner';
@@ -299,6 +300,33 @@ export default function LiveActivitiesCard({
                                                                 {act.description}
                                                             </p>
                                                         )}
+                                                        {(() => {
+                                                            const createdRaw = act.classSession?.date
+                                                                ? act.classSession.date.split('T')[0]
+                                                                : (act.createdDate ? act.createdDate.split('T')[0] : act.createdAt.split('T')[0]);
+                                                            const dueRaw = act.dueDate ? act.dueDate.split('T')[0] : '';
+                                                            if (dueRaw && createdRaw && createdRaw !== dueRaw) {
+                                                                return (
+                                                                    <div className="mt-1 flex items-center justify-between text-[10px] text-gray-500">
+                                                                        <span className="flex items-center gap-1">
+                                                                            <Calendar className="w-3 h-3 text-gray-400" />
+                                                                            Asignada: {formatDayDate(createdRaw)}
+                                                                        </span>
+                                                                        <Link
+                                                                            href={`/dashboard/clase-en-vivo/${classroomId}/${subjectId}?date=${createdRaw}`}
+                                                                            className={`flex items-center gap-0.5 font-semibold hover:underline ${
+                                                                                isGradingActive ? 'text-blue-100' : 'text-indigo-600'
+                                                                            }`}
+                                                                            title="Ver clase donde se asignó esta actividad"
+                                                                        >
+                                                                            <span>Ver clase</span>
+                                                                            <ExternalLink className="w-2.5 h-2.5" />
+                                                                        </Link>
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
                                                     </div>
                                                 </div>
 
@@ -384,10 +412,11 @@ export default function LiveActivitiesCard({
                             ) : (
                                 nextActivities.map((act, index) => {
                                     const actNum = getActivityNumber(index, true);
+                                    const dueRaw = act.dueDate ? act.dueDate.split('T')[0] : '';
                                     return (
                                         <div
                                             key={act.id}
-                                            className="p-2.5 rounded-xl border bg-white border-indigo-100/90 hover:border-indigo-300 shadow-2xs transition-all duration-150"
+                                            className="p-2.5 rounded-xl border bg-white border-indigo-100/90 hover:border-indigo-300 shadow-2xs transition-all duration-150 space-y-2"
                                         >
                                             <div className="flex items-start justify-between gap-2">
                                                 <div className="min-w-0 flex-1">
@@ -407,12 +436,6 @@ export default function LiveActivitiesCard({
                                                             {act.description}
                                                         </p>
                                                     )}
-                                                    {act.dueDate && (
-                                                        <p className="text-[10px] text-indigo-600 flex items-center gap-1 mt-1 font-medium">
-                                                            <Calendar className="w-3 h-3" />
-                                                            Para: {formatDayDate(act.dueDate)}
-                                                        </p>
-                                                    )}
                                                 </div>
 
                                                 {canEdit && (
@@ -424,6 +447,24 @@ export default function LiveActivitiesCard({
                                                     >
                                                         <Trash2 className="w-3.5 h-3.5" />
                                                     </button>
+                                                )}
+                                            </div>
+
+                                            {/* Barra de Fechas y Botón para ir al día de entrega */}
+                                            <div className="pt-2 border-t border-indigo-50 flex items-center justify-between gap-1 flex-wrap text-[10px]">
+                                                <div className="text-indigo-700 font-semibold flex items-center gap-1">
+                                                    <Calendar className="w-3 h-3 text-indigo-500" />
+                                                    Para: {formatDayDate(act.dueDate || act.createdAt)}
+                                                </div>
+                                                {dueRaw && (
+                                                    <Link
+                                                        href={`/dashboard/clase-en-vivo/${classroomId}/${subjectId}?date=${dueRaw}`}
+                                                        className="inline-flex items-center gap-1 font-bold text-indigo-600 hover:text-white bg-indigo-50 hover:bg-indigo-600 px-2 py-0.5 rounded-md border border-indigo-200/60 transition-colors shadow-2xs"
+                                                        title={`Ir a la clase en vivo del ${formatDayDate(dueRaw)}`}
+                                                    >
+                                                        <span>Ir al día de entrega</span>
+                                                        <ArrowRight className="w-2.5 h-2.5" />
+                                                    </Link>
                                                 )}
                                             </div>
                                         </div>

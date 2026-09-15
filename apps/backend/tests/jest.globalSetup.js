@@ -76,6 +76,44 @@ function runPrisma(args, env) {
     }
 }
 
+/** Borra las bases de ejecuciones anteriores que quedaran a medias. */
+async function dropLeftoverTestDatabases(creds) {
+    const client = new Client({ ...creds, database: 'postgres' });
+    try {
+        await client.connect();
+        const r = await client.query("SELECT datname FROM pg_database WHERE datname LIKE 't\\_%'");
+        for (const row of r.rows) {
+            await client.query(`DROP DATABASE IF EXISTS "${row.datname}" WITH (FORCE)`).catch(() => {});
+        }
+        if (r.rows.length > 0) console.log(`[jest-setup] bases sobrantes borradas: ${r.rows.length}`);
+    } catch {
+        // No poder limpiar no debe impedir correr las pruebas
+    } finally {
+        await client.end().catch(() => {});
+    }
+}
+
+/**
+ * La base de un liceo real tiene su propia fila en `institutes`: la crea el
+ * aprovisionamiento. La plantilla también, para que cada copia arranque igual y
+ * las pruebas no dependan de filas dejadas por otras.
+ */
+async function seedTemplateInstitute(templateUrl) {
+    const creds = parseDbUrl(templateUrl);
+    const client = new Client({ ...creds, database: creds.db });
+    try {
+        await client.connect();
+        await client.query(
+            `INSERT INTO institutes (id, name, code, slug, email, status, "updatedAt")
+             VALUES ($1, $2, $3, $4, $5, 'ACTIVE', NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            ['institute', 'Test Institute', 'TEST_INST', 'test-institute', 'test@institute.com']
+        );
+    } finally {
+        await client.end().catch(() => {});
+    }
+}
+
 module.exports = async function globalSetup() {
     const tenantUrl = process.env.DATABASE_URL || process.env.TEST_DATABASE_URL;
     const platformUrl = process.env.PLATFORM_DATABASE_URL;
@@ -93,6 +131,24 @@ module.exports = async function globalSetup() {
         const fallback = `postgresql://postgres:postgres@localhost:5432/${TENANT_DB_DEFAULT}`;
         process.env.DATABASE_URL = fallback;
         console.log(`[jest-setup] DATABASE_URL → localhost/${TENANT_DB_DEFAULT} (fallback)`);
+    }
+
+    // Plantilla: una base vacía y migrada de la que cada archivo de pruebas
+    // saca su copia. Así ninguna suite puede borrar los datos de otra.
+    if (process.env.DATABASE_URL) {
+        const creds = parseDbUrl(process.env.DATABASE_URL);
+        const templateDb = `${creds.db}_template`.slice(0, 63);
+        const templateUrl = `postgresql://${creds.user}:${creds.password}@${creds.host}:${creds.port}/${templateDb}`;
+
+        await dropLeftoverTestDatabases(creds);
+        await ensureDatabase(templateUrl);
+        runPrisma(
+            ['migrate', 'deploy', '--schema', path.join(__dirname, '..', 'src', 'prisma', 'schema.prisma')],
+            { DATABASE_URL: templateUrl }
+        );
+        await seedTemplateInstitute(templateUrl);
+        process.env.TEST_TEMPLATE_DATABASE_URL = templateUrl;
+        console.log(`[jest-setup] plantilla → ${templateDb}`);
     }
 
     if (platformUrl) {

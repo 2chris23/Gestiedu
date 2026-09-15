@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import { toast } from 'sonner';
 import type { PlanColumnDef } from '@/components/evaluation/planColumns';
+import { recordarPendiente, olvidarPendiente } from '@/lib/guardado-optimista';
 
 export interface LiveClassStudent {
     id: string;
@@ -36,10 +37,12 @@ export interface ClassActivity {
     carriedOver: boolean;
     planRowId?: string | null;
     classSessionId?: string | null;
+    classSession?: { id: string; date: string; startTime?: string; endTime?: string } | null;
     dueToday?: boolean;
     belongsToSession?: boolean;
     isFuture?: boolean;
     createdAt: string;
+    createdDate?: string | null;
 }
 
 export interface LiveClassDetail {
@@ -110,6 +113,8 @@ export interface LiveOverviewSubject {
     temaGenerador?: string;
     firstColumnLabel?: string;
     activitiesCount?: number;
+    todayActivitiesCount?: number;
+    nextActivitiesCount?: number;
 }
 
 export function useLiveOverview(classroomId: string, date: string) {
@@ -123,6 +128,20 @@ export function useLiveOverview(classroomId: string, date: string) {
             return data as { overview: Record<string, LiveOverviewSubject> };
         },
         enabled: !!classroomId && !!date,
+    });
+}
+
+export function useClassActivities(classroomId?: string, subjectId?: string) {
+    return useQuery({
+        queryKey: ['classActivities', classroomId, subjectId],
+        queryFn: async () => {
+            if (!classroomId) return { activities: [] };
+            const params: Record<string, string> = { classroomId };
+            if (subjectId) params.subjectId = subjectId;
+            const { data } = await api.get('/sessions/activities', { params });
+            return data as { activities: ClassActivity[] };
+        },
+        enabled: Boolean(classroomId),
     });
 }
 
@@ -209,8 +228,26 @@ export function useUpdateClassActivity() {
     });
 }
 
+/**
+ * GUARDAR NOTAS SIN QUE EL PROFESOR ESPERE
+ *
+ * Las notas se pintan en pantalla **antes** de que el servidor conteste, como
+ * hace Instagram con el corazón del "me gusta". Se midió que bajo carga guardar
+ * tardaba segundos: el profesor se quedaba mirando el botón.
+ *
+ * La diferencia con Instagram es que aquí **el dato importa**. Si el guardado
+ * falla:
+ *
+ *   1. la pantalla vuelve a como estaba (no se miente sobre lo que se guardó);
+ *   2. **las notas quedan apuntadas en el dispositivo** para reintentarlas, así
+ *      que el profesor no tiene que acordarse ni volver a escribirlas;
+ *   3. se le dice con claridad, sin que el aviso se vaya solo.
+ *
+ * Ver `lib/guardado-optimista.ts`.
+ */
 export function useSaveActivityGrades() {
     const queryClient = useQueryClient();
+
     return useMutation({
         mutationFn: async ({
             activityId,
@@ -224,12 +261,64 @@ export function useSaveActivityGrades() {
             const { data } = await api.post(`/sessions/activities/${activityId}/grades`, { scores, maxScore });
             return data;
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['liveClassDetail'] });
-            toast.success('Calificaciones guardadas exitosamente');
+
+        onMutate: async ({ activityId, scores }) => {
+            // Que no llegue una respuesta vieja por detrás y pise lo que acabamos
+            // de pintar.
+            await queryClient.cancelQueries({ queryKey: ['liveClassDetail'] });
+
+            const antes = queryClient.getQueriesData({ queryKey: ['liveClassDetail'] });
+
+            queryClient.setQueriesData(
+                { queryKey: ['liveClassDetail'] },
+                (viejo: any) => {
+                    if (!viejo?.activities) return viejo;
+                    return {
+                        ...viejo,
+                        activities: viejo.activities.map((a: ClassActivity) =>
+                            a.id === activityId
+                                ? { ...a, scores: { ...(a.scores || {}), ...scores } }
+                                : a
+                        ),
+                    };
+                }
+            );
+
+            return { antes };
         },
-        onError: (error: Error) => {
-            toast.error(error.message || 'Error al guardar calificaciones');
+
+        onError: (error: any, variables, contexto) => {
+            // 1. La pantalla vuelve a la verdad.
+            contexto?.antes?.forEach(([clave, datos]: [any, any]) => {
+                queryClient.setQueryData(clave, datos);
+            });
+
+            // 2. Las notas NO se pierden.
+            recordarPendiente({
+                id: `notas:${variables.activityId}`,
+                que: 'Calificaciones de una actividad',
+                ruta: `/sessions/activities/${variables.activityId}/grades`,
+                carga: { scores: variables.scores, maxScore: variables.maxScore },
+                cuando: Date.now(),
+                motivo: error?.response?.data?.message || error?.message,
+            });
+
+            // 3. Se avisa, y el aviso no se va solo.
+            toast.error(
+                'No se pudieron guardar las calificaciones. Quedaron apuntadas en este dispositivo: no hace falta volver a escribirlas.',
+                { duration: Infinity }
+            );
+        },
+
+        onSuccess: (_datos, variables) => {
+            olvidarPendiente(`notas:${variables.activityId}`);
+            toast.success('Calificaciones guardadas');
+        },
+
+        // Se pida o no, al final se contrasta con el servidor: lo que manda es
+        // lo que está guardado, no lo que pintamos por adelantado.
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ['liveClassDetail'] });
         },
     });
 }

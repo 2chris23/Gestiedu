@@ -1,5 +1,6 @@
 import { ActionType } from '../utils/prisma-enums';
 import { platformPrisma } from '../config/database';
+import { INSTITUTE_TENANT_SELECT } from '../utils/institute-fields';
 import { PrismaClient } from '@prisma/client';
 
 export class InstitutesService {
@@ -7,8 +8,12 @@ export class InstitutesService {
    * Obtener instituto por ID (desde platform DB)
    */
   async getInstitute(instituteId: string) {
+    // Sin `select` esto devolvía la fila entera —databaseHost/User/Password
+    // incluidos— y el controller la reenvía tal cual como `data` en
+    // GET /api/institutes/current/info, que solo exige estar autenticado.
     return platformPrisma.institute.findUnique({
-      where: { id: instituteId }
+      where: { id: instituteId },
+      select: INSTITUTE_TENANT_SELECT,
     });
   }
 
@@ -34,7 +39,8 @@ export class InstitutesService {
       where: { id: instituteId },
       data: {
         ...updateData
-      }
+      },
+      select: INSTITUTE_TENANT_SELECT,
     });
 
     // Audit log en tenant DB

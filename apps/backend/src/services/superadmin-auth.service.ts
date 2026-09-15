@@ -116,7 +116,13 @@ export class SuperAdminAuthService {
         return {
             accessToken: tokens.accessToken,
             refreshToken: tokens.refreshToken,
-            expiresIn: tokens.expiresIn
+            expiresIn: tokens.expiresIn,
+            user: {
+                id: storedToken.superAdmin.id,
+                email: storedToken.superAdmin.email,
+                name: storedToken.superAdmin.name,
+                role: 'SUPERADMIN' as const,
+            },
         };
     }
 

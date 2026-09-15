@@ -114,5 +114,28 @@ export const classroomService = {
         } catch (error) {
             throw new Error(getApiErrorMessage(error, 'Error al asignar profesor'));
         }
+    },
+
+    getClassroomStats: async (
+        idOrSlug: string,
+        periodId?: string
+    ): Promise<{
+        average: number;
+        minAverage: number;
+        maxAverage: number;
+        riskCount: number;
+        occupancy: string;
+        attendance: string;
+        observations: number;
+    }> => {
+        try {
+            const params: Record<string, string> = {};
+            if (periodId) params.periodId = periodId;
+
+            const response = await api.get(`/classrooms/${idOrSlug}/stats`, { params });
+            return response.data;
+        } catch (error) {
+            throw new Error(getApiErrorMessage(error, 'Error al obtener estadísticas del aula'));
+        }
     }
 };

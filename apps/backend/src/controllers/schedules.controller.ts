@@ -4,6 +4,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { CreateScheduleDto, UpdateScheduleDto, ScheduleFiltersDto } from '../dto/schedule.dto';
 import { PaginationInput } from '../utils/validators';
 import { logger } from '../utils/logger';
+import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 
 interface CreateScheduleRequest {
   Body: CreateScheduleDto;
@@ -493,10 +494,8 @@ export async function deleteSchedule(
       });
     }
 
-    // Eliminar el horario
-    await request.tenantPrisma.schedule.delete({
-      where: { id },
-    });
+    // Eliminar el horario (con copia en la papelera)
+    await borrarGuardandoCopia(request.tenantPrisma, 'schedule', { id }, quienBorra(request as any));
 
     // Registrar el evento de eliminación
     await request.tenantPrisma.auditLog.create({

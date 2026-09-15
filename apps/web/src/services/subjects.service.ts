@@ -6,23 +6,48 @@ export interface SubjectSection {
     name: string;
     slug?: string;
     grade: number;
+    capacity: number;
     studentCount: number;
+    weeklyBlocks?: number;
+    hoursPerWeek?: number;
     teacher: {
         id: string;
         name: string;
         email: string;
-        avatar: string;
+        avatar?: string | null;
     } | null;
     schedule: string;
     average: number;
+    minAverage?: number;
+    maxAverage?: number;
+    riskCount: number;
+    attendance: string;
+    observations: number;
 }
 
 export interface SubjectTeacher {
     id: string;
     name: string;
     email: string;
-    avatar: string;
+    avatar?: string | null;
     sectionsCount: number;
+    subjectWeeklyBlocks?: number;
+    subjectWeeklyHours?: number;
+}
+
+export interface SubjectStats {
+    average: number;
+    minAverage?: number;
+    maxAverage?: number;
+    riskCount: number;
+    occupancy: string;
+    attendance: string;
+    observations: number;
+}
+
+export interface GradeSubjectStats {
+    grade: number;
+    stats: SubjectStats;
 }
 
 export interface Subject {
@@ -36,6 +61,22 @@ export interface Subject {
     teacherCount?: number;
     sectionCount?: number;
     totalStudents?: number;
+    academicYear?: {
+        id: string;
+        name: string;
+        status: string;
+        startDate: string;
+        endDate: string;
+        periods?: Array<{
+            id: string;
+            name: string;
+            isActive: boolean;
+            startDate: string;
+            endDate: string;
+        }>;
+    };
+    stats?: SubjectStats;
+    gradeStats?: Record<number, GradeSubjectStats>;
     sections?: SubjectSection[];
     teachers?: SubjectTeacher[];
     _count?: {
@@ -83,10 +124,13 @@ class SubjectsService {
     /**
      * Obtener una materia por ID o slug
      */
-    async getSubjectById(id: string, academicYearName?: string): Promise<Subject> {
+    async getSubjectById(id: string, academicYearName?: string, periodId?: string): Promise<Subject> {
         try {
             const response = await api.get(`/subjects/${id}`, {
-                params: academicYearName ? { academicYearName } : undefined
+                params: {
+                    ...(academicYearName ? { academicYearName } : {}),
+                    ...(periodId ? { periodId } : {})
+                }
             });
             return response.data.data;
         } catch (error) {

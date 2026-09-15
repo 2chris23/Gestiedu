@@ -27,13 +27,32 @@ interface UserFormProps {
     initialData?: User | null;
 }
 
+/** Lo mismo que exige el servidor. Si cambia allí, cambia aquí. */
+export const MINIMO_DE_CONTRASENA = 8;
+const AVISO_DE_CONTRASENA = `Mínimo ${MINIMO_DE_CONTRASENA} caracteres`;
+
 export function UserForm({ onSubmit, isLoading, onCancel, initialData }: UserFormProps) {
     // Si hay initialData (modo edición), password es opcional
+    /**
+     * OCHO, NO SEIS
+     *
+     * Esta pantalla pedía seis caracteres y ponía "Mínimo 6 caracteres" debajo
+     * del campo. El servidor exige **ocho** desde que se cerró el agujero de la
+     * contraseña de regalo.
+     *
+     * O sea: se le decía al administrador que seis valían, escribía seis, y al
+     * guardar le rebotaba. La pantalla prometía algo que el sistema no cumple,
+     * que es la peor forma de equivocarse: parece un fallo del sistema cuando es
+     * la pantalla la que miente.
+     *
+     * El número vive en un solo sitio (`MINIMO_DE_CONTRASENA`) para que no se
+     * vuelvan a separar.
+     */
     const formSchema = z.object({
         ...baseSchema,
         password: initialData
-            ? z.string().min(6, 'Mínimo 6 caracteres').optional().or(z.literal(''))
-            : z.string().min(6, 'Contraseña requerida'),
+            ? z.string().min(MINIMO_DE_CONTRASENA, AVISO_DE_CONTRASENA).optional().or(z.literal(''))
+            : z.string().min(MINIMO_DE_CONTRASENA, AVISO_DE_CONTRASENA),
     });
 
     const {
@@ -129,7 +148,7 @@ export function UserForm({ onSubmit, isLoading, onCancel, initialData }: UserFor
                     type="password"
                     {...register('password')}
                     className="mt-1"
-                    placeholder={initialData ? "Dejar en blanco para mantener actual" : "Mínimo 6 caracteres"}
+                    placeholder={initialData ? "Dejar en blanco para mantener actual" : AVISO_DE_CONTRASENA}
                 />
                 {errors.password && <p className="text-xs text-red-500">{errors.password.message as string}</p>}
             </div>

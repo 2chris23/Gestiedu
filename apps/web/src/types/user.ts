@@ -13,6 +13,8 @@ export interface User {
     gender?: Gender;
     avatar?: string;
     isActive: boolean;
+    status?: 'ACTIVE' | 'ARCHIVED' | 'DELETED';
+    archivedAt?: string | Date;
     createdAt: string | Date;
     // Student-specific fields (retornadas por GET /users/:id)
     studentCode?: string;
@@ -21,6 +23,7 @@ export interface User {
         name: string;
         grade: number;
         section: string;
+        academicYear?: { id: string; name: string };
         teacher?: {
             id: string;
             firstName: string;

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Save, Shield, Clock, Lock, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Save, Shield, Clock, Lock, AlertTriangle, RefreshCw, Laptop, Smartphone, ShieldAlert, Trash2 } from 'lucide-react';
 import { instituteService } from '@/services/institute.service';
 import { toast } from 'sonner';
 
@@ -277,8 +277,34 @@ export function SecuritySettings() {
 }
 
 /**
+ * Ayudante para interpretar y mostrar de forma amigable el User-Agent
+ */
+function parseDevice(ua: string | null): { name: string; type: 'desktop' | 'mobile' | 'bot' } {
+    if (!ua) return { name: 'Dispositivo desconocido', type: 'desktop' };
+    if (ua.includes('node') || ua.includes('axios') || ua.includes('PowerShell')) {
+        return { name: 'Script automatizado / API', type: 'bot' };
+    }
+    const isMobile = /Android|iPhone|iPad|Mobile/i.test(ua);
+    let browser = 'Navegador web';
+    if (ua.includes('Edg/')) browser = 'Microsoft Edge';
+    else if (ua.includes('Chrome/')) browser = 'Google Chrome';
+    else if (ua.includes('Firefox/')) browser = 'Mozilla Firefox';
+    else if (ua.includes('Safari/') && !ua.includes('Chrome')) browser = 'Apple Safari';
+
+    let os = '';
+    if (ua.includes('Windows')) os = 'Windows';
+    else if (ua.includes('Macintosh') || ua.includes('Mac OS')) os = 'macOS';
+    else if (ua.includes('Android')) os = 'Android';
+    else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+    else if (ua.includes('Linux')) os = 'Linux';
+
+    const name = os ? `${browser} (${os})` : browser;
+    return { name, type: isMobile ? 'mobile' : 'desktop' };
+}
+
+/**
  * Tarjeta de "Sesiones activas": lista dispositivos del usuario autenticado
- * y permite revocar cada uno individualmente (endpoints /api/auth/sessions).
+ * y permite revocar cada uno individualmente o cerrar todas las demás sesiones.
  */
 function ActiveSessions() {
     const [sessions, setSessions] = useState<Array<{
@@ -291,6 +317,8 @@ function ActiveSessions() {
         isCurrent: boolean;
     }>>([]);
     const [loading, setLoading] = useState(true);
+    const [revokingId, setRevokingId] = useState<string | null>(null);
+    const [revokingOthers, setRevokingOthers] = useState(false);
 
     const load = async () => {
         try {
@@ -312,12 +340,29 @@ function ActiveSessions() {
 
     const revoke = async (id: string) => {
         try {
+            setRevokingId(id);
             const res = await fetch(`/api/auth/sessions/${id}`, { method: 'DELETE' });
             if (!res.ok) throw new Error('error');
             toast.success('Sesión revocada correctamente');
-            load();
+            await load();
         } catch {
             toast.error('No se pudo revocar la sesión');
+        } finally {
+            setRevokingId(null);
+        }
+    };
+
+    const revokeOthers = async () => {
+        try {
+            setRevokingOthers(true);
+            const res = await fetch('/api/auth/sessions', { method: 'DELETE' });
+            if (!res.ok) throw new Error('error');
+            toast.success('Todas las demás sesiones fueron cerradas con éxito');
+            await load();
+        } catch {
+            toast.error('No se pudieron cerrar las demás sesiones');
+        } finally {
+            setRevokingOthers(false);
         }
     };
 
@@ -326,16 +371,29 @@ function ActiveSessions() {
 
     return (
         <div className="mt-8">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                 <div className="flex items-center gap-2">
                     <div className="p-2 bg-indigo-50 rounded-lg">
                         <Clock className="w-5 h-5 text-indigo-600" />
                     </div>
                     <div>
                         <h2 className="text-base font-bold text-gray-900">Sesiones activas</h2>
-                        <p className="text-xs text-gray-500">Dispositivos con la sesión abierta. Cierra los que no reconozcas.</p>
+                        <p className="text-xs text-gray-500">
+                            Dispositivos conectados con tu cuenta. Si solo usas este equipo, debe ser el único activo.
+                        </p>
                     </div>
                 </div>
+
+                {sessions.length > 1 && (
+                    <button
+                        onClick={revokeOthers}
+                        disabled={revokingOthers}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors shadow-sm disabled:opacity-50 flex-shrink-0"
+                    >
+                        <ShieldAlert className="w-4 h-4 text-amber-600" />
+                        {revokingOthers ? 'Cerrando sesiones...' : 'Cerrar todas las demás sesiones'}
+                    </button>
+                )}
             </div>
 
             {loading ? (
@@ -346,36 +404,55 @@ function ActiveSessions() {
                 <p className="text-sm text-gray-400 text-center py-6">No hay sesiones activas.</p>
             ) : (
                 <div className="space-y-2">
-                    {sessions.map(s => (
-                        <div key={s.id} className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-4 py-3">
-                            <div className="w-9 h-9 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center flex-shrink-0">
-                                <Lock className="w-4 h-4" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <p className="text-sm font-semibold text-gray-800 truncate">
-                                        {s.userAgent || 'Dispositivo desconocido'}
-                                    </p>
-                                    {s.isCurrent && (
-                                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-md">ESTE DISPOSITIVO</span>
-                                    )}
-                                    {s.rememberMe && (
-                                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md">RECORDAR SESIÓN</span>
-                                    )}
+                    {sessions.map(s => {
+                        const device = parseDevice(s.userAgent);
+                        const DeviceIcon = device.type === 'mobile' ? Smartphone : device.type === 'bot' ? Lock : Laptop;
+
+                        return (
+                            <div key={s.id} className={`flex items-center gap-3 bg-white border rounded-lg px-4 py-3 transition-colors ${s.isCurrent ? 'border-indigo-300 bg-indigo-50/20' : 'border-gray-200'}`}>
+                                <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${s.isCurrent ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
+                                    <DeviceIcon className="w-4 h-4" />
                                 </div>
-                                <p className="text-xs text-gray-400 truncate">
-                                    {s.ip ? `IP: ${s.ip} · ` : ''}
-                                    Último uso: {dateFmt(s.lastUsedAt)} · Creada: {dateFmt(s.createdAt)}
-                                </p>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <p className="text-sm font-semibold text-gray-800 truncate">
+                                            {device.name}
+                                        </p>
+                                        {s.isCurrent && (
+                                            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100/70 border border-indigo-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                                ESTE DISPOSITIVO
+                                            </span>
+                                        )}
+                                        {s.rememberMe && (
+                                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">
+                                                RECORDAR SESIÓN
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-gray-400 truncate mt-0.5">
+                                        {s.ip ? `IP: ${s.ip} · ` : ''}
+                                        Último uso: {dateFmt(s.lastUsedAt)} · Creada: {dateFmt(s.createdAt)}
+                                    </p>
+                                </div>
+
+                                {s.isCurrent ? (
+                                    <span className="text-xs font-medium text-emerald-600 bg-emerald-50 border border-emerald-200/60 px-2.5 py-1 rounded-md flex items-center gap-1.5 flex-shrink-0">
+                                        Sesión actual
+                                    </span>
+                                ) : (
+                                    <button
+                                        onClick={() => revoke(s.id)}
+                                        disabled={revokingId === s.id}
+                                        className="px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors flex-shrink-0 disabled:opacity-50 inline-flex items-center gap-1"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        {revokingId === s.id ? 'Cerrando...' : 'Cerrar sesión'}
+                                    </button>
+                                )}
                             </div>
-                            <button
-                                onClick={() => revoke(s.id)}
-                                className="px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors flex-shrink-0"
-                            >
-                                Cerrar sesión
-                            </button>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 

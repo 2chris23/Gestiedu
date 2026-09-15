@@ -39,16 +39,13 @@ const activitiesRoutes: FastifyPluginAsync = async (fastify) => {
           properties: {
             success: { type: 'boolean' },
             message: { type: 'string' },
+            activity: {
+              type: 'object',
+              additionalProperties: true
+            },
             data: {
               type: 'object',
-              properties: {
-                id: { type: 'string' },
-                title: { type: 'string' },
-                type: { type: 'string' },
-                dueDate: { type: 'string', format: 'date-time' },
-                maxScore: { type: 'number' },
-                createdAt: { type: 'string', format: 'date-time' }
-              }
+              additionalProperties: true
             }
           }
         }

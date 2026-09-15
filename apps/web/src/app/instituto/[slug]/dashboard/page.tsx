@@ -2,6 +2,8 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { olvidarCredencial } from '@/lib/credencial-en-memoria';
+import { conseguirCredencial } from '@/lib/credencial-en-memoria';
 
 interface DashboardData {
     user?: {
@@ -28,16 +30,13 @@ interface DashboardData {
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '');
 
-function getToken(): string {
-    if (typeof document === 'undefined') return '';
-    const cookies = document.cookie.split(';');
-    for (const cookie of cookies) {
-        const [key, ...valueParts] = cookie.trim().split('=');
-        if (key === 'access_token') {
-            return valueParts.join('=');
-        }
-    }
-    return '';
+/**
+ * La llave corta ya no está en las cookies: vive en la memoria de la pestaña
+ * (`lib/credencial-en-memoria.ts`). Leerla de `document.cookie` devolvía
+ * siempre vacío, y con eso el servidor responde 401.
+ */
+async function getToken(): Promise<string> {
+    return (await conseguirCredencial()) || '';
 }
 
 function isTokenExpired(token: string): boolean {
@@ -54,9 +53,19 @@ function isTokenExpired(token: string): boolean {
     }
 }
 
+/**
+ * CERRAR LA SESIÓN LO TIENE QUE HACER EL SERVIDOR
+ *
+ * Esto borraba las cookies con `document.cookie`, y desde el navegador **no se
+ * pueden borrar las marcadas `httpOnly`**. La llave larga (`refresh_token`) ya
+ * era una de ellas, así que sobrevivía a este "cierre de sesión"; ahora la
+ * corta también. Se le pide al servidor, que sí puede.
+ */
 function clearSession() {
-    document.cookie = 'access_token=; path=/; max-age=0';
-    document.cookie = 'refresh_token=; path=/; max-age=0';
+    olvidarCredencial();
+    // No se espera la respuesta: quien llama a esto ya está yéndose de la
+    // pantalla, y la cookie se borra igual.
+    void fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
     document.cookie = 'institute_slug=; path=/; max-age=0';
 }
 
@@ -83,7 +92,7 @@ export default function DashboardPage() {
     useEffect(() => {
         async function fetchDashboard() {
             try {
-                const token = getToken();
+                const token = await getToken();
                 // Verificar localmente si el token expiró antes de llamar al backend
                 if (!token || isTokenExpired(token)) {
                     clearSession();

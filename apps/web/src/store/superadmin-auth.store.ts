@@ -10,7 +10,8 @@ interface SuperAdmin {
 
 interface SuperAdminAuthState {
     superAdmin: SuperAdmin | null;
-    setSuperAdmin: (superAdmin: SuperAdmin | null) => void;
+    token: string | null;
+    setSuperAdmin: (superAdmin: SuperAdmin | null, token?: string) => void;
     logout: () => void;
 }
 
@@ -18,11 +19,15 @@ export const useSuperAdminAuthStore = create<SuperAdminAuthState>()(
     persist(
         (set) => ({
             superAdmin: null,
+            token: null,
 
-            setSuperAdmin: (superAdmin) => set({ superAdmin }),
+            setSuperAdmin: (superAdmin, token) => set((state) => ({
+                superAdmin,
+                token: token !== undefined ? token : state.token
+            })),
 
             logout: () => {
-                set({ superAdmin: null });
+                set({ superAdmin: null, token: null });
 
                 // Limpiar cookies del cliente
                 if (typeof window !== 'undefined') {

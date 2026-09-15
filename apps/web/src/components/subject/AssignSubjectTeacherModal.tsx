@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Clock, User, Search, CheckCircle, X, Loader2, BookOpen } from 'lucide-react';
+import { Clock, User, Search, CheckCircle, X, Loader2, BookOpen, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTeachers } from '@/hooks/useTeachers';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -185,15 +185,83 @@ export function AssignSubjectTeacherModal({ sectionId, sectionName, subjectSlug,
                                                     {fullName}
                                                 </p>
                                                 <p className="text-xs text-gray-400 truncate">{teacher.email}</p>
+                                                <div className="text-right flex-shrink-0">
+                                                    <span className="text-xs font-semibold text-gray-600 block">
+                                                        {(teacher.totalWeeklyHours || 0).toFixed(1)}h actuales
+                                                    </span>
+                                                    <span className="text-[10px] text-gray-400">
+                                                        {teacher.totalWeeklyBlocks || 0} bloques
+                                                    </span>
+                                                </div>
                                             </div>
                                             {isSelected && (
-                                                <CheckCircle size={18} className="text-indigo-600 flex-shrink-0" />
+                                                <CheckCircle size={18} className="text-indigo-600 flex-shrink-0 ml-2" />
                                             )}
                                         </button>
                                     );
                                 })
                             )}
                         </div>
+
+                        {/* Panel Predictivo de Carga Horaria */}
+                        {(() => {
+                            const selectedTeacher = teachers.find((t: any) => t.id === selectedTeacherId);
+                            if (!selectedTeacher) return null;
+
+                            const currentHours = selectedTeacher.totalWeeklyHours || 0;
+                            const additionalHours = totalMinutes / 60;
+                            const projectedTotalHours = currentHours + additionalHours;
+                            const isNearLimit = projectedTotalHours >= 30 && projectedTotalHours <= 40;
+                            const isOverLimit = projectedTotalHours > 40;
+
+                            return (
+                                <div className={cn(
+                                    "mt-4 p-4 rounded-xl border transition-all",
+                                    isOverLimit
+                                        ? "bg-rose-50 border-rose-200 text-rose-900"
+                                        : isNearLimit
+                                            ? "bg-amber-50 border-amber-200 text-amber-900"
+                                            : "bg-indigo-50/70 border-indigo-100 text-indigo-950"
+                                )}>
+                                    <div className="flex items-center justify-between text-xs font-bold mb-2">
+                                        <span>Proyección de Carga Horaria Docente</span>
+                                        <span className={cn(
+                                            "px-2 py-0.5 rounded-full text-[11px]",
+                                            isOverLimit ? "bg-rose-200 text-rose-800" : isNearLimit ? "bg-amber-200 text-amber-800" : "bg-indigo-200 text-indigo-800"
+                                        )}>
+                                            Límite recomendado: 30 - 40h
+                                        </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-2 text-center py-2 bg-white/80 rounded-lg border border-gray-100">
+                                        <div>
+                                            <p className="text-[11px] text-gray-500 font-medium">Horas Actuales</p>
+                                            <p className="text-sm font-bold text-gray-800">{currentHours.toFixed(1)}h</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[11px] text-indigo-600 font-medium">+ Suma Esta Clase</p>
+                                            <p className="text-sm font-bold text-indigo-600">+{additionalHours.toFixed(1)}h</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[11px] text-gray-500 font-medium">Total Resultante</p>
+                                            <p className={cn(
+                                                "text-sm font-black",
+                                                isOverLimit ? "text-rose-600" : isNearLimit ? "text-amber-600" : "text-indigo-700"
+                                            )}>
+                                                {projectedTotalHours.toFixed(1)}h / sem
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {isOverLimit && (
+                                        <p className="text-xs text-rose-700 font-medium mt-2 flex items-center gap-1.5">
+                                            <AlertCircle size={14} className="shrink-0" />
+                                            Atención: El docente superará el límite máximo pedagógico de 40 horas semanales.
+                                        </p>
+                                    )}
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
 

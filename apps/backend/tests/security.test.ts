@@ -121,8 +121,10 @@ describe('Security Tests - Phase 1', () => {
                     .send({ email, password: 'password123' });
 
                 if (i <= 10) {
-                    // Credenciales inexistentes → 400, el contador aún no excede el límite
-                    expect(res.status).toBe(400);
+                    // Credenciales inexistentes → 401 (mismo error que contraseña
+                    // incorrecta, para no revelar qué correos existen); el contador
+                    // aún no excede el límite
+                    expect(res.status).toBe(401);
                 } else {
                     expect(res.status).toBe(429);
                     expect(res.headers['retry-after']).toBeDefined();

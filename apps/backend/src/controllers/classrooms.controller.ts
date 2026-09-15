@@ -1,6 +1,8 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { generateSlug } from '../utils/slug';
+import * as closeCycleService from '../services/promotion/close-cycle.service';
+import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 
 const classroomSchema = z.object({
   academicYearId: z.string().min(1, 'El Año Escolar es requerido'),
@@ -134,7 +136,6 @@ export const getClassrooms = async (request: FastifyRequest, reply: FastifyReply
         },
         _count: {
           select: {
-            students: true,
             studentClassrooms: {
               where: { isActive: true }
             }
@@ -146,7 +147,7 @@ export const getClassrooms = async (request: FastifyRequest, reply: FastifyReply
     const formatted = classrooms.map(c => ({
       ...c,
       _count: {
-        students: (c._count as any)?.studentClassrooms ?? c._count?.students ?? 0,
+        students: (c._count as any)?.studentClassrooms ?? 0,
       }
     }));
 
@@ -167,11 +168,18 @@ export const getClassroom = async (request: FastifyRequest, reply: FastifyReply)
           select: { id: true, firstName: true, lastName: true },
         },
         academicYear: {
-          select: { id: true, name: true, status: true }
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            periods: {
+              select: { id: true, name: true, startDate: true, endDate: true, isActive: true },
+              orderBy: { startDate: 'asc' },
+            },
+          },
         },
         _count: {
           select: {
-            students: true,
             studentClassrooms: { where: { isActive: true } }
           },
         },
@@ -183,7 +191,7 @@ export const getClassroom = async (request: FastifyRequest, reply: FastifyReply)
     return reply.send({
       ...classroom,
       _count: {
-        students: (classroom._count as any)?.studentClassrooms ?? classroom._count?.students ?? 0
+        students: (classroom._count as any)?.studentClassrooms ?? 0
       },
       academicYearId: classroom.academicYearId
     });
@@ -202,11 +210,18 @@ export const getClassroomBySlug = async (request: FastifyRequest, reply: Fastify
         select: { id: true, firstName: true, lastName: true, avatar: true },
       },
       academicYear: {
-        select: { id: true, name: true, status: true }
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          periods: {
+            select: { id: true, name: true, startDate: true, endDate: true, isActive: true },
+            orderBy: { startDate: 'asc' as const },
+          },
+        },
       },
       _count: {
         select: {
-          students: true,
           studentClassrooms: { where: { isActive: true } }
         },
       },
@@ -243,7 +258,7 @@ export const getClassroomBySlug = async (request: FastifyRequest, reply: Fastify
     return reply.send({
       ...classroom,
       _count: {
-        students: (classroom._count as any)?.studentClassrooms ?? classroom._count?.students ?? 0
+        students: (classroom._count as any)?.studentClassrooms ?? 0
       },
       academicYearId: classroom.academicYearId
     });
@@ -324,19 +339,19 @@ export const deleteClassroom = async (request: FastifyRequest, reply: FastifyRep
 
     const classroom = await request.tenantPrisma.classroom.findUnique({
       where: { id },
-      include: { _count: { select: { students: true } } }
+      include: { _count: { select: { studentClassrooms: { where: { isActive: true } } } } }
     });
 
     if (!classroom) return reply.status(404).send({ error: 'Aula no encontrada' });
 
-    if (classroom._count.students > 0) {
+    if ((classroom as any)._count.studentClassrooms > 0) {
       return reply.status(400).send({
         error: 'No se puede eliminar un aula con estudiantes inscritos',
         code: 'HAS_STUDENTS'
       });
     }
 
-    await request.tenantPrisma.classroom.delete({ where: { id } });
+    await borrarGuardandoCopia(request.tenantPrisma, 'classroom', { id }, quienBorra(request as any));
     return reply.status(204).send();
 
   } catch (error) {
@@ -382,7 +397,7 @@ export const enrollStudent = async (
         academicYearId: true,
         isActive: true,
         capacity: true,
-        _count: { select: { students: true } }
+        _count: { select: { studentClassrooms: { where: { isActive: true } } } }
       }
     });
 
@@ -450,11 +465,6 @@ export const enrollStudent = async (
               where: { id: existingEnrollment.id },
               data: { isActive: true }
             });
-
-            await tx.user.update({
-              where: { id: studentId },
-              data: { classroomId }
-            });
           });
 
           request.log.info({ studentId, classroomId, enrollmentId: existingEnrollment.id }, 'Estudiante reactivado en sección');
@@ -484,20 +494,13 @@ export const enrollStudent = async (
 
           // Crear nueva inscripción
           await tx.studentClassroom.create({
-            // @ts-expect-error academicYearId could be null from classroom lookup
             data: {
               studentId,
               classroomId,
-              academicYearId: classroom.academicYearId ?? undefined,
+              academicYearId: classroom.academicYearId as string,
               isActive: true,
               enrollmentDate: new Date()
             }
-          });
-
-          // Actualizar classroomId en User
-          await tx.user.update({
-            where: { id: studentId },
-            data: { classroomId }
           });
         });
 
@@ -512,13 +515,14 @@ export const enrollStudent = async (
     }
 
     // 4. Verificar capacidad de la sección
-    if (classroom.capacity && classroom._count.students >= classroom.capacity) {
+    const currentStudentsCount = (classroom as any)._count?.studentClassrooms ?? 0;
+    if (classroom.capacity && currentStudentsCount >= classroom.capacity) {
       return reply.status(400).send({
         error: 'La sección ha alcanzado su capacidad máxima',
         code: 'CLASSROOM_FULL',
         details: {
           capacity: classroom.capacity,
-          current: classroom._count.students
+          current: currentStudentsCount
         }
       });
     }
@@ -527,11 +531,10 @@ export const enrollStudent = async (
     const enrollment = await prisma.$transaction(async (tx) => {
       // Crear registro en StudentClassroom
       const newEnrollment = await tx.studentClassroom.create({
-        // @ts-expect-error academicYearId could be null from classroom lookup
         data: {
           studentId,
           classroomId,
-          academicYearId: classroom.academicYearId ?? undefined,
+          academicYearId: classroom.academicYearId as string,
           isActive: true,
           enrollmentDate: new Date()
         },
@@ -560,12 +563,6 @@ export const enrollStudent = async (
             }
           }
         }
-      });
-
-      // Actualizar campo classroomId en User (para compatibilidad con queries existentes)
-      await tx.user.update({
-        where: { id: studentId },
-        data: { classroomId }
       });
 
       return newEnrollment;
@@ -647,14 +644,23 @@ export const unenrollStudent = async (
   try {
     const prisma = request.tenantPrisma;
     const { classroomId, studentId } = request.params;
-    const { password } = request.body;
-    const currentUserId = request.user?.id;
+    // Un DELETE puede llegar sin cuerpo: antes reventaba con 500 al
+    // desestructurar, en vez de pedir la contraseña de confirmación.
+    const { password } = (request.body ?? {}) as { password?: string };
+    const currentUserId = request.user?.id ?? (request.user as any)?.userId;
 
     // Validar que se proporcionó la contraseña
     if (!password) {
       return reply.status(400).send({
         error: 'Se requiere la contraseña para confirmar esta acción',
         code: 'PASSWORD_REQUIRED'
+      });
+    }
+
+    if (!currentUserId) {
+      return reply.status(401).send({
+        error: 'No autenticado',
+        code: 'UNAUTHORIZED'
       });
     }
 
@@ -704,16 +710,8 @@ export const unenrollStudent = async (
 
     // Eliminar inscripción completamente con transacción
     await prisma.$transaction(async (tx) => {
-      // Eliminar registro de StudentClassroom
-      await tx.studentClassroom.delete({
-        where: { id: enrollment.id }
-      });
-
-      // Limpiar classroomId en User
-      await tx.user.update({
-        where: { id: studentId },
-        data: { classroomId: null }
-      });
+      // Eliminar registro de StudentClassroom (con copia en la papelera)
+      await borrarGuardandoCopia(tx, 'studentClassroom', { id: enrollment.id }, quienBorra(request as any));
     });
 
     request.log.info({ studentId, classroomId, enrollmentId: enrollment.id, removedBy: currentUserId }, 'Estudiante removido de sección');
@@ -807,7 +805,7 @@ export const assignTeacher = async (
             select: { id: true, name: true, status: true }
           },
           _count: {
-            select: { students: true }
+            select: { studentClassrooms: { where: { isActive: true } } }
           }
         }
       });
@@ -845,6 +843,179 @@ export const assignTeacher = async (
     request.log.error({ error }, 'Error al asignar profesor');
     return reply.status(500).send({
       error: 'Error en el servidor',
+      code: 'INTERNAL_SERVER_ERROR'
+    });
+  }
+};
+
+/**
+ * Obtener estadísticas académicas de una sección/aula específica (Promedio, Riesgo, Ocupación, Asistencia, Observaciones)
+ */
+export const getClassroomStats = async (request: FastifyRequest, reply: FastifyReply) => {
+  try {
+    const { id } = request.params as { id: string };
+    const { periodId } = request.query as { periodId?: string };
+    const prisma = request.tenantPrisma;
+
+    // Buscar aula por ID o por slug
+    const classroom = await prisma.classroom.findFirst({
+      where: {
+        OR: [
+          { id },
+          { slug: id }
+        ]
+      },
+      include: {
+        academicYear: { select: { id: true, name: true } },
+      }
+    });
+
+    if (!classroom) {
+      return reply.status(404).send({ error: 'Aula/Sección no encontrada' });
+    }
+
+    const classroomId = classroom.id;
+
+    // Obtener todos los estudiantes activos en esta sección
+    const studentClassrooms = await prisma.studentClassroom.findMany({
+      where: { classroomId, isActive: true },
+      select: { studentId: true }
+    });
+
+    const studentIds = studentClassrooms.map(sc => sc.studentId);
+    const totalStudents = studentIds.length;
+    const totalCapacity = classroom.capacity || 35;
+
+    // 1. Observaciones registradas para estudiantes de esta sección (filtradas por lapso si se indica)
+    let obsPeriodFilter: any = {};
+    if (periodId) {
+      const period = await prisma.period.findUnique({
+        where: { id: periodId },
+        select: { startDate: true, endDate: true },
+      });
+      if (period) {
+        obsPeriodFilter = {
+          gte: period.startDate,
+          lte: period.endDate,
+        };
+      }
+    }
+
+    const observationsCount = studentIds.length > 0 ? await prisma.observation.count({
+      where: {
+        studentId: { in: studentIds },
+        ...(obsPeriodFilter.gte ? { date: obsPeriodFilter } : {}),
+      }
+    }) : 0;
+
+    // 2. Asistencia promedio de los estudiantes de la sección
+    let attendancePercentage = 0;
+    if (studentIds.length > 0) {
+      const attendanceQuery = `
+        SELECT
+          CAST(COALESCE(
+            (COUNT(CASE WHEN a.status IN ('PRESENT', 'LATE') THEN 1 END) * 100.0) /
+            NULLIF(COUNT(a.id), 0),
+            0
+          ) AS FLOAT) as "attendancePercentage"
+        FROM daily_attendance a
+        WHERE a."studentId" IN (${studentIds.map((_, i) => `$${i + 1}`).join(',')})
+      `;
+      const result = await prisma.$queryRawUnsafe<Array<{ attendancePercentage: number }>>(attendanceQuery, ...studentIds);
+      attendancePercentage = Math.round(Number(result[0]?.attendancePercentage || 0));
+    }
+
+    // 3. Calificaciones y Promedios
+    let average = 0;
+    let minAverage = 0;
+    let maxAverage = 0;
+    let riskCount = 0;
+
+    if (studentIds.length > 0) {
+      let minPassing = 10;
+      try {
+        const instId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
+        if (instId) {
+          const config = await closeCycleService.getAcademicConfig(instId);
+          minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
+        }
+      } catch {
+        minPassing = 10;
+      }
+
+      // Agrupar calificaciones por estudiante y materia para el lapso o ciclo completo
+      const gradesWhere: any = {
+          studentId: { in: studentIds },
+          score: { not: null },
+          ...(periodId ? { periodId } : { period: { academicYearId: classroom.academicYearId } })
+      };
+      const studentSubjectGrades = await prisma.grade.groupBy({
+        by: ['studentId', 'subjectId'],
+        where: gradesWhere,
+        _avg: { score: true }
+      });
+
+      const studentOverallAverages = new Map<string, { sum: number; count: number }>();
+      const studentFailedSubjects = new Map<string, number>();
+
+      studentSubjectGrades.forEach(ssg => {
+        const studentId = ssg.studentId;
+        const subjAvg = ssg._avg?.score || 0;
+
+        if (!studentOverallAverages.has(studentId)) {
+          studentOverallAverages.set(studentId, { sum: 0, count: 0 });
+        }
+        const current = studentOverallAverages.get(studentId)!;
+        current.sum += subjAvg;
+        current.count += 1;
+
+        if (subjAvg < minPassing) {
+          studentFailedSubjects.set(studentId, (studentFailedSubjects.get(studentId) || 0) + 1);
+        }
+      });
+
+      let sumStudentAverages = 0;
+      let studentsWithGrades = 0;
+      let currentMin = 20;
+      let currentMax = 0;
+
+      studentIds.forEach(sid => {
+        const data = studentOverallAverages.get(sid);
+        const failedCount = studentFailedSubjects.get(sid) || 0;
+        if (data && data.count > 0) {
+          const avg = Math.round((data.sum / data.count) * 10) / 10;
+          sumStudentAverages += avg;
+          studentsWithGrades += 1;
+          if (avg < currentMin) currentMin = avg;
+          if (avg > currentMax) currentMax = avg;
+
+          if (failedCount > 0 || avg < minPassing) {
+            riskCount += 1;
+          }
+        }
+      });
+
+      if (studentsWithGrades > 0) {
+        average = Math.round((sumStudentAverages / studentsWithGrades) * 10) / 10;
+        minAverage = currentMin;
+        maxAverage = currentMax;
+      }
+    }
+
+    return reply.status(200).send({
+      average,
+      minAverage,
+      maxAverage,
+      riskCount,
+      occupancy: `${totalStudents}/${totalCapacity}`,
+      attendance: `${attendancePercentage}%`,
+      observations: observationsCount
+    });
+
+  } catch (error) {
+    request.log.error({ error }, 'Error al obtener estadísticas del aula');
+    return reply.status(500).send({
+      error: 'Error en el servidor al obtener estadísticas de la sección',
       code: 'INTERNAL_SERVER_ERROR'
     });
   }

@@ -174,14 +174,18 @@ export async function getTeachers(
               }
             },
           },
-          classroomsAsTeacher: {
+          teacherClassrooms: {
             select: {
-              id: true,
-              name: true,
-              grade: true,
-              _count: {
+              classroom: {
                 select: {
-                  students: true,
+                  id: true,
+                  name: true,
+                  grade: true,
+                  _count: {
+                    select: {
+                      studentClassrooms: { where: { isActive: true } },
+                    },
+                  },
                 },
               },
             },
@@ -198,10 +202,23 @@ export async function getTeachers(
     const totalPages = Math.ceil(total / limit);
 
     return reply.status(200).send({
-      teachers: teachers.map(teacher => ({
-        ...teacher,
-        password: undefined, // No devolver la contraseña
-      })),
+      teachers: teachers.map((teacher: any) => {
+        const totalWeeklyBlocks = teacher.subjectTeachings?.reduce((sum: number, st: any) => sum + (st.weeklyBlocks || 0), 0) || 0;
+        const totalWeeklyHours = teacher.subjectTeachings?.reduce((sum: number, st: any) => sum + (st.hoursPerWeek || ((st.weeklyBlocks || 0) * 45 / 60)), 0) || 0;
+
+        return {
+          ...teacher,
+          totalWeeklyBlocks,
+          totalWeeklyHours,
+          classroomsAsTeacher: teacher.teacherClassrooms?.map((tc: any) => ({
+            ...tc.classroom,
+            _count: {
+              students: tc.classroom._count?.studentClassrooms ?? 0
+            }
+          })) || [],
+          password: undefined, // No devolver la contraseña
+        };
+      }),
       pagination: {
         page,
         limit,
@@ -253,11 +270,15 @@ export async function getTeacher(
             classroom: { select: { id: true, name: true } }
           },
         },
-        classroomsAsTeacher: {
+        teacherClassrooms: {
           include: {
-            _count: {
-              select: {
-                students: true,
+            classroom: {
+              include: {
+                _count: {
+                  select: {
+                    studentClassrooms: { where: { isActive: true } },
+                  },
+                },
               },
             },
           },
@@ -296,6 +317,12 @@ export async function getTeacher(
     return reply.status(200).send({
       teacher: {
         ...teacher,
+        classroomsAsTeacher: (teacher as any).teacherClassrooms?.map((tc: any) => ({
+          ...tc.classroom,
+          _count: {
+            students: tc.classroom._count?.studentClassrooms ?? 0
+          }
+        })) || [],
         password: undefined, // No devolver la contraseña
       },
     });

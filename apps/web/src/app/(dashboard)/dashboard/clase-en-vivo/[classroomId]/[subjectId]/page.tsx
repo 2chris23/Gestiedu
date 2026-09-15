@@ -29,6 +29,10 @@ import AnimatedAttendancePicker, { ATTENDANCE_CONFIG, AttendanceStatusType } fro
 import LiveTopicMirrorCard from '@/components/live-class/LiveTopicMirrorCard';
 import LiveActivitiesCard from '@/components/live-class/LiveActivitiesCard';
 import LiveGradesSliderInput from '@/components/live-class/LiveGradesSliderInput';
+import StudentObservationsModal from '@/components/observations/StudentObservationsModal';
+import LiveClassObservationModal from '@/components/observations/LiveClassObservationModal';
+import { toLocalYMD } from '@/utils/date.utils';
+import { useSchoolToday } from '@/hooks/useSchoolTime';
 
 function LiveClassPageInner() {
     const params = useParams();
@@ -38,11 +42,14 @@ function LiveClassPageInner() {
 
     const classroomId = params.classroomId as string;
     const subjectId = params.subjectId as string;
-    const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
+    // El día lo dice el servidor: con el reloj del dispositivo cambiado se
+    // abriría la clase de otro día.
+    const hoyDelLiceo = useSchoolToday();
+    const date = searchParams.get('date') || hoyDelLiceo;
     const startTime = searchParams.get('start') || undefined;
     const endTime = searchParams.get('end') || undefined;
 
-    const { data, isLoading } = useLiveClassDetail(classroomId, subjectId, date);
+    const { data, isLoading, refetch } = useLiveClassDetail(classroomId, subjectId, date);
     const saveMutation = useSaveLiveClass();
     const suspendClass = useSuspendClass();
     const saveActivityGrades = useSaveActivityGrades();
@@ -68,6 +75,11 @@ function LiveClassPageInner() {
     const [sortColumn, setSortColumn] = useState<string | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+    // Modal de observaciones
+    const [isLiveObsModalOpen, setIsLiveObsModalOpen] = useState(false);
+    const [selectedObsStudentId, setSelectedObsStudentId] = useState<string | null>(null);
+    const [selectedStudentForObs, setSelectedStudentForObs] = useState<any | null>(null);
 
     // Initialize data
     useEffect(() => {
@@ -332,15 +344,16 @@ function LiveClassPageInner() {
                         )}
                         <button
                             type="button"
-                            onClick={() => setObsMode((m) => !m)}
-                            className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center gap-1.5 border shadow-2xs ${
-                                obsMode
-                                    ? 'bg-amber-500 border-amber-500 text-white shadow-md ring-2 ring-amber-200'
-                                    : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
-                            }`}
+                            onClick={() => setIsLiveObsModalOpen(true)}
+                            className="px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center gap-1.5 border shadow-2xs bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
                         >
-                            <StickyNote className="w-4 h-4" />
-                            <span>{obsMode ? 'Volver a Clase' : 'Observación'}</span>
+                            <StickyNote className="w-4 h-4 text-amber-500" />
+                            <span>Observación</span>
+                            {((data as any)?.sessionObservations?.length || 0) > 0 && (
+                                <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 text-[10px] rounded-full font-bold">
+                                    {(data as any).sessionObservations.length}
+                                </span>
+                            )}
                         </button>
                         {canEdit && (
                             <>
@@ -748,8 +761,31 @@ function LiveClassPageInner() {
                                                     </td>
 
                                                     {/* Observaciones */}
-                                                    <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-400">
-                                                        <span className="italic">Sin observaciones</span>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-xs">
+                                                        {((student as any).observationsCount || 0) > 0 ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setSelectedObsStudentId(student.id);
+                                                                    setIsLiveObsModalOpen(true);
+                                                                }}
+                                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 transition-colors shadow-2xs"
+                                                            >
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                                                {(student as any).observationsCount} {(student as any).observationsCount === 1 ? 'observación' : 'observaciones'}
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setSelectedObsStudentId(student.id);
+                                                                    setIsLiveObsModalOpen(true);
+                                                                }}
+                                                                className="text-gray-400 hover:text-indigo-600 transition-colors italic text-xs flex items-center gap-1"
+                                                            >
+                                                                <Plus className="w-3 h-3" /> Sin observaciones
+                                                            </button>
+                                                        )}
                                                     </td>
 
                                                     {/* Acciones */}
@@ -853,6 +889,30 @@ function LiveClassPageInner() {
                     </div>
                 </div>
             )}
+
+            {/* Modal de Detalle de Observaciones del Estudiante */}
+            <StudentObservationsModal
+                isOpen={Boolean(selectedStudentForObs)}
+                onClose={() => setSelectedStudentForObs(null)}
+                student={selectedStudentForObs}
+            />
+
+            {/* Modal para Crear y Gestionar Observaciones de esta Clase */}
+            <LiveClassObservationModal
+                isOpen={isLiveObsModalOpen}
+                onClose={() => {
+                    setIsLiveObsModalOpen(false);
+                    setSelectedObsStudentId(null);
+                }}
+                classroomId={classroomId}
+                subjectId={subjectId}
+                date={date}
+                classSessionId={data?.session?.id}
+                students={classStudents}
+                existingObservations={(data as any)?.sessionObservations || []}
+                initialStudentId={selectedObsStudentId}
+                onObservationAdded={() => refetch()}
+            />
         </div>
     );
 }

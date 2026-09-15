@@ -162,6 +162,32 @@ export function useBatchUpsertRows() {
 // HOOKS — Copy Plan
 // ============================================================
 
+export interface CopyTargetClassroom {
+    id: string;
+    name: string;
+    grade: number;
+    section: string;
+}
+
+/**
+ * Las secciones a las que ESTE usuario puede copiar ESTE plan.
+ *
+ * La lista la decide el servidor con la misma regla que luego aplica al copiar,
+ * así que nunca aparece una sección que después vaya a rechazar.
+ */
+export function useCopyTargets(params: { sourceClassroomId?: string; subjectId?: string; enabled?: boolean }) {
+    return useQuery({
+        queryKey: ['evaluationPlanCopyTargets', params.sourceClassroomId, params.subjectId],
+        queryFn: async () => {
+            const { data } = await api.get('/evaluation-plan/copy-targets', {
+                params: { sourceClassroomId: params.sourceClassroomId, subjectId: params.subjectId },
+            });
+            return (data?.classrooms ?? []) as CopyTargetClassroom[];
+        },
+        enabled: !!params.sourceClassroomId && !!params.subjectId && params.enabled !== false,
+    });
+}
+
 export function useCopyPlan() {
     const queryClient = useQueryClient();
     return useMutation({

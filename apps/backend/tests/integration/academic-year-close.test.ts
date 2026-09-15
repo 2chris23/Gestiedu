@@ -25,8 +25,8 @@ import {
  */
 
 function gId(): string {
-    const id = createId();
-    return id.startsWith('c') ? id : `c${id}`;
+    // Siempre la 'c' delante: ver la nota de `tests/helpers.ts`.
+    return `c${createId()}`;
 }
 
 describe('Flujo 4 — Cierre de año académico', () => {
@@ -88,12 +88,16 @@ describe('Flujo 4 — Cierre de año académico', () => {
         const subject = await createTestSubject(prisma, 'institute');
 
         // Estudiante con notas "completas" (2 actividades calificadas)
-        const studentComplete = await createTestUser(prisma, UserRole.STUDENT, {
-            classroomId: classroom.id,
-        });
+        const studentComplete = await createTestUser(prisma, UserRole.STUDENT);
         // Estudiante con nota incompleta (1 sola actividad calificada de 2)
-        const studentIncomplete = await createTestUser(prisma, UserRole.STUDENT, {
-            classroomId: classroom.id,
+        const studentIncomplete = await createTestUser(prisma, UserRole.STUDENT);
+        // La membresía en la sección vive en StudentClassroom desde que se
+        // eliminó el campo denormalizado User.classroomId.
+        await prisma.studentClassroom.createMany({
+            data: [
+                { studentId: studentComplete.user.id, classroomId: classroom.id, academicYearId: year.id, isActive: true },
+                { studentId: studentIncomplete.user.id, classroomId: classroom.id, academicYearId: year.id, isActive: true },
+            ],
         });
 
         const activity = await prisma.activity.create({
@@ -156,7 +160,10 @@ describe('Flujo 4 — Cierre de año académico', () => {
             },
         });
         const classroom = await createTestClassroom(prisma, year.id, 'institute');
-        const student = await createTestUser(prisma, UserRole.STUDENT, { classroomId: classroom.id });
+        const student = await createTestUser(prisma, UserRole.STUDENT);
+        await prisma.studentClassroom.create({
+            data: { studentId: student.user.id, classroomId: classroom.id, academicYearId: year.id, isActive: true },
+        });
 
         await syncAcademicYearStatuses(prisma as any, 'institute');
 

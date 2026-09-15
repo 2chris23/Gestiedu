@@ -19,25 +19,31 @@ function StatCard({ title, value, subtext, trend, color = 'indigo', icon: Icon }
     };
 
     return (
-        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col gap-3 justify-start hover:shadow-md transition-shadow h-full">
-            <div className="flex items-start justify-between mb-2">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider truncate" title={title}>{title}</span>
-                <div className={`p-1.5 rounded-lg ${colorClasses[color]}`}>
-                    <Icon className="w-4 h-4" />
+        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow h-full">
+            <div>
+                <div className="flex items-start justify-between gap-1 mb-2">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tight leading-tight" title={title}>
+                        {title}
+                    </span>
+                    <div className={`p-1.5 rounded-lg flex-shrink-0 ${colorClasses[color]}`}>
+                        <Icon className="w-3.5 h-3.5" />
+                    </div>
+                </div>
+
+                <div className="flex items-baseline gap-2">
+                    <h3 className="text-2xl font-bold text-gray-900">{value}</h3>
+                    {trend && (
+                        <span className={`flex items-center text-xs font-medium ${trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
+                            {trend === 'up' ? <TrendingUp className="w-3 h-3 mr-0.5" /> : <TrendingDown className="w-3 h-3 mr-0.5" />}
+                        </span>
+                    )}
                 </div>
             </div>
 
-            <div className="flex items-baseline gap-2">
-                <h3 className="text-2xl font-bold text-gray-900">{value}</h3>
-                {trend && (
-                    <span className={`flex items-center text-xs font-medium ${trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
-                        {trend === 'up' ? <TrendingUp className="w-3 h-3 mr-0.5" /> : <TrendingDown className="w-3 h-3 mr-0.5" />}
-                    </span>
-                )}
-            </div>
-
             {subtext && (
-                <p className="text-xs text-gray-400 mt-1 truncate">{subtext}</p>
+                <p className="text-[10px] text-gray-400 mt-2 truncate" title={subtext}>
+                    {subtext}
+                </p>
             )}
         </div>
     );
@@ -54,29 +60,38 @@ interface AcademicStatsProps {
         observations: number;
     };
     isStudentView?: boolean;
+    averageTitle?: string;
+    riskSubtext?: string;
+    className?: string;
 }
 
-export default function AcademicStats({ stats, isStudentView = false }: AcademicStatsProps) {
-    // Default / Mock Data if no props provided (or for Global view)
+export default function AcademicStats({
+    stats,
+    isStudentView = false,
+    averageTitle = "Promedio Global",
+    riskSubtext,
+    className
+}: AcademicStatsProps) {
+    // Si no se suministran datos aún, mostrar estado neutro
     const data = stats || {
-        average: 15.4,
-        minAverage: 12,
-        maxAverage: 18,
-        riskCount: 12,
-        occupancy: "140/150",
-        attendance: "92%",
-        observations: 8
+        average: 0,
+        minAverage: 0,
+        maxAverage: 0,
+        riskCount: 0,
+        occupancy: "0/0",
+        attendance: "0%",
+        observations: 0
     };
 
     return (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className={className || "grid grid-cols-2 md:grid-cols-5 gap-4"}>
             <StatCard
-                title="Promedio Global"
+                title={averageTitle}
                 value={data.average}
                 color="blue"
                 icon={GraduationCap}
                 trend={undefined}
-                subtext={!isStudentView && data.minAverage !== undefined
+                subtext={!isStudentView && data.minAverage !== undefined && data.minAverage > 0
                     ? `Min: ${data.minAverage} / Max: ${data.maxAverage}`
                     : (!isStudentView ? "Ciclo Actual" : undefined)}
             />
@@ -86,7 +101,7 @@ export default function AcademicStats({ stats, isStudentView = false }: Academic
                 value={data.riskCount}
                 color="red"
                 icon={AlertTriangle}
-                subtext={isStudentView ? "Materias reprobadas" : "Estudiantes con promedio < 10"}
+                subtext={riskSubtext || (isStudentView ? "Materias reprobadas" : "Alumnos con materias < 10 pts")}
             />
 
             {/* Hide Occupancy for Student View */}

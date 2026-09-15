@@ -14,6 +14,8 @@ import {
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
 import { validateBody, validateParams, validateCUID } from '../middleware/validation.middleware';
 import { platformPrisma } from '../config/database';
+import { INSTITUTE_TENANT_SELECT } from '../utils/institute-fields';
+import { extractTokenFromHeader, verifyAccessToken } from '../config/jwt';
 // Nota: no existen "instituteValidators" en utils/validators; usamos solo schemas JSON locales
 
 const institutesRoutes: FastifyPluginAsync = async (fastify) => {
@@ -108,6 +110,7 @@ const institutesRoutes: FastifyPluginAsync = async (fastify) => {
     },
     body: {
       type: 'object',
+      additionalProperties: true,
       properties: {
         // Campos básicos del instituto
         name: { type: 'string', minLength: 3, maxLength: 200 },
@@ -115,6 +118,11 @@ const institutesRoutes: FastifyPluginAsync = async (fastify) => {
         email: { type: 'string', format: 'email' },
         phone: { type: 'string' },
         address: { type: 'string' },
+        website: { type: 'string' },
+        description: { type: 'string' },
+        timezone: { type: 'string' },
+        configuration: { type: ['object', 'string', 'null'] },
+        academicConfig: { type: ['object', 'null'] },
         // Configuraciones avanzadas
         academicYear: {
           type: 'object',
@@ -192,6 +200,10 @@ const institutesRoutes: FastifyPluginAsync = async (fastify) => {
           slug: true,
           subdomain: true,
           status: true,
+          logo: true,
+          favicon: true,
+          primaryColor: true,
+          secondaryColor: true,
         },
       });
 
@@ -213,6 +225,10 @@ const institutesRoutes: FastifyPluginAsync = async (fastify) => {
         slug: institute.slug,
         subdomain: institute.subdomain,
         status: institute.status,
+        logo: institute.logo,
+        favicon: institute.favicon,
+        primaryColor: institute.primaryColor,
+        secondaryColor: institute.secondaryColor,
       });
     } catch (error) {
       request.log.error({ error }, 'Error en GET /institutes/public/:slug');
@@ -224,32 +240,103 @@ const institutesRoutes: FastifyPluginAsync = async (fastify) => {
   // RUTAS /current/* — deben ir ANTES de /:id/* para que Fastify no las capture como parámetro
   // ========================================
 
-  // Ruta PÚBLICA para obtener configuración básica del instituto (logo, favicon, colores)
-  // Esta ruta NO requiere autenticación para que el frontend pueda cargar el logo antes del login
+  /**
+   * LA FICHA DEL LICEO — LO DE LA PORTADA Y LO DE ADENTRO
+   *
+   * ─── LO QUE PASABA ─────────────────────────────────────────────────────────
+   *
+   * Esta ruta era pública entera. Con solo saber el nombre corto del liceo —que
+   * es público, va en la dirección de internet— y **sin ninguna credencial**,
+   * cualquiera recibía:
+   *
+   *   el correo y el teléfono de la dirección, la dirección física, la
+   *   configuración académica completa (nota mínima para aprobar, cuántas
+   *   materias se pueden arrastrar), el plan contratado, el precio mensual, el
+   *   estado de pago, la próxima fecha de cobro, cuántos alumnos y profesores
+   *   tiene y cuánto espacio ocupa.
+   *
+   * Comprobado contra el servidor en marcha: una sola llamada, sin entrar.
+   *
+   * Y además decidía de qué liceo hablar leyendo el token **sin comprobar la
+   * firma** (`decodeToken`), que es exactamente el mismo fallo que ya se había
+   * encontrado en la copia guardada de respuestas.
+   *
+   * ─── LO QUE SE HACE AHORA ──────────────────────────────────────────────────
+   *
+   * Se separa lo que necesita la portada de lo que es de la casa:
+   *
+   *   · SIN sesión → solo lo que hace falta para pintar la pantalla de entrar:
+   *     nombre, logo, ícono, colores y si el liceo está activo. Eso mismo ya lo
+   *     entrega `/api/institutes/public/:slug` a quien sepa el nombre corto, así
+   *     que no se regala nada nuevo.
+   *   · CON sesión comprobada → la ficha completa, y solo la de SU liceo: el
+   *     instituto sale de `request.institute`, que lo resolvió `identifyTenant`
+   *     a partir del token ya verificado. Si alguien nombra otro liceo, ese
+   *     middleware ya corta con TENANT_MISMATCH.
+   *
+   * La cabecera con el nombre corto sigue valiendo para la portada (hace falta:
+   * antes de entrar no hay token que diga qué liceo es), pero ya no abre la
+   * ficha completa de nadie.
+   */
+
+  /** Lo que se puede enseñar antes de entrar: lo justo para pintar la portada. */
+  const DE_LA_PORTADA = [
+    'id',
+    'name',
+    'slug',
+    'subdomain',
+    'status',
+    'logo',
+    'favicon',
+    'primaryColor',
+    'secondaryColor',
+    'timezone',
+  ] as const;
+
   fastify.get('/current/config', async (request, reply) => {
     try {
-      // Usar el slug del header inyectado por el middleware del subdominio
-      const slug = (request.headers['x-institute-slug'] as string) || '';
+      // `identifyTenant` ya resolvió el instituto a partir del token COMPROBADO.
+      // Si hay sesión válida, esto es su liceo y ningún otro.
+      const sesionComprobada = await (async () => {
+        const token = extractTokenFromHeader(request.headers.authorization);
+        if (!token) return false;
+        try {
+          verifyAccessToken(token);
+          return true;
+        } catch {
+          return false;
+        }
+      })();
 
-      // Buscar en la Platform DB (siempre tiene el registro del instituto)
+      const slug = (request.headers['x-institute-slug'] as string) || '';
+      const instituteId = sesionComprobada ? (request as any).institute?.id : null;
+
       const institute = await platformPrisma.institute.findFirst({
-        where: slug
+        where: instituteId
+          ? { id: instituteId }
+          : slug
           ? { OR: [{ slug }, { subdomain: slug }] }
           : undefined,
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          subdomain: true,
-          status: true,
-        }
+        select: INSTITUTE_TENANT_SELECT,
       });
 
       if (!institute) {
         return reply.status(404).send({ success: false, message: 'Instituto no encontrado' });
       }
 
-      return reply.send({ success: true, data: institute });
+      if (!sesionComprobada) {
+        const portada: Record<string, unknown> = {};
+        for (const campo of DE_LA_PORTADA) portada[campo] = (institute as any)[campo];
+        return reply.send({ success: true, data: portada });
+      }
+
+      return reply.send({
+        success: true,
+        data: {
+          ...institute,
+          configuration: institute.academicConfig ? JSON.stringify(institute.academicConfig) : null,
+        }
+      });
     } catch (error) {
       request.log.error(error);
       return reply.status(500).send({ success: false, message: 'Error al obtener configuración del instituto' });

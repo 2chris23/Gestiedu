@@ -149,8 +149,8 @@ export default function LiveTopicMirrorCard({
         }
     };
 
-    // Título principal (TEMA GENERADOR)
-    const displayTitle = formValues['title'] || weekRow?.title || planContent?.headers?.[0]?.title || '';
+    // Título principal (TEMA GENERADOR) — únicamente del campo 'title'
+    const displayTitle = (formValues['title'] !== undefined ? formValues['title'] : weekRow?.title || '')?.trim();
 
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">

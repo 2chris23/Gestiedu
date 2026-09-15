@@ -550,6 +550,54 @@ export class NotificationsService {
     return this.getUserStats(prisma, userId);
   }
 
+  /**
+   * LAS CUENTAS DE TODO EL LICEO, NO LAS DEL ADMIN
+   *
+   * `GET /api/notifications/stats` decía en su propio comentario *"Stats
+   * globales del sistema"* y devolvía exactamente lo mismo que
+   * `/my-notifications/stats`: las notificaciones **del admin que preguntaba**.
+   *
+   * Un director con el buzón vacío veía "0 notificaciones" y podía entender que
+   * en su liceo no se está avisando de nada, cuando podía haber miles. Una
+   * pantalla que dice una cosa y enseña otra es peor que no tenerla.
+   *
+   * Ahora cuenta las de todo el liceo. Lo personal sigue en `getUserStats`, que
+   * es el que usa `/my-notifications/stats` y no ha cambiado.
+   */
+  async getInstituteStats(prisma: PrismaClient) {
+    const [total, unread, byType, byPriority, emailsSent, destinatarios] = await Promise.all([
+      prisma.notification.count(),
+      prisma.notification.count({ where: { readAt: null } }),
+      prisma.notification.groupBy({ by: ['type'], _count: { id: true } }),
+      prisma.notification.groupBy({ by: ['priority'], _count: { id: true } }),
+      prisma.notification.count({ where: { emailSent: true } }),
+      prisma.notification.findMany({ distinct: ['recipientId'], select: { recipientId: true } }),
+    ]);
+
+    const typeStats = byType.reduce((acc, item) => {
+      acc[item.type] = item._count.id;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const priorityStats = byPriority.reduce((acc, item) => {
+      acc[item.priority] = item._count.id;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return {
+      total,
+      unread,
+      read: total - unread,
+      byType: typeStats,
+      byPriority: priorityStats,
+      emailsSent,
+      /** A cuánta gente distinta se le ha avisado de algo. */
+      destinatarios: destinatarios.length,
+      /** Para que quien lea la respuesta sepa qué está mirando. */
+      alcance: 'liceo' as const,
+    };
+  }
+
   // Operaciones a nivel de instituto (admin)
   async updateNotification(prisma: PrismaClient, id: string, data: UpdateNotificationData) {
     const notification = await prisma.notification.findUnique({

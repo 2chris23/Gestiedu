@@ -9,6 +9,17 @@ import { resolve } from 'path';
 (() => {
   const cwd = process.cwd();
   const nodeEnv = process.env.NODE_ENV || 'development';
+
+  // EXCEPCIÓN: NODE_ENV manda desde el entorno, no desde el archivo.
+  //
+  // Al desplegar se pone NODE_ENV=production en el servidor. Si un .env
+  // olvidado dice development, con `override` ganaba el archivo y la
+  // aplicación arrancaba en modo desarrollo sin avisar: registrando cada
+  // consulta a la base, con los límites de peticiones flojos y contando los
+  // errores de más. Todo lo demás sigue igual que antes.
+  const entornoReal = process.env.NODE_ENV;
+
+
   const candidates = [
     `.env`,
     `.env.local`,
@@ -19,12 +30,27 @@ import { resolve } from 'path';
   for (const file of candidates) {
     dotenv.config({ path: file, override: true });
   }
+
+  if (entornoReal) process.env.NODE_ENV = entornoReal;
+
+  // EL PUERTO: manda el archivo, y `PORT` del entorno NO se hereda.
+  //
+  // Se probó a que el entorno mandara sobre el puerto, pensando en los
+  // servicios de hospedaje que lo asignan por variable. Resultado inmediato:
+  // esta máquina tenía un `PORT=3000` suelto en las variables del usuario, el
+  // backend arrancó en el 3000 y chocó con la web. Todo dejó de funcionar.
+  //
+  // La salida es una variable **propia y explícita**: nadie la tiene suelta por
+  // accidente, así que quien la pone es porque quiere. La usan el hospedaje que
+  // asigna el puerto y las mediciones, que levantan el servidor en un puerto
+  // aparte para no tocar el que ya está en marcha.
+  if (process.env.PUERTO_DEL_HOST) process.env.PORT = process.env.PUERTO_DEL_HOST;
 })();
 
 // Schema de validación para variables de entorno
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.string().transform(Number).default('3002'),
+  PORT: z.string().transform(Number).default('3001'),
 
   // Base de datos
   DATABASE_URL: z.string().min(1, 'DATABASE_URL es requerida'),

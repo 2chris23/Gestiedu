@@ -65,13 +65,21 @@ export interface StudentDashboardDto {
             id: string;
             name: string;
             guideTeacher: string | null;
+            academicYearName?: string | null;
+            academicYearId?: string | null;
         } | null;
     };
     kpis: {
         globalAverage: number;
         failedSubjects: number;
+        /** Asistencia del LAPSO en curso, no de toda la vida escolar del alumno. */
         attendancePercentage: number;
+        /** La misma cifra, pero del ciclo escolar completo. */
+        attendancePercentageCiclo: number;
+        /** Observaciones del lapso en curso. */
         totalObservations: number;
+        /** Observaciones de todo el ciclo. */
+        totalObservationsCiclo: number;
     };
     subjects: Array<{
         id: string;

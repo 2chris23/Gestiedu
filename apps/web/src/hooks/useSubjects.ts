@@ -22,10 +22,10 @@ export function useSubjects(params?: {
 /**
  * Hook para obtener una materia por ID o slug
  */
-export function useSubject(id: string, academicYearName?: string) {
+export function useSubject(id: string, academicYearName?: string, periodId?: string) {
     return useQuery({
-        queryKey: ['subject', id, academicYearName],
-        queryFn: () => subjectsService.getSubjectById(id, academicYearName),
+        queryKey: ['subject', id, academicYearName, periodId],
+        queryFn: () => subjectsService.getSubjectById(id, academicYearName, periodId),
         enabled: !!id,
     });
 }

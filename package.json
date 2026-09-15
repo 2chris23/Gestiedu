@@ -7,6 +7,7 @@
   ],
   "packageManager": "npm@10.2.4",
   "scripts": {
+    "test:e2e": "playwright test -c playwright.config.ts",
     "test:seed": "npx tsx apps/backend/src/scripts/seed-load-test.ts",
     "test:seed:clean": "npx tsx apps/backend/src/scripts/seed-load-test.ts --clean",
     "test:load:basic:5k": "k6 run load-tests/basic-test-5k.js",

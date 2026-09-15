@@ -15,6 +15,7 @@ export function AcademicSettings() {
         timezone: 'America/Caracas',
         gradeScale: { min: 0, max: 20 },
         passingGrade: 10,
+        asistenciaMinima: 80,
         language: 'es',
         dateFormat: 'DD/MM/YYYY',
         schedule: {
@@ -36,26 +37,28 @@ export function AcademicSettings() {
             const data = await instituteService.getConfig();
             setConfig(data);
 
-            if (data.configuration) {
-                try {
-                    const parsed = JSON.parse(data.configuration);
-                    setAcademicConfig({
-                        timezone: parsed.timezone || 'America/Caracas',
-                        gradeScale: parsed.gradeScale || { min: 0, max: 20 },
-                        passingGrade: parsed.passingGrade || 10,
-                        language: parsed.language || 'es',
-                        dateFormat: parsed.dateFormat || 'DD/MM/YYYY',
-                        schedule: parsed.schedule || {
-                            startTime: '07:00',
-                            blockDuration: 45,
-                            totalBlocks: 7,
-                            breakAfterBlock: 3,
-                            breakDuration: 15
-                        }
-                    });
-                } catch (e) {
-                    console.error('Error parsing configuration:', e);
-                }
+            const rawConfig = data.configuration
+                ? (typeof data.configuration === 'string' ? JSON.parse(data.configuration) : data.configuration)
+                : (data as any).academicConfig;
+
+            if (rawConfig) {
+                setAcademicConfig({
+                    timezone: data.timezone || rawConfig.timezone || 'America/Caracas',
+                    gradeScale: rawConfig.gradeScale || { min: 0, max: 20 },
+                    passingGrade: rawConfig.passingGrade ?? rawConfig.notaMinimaAprobatoria ?? 10,
+                    asistenciaMinima: rawConfig.asistenciaMinima ?? 80,
+                    language: rawConfig.language || 'es',
+                    dateFormat: rawConfig.dateFormat || 'DD/MM/YYYY',
+                    schedule: rawConfig.schedule || {
+                        startTime: '07:00',
+                        blockDuration: 45,
+                        totalBlocks: 7,
+                        breakAfterBlock: 3,
+                        breakDuration: 15
+                    }
+                });
+            } else if (data.timezone) {
+                setAcademicConfig(prev => ({ ...prev, timezone: data.timezone || prev.timezone }));
             }
         } catch (error) {
             console.error(error);
@@ -65,16 +68,37 @@ export function AcademicSettings() {
         }
     };
 
+    const handleNumberChange = (setter: (val: number) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = parseInt(e.target.value, 10);
+        setter(isNaN(val) ? 0 : val);
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (academicConfig.gradeScale.min >= academicConfig.gradeScale.max) {
+            toast.error('La calificación mínima debe ser menor que la máxima');
+            return;
+        }
+
+        if (academicConfig.passingGrade < academicConfig.gradeScale.min || academicConfig.passingGrade > academicConfig.gradeScale.max) {
+            toast.error(`La nota mínima aprobatoria debe estar entre ${academicConfig.gradeScale.min} y ${academicConfig.gradeScale.max}`);
+            return;
+        }
+
+        if (academicConfig.asistenciaMinima < 0 || academicConfig.asistenciaMinima > 100) {
+            toast.error('La asistencia mínima es un porcentaje: debe estar entre 0 y 100');
+            return;
+        }
 
         try {
             setSaving(true);
             await instituteService.updateConfig({
-                configuration: academicConfig
+                configuration: academicConfig,
+                timezone: academicConfig.timezone,
             });
-            toast.success('Configuración académica actualizada');
-            loadConfig();
+            toast.success('Configuración académica actualizada exitosamente');
+            await loadConfig();
         } catch (error) {
             console.error(error);
             toast.error('Error al guardar la configuración');
@@ -116,10 +140,10 @@ export function AcademicSettings() {
                         id="gradeScaleMin"
                         type="number"
                         value={academicConfig.gradeScale.min}
-                        onChange={(e) => setAcademicConfig(prev => ({
+                        onChange={handleNumberChange((min) => setAcademicConfig(prev => ({
                             ...prev,
-                            gradeScale: { ...prev.gradeScale, min: parseInt(e.target.value) }
-                        }))}
+                            gradeScale: { ...prev.gradeScale, min }
+                        })))}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                         min="0"
                     />
@@ -134,10 +158,10 @@ export function AcademicSettings() {
                         id="gradeScaleMax"
                         type="number"
                         value={academicConfig.gradeScale.max}
-                        onChange={(e) => setAcademicConfig(prev => ({
+                        onChange={handleNumberChange((max) => setAcademicConfig(prev => ({
                             ...prev,
-                            gradeScale: { ...prev.gradeScale, max: parseInt(e.target.value) }
-                        }))}
+                            gradeScale: { ...prev.gradeScale, max }
+                        })))}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                         min="1"
                     />
@@ -152,16 +176,38 @@ export function AcademicSettings() {
                         id="passingGrade"
                         type="number"
                         value={academicConfig.passingGrade}
-                        onChange={(e) => setAcademicConfig(prev => ({
+                        onChange={handleNumberChange((passingGrade) => setAcademicConfig(prev => ({
                             ...prev,
-                            passingGrade: parseInt(e.target.value)
-                        }))}
+                            passingGrade
+                        })))}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                         min={academicConfig.gradeScale.min}
                         max={academicConfig.gradeScale.max}
                     />
                     <p className="mt-1 text-xs text-gray-500">
                         Debe estar entre {academicConfig.gradeScale.min} y {academicConfig.gradeScale.max}
+                    </p>
+                </div>
+
+                {/* Asistencia mínima */}
+                <div>
+                    <label htmlFor="asistenciaMinima" className="block text-sm font-medium text-gray-700 mb-2">
+                        Asistencia Mínima (%)
+                    </label>
+                    <input
+                        id="asistenciaMinima"
+                        type="number"
+                        value={academicConfig.asistenciaMinima}
+                        onChange={handleNumberChange((asistenciaMinima) => setAcademicConfig(prev => ({
+                            ...prev,
+                            asistenciaMinima
+                        })))}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        min="0"
+                        max="100"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                        Por debajo de este porcentaje se le avisa al representante. No reprueba ni afecta las notas.
                     </p>
                 </div>
 
@@ -219,6 +265,7 @@ export function AcademicSettings() {
                     </Select>
                 </div>
             </div>
+
             {/* Configuración de Horario */}
             <div className="pt-6 border-t border-gray-200">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">
@@ -231,23 +278,61 @@ export function AcademicSettings() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div>
                         <label htmlFor="scheduleStartTime" className="block text-sm font-medium text-gray-700 mb-2">Hora de Inicio</label>
-                        <input id="scheduleStartTime" type="time" value={academicConfig.schedule.startTime} onChange={(e) => setAcademicConfig(prev => ({ ...prev, schedule: { ...prev.schedule, startTime: e.target.value } }))} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" />
+                        <input
+                            id="scheduleStartTime"
+                            type="time"
+                            value={academicConfig.schedule.startTime}
+                            onChange={(e) => setAcademicConfig(prev => ({ ...prev, schedule: { ...prev.schedule, startTime: e.target.value } }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
                     </div>
                     <div>
                         <label htmlFor="blockDuration" className="block text-sm font-medium text-gray-700 mb-2">Duración de clase (min)</label>
-                        <input id="blockDuration" type="number" min="15" max="180" value={academicConfig.schedule.blockDuration} onChange={(e) => setAcademicConfig(prev => ({ ...prev, schedule: { ...prev.schedule, blockDuration: parseInt(e.target.value) } }))} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" />
+                        <input
+                            id="blockDuration"
+                            type="number"
+                            min="15"
+                            max="180"
+                            value={academicConfig.schedule.blockDuration}
+                            onChange={handleNumberChange((blockDuration) => setAcademicConfig(prev => ({ ...prev, schedule: { ...prev.schedule, blockDuration } })))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
                     </div>
                     <div>
                         <label htmlFor="totalBlocks" className="block text-sm font-medium text-gray-700 mb-2">Total horas al día</label>
-                        <input id="totalBlocks" type="number" min="1" max="15" value={academicConfig.schedule.totalBlocks} onChange={(e) => setAcademicConfig(prev => ({ ...prev, schedule: { ...prev.schedule, totalBlocks: parseInt(e.target.value) } }))} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" />
+                        <input
+                            id="totalBlocks"
+                            type="number"
+                            min="1"
+                            max="15"
+                            value={academicConfig.schedule.totalBlocks}
+                            onChange={handleNumberChange((totalBlocks) => setAcademicConfig(prev => ({ ...prev, schedule: { ...prev.schedule, totalBlocks } })))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
                     </div>
                     <div>
                         <label htmlFor="breakAfterBlock" className="block text-sm font-medium text-gray-700 mb-2">Recreo después de la hora Nº</label>
-                        <input id="breakAfterBlock" type="number" min="1" max="10" value={academicConfig.schedule.breakAfterBlock} onChange={(e) => setAcademicConfig(prev => ({ ...prev, schedule: { ...prev.schedule, breakAfterBlock: parseInt(e.target.value) } }))} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" />
+                        <input
+                            id="breakAfterBlock"
+                            type="number"
+                            min="1"
+                            max="10"
+                            value={academicConfig.schedule.breakAfterBlock}
+                            onChange={handleNumberChange((breakAfterBlock) => setAcademicConfig(prev => ({ ...prev, schedule: { ...prev.schedule, breakAfterBlock } })))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
                     </div>
                     <div>
                         <label htmlFor="breakDuration" className="block text-sm font-medium text-gray-700 mb-2">Duración del recreo (min)</label>
-                        <input id="breakDuration" type="number" min="5" max="120" value={academicConfig.schedule.breakDuration} onChange={(e) => setAcademicConfig(prev => ({ ...prev, schedule: { ...prev.schedule, breakDuration: parseInt(e.target.value) } }))} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" />
+                        <input
+                            id="breakDuration"
+                            type="number"
+                            min="5"
+                            max="120"
+                            value={academicConfig.schedule.breakDuration}
+                            onChange={handleNumberChange((breakDuration) => setAcademicConfig(prev => ({ ...prev, schedule: { ...prev.schedule, breakDuration } })))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
                     </div>
                 </div>
             </div>

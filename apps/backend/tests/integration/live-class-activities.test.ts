@@ -15,8 +15,8 @@ import {
 
 /** Genera un ID compatible con los schemas zod `.cuid()`. */
 function gId(): string {
-    const id = createId();
-    return id.startsWith('c') ? id : `c${id}`;
+    // Siempre la 'c' delante: ver la nota de `tests/helpers.ts`.
+    return `c${createId()}`;
 }
 
 /**
@@ -115,7 +115,6 @@ describe('Regresión — Actividades por clase + semanas a lunes', () => {
         await prisma.studentClassroom.create({
             data: { studentId: s1.user.id, classroomId: classroom.id, academicYearId: year.id, isActive: true },
         });
-        await prisma.user.update({ where: { id: s1.user.id }, data: { classroomId: classroom.id } });
         student1 = s1.user;
 
         const tLogin = await login(t.user.email, 'TeacherPass123!').expect(200);
@@ -179,7 +178,9 @@ describe('Regresión — Actividades por clase + semanas a lunes', () => {
         expect(actEnViernes.dueToday).toBe(false);
     });
 
-    it('2. NEXT programada para el 28/08: es "próxima" el 25/08 y "hoy" el 28/08', async () => {
+    it('2. NEXT mandada EN la clase del 25/08: es "próxima" ese día y "hoy" el 28/08', async () => {
+        // La actividad se manda DURANTE la clase del martes, así que queda atada a
+        // esa sesión. Es lo que hace que se anuncie ahí y solo ahí.
         await prisma.classActivity.create({
             data: {
                 classroomId: classroom.id,
@@ -187,6 +188,7 @@ describe('Regresión — Actividades por clase + semanas a lunes', () => {
                 title: 'Tarea para el viernes',
                 type: 'TAREA',
                 target: 'NEXT',
+                classSessionId: sessionMartes.id,
                 // mediodía local (mismo formato que parseDayDate)
                 dueDate: new Date(2026, 7, 28, 12, 0, 0),
                 maxScore: 20,

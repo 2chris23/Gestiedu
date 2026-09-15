@@ -3,6 +3,13 @@ import { authService } from '../services/auth.service';
 import { logger } from '../utils/logger';
 import { RequestUser } from '../types/fastify';
 import { invalidateUserSession } from '../middleware/auth.middleware';
+import { verifyRefreshToken } from '../config/jwt';
+import {
+  comoEstaLaCuenta,
+  apuntarFallo,
+  olvidarFallos,
+  respuestaDeCuentaCerrada,
+} from '../utils/no-probar-contrasenas-a-lo-bruto';
 
 interface LoginRequest {
   Body: {
@@ -32,20 +39,49 @@ export async function login(
   request: FastifyRequest<LoginRequest>,
   reply: FastifyReply
 ) {
+  const instituteId = request.institute?.id;
+  const correo = (request.body as any)?.email;
+
+  // Antes de mirar la contraseña: ¿esta cuenta está cerrada por haber fallado
+  // demasiadas veces? Se comprueba por CUENTA, no por dirección de internet:
+  // repartir los intentos entre varios equipos es justo lo que esquivaba al
+  // contador de peticiones. Ver `utils/no-probar-contrasenas-a-lo-bruto.ts`.
+  const estado = await comoEstaLaCuenta(instituteId, correo);
+  if (estado.cerrada) {
+    return reply.status(429).send(respuestaDeCuentaCerrada());
+  }
+
   try {
     const loginResponse = await authService.login(
       request.body,
       request.tenantPrisma,
-      request.institute?.id,
+      instituteId,
       {
         userAgent: request.headers['user-agent']?.toString(),
         ip: request.ip,
       }
     );
 
+    // Entró bien: se le borra la cuenta de fallos. Quien se equivocó dos veces
+    // y luego acertó no se queda con esos dos colgados.
+    await olvidarFallos(instituteId, correo);
+
     return reply.status(200).send(loginResponse);
   } catch (error) {
+    // El intento falló: se apunta. Se apunta SIEMPRE, exista la cuenta o no —
+    // si solo se contaran los fallos de cuentas reales, la diferencia de
+    // comportamiento diría cuáles existen.
+    await apuntarFallo(instituteId, correo);
+
     logger.error('Error en el inicio de sesión', { error: error instanceof Error ? error.message : String(error) });
+
+    if ((error as any).statusCode) {
+      return reply.status((error as any).statusCode).send({
+        error: error instanceof Error ? error.message : 'Error de autenticación',
+        message: error instanceof Error ? error.message : undefined,
+        code: (error as any).code || 'AUTH_ERROR',
+      });
+    }
 
     if (error instanceof Error && (error.message.includes('Credenciales') || error.message.includes('Usuario'))) {
       return reply.status(400).send({
@@ -186,9 +222,21 @@ export async function getSessions(
       return reply.status(401).send({ error: 'No autorizado', code: 'UNAUTHORIZED' });
     }
 
+    let currentTokenId: string | undefined;
+    const refreshTokenHeader = (request.headers['x-refresh-token'] || '') as string;
+    if (refreshTokenHeader) {
+      try {
+        const decoded = verifyRefreshToken(refreshTokenHeader);
+        currentTokenId = decoded.tokenId;
+      } catch {
+        // Ignorar si el token no es decodificable
+      }
+    }
+
     const sessions = await authService.getUserSessions(user.userId, request.tenantPrisma, {
       userAgent: request.headers['user-agent']?.toString(),
       ip: request.ip,
+      currentTokenId,
     });
 
     return reply.status(200).send({ sessions });
@@ -227,6 +275,42 @@ export async function deleteSession(
     return reply.status(200).send({ success: true });
   } catch (error) {
     logger.error('Error al revocar sesión', { error: error instanceof Error ? error.message : String(error) });
+    return reply.status(500).send({
+      error: 'Error interno del servidor',
+      code: 'INTERNAL_SERVER_ERROR',
+    });
+  }
+}
+
+/**
+ * Controlador para revocar TODAS las sesiones excepto la actual.
+ */
+export async function deleteOtherSessions(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    const user = request.user as RequestUser;
+    if (!user) {
+      return reply.status(401).send({ error: 'No autorizado', code: 'UNAUTHORIZED' });
+    }
+
+    let currentTokenId: string | undefined;
+    const refreshTokenHeader = (request.headers['x-refresh-token'] || '') as string;
+    if (refreshTokenHeader) {
+      try {
+        const decoded = verifyRefreshToken(refreshTokenHeader);
+        currentTokenId = decoded.tokenId;
+      } catch {
+        // Ignorar
+      }
+    }
+
+    const revokedCount = await authService.revokeOtherSessions(user.userId, currentTokenId, request.tenantPrisma);
+
+    return reply.status(200).send({ success: true, revokedCount });
+  } catch (error) {
+    logger.error('Error al revocar otras sesiones', { error: error instanceof Error ? error.message : String(error) });
     return reply.status(500).send({
       error: 'Error interno del servidor',
       code: 'INTERNAL_SERVER_ERROR',

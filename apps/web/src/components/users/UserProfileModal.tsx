@@ -255,7 +255,7 @@ export function UserProfileModal({ isOpen, onClose, userId }: UserProfileModalPr
                                                                         id="newPassword"
                                                                         value={newPassword}
                                                                         onChange={(e) => setNewPassword(e.target.value)}
-                                                                        placeholder="Mínimo 6 caracteres"
+                                                                        placeholder="Mínimo 8 caracteres"
                                                                         className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
                                                                     />
                                                                     <div className="flex justify-end gap-2">

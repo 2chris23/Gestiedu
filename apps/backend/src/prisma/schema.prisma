@@ -113,7 +113,9 @@ model Institute {
   id        String  @id @default(cuid())
   name      String
   code      String
-  email     String
+  // Opcional por decisión de producto: un instituto puede no tener email de contacto.
+  // Debe seguir al espejo de `Institute.email` en platform-schema.prisma.
+  email     String?
   phone     String?
   address   String?
   slug      String  @unique
@@ -147,11 +149,11 @@ model Institute {
   secondaryColor String? @default("#3B82F6")
   subjectPalette String?
   ministryLogo   String?
-  ministryText   String?  @default("República Bolivariana de Venezuela\nMinisterio del Poder Popular para la Educación")
+  ministryText   String? @default("República Bolivariana de Venezuela\nMinisterio del Poder Popular para la Educación")
 
   // Configuración académica
-  customDomain   String?  @unique
-  environment    String   @default("production")
+  customDomain String? @unique
+  environment  String  @default("production")
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -166,7 +168,6 @@ model Institute {
   schedules     Schedule[]
   auditLogs     AuditLog[]
   notifications Notification[]
-  enrollments   Enrollment[]
   observations  Observation[]
   invitations   InstituteInvitation[]
   webhookLogs   WebhookLog[]
@@ -197,27 +198,28 @@ model InstituteInvitation {
 // =====================================================
 
 model User {
-  id        String    @id // Cédula de identidad (CI) - definida por administrador
-  email     String    @unique
-  password  String
-  firstName String
-  lastName  String
-  phone     String?
-  birthDate DateTime?
-  address   String?
-  gender    Gender?
-  avatar    String?
-  role      UserRole
-  isActive  Boolean   @default(true)
-  joinDate  DateTime  @default(now())
-  lastLogin DateTime?
+  id         String    @id // Cédula de identidad (CI) - definida por administrador
+  email      String    @unique
+  password   String
+  firstName  String
+  lastName   String
+  phone      String?
+  birthDate  DateTime?
+  address    String?
+  gender     Gender?
+  avatar     String?
+  role       UserRole
+  isActive   Boolean   @default(true)
+  status     String    @default("ACTIVE") // ACTIVE, ARCHIVED, DELETED
+  archivedAt DateTime?
+  joinDate   DateTime  @default(now())
+  lastLogin  DateTime?
 
   // Campos específicos para profesores
   specialization String?
 
   // Campos específicos para estudiantes
   studentCode String?
-  classroomId String?
 
   // Relación con instituto
   // Configuraciones del usuario
@@ -229,23 +231,23 @@ model User {
 
   // Relaciones específicas por rol
   // Como Profesor
-  teacherClassrooms     TeacherClassroom[]
-  createdActivities     Activity[]
-  gradesGiven           Grade[]
-  attendanceRecords     DailyAttendance[]
-  classroomsAsTeacher   Classroom[]             @relation("ClassroomTeacher")
-  subjectTeachings      ClassroomSubject[]      @relation("SubjectTeacher")
-  subjectTeacherHistory SubjectTeacherHistory[] @relation("SubjectTeacherHistory")
-  schedules             Schedule[]              @relation("ScheduleTeacher")
+  teacherClassrooms      TeacherClassroom[]
+  createdActivities      Activity[]
+  gradesGiven            Grade[]
+  attendanceRecords      DailyAttendance[]
+  classroomsAsTeacher    Classroom[]             @relation("ClassroomTeacher")
+  subjectTeachings       ClassroomSubject[]      @relation("SubjectTeacher")
+  subjectTeacherHistory  SubjectTeacherHistory[] @relation("SubjectTeacherHistory")
+  schedules              Schedule[]              @relation("ScheduleTeacher")
+  personalScheduleBlocks ScheduleBlock[]         @relation("ScheduleBlockTeacher")
+  createdSchoolEvents    SchoolEvent[]           @relation("CreatedSchoolEvents")
 
   // Como Estudiante
-  classroom           Classroom?         @relation(fields: [classroomId], references: [id], onDelete: SetNull)
   studentClassrooms   StudentClassroom[]
   grades              Grade[]            @relation("StudentGrades")
   attendance          DailyAttendance[]  @relation("StudentAttendance")
   academicHistory     AcademicRecord[]
   studentTutorings    StudentTutor[]     @relation("StudentTutorStudent")
-  enrollments         Enrollment[]
   observations        Observation[]
   createdObservations Observation[]      @relation("CreatedObservations")
 
@@ -267,9 +269,7 @@ model User {
   @@index([email])
   @@index([role])
   @@index([isActive])
-  @@index([classroomId])
   @@index([studentCode])
-  @@index([classroomId, role])
   @@index([role, isActive])
   @@map("users")
 }
@@ -283,10 +283,10 @@ model RefreshToken {
   createdAt DateTime @default(now())
 
   // Datos de sesión de dispositivo
-  userAgent    String?
-  ip           String?  // IP con la que se creó la sesión
-  lastUsedAt   DateTime @default(now()) // último uso actualizado en cada refresh
-  rememberMe   Boolean  @default(false) // sliding expiration activa
+  userAgent  String?
+  ip         String? // IP con la que se creó la sesión
+  lastUsedAt DateTime @default(now()) // último uso actualizado en cada refresh
+  rememberMe Boolean  @default(false) // sliding expiration activa
 
   @@index([userId])
   @@index([expiresAt])
@@ -316,6 +316,7 @@ model AcademicYear {
   academicRecords  AcademicRecord[]
   enrollments      StudentClassroom[]
   subjectResources SubjectResource[]
+  schoolEvents     SchoolEvent[]
   institute        Institute?         @relation(fields: [instituteId], references: [id])
   instituteId      String?
 
@@ -363,12 +364,12 @@ model Subject {
   activities         Activity[]
   grades             Grade[]
   schedules          Schedule[]
-  enrollments        Enrollment[]
   classSessions      ClassSession[]
   classActivities    ClassActivity[]
   resources          SubjectResource[]
   evaluationPlanRows EvaluationPlanRow[]
-  institute          Institute?         @relation(fields: [instituteId], references: [id])
+  observations       Observation[]
+  institute          Institute?          @relation(fields: [instituteId], references: [id])
   instituteId        String?
 
   @@unique([name])
@@ -416,18 +417,18 @@ model Classroom {
   updatedAt DateTime @updatedAt
 
   // Relaciones
-  students           User[]
   teachers           TeacherClassroom[]
   studentClassrooms  StudentClassroom[]
   subjects           ClassroomSubject[]
   activities         Activity[]
   schedules          Schedule[]
   attendanceRecords  DailyAttendance[]
-  scheduleBlocks     ScheduleBlock[]    @relation("ClassroomScheduleBlocks")
+  scheduleBlocks     ScheduleBlock[]     @relation("ClassroomScheduleBlocks")
   classSessions      ClassSession[]
   classActivities    ClassActivity[]
   evaluationPlanRows EvaluationPlanRow[]
-  institute          Institute?         @relation(fields: [instituteId], references: [id])
+  observations       Observation[]
+  institute          Institute?          @relation(fields: [instituteId], references: [id])
   instituteId        String?
 
   @@unique([academicYearId, name, section])
@@ -534,19 +535,43 @@ model SubjectTeacherHistory {
   @@map("subject_teacher_history")
 }
 
+/// Un bloque de la cuadrícula del horario. Dos formas, una sola tabla —
+/// `blockType` discrimina:
+///
+///   CLASS    → una clase. Cuelga de `classroomSubject` (sección + materia +
+///              profesor), que es la asignación que hace el admin. Por eso el
+///              horario de la sección y el del profesor son la misma tabla
+///              vista desde dos lados.
+///   PERSONAL → hora propia del profesor (planificación, guardia…). No tiene
+///              sección ni materia: la crea el admin desde el horario del
+///              profesor, con `title` y `notes`, y pertenece a `teacher`.
+///
+/// Viven juntos a propósito: la pregunta "¿está ocupada esta hora de este
+/// profesor?" tiene que responderse con UNA consulta. Si estuvieran en tablas
+/// distintas, cada camino que valida horarios tendría que acordarse de mirar
+/// las dos, y olvidarlo fallaría en silencio (colocar una clase encima de la
+/// hora personal de alguien).
 model ScheduleBlock {
   id String @id @default(cuid())
 
-  classroomId String
-  classroom   Classroom @relation("ClassroomScheduleBlocks", fields: [classroomId], references: [id], onDelete: Cascade)
+  /// Nulo en los bloques PERSONAL: no pertenecen a ninguna sección.
+  classroomId String?
+  classroom   Classroom? @relation("ClassroomScheduleBlocks", fields: [classroomId], references: [id], onDelete: Cascade)
 
   classroomSubjectId String?
   classroomSubject   ClassroomSubject? @relation(fields: [classroomSubjectId], references: [id], onDelete: SetNull)
+
+  /// Dueño del bloque PERSONAL. En los CLASS el profesor se obtiene a través
+  /// de `classroomSubject.teacherId`, no aquí.
+  teacherId String?
+  teacher   User?   @relation("ScheduleBlockTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
 
   dayOfWeek Int
   startTime String
   endTime   String
   blockType String  @default("CLASS")
+  /// Solo en los PERSONAL: el título que le pone el admin.
+  title     String?
   location  String?
   notes     String?
 
@@ -556,6 +581,7 @@ model ScheduleBlock {
   @@index([classroomId, dayOfWeek])
   @@index([classroomSubjectId])
   @@index([classroomId, dayOfWeek, startTime])
+  @@index([teacherId, dayOfWeek])
   @@map("schedule_blocks")
 }
 
@@ -625,10 +651,10 @@ model Activity {
 
   grades      Grade[]
   planRow     EvaluationPlanRow?
-  institute   Institute? @relation(fields: [instituteId], references: [id])
+  institute   Institute?         @relation(fields: [instituteId], references: [id])
   instituteId String?
 
-  orderIndex  Int @default(0)
+  orderIndex Int @default(0)
 
   @@index([classroomId])
   @@index([subjectId])
@@ -642,95 +668,95 @@ model Activity {
 }
 
 model EvaluationPlanMetadata {
-  id                 String   @id @default(cuid())
-  classroomId        String
-  subjectId          String
-  lapso              String
-  
+  id          String @id @default(cuid())
+  classroomId String
+  subjectId   String
+  lapso       String
+
   // Membrete (auto-llenado, editable)
-  nombreDocente      String?
-  cedulaDocente      String?
-  telefonoDocente    String?
-  correoDocente      String?
-  areaFormacion      String?
-  annoSeccion        String?
-  periodoEscolar     String?
-  totalSemanas       Int?
-  fechaDesde         DateTime?
-  fechaHasta         DateTime?
-  
+  nombreDocente   String?
+  cedulaDocente   String?
+  telefonoDocente String?
+  correoDocente   String?
+  areaFormacion   String?
+  annoSeccion     String?
+  periodoEscolar  String?
+  totalSemanas    Int?
+  fechaDesde      DateTime?
+  fechaHasta      DateTime?
+
   // Campos del plan
-  peic               String?
-  enfasisCurricular  String?
-  referentesEticos   String?
-  intencionalidad    String?
-  temaIndispensable  String?
-  
+  peic              String?
+  enfasisCurricular String?
+  referentesEticos  String?
+  intencionalidad   String?
+  temaIndispensable String?
+
   // Observaciones y firmas
-  observaciones      String?
+  observaciones String?
 
   // Nombres de columnas personalizadas (JSON o texto plano separado por comas)
-  customColumns      String?
+  customColumns String?
 
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([classroomId, subjectId, lapso])
   @@map("evaluation_plan_metadata")
 }
 
 model EvaluationPlanRow {
-  id          String @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Identificación del plan
   classroomId String
   classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
   subjectId   String
-  subject     Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subject     Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   lapso       String
-  
+
   // Estructura
-  rowType      String   // "HEADER" | "FIELD" | "EVALUATION" | "TEXT" | "INDICATORS"
-  weekNumber   Int
-  endWeekNumber Int?    // Para permitir que una fila abarque desde weekNumber hasta endWeekNumber
-  orderIndex   Int      @default(0)
-  
+  rowType       String // "HEADER" | "FIELD" | "EVALUATION" | "TEXT" | "INDICATORS"
+  weekNumber    Int
+  endWeekNumber Int? // Para permitir que una fila abarque desde weekNumber hasta endWeekNumber
+  orderIndex    Int    @default(0)
+
   // HEADER fields
   title        String?
-  headingLevel Int?     // 1, 2, 3
-  
+  headingLevel Int? // 1, 2, 3
+
   // FIELD fields
-  label        String?
-  content      String?
-  
+  label   String?
+  content String?
+
   // TEXT fields
-  textContent  String?
-  
+  textContent String?
+
   // EVALUATION fields (campos fijos)
-  actividadEval    String?
-  tecnicas         String?
-  instrumentos     String?
-  criterios        String?
-  ponderacion      Float?    // % del total
-  puntos           Float?    // Puntos
-  tipoEvaluacion   String?   // "FORMATIVA" | "SUMATIVA" | "DIAGNOSTICA"
-  
+  actividadEval  String?
+  tecnicas       String?
+  instrumentos   String?
+  criterios      String?
+  ponderacion    Float? // % del total
+  puntos         Float? // Puntos
+  tipoEvaluacion String? // "FORMATIVA" | "SUMATIVA" | "DIAGNOSTICA"
+
   // INDICATORS fields (JSON desglose)
-  indicadores      String?   // JSON: {"SER": 1, "HACER": 2, ...}
+  indicadores String? // JSON: {"SER": 1, "HACER": 2, ...}
 
   // Datos extra para columnas personalizadas (JSON)
-  extraData   String?
+  extraData String?
 
   // Actividades de Clase en Vivo vinculadas a este criterio/bloque
   classActivities ClassActivity[]
-  
+
   // Link a Activity para calificaciones
-  activityId  String?  @unique
-  activity    Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  activityId String?   @unique
+  activity   Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([classroomId, subjectId, lapso])
   @@index([classroomId, subjectId, lapso, weekNumber])
   @@map("evaluation_plan_rows")
@@ -912,36 +938,11 @@ model Notification {
 // MODELOS DE DASHBOARD DE ESTUDIANTE
 // =====================================================
 
-model Enrollment {
-  id        String @id @default(cuid())
-  studentId String
-  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  subjectId String
-  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-
-  currentAverage Float  @default(0)
-  status         String @default("ACTIVE")
-
-  // Instituto
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  institute   Institute? @relation(fields: [instituteId], references: [id])
-  instituteId String?
-
-  @@unique([studentId, subjectId])
-  @@index([studentId])
-  @@index([subjectId])
-  @@index([status])
-  @@index([studentId, status])
-  @@map("enrollments")
-}
-
 model Observation {
   id          String   @id @default(cuid())
   title       String
   description String?
-  type        String
+  type        String   @default("OBSERVACION")
   date        DateTime @default(now())
 
   studentId String
@@ -949,6 +950,17 @@ model Observation {
 
   createdById String
   createdBy   User   @relation("CreatedObservations", fields: [createdById], references: [id], onDelete: Cascade)
+
+  classroomId String?
+  classroom   Classroom? @relation(fields: [classroomId], references: [id], onDelete: SetNull)
+
+  subjectId String?
+  subject   Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+
+  classSessionId String?
+  classSession   ClassSession? @relation(fields: [classSessionId], references: [id], onDelete: SetNull)
+
+  groupId String?
 
   // Instituto
   createdAt   DateTime   @default(now())
@@ -958,6 +970,10 @@ model Observation {
 
   @@index([studentId])
   @@index([createdById])
+  @@index([classroomId])
+  @@index([subjectId])
+  @@index([classSessionId])
+  @@index([groupId])
   @@index([date])
   @@map("observations")
 }
@@ -1035,20 +1051,72 @@ model SystemAlert {
 // MODELOS DE CLASES (SESIONES)
 // =====================================================
 
+// =====================================================
+// EVENTOS DEL LICEO (actos, jornadas, reuniones…)
+// =====================================================
+
+/// Un evento que crea el director/admin sobre una franja de un día concreto.
+///
+/// Siempre suspende las clases que caen en su franja y su alcance (decisión de
+/// producto). La suspensión se hace marcando la `ClassSession` de ese día como
+/// SUSPENDED — el mismo estado que usa Clase en Vivo, que ya muestra "Clase
+/// suspendida: <motivo>" — y se registra en `suspendedByEventId` para poder
+/// deshacerla si el evento se borra o se mueve.
+///
+/// Alcance (`scope`):
+///   INSTITUTE  → todas las secciones del ciclo escolar
+///   GRADES     → las secciones de los años listados en `grades` (1 = 1er año…)
+///   CLASSROOMS → las secciones listadas en `classroomIds`
+model SchoolEvent {
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+
+  date      DateTime @db.Date
+  /// Franja cubierta: del inicio del primer bloque al fin del último.
+  startTime String
+  endTime   String
+
+  scope        String   @default("INSTITUTE")
+  grades       Int[]    @default([])
+  classroomIds String[] @default([])
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User?   @relation("CreatedSchoolEvents", fields: [createdById], references: [id], onDelete: SetNull)
+
+  suspendedSessions ClassSession[] @relation("EventSuspendedSessions")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([academicYearId, date])
+  @@index([date])
+  @@map("school_events")
+}
+
 model ClassSession {
-  id           String   @id @default(cuid())
-  publicId     String   @unique @default(cuid())
-  date         DateTime
-  startTime    String?
-  endTime      String?
-  topic        String?
-  observations String?
+  id                 String   @id @default(cuid())
+  publicId           String   @unique @default(cuid())
+  date               DateTime @db.Date
+  startTime          String?
+  endTime            String?
+  topic              String?
+  observations       String?
   observationsTitle  String?
   involvedStudentIds String[] @default([])
 
   // Estado de la clase: ACTIVE | SUSPENDED
   status          String  @default("ACTIVE")
   suspendedReason String?
+
+  /// Evento del liceo que suspendió esta clase, si fue uno. Permite revertir la
+  /// suspensión al borrar o mover el evento sin tocar las suspensiones que hizo
+  /// un profesor a mano (esas tienen este campo nulo).
+  suspendedByEventId String?
+  suspendedByEvent   SchoolEvent? @relation("EventSuspendedSessions", fields: [suspendedByEventId], references: [id], onDelete: SetNull)
 
   subjectId String
   subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
@@ -1058,11 +1126,14 @@ model ClassSession {
 
   attendanceRecords DailyAttendance[]
   activities        ClassActivity[]
+  observationsList  Observation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([classroomId, subjectId, date])
   @@index([classroomId, subjectId])
+  @@index([suspendedByEventId])
   @@index([date])
   @@index([classroomId, date])
   @@index([subjectId, date])
@@ -1078,11 +1149,11 @@ model ClassActivity {
   title       String
   description String?
   type        String    @default("TAREA") // TAREA | EXAMEN | ACTIVIDAD
-  target      String    @default("NEXT")  // CURRENT (esta clase) | NEXT (próxima clase)
-  tag         String?   // Etiqueta personalizada (ej: Examen, Taller, Tarea, Proyecto...)
+  target      String    @default("NEXT") // CURRENT (esta clase) | NEXT (próxima clase)
+  tag         String? // Etiqueta personalizada (ej: Examen, Taller, Tarea, Proyecto...)
   dueDate     DateTime? // Fecha asignada o fecha límite
   maxScore    Float?    @default(20)
-  scores      Json?     // Mapa de puntajes por estudiante: { "studentId": score }
+  scores      Json? // Mapa de puntajes por estudiante: { "studentId": score }
   isDone      Boolean   @default(false)
   carriedOver Boolean   @default(false) // true si fue movida por suspensión
 
@@ -1125,4 +1196,37 @@ model WebhookLog {
   @@index([event])
   @@index([createdAt])
   @@map("webhook_logs")
+}
+
+// =====================================================
+// PAPELERA (nada se borra de verdad)
+// =====================================================
+//
+// Antes de borrar una fila se guarda aquí una copia completa tal como estaba.
+// No cambia cómo se consulta nada —las pantallas siguen igual— pero deja que un
+// borrado por error se pueda deshacer.
+//
+// Un borrado equivocado de notas o de asistencia no se recupera de ningún otro
+// sitio salvo del respaldo de anoche, que se lleva por delante todo lo del día.
+// Esto es la red de seguridad del día en curso.
+
+model RegistroBorrado {
+  id         String @id @default(cuid())
+  /// Nombre del modelo Prisma: "grade", "dailyAttendance", "observation"...
+  tabla      String
+  /// El id que tenía la fila borrada.
+  registroId String
+  /// La fila entera tal como estaba justo antes de borrarse.
+  contenido  Json
+
+  /// Quién lo borró y desde dónde, para poder preguntarle.
+  borradoPor String?
+  motivo     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tabla, registroId])
+  @@index([createdAt])
+  @@index([tabla, createdAt(sort: Desc)])
+  @@map("registros_borrados")
 }
