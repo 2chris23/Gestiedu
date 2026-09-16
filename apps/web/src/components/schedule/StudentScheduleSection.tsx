@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useMemo, useRef } from 'react';
-import { toast } from 'sonner';
 import {
-    Calendar, Clock, Coffee, Printer, Edit, Search, MapPin, User,
+    Calendar, Clock, Coffee, Edit, Search, MapPin, User,
     ChevronLeft, ChevronRight, ListTodo, BookOpen, CalendarDays
 } from 'lucide-react';
 import { ScheduleBlock } from '@/components/schedule/UniversalScheduleViewer';
+import { DescargarHorario } from '@/components/schedule/DescargarHorario';
 import ScheduleCalendarModal from '@/components/modals/ScheduleCalendarModal';
 import ScheduleHistoryModal from '@/components/schedule/ScheduleHistoryModal';
 import Link from 'next/link';
@@ -22,6 +22,9 @@ interface Props {
     showActions?: boolean;
     classroomId?: string;
     editUrl?: string;
+    /** Lo que encabeza el horario descargado: la sección, o el nombre de la persona. */
+    titulo?: string;
+    subtitulo?: string;
 }
 
 // Días de la semana laborables
@@ -86,7 +89,7 @@ const MODERN_SUBJECT_STYLES = [
     },
 ];
 
-export default function StudentScheduleSection({ schedule, role, showActions = false, classroomId, editUrl }: Props) {
+export default function StudentScheduleSection({ schedule, role, showActions = false, classroomId, editUrl, titulo = 'Horario semanal', subtitulo }: Props) {
     const [viewMode, setViewMode] = React.useState<'day' | 'week'>('day');
     const [isCalendarModalOpen, setIsCalendarModalOpen] = React.useState(false);
     const { periods: dynamicPeriods, isLoading } = useSchedulePeriods();
@@ -366,6 +369,8 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             </div>
                         )}
 
+                        <DescargarHorario bloques={schedule} titulo={titulo} subtitulo={subtitulo} />
+
                         {showActions && (
                             <div className="flex items-center gap-1 mr-1 pr-1 border-r border-gray-200">
                                 {classroomId && (
@@ -378,14 +383,6 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                         <Search size={15} />
                                     </button>
                                 )}
-                                <button
-                                    type="button"
-                                    onClick={() => toast.info('Impresión disponible desde el menú superior')}
-                                    className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                    title="Imprimir horario"
-                                >
-                                    <Printer size={15} />
-                                </button>
                                 {editUrl && (
                                     <Link
                                         href={editUrl}

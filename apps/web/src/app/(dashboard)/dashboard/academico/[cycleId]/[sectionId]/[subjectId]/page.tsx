@@ -413,6 +413,7 @@ export default function SectionSubjectDashboard() {
                         showActions={true}
                         classroomId={classroomId}
                         editUrl={`/dashboard/horario/${cycleId}/${sectionId}`}
+                        subtitulo={sectionName}
                     />
                 </div>
 

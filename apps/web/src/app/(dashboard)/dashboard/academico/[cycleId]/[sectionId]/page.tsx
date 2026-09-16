@@ -444,6 +444,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                     showActions={true}
                     classroomId={classroomId}
                     editUrl={`/dashboard/horario/${cycleId}/${sectionId}`}
+                    titulo={classroom?.name ? `Horario · ${classroom.name}` : 'Horario de la sección'}
                 />
             </div>
 

@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { toast } from 'sonner';
 import {
-    Calendar, Clock, Printer, Edit, MapPin,
+    Calendar, Clock, Edit, MapPin,
     ChevronLeft, ChevronRight, BookOpen, CalendarDays
 } from 'lucide-react';
 import { ScheduleBlock } from '@/components/schedule/UniversalScheduleViewer';
+import { DescargarHorario } from '@/components/schedule/DescargarHorario';
 import ScheduleHistoryModal from '@/components/schedule/ScheduleHistoryModal';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -21,6 +21,8 @@ interface Props {
     showActions?: boolean;
     classroomId?: string;
     editUrl?: string;
+    /** Debajo del nombre de la materia en el horario descargado: la sección. */
+    subtitulo?: string;
 }
 
 const WORKING_DAYS = [
@@ -48,7 +50,8 @@ export default function SubjectScheduleSection({
     role,
     showActions = false,
     classroomId,
-    editUrl
+    editUrl,
+    subtitulo
 }: Props) {
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [selectedHistoryDate, setSelectedHistoryDate] = useState<string | null>(null);
@@ -272,16 +275,10 @@ export default function SubjectScheduleSection({
                         </div>
                     )}
 
+                    <DescargarHorario bloques={schedule} titulo={subject.name} subtitulo={subtitulo} />
+
                     {showActions && (
                         <div className="flex items-center gap-1 mr-1 pr-1 border-r border-gray-200">
-                            <button
-                                type="button"
-                                onClick={() => toast.info('Impresión de horario disponible')}
-                                className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                title="Imprimir horario de la materia"
-                            >
-                                <Printer size={15} />
-                            </button>
                             {editUrl && (
                                 <Link
                                     href={editUrl}
