@@ -7,6 +7,7 @@ import { ConfirmProvider } from '@/hooks/useConfirm';
 import { DynamicFavicon } from '@/components/common/DynamicFavicon';
 import { DynamicTitle } from '@/components/common/DynamicTitle';
 import { DynamicColors } from '@/components/common/DynamicColors';
+import { ProveedorDeGlobos } from '@/components/ui/boton-icono';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -59,10 +60,12 @@ export default function RootLayout({
             <body className={inter.className} suppressHydrationWarning={true}>
                 <QueryProvider>
                     <ConfirmProvider>
-                        <DynamicFavicon />
-                        <DynamicTitle />
-                        <DynamicColors />
-                        {children}
+                        <ProveedorDeGlobos>
+                            <DynamicFavicon />
+                            <DynamicTitle />
+                            <DynamicColors />
+                            {children}
+                        </ProveedorDeGlobos>
                     </ConfirmProvider>
                 </QueryProvider>
                 <Toaster richColors position="top-right" />

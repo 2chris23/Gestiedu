@@ -17,6 +17,7 @@ import GuideHistoryModal from '@/components/modals/GuideHistoryModal';
 import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { useTeacherScheduleBlocks, transformTeacherScheduleData, useClassroomSchedule, transformScheduleData } from '@/hooks/useSchedules';
 import Link from 'next/link';
+import { RepresentantesDelAlumno } from '@/components/users/RepresentantesDelAlumno';
 import { cn } from '@/lib/utils';
 
 interface PageProps {
@@ -82,7 +83,7 @@ export default function UserProfilePage({ params }: PageProps) {
     const [selectedStudentYearId, setSelectedStudentYearId] = useState<string>('');
     const [showGuideHistoryModal, setShowGuideHistoryModal] = useState(false);
     const { data: allAcademicYears } = useAcademicYears();
-    const [fullUserData, setFullUserData] = useState<{ teacherClassrooms?: TeacherClassroomEntry[]; studentClassrooms?: any[] } | null>(null);
+    const [fullUserData, setFullUserData] = useState<{ teacherClassrooms?: TeacherClassroomEntry[]; studentClassrooms?: any[]; children?: any[] } | null>(null);
     const [studentClassroomId, setStudentClassroomId] = useState<string>('');
     // Fase 3.5 — filtro por lapso/momento (undefined = "Todo el ciclo")
     const [lapsoId, setLapsoId] = useState<string | undefined>(undefined);
@@ -373,10 +374,36 @@ export default function UserProfilePage({ params }: PageProps) {
                                     <span className="text-gray-400 italic text-sm">Sin dirección registrada</span>
                                 )}
                             </div>
-                            {user.role === 'student' && (
+                            {user.role === 'student' && <RepresentantesDelAlumno studentId={user.cedula} />}
+                            {user.role === 'tutor' && (
                                 <div className="pt-4 border-t border-gray-100 mt-2">
-                                    <span className="text-gray-400 text-xs uppercase font-bold tracking-wider">Representante</span>
-                                    <p className="text-gray-400 italic text-sm mt-1">Sin representante asignado</p>
+                                    <span className="text-gray-400 text-xs uppercase font-bold tracking-wider">Representa a</span>
+                                    {(fullUserData?.children ?? []).length === 0 ? (
+                                        <p className="text-gray-400 italic text-sm mt-1">
+                                            Ningún estudiante. Se asigna desde el perfil del estudiante.
+                                        </p>
+                                    ) : (
+                                        <ul className="mt-2 space-y-1.5">
+                                            {(fullUserData?.children ?? []).map((c) => (
+                                                <li key={c.student.id}>
+                                                    <Link
+                                                        href={`/dashboard/usuarios/${c.student.id}`}
+                                                        className="block rounded-xl bg-gray-50 px-3 py-2 hover:bg-gray-100"
+                                                    >
+                                                        <span className="block truncate text-sm font-semibold text-gray-800">
+                                                            {c.student.firstName} {c.student.lastName}
+                                                        </span>
+                                                        <span className="block truncate text-xs text-gray-500">
+                                                            {c.relationship}
+                                                            {c.student.studentClassrooms?.[0]?.classroom?.name
+                                                                ? ` · ${c.student.studentClassrooms[0].classroom.name}`
+                                                                : ''}
+                                                        </span>
+                                                    </Link>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
                                 </div>
                             )}
                         </div>
