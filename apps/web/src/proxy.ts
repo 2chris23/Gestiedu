@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/register', '/forgot-password'];
+/**
+ * `/diseno` es el muestrario del lenguaje visual: no enseña ni un dato del
+ * liceo, solo tarjetas de ejemplo. Va aquí para poder abrirlo sin entrar.
+ */
+const PUBLIC_ROUTES = ['/login', '/register', '/forgot-password', '/diseno'];
 const API_ROUTES_PREFIX = '/api/';
 const SUPERADMIN_LOGIN = '/superadmin/login';
 
