@@ -243,6 +243,8 @@ model User {
   createdSchoolEvents    SchoolEvent[]           @relation("CreatedSchoolEvents")
   replacementsTaught     ClassReplacement[]      @relation("ReplacementTeacher")
   photo                  UserPhoto?
+  paymentPlans           StudentPaymentPlan[]
+  payments               Payment[]               @relation("PaymentStudent")
 
   // Como Estudiante
   studentClassrooms   StudentClassroom[]
@@ -318,8 +320,10 @@ model AcademicYear {
   academicRecords  AcademicRecord[]
   enrollments      StudentClassroom[]
   subjectResources SubjectResource[]
+  paymentPlans     StudentPaymentPlan[]
+  payments         Payment[]
   schoolEvents     SchoolEvent[]
-  institute        Institute?         @relation(fields: [instituteId], references: [id])
+  institute        Institute?           @relation(fields: [instituteId], references: [id])
   instituteId      String?
 
   @@unique([name])
@@ -1143,6 +1147,131 @@ model ClassSession {
   @@index([classroomId, date])
   @@index([subjectId, date])
   @@map("class_sessions")
+}
+
+// =====================================================
+// PAGOS (módulo que el liceo activa en Configuración)
+// =====================================================
+
+/// CONFIGURACIÓN DE PAGOS DEL LICEO
+///
+/// Una sola fila (`id = "liceo"`). Todo configurable: nada de montos, monedas
+/// ni frecuencias fijas en el código. Las reglas de cálculo están en
+/// `services/pagos.service.ts` y en docs/MAPA_DE_CALCULOS.md.
+model PaymentSettings {
+  id      String  @id @default("liceo")
+  enabled Boolean @default(false)
+
+  /// MONTHLY | BIWEEKLY | PER_PERIOD
+  frequency String @default("MONTHLY")
+  /// SAME_DAY (todos el mismo día) | PER_STUDENT (cada alumno su día)
+  dueMode   String @default("SAME_DAY")
+  /// Día del mes en que vence (1–28). En quincenal, vence este día y 15 días después.
+  dueDay    Int    @default(5)
+  graceDays Int    @default(0)
+
+  /// Moneda en que se fijan los montos: USD | VES
+  baseCurrency       String @default("USD")
+  /// Monedas en que se aceptan los pagos: USD | VES | BOTH
+  acceptedCurrencies String @default("BOTH")
+
+  feeAmount Decimal @default(0) @db.Decimal(12, 2)
+
+  enrollmentEnabled Boolean @default(false)
+  enrollmentAmount  Decimal @default(0) @db.Decimal(12, 2)
+
+  /// Métodos de pago que ofrece el liceo (lista de textos).
+  methods Json @default("[\"Efectivo\", \"Pago Móvil\", \"Transferencia\", \"Zelle\"]")
+
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("payment_settings")
+}
+
+/// Lo particular de un alumno en un ciclo: su día de pago (si cada uno tiene el
+/// suyo) y si está exonerado o becado.
+model StudentPaymentPlan {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  dueDay       Int?
+  exempt       Boolean @default(false)
+  exemptReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, academicYearId])
+  @@index([academicYearId])
+  @@map("student_payment_plans")
+}
+
+/// UN PAGO RECIBIDO
+///
+/// No se borra nunca: un pago mal registrado se ANULA con motivo, y queda a la
+/// vista quién lo registró y quién lo anuló.
+model Payment {
+  id            String @id @default(cuid())
+  /// Número correlativo del comprobante dentro del liceo.
+  receiptNumber Int    @unique @default(autoincrement())
+
+  studentId String
+  student   User   @relation("PaymentStudent", fields: [studentId], references: [id], onDelete: Cascade)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  paidAt    DateTime @db.Date
+  method    String
+  reference String?
+  notes     String?
+
+  /// Lo que entregó el representante, en su moneda.
+  currency     String
+  amount       Decimal  @db.Decimal(12, 2)
+  /// Bolívares por dólar, cuando se paga en una moneda distinta a la base.
+  exchangeRate Decimal? @db.Decimal(14, 4)
+  /// El mismo monto llevado a la moneda base: es lo que se reparte en cuotas.
+  amountBase   Decimal  @db.Decimal(12, 2)
+
+  createdById String?
+
+  annulledAt   DateTime?
+  annulledById String?
+  annulReason  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  allocations PaymentAllocation[]
+
+  @@index([studentId, academicYearId])
+  @@index([academicYearId, annulledAt])
+  @@map("payments")
+}
+
+/// Cuánto de un pago va a cada cuota. Permite abonos: una cuota puede tener
+/// varios repartos que juntos la completan.
+model PaymentAllocation {
+  id String @id @default(cuid())
+
+  paymentId String
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  /// "INS", "2026-09", "2026-09-2" (2ª quincena), "P:<periodId>".
+  installmentKey String
+  amountBase     Decimal @db.Decimal(12, 2)
+
+  @@index([paymentId])
+  @@index([installmentKey])
+  @@map("payment_allocations")
 }
 
 /// FOTO DE PERFIL
