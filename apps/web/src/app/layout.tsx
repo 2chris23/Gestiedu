@@ -43,11 +43,11 @@ export const viewport: Viewport = {
     initialScale: 1,
     viewportFit: 'cover',
     interactiveWidget: 'resizes-content',
-    themeColor: [
-        { media: '(prefers-color-scheme: light)', color: '#f5f6f9' },
-        { media: '(prefers-color-scheme: dark)', color: '#0e1017' },
-    ],
-    colorScheme: 'light dark',
+    // La app aún no sigue el modo oscuro del sistema (el oscuro va por la
+    // clase `.dark`). Anunciar 'light dark' hacía que el navegador pintara los
+    // campos en oscuro con la letra clara de la app encima: ilegible.
+    themeColor: '#f5f6f9',
+    colorScheme: 'light',
 };
 
 export default function RootLayout({

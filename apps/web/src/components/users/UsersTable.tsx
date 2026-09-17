@@ -104,7 +104,7 @@ export function UsersTable({
                                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
                                             <span>{user.classroom.name}</span>
                                             {(user.classroom as any).academicYear?.name && (
-                                                <span className="text-[10px] text-indigo-500 font-normal">
+                                                <span className="text-[10px] text-indigo-700 font-normal">
                                                     • {(user.classroom as any).academicYear.name}
                                                 </span>
                                             )}

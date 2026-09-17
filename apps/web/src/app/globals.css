@@ -52,7 +52,9 @@
     --tinta-suave: 222 14% 42%;
     /* 48%, no 60%: a 60% el pie de una tarjeta daba 3,01:1 y la norma
        pide 4,5:1. Medido, no estimado. */
-    --tinta-tenue: 220 12% 48%;
+    /* 44%: pasa 4,5:1 sobre tarjeta, lienzo Y lienzo hundido. Con 48% pasaba
+       solo sobre la tarjeta blanca, y se usa también sobre el fondo. */
+    --tinta-tenue: 220 12% 44%;
 
     /* ── 1. ÍNDIGO — lo que se pulsa ──────────────────────────────────── */
     --indigo-claro: 243 100% 97%;
@@ -164,7 +166,13 @@
        · las sombras casi no valen: lo que separa una tarjeta del fondo es
          que sea más clara, y un filo de luz arriba.
   */
+  /* Los controles nativos (campos, casillas, barras) se pintan según esto. Si
+     se deja al sistema, un teléfono en modo oscuro pinta campos grises oscuros
+     con nuestra letra oscura encima: ilegible (medido: 1,54:1). */
+  :root { color-scheme: light; }
+
   .dark {
+    color-scheme: dark;
     --lienzo: 226 26% 7%;
     --lienzo-hundido: 226 24% 5%;
     --tarjeta: 225 22% 11%;

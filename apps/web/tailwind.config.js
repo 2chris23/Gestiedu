@@ -108,7 +108,37 @@ module.exports = {
                     DEFAULT: conVariable('--tarjeta-alta'),
                     foreground: conVariable('--tinta'),
                 },
+                /**
+                 * Los números (primary-50 … primary-900) los usan 51 sitios de
+                 * las pantallas viejas. Al pasar a la paleta nueva se quedaron
+                 * sin definir, y Tailwind no avisa: la clase simplemente no
+                 * pinta. "+ Nuevo Ciclo" quedó con letra blanca sobre gris,
+                 * invisible (1,1:1). Vuelven con su definición de antes, que
+                 * sigue el color del liceo (`--primary`, ver DynamicColors).
+                 */
+                /**
+                 * Los -600 de verde, esmeralda, ámbar, amarillo y naranja de
+                 * Tailwind NO llegan a 4,5:1 sobre blanco (el verde, 3,3:1), y las
+                 * pantallas viejas los usan como texto de estado ("aprobado",
+                 * "al día"). Se oscurecen al tono -700, que sí llega. Un botón
+                 * con fondo -600 y letra blanca también gana contraste.
+                 */
+                green: { 600: '#15803d' },
+                emerald: { 600: '#047857' },
+                amber: { 600: '#b45309' },
+                yellow: { 600: '#a16207' },
+                orange: { 600: '#c2410c' },
                 primary: {
+                    50: 'hsl(var(--primary) / 0.05)',
+                    100: 'hsl(var(--primary) / 0.1)',
+                    200: 'hsl(var(--primary) / 0.2)',
+                    300: 'hsl(var(--primary) / 0.3)',
+                    400: 'hsl(var(--primary) / 0.4)',
+                    500: 'hsl(var(--primary) / 0.7)',
+                    600: 'hsl(var(--primary))',
+                    700: 'hsl(var(--primary) / 0.9)',
+                    800: 'hsl(var(--primary) / 0.95)',
+                    900: 'hsl(var(--primary) / 1)',
                     DEFAULT: conVariable('--indigo'),
                     foreground: conVariable('--indigo-encima'),
                 },

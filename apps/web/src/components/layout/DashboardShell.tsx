@@ -96,7 +96,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
     );
 
     return (
-        <div className="min-h-screen bg-gray-100" suppressHydrationWarning={true}>
+        <div className="min-h-screen bg-gray-50" suppressHydrationWarning={true}>
             {/* Mobile Header */}
             <div className="lg:hidden bg-white shadow-sm p-4 flex justify-between items-center">
                 <span className="font-bold text-lg text-primary-600">Gestión Escolar</span>

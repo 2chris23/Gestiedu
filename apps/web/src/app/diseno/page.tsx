@@ -220,7 +220,7 @@ export default function Muestrario() {
                                     )}
                                 </div>
                                 <p className="mt-3 text-titulo font-bold">{h.materia}</p>
-                                <p className="mt-0.5 flex items-center gap-1.5 text-etiqueta opacity-70">
+                                <p className="mt-0.5 flex items-center gap-1.5 text-etiqueta">
                                     <Clock className="h-3.5 w-3.5" />
                                     {h.rango}
                                 </p>

@@ -186,7 +186,9 @@ export function Cifra({
                     <span
                         className={cn(
                             'truncate text-micro font-semibold uppercase tracking-wide',
-                            sobreColor ? 'opacity-85' : 'text-tinta-suave'
+                            // Sin transparencia: el texto con opacidad sobre fondo de color
+                            // bajaba a 3,3:1. El color «hondo» ya es el suave legible.
+                            sobreColor ? '' : 'text-tinta-suave'
                         )}
                     >
                         {rotulo}
@@ -199,7 +201,7 @@ export function Cifra({
                         <p
                             className={cn(
                                 'mt-0.5 truncate text-micro',
-                                sobreColor ? 'opacity-80' : 'text-tinta-tenue'
+                                sobreColor ? '' : 'text-tinta-tenue'
                             )}
                         >
                             {pie}
