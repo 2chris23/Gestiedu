@@ -18,6 +18,9 @@ import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { useTeacherScheduleBlocks, transformTeacherScheduleData, useClassroomSchedule, transformScheduleData } from '@/hooks/useSchedules';
 import Link from 'next/link';
 import { RepresentantesDelAlumno } from '@/components/users/RepresentantesDelAlumno';
+import api from '@/lib/axios';
+import { comprimirFotoEnElDispositivo, pesoLegible } from '@/lib/foto-comprimida';
+import { useConfirm } from '@/hooks/useConfirm';
 import { cn } from '@/lib/utils';
 
 interface PageProps {
@@ -83,6 +86,47 @@ export default function UserProfilePage({ params }: PageProps) {
     const [selectedStudentYearId, setSelectedStudentYearId] = useState<string>('');
     const [showGuideHistoryModal, setShowGuideHistoryModal] = useState(false);
     const { data: allAcademicYears } = useAcademicYears();
+    const [subiendoFoto, setSubiendoFoto] = useState(false);
+    const confirmar = useConfirm();
+
+    /**
+     * Poner la foto: se achica en el dispositivo (512 px) y el servidor la deja
+     * en 256 px WebP. Se enseña cuánto pesaba y cuánto quedó: es la prueba, a la
+     * vista, de que no se está llenando la base con fotos de 4 MB.
+     */
+    const cambiarFoto = async (archivo: File) => {
+        setSubiendoFoto(true);
+        try {
+            const reducida = await comprimirFotoEnElDispositivo(archivo);
+            const datos = new FormData();
+            datos.append('foto', reducida, 'foto.webp');
+            // El cliente de la API trae `Content-Type: application/json` fijo, y con
+            // eso axios convierte el formulario en JSON: la foto no llegaba (406).
+            // Con multipart, el navegador pone el separador que toca.
+            const { data } = await api.put(`/users/${encodeURIComponent(cedula)}/photo`, datos, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            setUser((u) => (u ? { ...u, photoUrl: data.avatar } : u));
+            toast.success(`Foto guardada: de ${pesoLegible(archivo.size)} a ${pesoLegible(data.bytesGuardados)}`);
+        } catch (e: any) {
+            toast.error(e?.response?.data?.error || e?.message || 'No se pudo guardar la foto');
+        } finally {
+            setSubiendoFoto(false);
+        }
+    };
+
+    const quitarFoto = async () => {
+        const si = await confirmar({ title: '¿Quitar la foto?', description: 'Se verán las iniciales en su lugar.', confirmLabel: 'Quitar' });
+        if (!si) return;
+        try {
+            await api.delete(`/users/${encodeURIComponent(cedula)}/photo`);
+            setUser((u) => (u ? { ...u, photoUrl: null } : u));
+            toast.success('Foto quitada');
+        } catch (e: any) {
+            toast.error(e?.response?.data?.error || 'No se pudo quitar la foto');
+        }
+    };
+
     const [fullUserData, setFullUserData] = useState<{ teacherClassrooms?: TeacherClassroomEntry[]; studentClassrooms?: any[]; children?: any[] } | null>(null);
     const [studentClassroomId, setStudentClassroomId] = useState<string>('');
     // Fase 3.5 — filtro por lapso/momento (undefined = "Todo el ciclo")
@@ -296,7 +340,13 @@ export default function UserProfilePage({ params }: PageProps) {
 
             {/* 1. Cabecera (Profile Header) - Keeping it as the main identity card */}
             <div className="animate-in slide-in-from-bottom-2 duration-500">
-                <ProfileHeader user={user} onEdit={() => toast.info('Modo edición no disponible en demo')} />
+                <ProfileHeader
+                    user={user}
+                    onEdit={() => toast.info('Modo edición no disponible en demo')}
+                    alCambiarFoto={cambiarFoto}
+                    alQuitarFoto={quitarFoto}
+                    subiendoFoto={subiendoFoto}
+                />
             </div>
 
             {/* Horario a ancho completo para evitar que se aplaste */}

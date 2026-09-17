@@ -300,6 +300,8 @@ describe('La memoria rápida no mezcla liceos', () => {
                 'son los métodos HTTP que escriben (POST, PUT...), no datos de nadie',
             'src/utils/papelera.ts|FUERA_DE_LA_PAPELERA':
                 'son dos nombres de tablas (refreshToken, notification), no datos de nadie',
+            'src/services/foto-de-perfil.service.ts|FORMATOS_DE_FOTO':
+                'son los formatos de imagen aceptados (jpeg, png...), no datos de nadie',
             'src/scripts/medir-concurrencia.ts|credenciales':
                 'guion de medición, no corre en el servidor',
         };

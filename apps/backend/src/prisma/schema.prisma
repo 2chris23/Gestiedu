@@ -242,6 +242,7 @@ model User {
   personalScheduleBlocks ScheduleBlock[]         @relation("ScheduleBlockTeacher")
   createdSchoolEvents    SchoolEvent[]           @relation("CreatedSchoolEvents")
   replacementsTaught     ClassReplacement[]      @relation("ReplacementTeacher")
+  photo                  UserPhoto?
 
   // Como Estudiante
   studentClassrooms   StudentClassroom[]
@@ -1142,6 +1143,29 @@ model ClassSession {
   @@index([classroomId, date])
   @@index([subjectId, date])
   @@map("class_sessions")
+}
+
+/// FOTO DE PERFIL
+///
+/// Se guarda en la base del liceo y no en una carpeta: viaja con el respaldo y
+/// no hay forma de pedir la de otro liceo cambiando una dirección. Nunca es la
+/// imagen que se subió: el servidor la redibuja a 256×256 en WebP (unos 15 KB),
+/// lo que de paso tira los metadatos (la ubicación GPS de la foto del teléfono)
+/// y cualquier cosa escondida dentro del archivo original.
+model UserPhoto {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  data    Bytes
+  /// Huella corta del contenido: cambia con cada foto, para que el navegador
+  /// no enseñe la vieja guardada.
+  version String
+  size    Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_photos")
 }
 
 /// REEMPLAZO DE UNA CLASE SUSPENDIDA

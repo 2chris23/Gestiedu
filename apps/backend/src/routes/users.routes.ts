@@ -14,6 +14,7 @@ import {
   getUserStats
 } from '../controllers/users.controller';
 import { listStudentTutors, assignStudentTutor, removeStudentTutor } from '../controllers/student-tutors.controller';
+import { getUserPhoto, putUserPhoto, deleteUserPhoto } from '../controllers/foto-de-perfil.controller';
 import { authenticate, requireAdmin, requireTeacher, requireSelfOrAdmin } from '../middleware/auth.middleware';
 import { validateBody, validateParams, validateQuery, validateCUID } from '../middleware/validation.middleware';
 import { createUserSchema as zCreateUserSchema, updateUserSchema as zUpdateUserSchema } from '../utils/validators';
@@ -245,6 +246,29 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
     },
     preHandler: [authenticate, requireAdmin]
   }, removeStudentTutor as any);
+
+  // Foto de perfil. Verla: quien puede ver a esa persona. Ponerla o quitarla:
+  // solo el admin. Ver controllers/foto-de-perfil.controller.ts.
+  const paramsDeLaFoto = {
+    type: 'object',
+    required: ['id'],
+    properties: { id: { type: 'string', minLength: 1, maxLength: 64 } },
+  };
+
+  fastify.get('/:id/photo', {
+    schema: { params: paramsDeLaFoto },
+    preHandler: [authenticate]
+  }, getUserPhoto as any);
+
+  fastify.put('/:id/photo', {
+    schema: { params: paramsDeLaFoto },
+    preHandler: [authenticate, requireAdmin]
+  }, putUserPhoto as any);
+
+  fastify.delete('/:id/photo', {
+    schema: { params: paramsDeLaFoto },
+    preHandler: [authenticate, requireAdmin]
+  }, deleteUserPhoto as any);
 
   // Rutas de perfil personal
   fastify.get('/profile/me', {
