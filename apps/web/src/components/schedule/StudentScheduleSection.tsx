@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { ScheduleBlock } from '@/components/schedule/UniversalScheduleViewer';
 import { DescargarHorario } from '@/components/schedule/DescargarHorario';
+import { useClassReplacements } from '@/hooks/useClassReplacements';
 import ScheduleCalendarModal from '@/components/modals/ScheduleCalendarModal';
 import ScheduleHistoryModal from '@/components/schedule/ScheduleHistoryModal';
 import Link from 'next/link';
@@ -25,6 +26,8 @@ interface Props {
     /** Lo que encabeza el horario descargado: la sección, o el nombre de la persona. */
     titulo?: string;
     subtitulo?: string;
+    /** Horario de un profesor: para enseñar las clases que cubre como reemplazo. */
+    teacherId?: string;
 }
 
 // Días de la semana laborables
@@ -89,7 +92,7 @@ const MODERN_SUBJECT_STYLES = [
     },
 ];
 
-export default function StudentScheduleSection({ schedule, role, showActions = false, classroomId, editUrl, titulo = 'Horario semanal', subtitulo }: Props) {
+export default function StudentScheduleSection({ schedule, role, showActions = false, classroomId, editUrl, titulo = 'Horario semanal', subtitulo, teacherId }: Props) {
     const [viewMode, setViewMode] = React.useState<'day' | 'week'>('day');
     const [isCalendarModalOpen, setIsCalendarModalOpen] = React.useState(false);
     const { periods: dynamicPeriods, isLoading } = useSchedulePeriods();
@@ -143,11 +146,12 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
     const activeOverviewDate = histDate || todayDateStr;
     const { data: liveOverview } = useLiveOverview(classroomId || '', activeOverviewDate);
 
-    const handleClassClick = (classItem: ScheduleBlock | null) => {
-        if (role !== 'teacher' || !classItem || !classItem.subjectId || !classroomId) return;
+    const handleClassClick = (classItem: (ScheduleBlock & { classroomIdDeLaClase?: string }) | null) => {
+        const seccion = classItem?.classroomIdDeLaClase ?? classroomId;
+        if (role !== 'teacher' || !classItem || !classItem.subjectId || !seccion) return;
         const blockDate = (viewMode === 'day' && histDate) ? histDate : getDateForDayKey(classItem.day || '');
         router.push(
-            `/dashboard/clase-en-vivo/${classroomId}/${classItem.subjectId}?date=${blockDate}&start=${encodeURIComponent(classItem.startTime)}&end=${encodeURIComponent(classItem.endTime)}`
+            `/dashboard/clase-en-vivo/${seccion}/${classItem.subjectId}?date=${blockDate}&start=${encodeURIComponent(classItem.startTime)}&end=${encodeURIComponent(classItem.endTime)}`
         );
     };
 
@@ -184,6 +188,21 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
     // Horario de hoy para la vista diaria
     const todaySchedule = schedule.filter((s) => s.day === displayDayKey);
 
+    /**
+     * REEMPLAZOS DE ESE DÍA
+     *
+     * Si el admin suspendió una clase y puso otra materia en su lugar, el
+     * carril enseña la que SE DA, no la del horario semanal, con una marca de a
+     * quién reemplaza. En el horario de un profesor aparecen además las clases
+     * que cubre en otras secciones.
+     */
+    const fechaDelDia = histDate || getDateForDayKey(displayDayKey);
+    const { data: reemplazos = [] } = useClassReplacements({
+        classroomId: teacherId ? undefined : classroomId,
+        teacherId,
+        fecha: viewMode === 'day' ? fechaDelDia : undefined,
+    });
+
     // Timeline para vista diaria ("Hoy")
     const timeline = dynamicPeriods.map((period) => {
         if (period.type === 'break') {
@@ -200,10 +219,28 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                 (c.startTime >= period.startTime && c.startTime < period.endTime)
         );
 
+        const reemplazo = reemplazos.find(
+            (r) => r.startTime >= period.startTime && r.startTime < period.endTime
+        );
+        const clase = reemplazo
+            ? {
+                  day: displayDayKey,
+                  startTime: reemplazo.startTime,
+                  endTime: reemplazo.endTime,
+                  subject: reemplazo.subject.name,
+                  subjectId: reemplazo.subject.id,
+                  color: reemplazo.subject.color || classItem?.color,
+                  location: reemplazo.classroom.name,
+                  detail: `Prof. ${reemplazo.teacher.firstName} ${reemplazo.teacher.lastName}`,
+                  reemplazaA: reemplazo.suspendedSubject.name,
+                  classroomIdDeLaClase: reemplazo.classroom.id,
+              }
+            : classItem;
+
         return {
             ...period,
             isBreak: false,
-            class: classItem || null,
+            class: (clase || null) as (ScheduleBlock & { reemplazaA?: string; classroomIdDeLaClase?: string }) | null,
         };
     });
 
@@ -488,7 +525,8 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                 }
 
                                 const classItem = period.class;
-                                const isClickable = role === 'teacher' && classItem?.subjectId && classroomId;
+                                const isClickable =
+                                    role === 'teacher' && classItem?.subjectId && (classItem?.classroomIdDeLaClase || classroomId);
 
                                 // Datos enriquecidos desde el Plan de Evaluación y Actividades
                                 const subjectInfo = classItem?.subjectId ? liveOverview?.overview?.[classItem.subjectId] : null;
@@ -551,6 +589,11 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                                     >
                                                         {classItem.subject}
                                                     </h4>
+                                                    {classItem.reemplazaA && (
+                                                        <span className="inline-block rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+                                                            Reemplaza a {classItem.reemplazaA}
+                                                        </span>
+                                                    )}
 
                                                     {/* Tema Generador / Primera Columna del Plan */}
                                                     <div className="bg-white/80 p-1.5 rounded-lg border border-gray-100/80 shadow-2xs">

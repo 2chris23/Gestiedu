@@ -1,4 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { crearReemplazo, esFecha } from '../services/class-replacements.service';
+import { avisarDelReemplazo } from './class-replacements.controller';
+import { parseDay } from '../services/school-events.service';
 import { logger } from '../utils/logger';
 import { randomUUID } from 'crypto';
 import { RequestUser } from '../types/fastify';
@@ -599,7 +602,7 @@ export async function createClassSession(
             });
         }
 
-        const parsedDate = new Date(date);
+        const parsedDate = parseDay(date);
         const startOfDay = new Date(parsedDate);
         startOfDay.setUTCHours(0, 0, 0, 0);
 
@@ -1267,17 +1270,26 @@ export async function getLiveOverview(
  */
 export async function suspendClassSession(
     request: FastifyRequest<{
-        Body: { classroomId: string; subjectId: string; date: string; reason?: string };
+        Body: { classroomId: string; subjectId: string; date: string; reason?: string; replacementSubjectId?: string };
     }>,
     reply: FastifyReply
 ) {
     try {
-        const { classroomId, subjectId, date, reason } = request.body;
+        const { classroomId, subjectId, date, reason, replacementSubjectId } = request.body ?? ({} as any);
         const prisma = request.tenantPrisma;
-        const user = request.user as RequestUser;
 
-        if (!classroomId || !subjectId || !date) {
-            return reply.status(400).send({ error: 'Faltan parámetros requeridos' });
+        if (!classroomId || !subjectId || !esFecha(date)) {
+            return reply.status(400).send({ error: 'Faltan parámetros requeridos o la fecha no es válida (AAAA-MM-DD)' });
+        }
+
+        // Antes se aceptaba cualquier par de identificadores y se creaba una
+        // sesión suspendida para una materia que la sección ni tenía.
+        const asignada = await prisma.classroomSubject.findUnique({
+            where: { classroomId_subjectId: { classroomId, subjectId } },
+            select: { id: true, classroom: { select: { name: true } } },
+        });
+        if (!asignada) {
+            return reply.status(404).send({ error: 'Esa materia no es de esta sección', code: 'SUBJECT_NOT_IN_CLASSROOM' });
         }
 
         const parsedDate = new Date(date);
@@ -1326,12 +1338,32 @@ export async function suspendClassSession(
             // 3. Fusionar tema generador de la semana actual con la siguiente
             const mergeResult = await mergeTemaGeneradorOnSuspend(tx, classroomId, subjectId, parsedDate);
 
+            // 4. Otra materia en su lugar, si el admin la eligió. Va en la MISMA
+            // transacción: si el reemplazo no se puede (el profesor está
+            // ocupado), la clase tampoco queda suspendida y el admin decide.
+            const reemplazo = replacementSubjectId
+                ? await crearReemplazo(tx, {
+                      classroomId,
+                      suspendedSubjectId: subjectId,
+                      subjectId: replacementSubjectId,
+                      fecha: date,
+                      reason,
+                      createdById: (request.user as any)?.userId ?? (request.user as any)?.id,
+                  })
+                : null;
+
             return {
                 session,
                 carriedOverCount: pendingNext.length,
+                reemplazo,
                 ...mergeResult,
             };
         });
+
+        request.aQuienAfecta = { classroomId };
+        if (result.reemplazo) {
+            await avisarDelReemplazo(request, result.reemplazo, asignada.classroom?.name ?? 'la sección', date);
+        }
 
         return reply.status(200).send({
             success: true,
@@ -1339,6 +1371,7 @@ export async function suspendClassSession(
             carriedOverCount: result.carriedOverCount,
             mergedWeek: result.mergedWeek,
             mergedTemaGenerador: result.mergedTemaGenerador,
+            replacements: result.reemplazo?.reemplazos ?? [],
         });
     } catch (error) {
         // Los errores con motivo propio (permisos, no encontrado…) se responden tal

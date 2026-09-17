@@ -71,10 +71,13 @@ export async function classSessionsRoutes(fastify: FastifyInstance) {
             deleteClassActivity as any
         );
 
-        // Suspender una clase (rota actividades a la próxima clase)
+        // Suspender una clase (rota actividades a la próxima clase). SOLO el
+        // admin: suspender deja a una sección sin su hora y mueve el plan de
+        // evaluación de la materia. Antes bastaba ser profesor — de cualquier
+        // sección, sin mirar si la clase era suya.
         authenticatedRoutes.post(
             '/suspend',
-            { onRequest: [requireTeacher] },
+            { onRequest: [requireAdmin] },
             suspendClassSession as any
         );
 

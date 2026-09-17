@@ -1,3 +1,4 @@
+import { borrarGuardandoCopia } from '../utils/papelera';
 import { randomUUID } from 'crypto';
 
 /**
@@ -318,6 +319,20 @@ export async function revertEventSuspensions(tx: any, eventId: string): Promise<
             s._count.attendanceRecords === 0 &&
             s._count.activities === 0 &&
             s._count.observationsList === 0;
+
+        // El reemplazo existía porque la clase no se daba. Si vuelve a darse, sobra.
+        const sesion = await tx.classSession.findUnique({
+            where: { id: s.id },
+            select: { classroomId: true, subjectId: true, date: true },
+        });
+        if (sesion) {
+            await borrarGuardandoCopia(
+                tx,
+                'classReplacement',
+                { classroomId: sesion.classroomId, suspendedSubjectId: sesion.subjectId, date: sesion.date },
+                { motivo: `evento ${eventId} borrado o movido` }
+            );
+        }
 
         if (isEmpty) {
             await tx.classSession.delete({ where: { id: s.id } });

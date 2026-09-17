@@ -11,6 +11,8 @@ import {
     createTestAcademicYear,
     createTestClassroom,
     createTestSubject,
+    createTestUser,
+    generateTestToken,
 } from '../helpers';
 
 /** Genera un ID compatible con los schemas zod `.cuid()` (regex /^c[^\s-]{8,}$/). */
@@ -345,9 +347,18 @@ describe('Flujo 2 — Sesión de clase + calificación', () => {
 
     it('8. "cerrar" la sesión = suspender: la sesión queda SUSPENDED', async () => {
         // Documentado: no existe un concepto de "cierre"; el estado terminal es SUSPENDED.
-        const res = await request(server.server)
+        // Suspender es solo del admin (reemplazar-clase-suspendida.test.ts): el
+        // profesor recibe 403 y el admin la suspende.
+        await request(server.server)
             .post('/api/sessions/suspend')
             .set(auth(teacher1.token))
+            .send({ classroomId: classroomA.id, subjectId: subject.id, date: DATE, reason: 'Feriado' })
+            .expect(403);
+
+        const admin = (await createTestUser(prisma, UserRole.ADMIN)).user;
+        const res = await request(server.server)
+            .post('/api/sessions/suspend')
+            .set(auth(generateTestToken(admin.id, UserRole.ADMIN, 'institute')))
             .send({ classroomId: classroomA.id, subjectId: subject.id, date: DATE, reason: 'Feriado' })
             .expect(200);
 

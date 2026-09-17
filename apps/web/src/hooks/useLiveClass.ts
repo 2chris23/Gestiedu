@@ -342,19 +342,26 @@ export function useDeleteClassActivity() {
 export function useSuspendClass() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (payload: { classroomId: string; subjectId: string; date: string; reason?: string }) => {
+        mutationFn: async (payload: {
+            classroomId: string;
+            subjectId: string;
+            date: string;
+            reason?: string;
+            /** Otra materia de la sección que entra en ese hueco (solo admin). */
+            replacementSubjectId?: string;
+        }) => {
             const { data } = await api.post('/sessions/suspend', payload);
             return data;
         },
         onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['classReplacements'] });
             queryClient.invalidateQueries({
                 queryKey: ['liveClassDetail', variables.classroomId, variables.subjectId],
             });
             queryClient.invalidateQueries({ queryKey: ['classroomHistory'] });
         },
-        onError: (error: Error) => {
-            toast.error(error.message || 'Error al suspender la clase');
-        },
+        // Sin aviso aquí: el diálogo de suspender enseña el motivo del servidor
+        // ("Beto no está libre: tiene Historia en 1er B…") donde se decide.
     });
 }
 

@@ -308,6 +308,7 @@ export default function UserProfilePage({ params }: PageProps) {
                     editUrl={user.role === 'teacher' ? `/dashboard/horarios?profesor=${cedula}` : undefined}
                     titulo={`Horario · ${user.name}`}
                     subtitulo={user.role === 'teacher' ? 'Profesor' : 'Estudiante'}
+                    teacherId={user.role === 'teacher' ? cedula : undefined}
                 />
             </div>
 

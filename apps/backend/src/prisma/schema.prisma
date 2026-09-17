@@ -241,6 +241,7 @@ model User {
   schedules              Schedule[]              @relation("ScheduleTeacher")
   personalScheduleBlocks ScheduleBlock[]         @relation("ScheduleBlockTeacher")
   createdSchoolEvents    SchoolEvent[]           @relation("CreatedSchoolEvents")
+  replacementsTaught     ClassReplacement[]      @relation("ReplacementTeacher")
 
   // Como Estudiante
   studentClassrooms   StudentClassroom[]
@@ -368,6 +369,8 @@ model Subject {
   classActivities    ClassActivity[]
   resources          SubjectResource[]
   evaluationPlanRows EvaluationPlanRow[]
+  replacedIn         ClassReplacement[]  @relation("ReplacementSuspendedSubject")
+  replacingIn        ClassReplacement[]  @relation("ReplacementSubject")
   observations       Observation[]
   institute          Institute?          @relation(fields: [instituteId], references: [id])
   instituteId        String?
@@ -427,6 +430,7 @@ model Classroom {
   classSessions      ClassSession[]
   classActivities    ClassActivity[]
   evaluationPlanRows EvaluationPlanRow[]
+  replacements       ClassReplacement[]
   observations       Observation[]
   institute          Institute?          @relation(fields: [instituteId], references: [id])
   instituteId        String?
@@ -1138,6 +1142,52 @@ model ClassSession {
   @@index([classroomId, date])
   @@index([subjectId, date])
   @@map("class_sessions")
+}
+
+/// REEMPLAZO DE UNA CLASE SUSPENDIDA
+///
+/// Cuando el admin suspende una clase puede poner OTRA materia de la misma
+/// sección en ese hueco (un profesor faltó y otro adelanta su clase). Es una
+/// fila por bloque del horario que se cubre, en una fecha concreta: el horario
+/// semanal no cambia.
+///
+/// El profesor es el de la materia que entra (`classroomSubject.teacherId`)
+/// copiado aquí, para que sus permisos de pasar asistencia y poner notas sean
+/// los de siempre: da esa materia en esa sección.
+///
+/// La clase que se da es la sesión normal de esa materia ese día
+/// (`ClassSession` es única por sección + materia + día).
+model ClassReplacement {
+  id String @id @default(cuid())
+
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  date      DateTime @db.Date
+  startTime String
+  endTime   String
+
+  /// La materia suspendida cuyo hueco se cubre.
+  suspendedSubjectId String
+  suspendedSubject   Subject @relation("ReplacementSuspendedSubject", fields: [suspendedSubjectId], references: [id], onDelete: Cascade)
+
+  /// La materia que entra en su lugar.
+  subjectId String
+  subject   Subject @relation("ReplacementSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+
+  teacherId String
+  teacher   User   @relation("ReplacementTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  reason      String?
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([classroomId, date, startTime])
+  @@index([teacherId, date])
+  @@index([classroomId, date])
+  @@map("class_replacements")
 }
 
 // =====================================================

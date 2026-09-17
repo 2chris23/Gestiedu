@@ -16,13 +16,13 @@ import {
     useUpdateClassActivity,
     useDeleteClassActivity,
     useSaveActivityGrades,
-    useSuspendClass,
     useSearchStudents,
     useSavePlanWeek,
     SearchStudentResult,
     ClassActivity,
 } from '@/hooks/useLiveClass';
 import { useAuthStore } from '@/store/auth.store';
+import { SuspenderClaseDialogo } from '@/components/schedule/SuspenderClaseDialogo';
 import { toast } from 'sonner';
 
 import AnimatedAttendancePicker, { ATTENDANCE_CONFIG, AttendanceStatusType } from '@/components/live-class/AnimatedAttendancePicker';
@@ -51,7 +51,6 @@ function LiveClassPageInner() {
 
     const { data, isLoading, refetch } = useLiveClassDetail(classroomId, subjectId, date);
     const saveMutation = useSaveLiveClass();
-    const suspendClass = useSuspendClass();
     const saveActivityGrades = useSaveActivityGrades();
 
     // Mode States
@@ -231,19 +230,7 @@ function LiveClassPageInner() {
         }
     };
 
-    const handleSuspend = async () => {
-        try {
-            const reason = window.prompt('Motivo de la suspensión (opcional):') || undefined;
-            const res = await suspendClass.mutateAsync({ classroomId, subjectId, date, reason });
-            toast.success(
-                res?.mergedTemaGenerador
-                    ? 'Clase suspendida. Tema fusionado con la semana siguiente.'
-                    : 'Clase suspendida.'
-            );
-        } catch {
-            // handled
-        }
-    };
+    const [suspendiendo, setSuspendiendo] = useState(false);
 
     const toggleInvolved = (id: string) => {
         setInvolvedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -357,15 +344,18 @@ function LiveClassPageInner() {
                         </button>
                         {canEdit && (
                             <>
+                                {/* Suspender es del admin: el servidor ya lo exige. */}
+                                {user?.role === 'ADMIN' && (
                                 <button
                                     type="button"
-                                    onClick={handleSuspend}
-                                    disabled={suspendClass.isPending || isSuspended}
+                                    onClick={() => setSuspendiendo(true)}
+                                    disabled={isSuspended}
                                     className="px-3.5 py-2 text-xs sm:text-sm font-semibold text-rose-600 bg-white border border-rose-200 rounded-xl hover:bg-rose-50 transition-colors disabled:opacity-50 flex items-center gap-1.5 shadow-2xs"
                                 >
-                                    {suspendClass.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+                                    <Ban className="w-4 h-4" />
                                     <span className="hidden sm:inline">Suspender</span>
                                 </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={handleSave}
@@ -913,6 +903,17 @@ function LiveClassPageInner() {
                 initialStudentId={selectedObsStudentId}
                 onObservationAdded={() => refetch()}
             />
+
+            {user?.role === 'ADMIN' && (
+                <SuspenderClaseDialogo
+                    abierto={suspendiendo}
+                    alCerrar={() => setSuspendiendo(false)}
+                    classroomId={classroomId}
+                    subjectId={subjectId}
+                    fecha={date}
+                    nombreMateria={data?.subject?.name}
+                />
+            )}
         </div>
     );
 }
