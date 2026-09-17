@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { useStudentDashboard } from '@/hooks/useStudents';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/axios';
+import { PagosDelRepresentante } from '@/components/pagos/PagosDelRepresentante';
 import {
     Users,
     TrendingUp,
@@ -198,6 +199,9 @@ export default function DashboardPage() {
                     />
                 ))}
             </div>
+
+            {/* Representante: estado de pago de sus representados (si el liceo usa pagos) */}
+            {user?.role === 'TUTOR' && <PagosDelRepresentante />}
 
             {/* Charts Section */}
             {user?.role === 'STUDENT' && (

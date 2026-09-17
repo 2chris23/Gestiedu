@@ -305,7 +305,7 @@ function aBlob(lienzo: HTMLCanvasElement, tipo: string, calidad?: number): Promi
 }
 
 /**
- * Un PDF de una página con una imagen JPEG encima, a hoja carta apaisada.
+ * Un PDF de una página con una imagen JPEG encima, en hoja carta (apaisada o vertical).
  *
  * La estructura mínima que exige el formato: catálogo → páginas → página →
  * imagen + contenido, y al final la tabla con dónde empieza cada objeto. Todo
@@ -313,8 +313,10 @@ function aBlob(lienzo: HTMLCanvasElement, tipo: string, calidad?: number): Promi
  * posiciones se cuentan directo.
  */
 export function pdfConUnaImagen(jpeg: Uint8Array, anchoPx: number, altoPx: number): Blob {
-    const ANCHO_PT = 792; // 11 in × 72
-    const ALTO_PT = 612; // 8.5 in × 72
+    // Hoja carta (8,5 × 11 in a 72 pt), apaisada o vertical según la imagen.
+    const vertical = altoPx > anchoPx;
+    const ANCHO_PT = vertical ? 612 : 792;
+    const ALTO_PT = vertical ? 792 : 612;
     const escala = Math.min(ANCHO_PT / anchoPx, ALTO_PT / altoPx);
     const w = anchoPx * escala;
     const h = altoPx * escala;

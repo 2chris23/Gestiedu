@@ -16,11 +16,13 @@ import {
     X,
     GraduationCap,
     Calendar,
-    CalendarDays
+    CalendarDays,
+    Wallet
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useInstituteConfig } from '@/hooks/useInstitute';
 import { useSessionKeepAlive } from '@/hooks/useSessionKeepAlive';
+import { usePagosActivos } from '@/hooks/usePagos';
 import { BACKEND_URL } from '@/config/env';
 import Image from 'next/image';
 
@@ -66,12 +68,16 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
     // IMPORTANTE: los roles deben coincidir con el enum UserRole del backend
     // (ADMIN | TEACHER | STUDENT | TUTOR). Usar valores en español aquí rompe
     // el filtro del menú para profesores y estudiantes.
+    const { data: pagos } = usePagosActivos();
+
     const navItems = [
         { name: 'Inicio', href: '/dashboard', icon: Home, roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
         { name: 'Académico', href: '/dashboard/academico', icon: BookOpen, roles: ['ADMIN', 'TEACHER'] },
         { name: 'Materias', href: '/dashboard/materias', icon: Library, roles: ['ADMIN', 'TEACHER'] },
         { name: 'Horarios', href: '/dashboard/horarios', icon: Calendar, roles: ['ADMIN', 'TEACHER'] },
         { name: 'Eventos', href: '/dashboard/eventos', icon: CalendarDays, roles: ['ADMIN'] },
+        // Solo aparece si el liceo activó el control de pagos (Configuración → Pagos).
+        ...(pagos?.enabled ? [{ name: 'Pagos', href: '/dashboard/pagos', icon: Wallet, roles: ['ADMIN'] }] : []),
         { name: 'Usuarios', href: '/dashboard/usuarios', icon: Users, roles: ['ADMIN'] },
         { name: 'Configuración', href: '/dashboard/configuracion', icon: Settings, roles: ['ADMIN'] },
     ];

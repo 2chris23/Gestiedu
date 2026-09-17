@@ -209,7 +209,12 @@ export async function getPaymentsOverview(
         let cobrado = 0;
         const secciones = new Map<string, any>();
 
+        // Un alumno con dos inscripciones activas en el mismo ciclo (dato mal
+        // cargado) contaría doble como deudor: se cuenta una vez.
+        const vistos = new Set<string>();
         for (const i of inscritos) {
+            if (vistos.has(i.student.id)) continue;
+            vistos.add(i.student.id);
             const r = resumenDe(config, ciclo, planDe.get(i.student.id), pagado.get(i.student.id), hoy);
             if (r.state === 'DEBE') deudores++;
             deudaTotal += r.owedCents;
@@ -239,7 +244,7 @@ export async function getPaymentsOverview(
             today: hoy,
             currency: config.baseCurrency,
             summary: {
-                students: inscritos.length,
+                students: vistos.size,
                 debtors: deudores,
                 owed: deCentimos(deudaTotal),
                 collected: deCentimos(cobrado),

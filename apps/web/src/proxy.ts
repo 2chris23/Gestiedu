@@ -84,6 +84,7 @@ const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[] }> = [
     { prefijo: '/dashboard/usuarios', roles: ['ADMIN'] },
     { prefijo: '/dashboard/configuracion', roles: ['ADMIN'] },
     { prefijo: '/dashboard/eventos', roles: ['ADMIN'] },
+    { prefijo: '/dashboard/pagos', roles: ['ADMIN'] },
     { prefijo: '/dashboard/academico', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/materias', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/horarios', roles: ['ADMIN', 'TEACHER'] },
