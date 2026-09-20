@@ -7,7 +7,7 @@ import {
     ChevronLeft, Clock, User, Users, Save, Loader2, Calendar,
     Plus, Trash2, CheckCircle2, ListTodo, Ban, Search, X,
     ArrowUp, ShieldCheck, UserPlus, StickyNote, GraduationCap, CheckSquare, Square,
-    ArrowUpDown, ArrowUp as ArrowUpIcon, ArrowDown, Award, MoreVertical, Check
+    ArrowUpDown, ArrowUp as ArrowUpIcon, ArrowDown, Award, Check, ClipboardCheck, CloudUpload
 } from 'lucide-react';
 import {
     useLiveClassDetail,
@@ -26,6 +26,9 @@ import { SuspenderClaseDialogo } from '@/components/schedule/SuspenderClaseDialo
 import { toast } from 'sonner';
 
 import AnimatedAttendancePicker, { ATTENDANCE_CONFIG, AttendanceStatusType } from '@/components/live-class/AnimatedAttendancePicker';
+import BotonesDeAsistencia from '@/components/live-class/BotonesDeAsistencia';
+import UserAvatar from '@/components/ui/UserAvatar';
+import TurnoBadge from '@/components/common/TurnoBadge';
 import LiveTopicMirrorCard from '@/components/live-class/LiveTopicMirrorCard';
 import LiveActivitiesCard from '@/components/live-class/LiveActivitiesCard';
 import LiveGradesSliderInput from '@/components/live-class/LiveGradesSliderInput';
@@ -73,7 +76,15 @@ function LiveClassPageInner() {
     const [studentSearch, setStudentSearch] = useState('');
     const [sortColumn, setSortColumn] = useState<string | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+    /**
+     * MODO ASISTENCIA
+     *
+     * Un botón cambia la tabla entera: fuera las columnas de notas y
+     * observaciones, y cada alumno con sus cuatro botones a la vista. Es el
+     * momento del día en que el profesor solo quiere marcar y salir.
+     */
+    const [modoAsistencia, setModoAsistencia] = useState(false);
 
     // Modal de observaciones
     const [isLiveObsModalOpen, setIsLiveObsModalOpen] = useState(false);
@@ -119,8 +130,31 @@ function LiveClassPageInner() {
 
     const canEdit = user?.role === 'TEACHER' || user?.role === 'ADMIN';
 
+    /**
+     * SE GUARDA SOLO
+     *
+     * El botón «Guardar» se quitó: obligaba a acordarse de pulsarlo y, si no,
+     * la asistencia de la hora se perdía al salir de la pantalla. Ahora cada
+     * marca se manda sola, agrupando las que caen seguidas (una tanda de treinta
+     * alumnos es UNA petición, no treinta), y arriba se ve si ya está guardado.
+     */
+    const [cambiosPorGuardar, setCambiosPorGuardar] = useState(0);
+    const [guardadoALas, setGuardadoALas] = useState<string | null>(null);
+
     const handleAttendanceChange = (studentId: string, status: AttendanceStatusType) => {
         setAttendance((prev) => ({ ...prev, [studentId]: status }));
+        setCambiosPorGuardar((n) => n + 1);
+    };
+
+    const marcarTodosPresentes = () => {
+        setAttendance((prev) => {
+            const copia = { ...prev };
+            (data?.students || []).filter((s) => !s.external).forEach((s) => {
+                copia[s.id] = 'PRESENT';
+            });
+            return copia;
+        });
+        setCambiosPorGuardar((n) => n + 1);
     };
 
     const handleGradeScoreChange = (studentId: string, newScore: number | null) => {
@@ -208,7 +242,7 @@ function LiveClassPageInner() {
         );
     };
 
-    const handleSave = async () => {
+    const guardarLaClase = async () => {
         try {
             await saveMutation.mutateAsync({
                 classroomId,
@@ -224,11 +258,41 @@ function LiveClassPageInner() {
                     status: attendance[s.id] || 'PRESENT',
                 })) || [],
             });
-            toast.success('Clase y asistencias guardadas exitosamente');
+            setGuardadoALas(new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }));
         } catch {
-            // handled
+            // El aviso de error lo da el propio hook.
         }
     };
+
+    // Lo último que se marcó, siempre a mano: al salir de la pantalla se manda
+    // aunque no haya pasado el tiempo de espera.
+    const guardarRef = React.useRef(guardarLaClase);
+    const pendienteAlSalir = React.useRef(false);
+
+    // Se ponen al día DESPUÉS de pintar, no durante: tocar una referencia
+    // mientras se pinta deja a React sin saber qué volver a dibujar.
+    useEffect(() => {
+        guardarRef.current = guardarLaClase;
+        pendienteAlSalir.current = cambiosPorGuardar > 0 && !saveMutation.isPending;
+    });
+
+    useEffect(() => {
+        if (!cambiosPorGuardar || !canEdit) return;
+        const t = setTimeout(() => {
+            guardarRef.current();
+        }, 800);
+        return () => clearTimeout(t);
+    }, [cambiosPorGuardar, canEdit]);
+
+    useEffect(() => {
+        return () => {
+            // Al salir de la pantalla: si quedaba algo sin mandar, se manda. Lo
+            // que se marcó hace medio segundo no se pierde por cambiar de
+            // pantalla, que es justo lo que pasaba cuando había que pulsar
+            // «Guardar» y nadie lo pulsaba.
+            if (pendienteAlSalir.current) guardarRef.current();
+        };
+    }, []);
 
     const [suspendiendo, setSuspendiendo] = useState(false);
 
@@ -318,6 +382,12 @@ function LiveClassPageInner() {
                                 <span className="flex items-center gap-1 capitalize font-medium text-gray-600">
                                     <Calendar className="w-3.5 h-3.5 text-indigo-500" /> {formatDate(date)}
                                 </span>
+                                {data?.classroom && (
+                                    <span className="flex items-center gap-1.5 font-medium text-gray-700">
+                                        {data.classroom.name}
+                                        <TurnoBadge turno={data.classroom.shift} />
+                                    </span>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -356,15 +426,25 @@ function LiveClassPageInner() {
                                     <span className="hidden sm:inline">Suspender</span>
                                 </button>
                                 )}
-                                <button
-                                    type="button"
-                                    onClick={handleSave}
-                                    disabled={saveMutation.isPending}
-                                    className="px-5 py-2 text-xs sm:text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-xs active:scale-95"
+                                {/* Ya no hay que acordarse de guardar: aquí se ve que se guardó. */}
+                                <span
+                                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-700"
+                                    aria-live="polite"
                                 >
-                                    {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                                    <span>Guardar</span>
-                                </button>
+                                    {saveMutation.isPending ? (
+                                        <>
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" /> Guardando…
+                                        </>
+                                    ) : guardadoALas ? (
+                                        <>
+                                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Guardado {guardadoALas}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <CloudUpload className="w-3.5 h-3.5 text-gray-500" /> Se guarda solo
+                                        </>
+                                    )}
+                                </span>
                             </>
                         )}
                     </div>
@@ -398,7 +478,7 @@ function LiveClassPageInner() {
                                 <input
                                     type="text"
                                     value={observationsTitle}
-                                    onChange={(e) => setObservationsTitle(e.target.value)}
+                                    onChange={(e) => { setObservationsTitle(e.target.value); setCambiosPorGuardar((n) => n + 1); }}
                                     placeholder="Ej: Comportamiento del grupo / Novedad académica"
                                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
                                 />
@@ -407,7 +487,7 @@ function LiveClassPageInner() {
                                 <label className="block text-xs font-bold uppercase text-gray-600 mb-1.5">Descripción</label>
                                 <textarea
                                     value={observations}
-                                    onChange={(e) => setObservations(e.target.value)}
+                                    onChange={(e) => { setObservations(e.target.value); setCambiosPorGuardar((n) => n + 1); }}
                                     rows={5}
                                     placeholder="Describe lo ocurrido en la sesión..."
                                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none resize-none"
@@ -573,8 +653,32 @@ function LiveClassPageInner() {
                                     />
                                 </div>
 
-                                {/* Contadores de Asistencia */}
+                                {/* Contadores de Asistencia + el botón que cambia la tabla */}
                                 <div className="flex items-center gap-2 flex-wrap">
+                                    {canEdit && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setModoAsistencia((v) => !v)}
+                                            aria-pressed={modoAsistencia}
+                                            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
+                                                modoAsistencia
+                                                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                                                    : 'bg-white border-gray-200 text-gray-800 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            <ClipboardCheck className="w-4 h-4" />
+                                            {modoAsistencia ? 'Terminar asistencia' : 'Pasar asistencia'}
+                                        </button>
+                                    )}
+                                    {modoAsistencia && canEdit && (
+                                        <button
+                                            type="button"
+                                            onClick={marcarTodosPresentes}
+                                            className="px-3 py-2 rounded-xl text-xs font-semibold border border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
+                                        >
+                                            Todos presentes
+                                        </button>
+                                    )}
                                     {(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED'] as AttendanceStatusType[]).map((key) => {
                                         const def = ATTENDANCE_CONFIG[key];
                                         return (
@@ -608,46 +712,49 @@ function LiveClassPageInner() {
                                             </div>
                                         </th>
 
-                                        {/* ID / Cédula */}
-                                        <th
-                                            scope="col"
-                                            className="px-6 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                                            onClick={() => handleSort('cedula')}
-                                        >
-                                            <div className="flex items-center gap-1.5">
-                                                ID / Cédula <SortIcon column="cedula" />
-                                            </div>
-                                        </th>
+                                        {/*
+                                          * En modo asistencia la tabla se queda en lo justo: quién es y
+                                          * cómo se marca. Las notas y las observaciones estorban cuando
+                                          * lo que se está haciendo es pasar lista.
+                                          */}
+                                        {!modoAsistencia && (
+                                            <th
+                                                scope="col"
+                                                className="px-6 py-3.5 text-left text-xs font-bold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
+                                                onClick={() => handleSort('cedula')}
+                                            >
+                                                <div className="flex items-center gap-1.5">
+                                                    ID / Cédula <SortIcon column="cedula" />
+                                                </div>
+                                            </th>
+                                        )}
 
-                                        {/* Asistencia (animada) */}
-                                        <th scope="col" className="px-6 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                        <th scope="col" className="px-6 py-3.5 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
                                             Asistencia
                                         </th>
 
-                                        {/* Calificaciones / Modo Calificar */}
-                                        <th
-                                            scope="col"
-                                            className={`px-6 py-3.5 text-left text-xs font-bold uppercase tracking-wider transition-colors ${
-                                                activeGradingActivity ? 'bg-blue-50/60 text-blue-900' : 'text-gray-500'
-                                            }`}
-                                        >
-                                            {activeGradingActivity ? 'Nota de Actividad (0 - 20 pts)' : 'Calificaciones'}
-                                        </th>
+                                        {!modoAsistencia && (
+                                            <>
+                                                <th
+                                                    scope="col"
+                                                    className={`px-6 py-3.5 text-left text-xs font-bold uppercase tracking-wider transition-colors ${
+                                                        activeGradingActivity ? 'bg-blue-50/60 text-blue-900' : 'text-gray-600'
+                                                    }`}
+                                                >
+                                                    {activeGradingActivity ? 'Nota de Actividad (0 - 20 pts)' : 'Calificaciones'}
+                                                </th>
 
-                                        {/* Observaciones */}
-                                        <th scope="col" className="px-6 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                            Observaciones
-                                        </th>
-
-                                        <th scope="col" className="relative px-6 py-3.5">
-                                            <span className="sr-only">Acciones</span>
-                                        </th>
+                                                <th scope="col" className="px-6 py-3.5 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                                                    Observaciones
+                                                </th>
+                                            </>
+                                        )}
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-100">
                                     {sortedStudents.length === 0 ? (
                                         <tr>
-                                            <td colSpan={6} className="px-6 py-8 text-center text-xs text-gray-400 font-medium">
+                                            <td colSpan={modoAsistencia ? 2 : 5} className="px-6 py-8 text-center text-xs text-gray-600 font-medium">
                                                 {studentSearch ? 'No se encontraron estudiantes con esa búsqueda.' : 'No hay estudiantes registrados en esta sección.'}
                                             </td>
                                         </tr>
@@ -666,35 +773,54 @@ function LiveClassPageInner() {
                                                         activeGradingActivity ? 'hover:bg-blue-50/20' : ''
                                                     }`}
                                                 >
-                                                    {/* Perfil */}
+                                                    {/* Perfil — con su foto, la misma que en su ficha */}
                                                     <td className="px-6 py-4 whitespace-nowrap">
                                                         <div className="flex items-center">
-                                                            <div className="flex-shrink-0 h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs bg-indigo-100 text-indigo-700 shadow-2xs">
-                                                                {student.firstName?.[0]}{student.lastName?.[0]}
-                                                            </div>
+                                                            <UserAvatar
+                                                                name={`${student.firstName} ${student.lastName}`}
+                                                                src={(student as any).avatar}
+                                                                className="h-9 w-9"
+                                                                initialsClassName="text-xs"
+                                                            />
                                                             <div className="ml-3">
                                                                 <div className="text-xs font-bold text-gray-900">
                                                                     {student.firstName} {student.lastName}
                                                                 </div>
+                                                                {modoAsistencia && (
+                                                                    <div className="text-[11px] text-gray-600 font-mono">
+                                                                        {student.studentCode || student.id}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </td>
 
-                                                    {/* Cédula */}
-                                                    <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-600 font-mono">
-                                                        {student.studentCode || student.id}
-                                                    </td>
+                                                    {!modoAsistencia && (
+                                                        <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-700 font-mono">
+                                                            {student.studentCode || student.id}
+                                                        </td>
+                                                    )}
 
-                                                    {/* Asistencia con ANIMACIÓN */}
+                                                    {/* Asistencia: de un toque en modo asistencia, desplegable fuera de él */}
                                                     <td className="px-6 py-4 whitespace-nowrap">
-                                                        <AnimatedAttendancePicker
-                                                            status={currentAtt}
-                                                            onChange={(newSt) => handleAttendanceChange(student.id, newSt)}
-                                                            disabled={!canEdit}
-                                                        />
+                                                        {modoAsistencia ? (
+                                                            <BotonesDeAsistencia
+                                                                estado={currentAtt}
+                                                                nombre={`${student.firstName} ${student.lastName}`}
+                                                                alCambiar={(nuevo) => handleAttendanceChange(student.id, nuevo)}
+                                                                desactivado={!canEdit}
+                                                            />
+                                                        ) : (
+                                                            <AnimatedAttendancePicker
+                                                                status={currentAtt}
+                                                                onChange={(newSt) => handleAttendanceChange(student.id, newSt)}
+                                                                disabled={!canEdit}
+                                                            />
+                                                        )}
                                                     </td>
 
                                                     {/* Columna Calificaciones / Modo Calificación */}
+                                                    {!modoAsistencia && (
                                                     <td
                                                         className={`px-6 py-4 whitespace-nowrap ${
                                                             activeGradingActivity ? 'bg-blue-50/20' : ''
@@ -749,8 +875,10 @@ function LiveClassPageInner() {
                                                             </div>
                                                         )}
                                                     </td>
+                                                    )}
 
                                                     {/* Observaciones */}
+                                                    {!modoAsistencia && (
                                                     <td className="px-6 py-4 whitespace-nowrap text-xs">
                                                         {((student as any).observationsCount || 0) > 0 ? (
                                                             <button
@@ -777,21 +905,11 @@ function LiveClassPageInner() {
                                                             </button>
                                                         )}
                                                     </td>
-
-                                                    {/* Acciones */}
-                                                    <td className="px-6 py-4 whitespace-nowrap text-right text-xs font-medium">
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setOpenMenuId(openMenuId === student.id ? null : student.id);
-                                                            }}
-                                                            className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                                                            title="Opciones"
-                                                        >
-                                                            <MoreVertical className="w-4 h-4" />
-                                                        </button>
-                                                    </td>
+                                                    )}
+                                                    {/*
+                                                      * Aquí había un botón de tres puntos que abría un menú
+                                                      * que no existía: se pulsaba y no pasaba nada. Fuera.
+                                                      */}
                                                 </tr>
                                             );
                                         })
