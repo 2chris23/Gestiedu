@@ -134,3 +134,54 @@ export async function assertCanSeeStudent(
         throw AppErrors.Forbidden('Solo puedes consultar a tus estudiantes');
     }
 }
+
+/**
+ * ¿Puede este usuario MIRAR lo que pasa en esa sección?
+ *
+ * Mirar no es tocar. El horario en vivo de una sección —el tema de la semana y
+ * si hay actividades— lo ven también el alumno que estudia ahí y su
+ * representante; escribir sigue siendo del profesor de esa clase.
+ *
+ * Sin esto, el alumno no veía su propio horario con contenido (pantalla en
+ * blanco con guiones) y cualquier profesor podía asomarse a una sección ajena.
+ */
+export async function canSeeClassroom(
+    prisma: PrismaClient,
+    user: ActingUser | null | undefined,
+    classroomId: string
+): Promise<boolean> {
+    if (isAdmin(user)) return true;
+
+    const actorId = idOf(user);
+    if (!actorId) return false;
+
+    if (user?.role === UserRole.TEACHER) {
+        return teacherHandlesClassroom(prisma, actorId, classroomId);
+    }
+
+    if (user?.role === UserRole.STUDENT) {
+        const n = await prisma.studentClassroom.count({
+            where: { studentId: actorId, classroomId, isActive: true },
+        });
+        return n > 0;
+    }
+
+    if (user?.role === UserRole.TUTOR) {
+        const n = await prisma.studentClassroom.count({
+            where: { classroomId, isActive: true, student: { studentTutorings: { some: { tutorId: actorId } } } },
+        });
+        return n > 0;
+    }
+
+    return false;
+}
+
+export async function assertCanSeeClassroom(
+    prisma: PrismaClient,
+    user: ActingUser | null | undefined,
+    classroomId: string
+): Promise<void> {
+    if (!(await canSeeClassroom(prisma, user, classroomId))) {
+        throw AppErrors.Forbidden('Esa sección no es tuya');
+    }
+}

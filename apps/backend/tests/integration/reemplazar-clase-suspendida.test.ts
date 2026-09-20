@@ -178,7 +178,19 @@ describe('Suspender y reemplazar una clase', () => {
         // Un profesor que no da clase en la sección, ni viendo los de otro.
         expect((await ver(tk.otro, `classroomId=${seccionA.id}`)).status).toBe(403);
         expect((await ver(tk.otro, `teacherId=${beto.id}`)).status).toBe(403);
-        expect([401, 403]).toContain((await ver(tk.alumno, `classroomId=${seccionA.id}`)).status);
+        // El alumno que estudia EN esa sección sí: es su horario el que cambió.
+        // (Sin esto veía la materia de siempre y se presentaba a otra clase.)
+        expect((await ver(tk.alumno, `classroomId=${seccionA.id}`)).status).toBe(403);
+
+        await prisma.studentClassroom.create({
+            data: { studentId: alumno.id, classroomId: seccionA.id, academicYearId: yearId, isActive: true },
+        });
+        const suyos = await ver(tk.alumno, `classroomId=${seccionA.id}`);
+        expect(suyos.status).toBe(200);
+        expect(suyos.body.replacements).toHaveLength(2);
+
+        // Pero no los de la sección de al lado.
+        expect((await ver(tk.alumno, `classroomId=${seccionB.id}`)).status).toBe(403);
     }, 60000);
 
     it('REEMP-09: solo el admin quita el reemplazo, entero, y queda en la papelera', async () => {

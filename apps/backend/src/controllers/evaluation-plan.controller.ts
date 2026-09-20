@@ -5,7 +5,7 @@ import { RequestUser } from '../types/fastify';
 import * as mammoth from 'mammoth';
 import * as cheerio from 'cheerio';
 import { planWeekNumberFromRange } from '../utils/plan-weeks';
-import { assertClassroomScope } from '../services/authorization.service';
+import { assertClassroomScope, assertCanSeeClassroom } from '../services/authorization.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 
 // Helper para obtener el cliente DB del tenant.
@@ -679,6 +679,15 @@ export async function getCalendarData(
       throw AppErrors.BadRequest('Faltan parámetros requeridos');
     }
 
+    /**
+     * ESTA LECTURA NO PREGUNTABA DE QUIÉN ERA LA SECCIÓN
+     *
+     * Bastaba estar identificado: cambiando el id en la dirección, cualquiera
+     * —un alumno, un representante— leía el horario y el plan de evaluación de
+     * una sección ajena. El calendario sí es de todos, pero el de lo SUYO.
+     */
+    await assertCanSeeClassroom(db, request.user as any, classroomId);
+
     // Obtener schedule blocks de la sección
     const scheduleBlocks = await db.scheduleBlock.findMany({
       where: { classroomId },
@@ -808,7 +817,29 @@ export async function parseWordFile(request: FastifyRequest, reply: FastifyReply
       throw AppErrors.BadRequest('No se ha subido ningún archivo');
     }
 
+    // SEGURIDAD: Validar extensión .docx (parser-docx-memory-exhaustion-eval-plan)
+    if (!data.filename || !data.filename.toLowerCase().endsWith('.docx')) {
+      throw AppErrors.BadRequest('Solo se admiten documentos en formato Word (.docx)');
+    }
+
     const buffer = await data.toBuffer();
+
+    // SEGURIDAD: Limitar tamaño del archivo a 2MB
+    if (buffer.length > 2 * 1024 * 1024) {
+      throw AppErrors.BadRequest('El documento excede el tamaño máximo permitido (2MB)');
+    }
+
+    // SEGURIDAD: Validar cabecera mágica PKZip (0x50, 0x4B, 0x03, 0x04)
+    if (
+      buffer.length < 4 ||
+      buffer[0] !== 0x50 ||
+      buffer[1] !== 0x4b ||
+      buffer[2] !== 0x03 ||
+      buffer[3] !== 0x04
+    ) {
+      throw AppErrors.BadRequest('El archivo subido no es un documento .docx válido');
+    }
+
     const result = await mammoth.convertToHtml({ buffer });
     const html = result.value;
 
@@ -817,6 +848,12 @@ export async function parseWordFile(request: FastifyRequest, reply: FastifyReply
 
     if (!table.length) {
       throw AppErrors.BadRequest('El documento no contiene ninguna tabla válida para procesar');
+    }
+
+    // SEGURIDAD: Limitar número máximo de filas para evitar bloqueo del bucle de eventos
+    const trElements = table.find('tr');
+    if (trElements.length > 500) {
+      throw AppErrors.BadRequest('El documento contiene demasiadas filas en la tabla (máximo 500)');
     }
 
     const rows: Record<string, string>[] = [];

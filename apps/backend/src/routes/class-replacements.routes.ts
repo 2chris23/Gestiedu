@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { authenticate, requireAdmin, requireTeacher } from '../middleware/auth.middleware';
+import { authenticate, requireAdmin } from '../middleware/auth.middleware';
 import {
     createClassReplacement,
     deleteClassReplacement,
@@ -22,7 +22,9 @@ export async function classReplacementsRoutes(fastify: FastifyInstance) {
                     },
                 },
             },
-            preHandler: [authenticate, requireTeacher],
+            // Sin `requireTeacher`: el alumno ve los reemplazos de SU sección
+            // (es su horario). Quién puede ver qué se decide en el controlador.
+            preHandler: [authenticate],
         },
         listClassReplacements as any
     );

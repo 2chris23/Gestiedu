@@ -2,7 +2,7 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { UserRole } from '../utils/prisma-enums';
 import { logger } from '../utils/logger';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
-import { teacherHandlesClassroom } from '../services/authorization.service';
+import { assertCanSeeClassroom } from '../services/authorization.service';
 import { crearReemplazo, esFecha, SELECCION } from '../services/class-replacements.service';
 import { parseDay } from '../services/school-events.service';
 
@@ -121,8 +121,17 @@ export async function listClassReplacements(
             if (teacherId && teacherId !== yo) {
                 return reply.status(403).send({ error: 'Solo puedes ver tus propios reemplazos' });
             }
-            if (classroomId && !(await teacherHandlesClassroom(request.tenantPrisma as any, yo, classroomId))) {
-                return reply.status(403).send({ error: 'Solo puedes ver las secciones donde das clase' });
+            /**
+             * QUIEN VA A ESA CLASE TIENE QUE SABER QUE CAMBIÓ
+             *
+             * Esto solo lo dejaba ver a los profesores de la sección, así que el
+             * alumno veía en su horario la materia de siempre aunque el admin ya
+             * hubiera puesto otra: se presentaba a una clase que no era. Ahora
+             * lo ven también el alumno de esa sección y su representante —y
+             * nadie más— con la misma regla que el resto del horario.
+             */
+            if (classroomId) {
+                await assertCanSeeClassroom(request.tenantPrisma as any, user, classroomId);
             }
         }
 
