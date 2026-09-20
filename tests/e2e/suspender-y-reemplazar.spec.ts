@@ -71,7 +71,8 @@ test.describe('Suspender y reemplazar una clase', () => {
             );
             await loginViaUI(page, profe.email, '123456');
             await page.goto(`${WEB_BASE}/dashboard/clase-en-vivo/${caso.classroom_id}/${caso.sale_id}?date=${LUNES}`);
-            await expect(page.getByRole('button', { name: /Guardar/i }).first()).toBeVisible({ timeout: 30000 });
+            // (El botón «Guardar» ya no existe: la clase se guarda sola.)
+            await expect(page.getByRole('button', { name: /Observación/i }).first()).toBeVisible({ timeout: 30000 });
             await expect(page.getByRole('button', { name: /Suspender/i })).toHaveCount(0);
         } catch (error) {
             await captureEvidence(testInfo, page, 'SUSP-UI-01', 'Profesor sin botón', error);

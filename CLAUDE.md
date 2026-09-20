@@ -22,8 +22,8 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
 ```bash
 cd apps/backend && npm run dev      # API en :3001
 cd apps/web && npm run dev          # web en :3000
-cd apps/backend && npx jest         # 715 pruebas de integración
-npm run test:e2e                    # 154 pruebas de navegador (Playwright), con los dos servidores arriba
+cd apps/backend && npx jest         # 791 pruebas (integración + cálculo)
+npm run test:e2e                    # 161 pruebas de navegador (Playwright), con los dos servidores arriba
 cd apps/backend && npm run typecheck
 cd apps/backend && npm run migrate:tenants[:status]   # migra todos los liceos
 ```
@@ -37,6 +37,7 @@ npm run medir:concurrencia  # mucha gente a la vez
 npm run medir:aguante       # 20 min seguidos: ¿se arrastra? ¿se llena la memoria?
 npm run medir:pozo          # el tope de conexiones, en la base y por la API
 npm run probar:pgbouncer    # el repartidor, levantado de verdad (ver la cabecera)
+npm run medir:estres        # estrés incremental: 5→500 personas, se para donde se dobla
 ```
 
 **Nunca arranques los servidores con tuberías** (`npm run dev | head -20`): la tubería se
@@ -74,7 +75,14 @@ cierra, llega SIGPIPE y el proceso muere. Cuesta horas de pruebas falsas en rojo
 - **Admin:** lo demás.
 
 Se comprueba en el servidor con `src/services/authorization.service.ts`
-(`assertClassroomScope`, `canSeeStudent`). El guardián del navegador es la puerta
+(`assertClassroomScope`, `canSeeStudent`, `canSeeClassroom`).
+
+**Mirar no es tocar.** `assertClassroomScope` es para ESCRIBIR en una sección;
+`assertCanSeeClassroom` es para LEER lo que pasa en ella, y ahí entran también el
+alumno que estudia allí y su representante: su horario, el tema de la semana, las
+actividades del día y los reemplazos son suyos. Sin ese segundo guardián, el
+alumno no podía ver ni su propio horario (salía en blanco) y cualquier profesor
+podía asomarse a una sección ajena con solo cambiar el id de la dirección. El guardián del navegador es la puerta
 de la casa; la de la caja fuerte es el servidor: aunque alguien falsee la cookie, la
 pantalla se abre vacía.
 
@@ -130,11 +138,71 @@ absorbe los siguientes (`TiempoRealProvider.tsx`). Antes había un retraso fijo 
 800 ms y lo que otro guardaba tardaba 841 ms medidos en verse. No volver a poner
 una espera por delante sin medir lo que cuesta el trabajo real: son 41 ms.
 
+## Pagos
+
+Módulo que cada liceo activa en Configuración → Pagos (tablas `payment_settings`,
+`student_payment_plans`, `payments`, `payment_allocations`). Apagado, todas sus rutas
+responden 403. Dinero **en céntimos enteros**; reglas en `MAPA_DE_CALCULOS.md` §8b.
+Un pago **no se borra**: se anula con motivo. Solo el admin cobra; el representante
+ve lo de sus representados. Cambiar la frecuencia con pagos en el ciclo: 409.
+
+## Suspender y reemplazar clases
+
+**Solo el admin suspende.** Puede poner otra materia de la sección en ese hueco
+(`class_replacements`), solo si su profesor está libre. Ver `class-replacements.service.ts`.
+
+## Contraste
+
+Se mide en el navegador: `tests/e2e/contraste.spec.ts` (axe) y
+`apps/web/src/lib/colores-que-existen.test.ts`. Un tamaño, sombra o radio nuevo en
+`tailwind.config.js` va también en `lib/utils.ts` (si no, `cn()` borra colores).
+
 ## Hora y fecha
 
 La hora la pone el servidor, no el dispositivo: `src/utils/school-time.ts` con la zona
 del instituto y `GET /api/time`. Un alumno que cambie la hora de su teléfono o use una
 VPN no mueve nada. En el frontend se usa `useSchoolToday()`, nunca `new Date()` a secas.
+
+## Turnos: mañana y tarde
+
+Hay liceos que dan el mismo año dos veces, con otros alumnos y otros profesores
+(`classrooms.shift`: `MANANA` | `TARDE` | `INTEGRAL`). El turno **decide las horas
+del horario**: una sección de la tarde empieza a la una, y si se pinta la rejilla
+de la mañana su horario sale vacío (`useSchedulePeriods(turno)`).
+
+Se dice siempre igual —mismo color, mismo icono, misma palabra— desde
+`lib/turnos.ts` y `components/common/TurnoBadge.tsx`. Tres pantallas tenían tres
+paletas distintas para lo mismo.
+
+## La clase en vivo
+
+- **Se guarda sola.** No hay botón «Guardar»: lo marcado se manda solo, agrupando
+  lo que cae seguido (una tanda de treinta alumnos es UNA petición), y al salir de
+  la pantalla se manda lo que quedara pendiente. Arriba se ve «Guardado 07:45».
+- **«Pasar asistencia»** cambia la tabla entera: fuera notas y observaciones, y
+  cada alumno con sus cuatro botones a la vista, de un toque.
+- **Los dos contadores del horario en vivo no son lo mismo**, y esto se confundió
+  una vez: *Hoy* es lo que toca hacer en esa clase; *Próx.* es lo que se DEJÓ en
+  esa clase para otro día. `Próx.` solo cuenta lo que nació en la sesión de ESE
+  día (`classActivity.classSessionId`), no toda actividad pendiente de la materia.
+
+## La sesión
+
+- **La llave de volver a entrar se cambia en cada uso** (rotación). La anterior
+  sigue valiendo `GRACIA_DE_ROTACION_MS` (30 s) porque dos pestañas renuevan a la
+  vez y mandan la misma; pasado eso, no vale. Ver `auth.service.refreshToken`.
+- **Al cerrar sesión, el token de acceso deja de servir en el acto** (lista de
+  anulados en la memoria rápida), no a los quince minutos.
+- Cada token de acceso lleva su propio número de serie (`jwtid`): dos sesiones
+  abiertas en el mismo segundo ya no salen idénticas letra por letra.
+
+## En el teléfono
+
+Barra de tareas abajo (`components/layout/BarraInferiorMovil.tsx`), donde está el
+pulgar, con el menú completo en el centro. Se esconde en pantalla grande, respeta
+la barra de gestos del teléfono (`env(safe-area-inset-bottom)`) y cada botón mide
+44 px de alto. El contenido lleva `pb-28` en móvil para que la barra no tape el
+último botón de la pantalla.
 
 ## Dónde se anota lo que se hace
 

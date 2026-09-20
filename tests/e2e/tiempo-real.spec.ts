@@ -127,7 +127,7 @@ test.describe('Tiempo real', () => {
         try {
             await injectSessionCookies(page, sesion);
             await page.goto(
-                `${WEB_BASE}/dashboard/academico/${fila.year_id}/secciones/${fila.slug}/${fila.subject_id}`
+                `${WEB_BASE}/dashboard/academico/${fila.year_id}/${fila.slug}/${fila.subject_id}`
             );
             await page.getByText('OBSERVACIONES').first().waitFor({ state: 'visible', timeout: 30000 });
 
