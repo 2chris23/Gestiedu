@@ -17,6 +17,7 @@ import {
     GraduationCap,
     Calendar,
     CalendarDays,
+    CalendarRange,
     Wallet
 } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -24,6 +25,8 @@ import { useInstituteConfig } from '@/hooks/useInstitute';
 import { useSessionKeepAlive } from '@/hooks/useSessionKeepAlive';
 import { usePagosActivos } from '@/hooks/usePagos';
 import { BACKEND_URL } from '@/config/env';
+import BarraInferiorMovil from '@/components/layout/BarraInferiorMovil';
+import UserAvatar from '@/components/ui/UserAvatar';
 import Image from 'next/image';
 
 interface DashboardUser {
@@ -47,7 +50,7 @@ interface DashboardShellProps {
 export default function DashboardShell({ user, children }: DashboardShellProps) {
     const router = useRouter();
     const pathname = usePathname();
-    const { logout: zustandLogout } = useAuthStore();
+    const { logout: zustandLogout, user: usuarioDeLaSesion } = useAuthStore();
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const { data: instituteConfig } = useInstituteConfig();
 
@@ -79,6 +82,10 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
         // Solo aparece si el liceo activó el control de pagos (Configuración → Pagos).
         ...(pagos?.enabled ? [{ name: 'Pagos', href: '/dashboard/pagos', icon: Wallet, roles: ['ADMIN'] }] : []),
         { name: 'Usuarios', href: '/dashboard/usuarios', icon: Users, roles: ['ADMIN'] },
+        // El calendario del liceo lo usan TODOS —el alumno y el representante
+        // también—, pero no estaba en el menú de nadie: solo se llegaba
+        // escribiendo la dirección a mano.
+        { name: 'Calendario', href: '/dashboard/calendario', icon: CalendarRange, roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
         { name: 'Configuración', href: '/dashboard/configuracion', icon: Settings, roles: ['ADMIN'] },
     ];
 
@@ -142,9 +149,13 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                             </div>
                         )}
                         <div className="flex items-center space-x-3">
-                            <div className="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-bold">
-                                {displayName.firstName?.[0]}
-                            </div>
+                            {/* Su foto, la que le puso el liceo. */}
+                            <UserAvatar
+                                name={`${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || 'Usuario'}
+                                src={usuarioDeLaSesion?.avatar}
+                                className="h-10 w-10"
+                                initialsClassName="text-sm"
+                            />
                             <div>
                                 <p className="text-sm font-medium text-gray-900">{displayName.firstName} {displayName.lastName}</p>
                                 <p className="text-xs text-gray-500">{ROLE_LABELS[user?.role] ?? user?.role}</p>
@@ -195,12 +206,21 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 "lg:ml-64 min-h-screen transition-all duration-200",
                 "lg:pl-0"
             )}>
-                <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+                {/* El `pb-28` de abajo es el hueco de la barra del teléfono: sin
+                    él, la barra tapa el último botón de cada pantalla. */}
+                <div className="max-w-7xl mx-auto py-6 px-4 pb-28 sm:px-6 lg:px-8 lg:pb-6">
                     <div className="lg:absolute lg:top-0 lg:left-64 lg:right-0">
                     </div>
                     {children}
                 </div>
             </main>
+
+            {/* La barra de abajo: donde está el pulgar. */}
+            <BarraInferiorMovil
+                destinos={filteredNavItems.slice(0, 4).map(({ name, href, icon }) => ({ name, href, icon }))}
+                alAbrirMenu={() => setSidebarOpen((v) => !v)}
+                menuAbierto={isSidebarOpen}
+            />
 
             {/* Overlay for mobile */}
             {isSidebarOpen && (
