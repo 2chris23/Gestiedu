@@ -62,6 +62,31 @@ export interface InformeDeRespaldo {
 }
 
 /**
+ * Extrae credenciales y parámetros de conexión de la URL para pasarlas a través
+ * de variables de entorno de PostgreSQL (PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE)
+ * en lugar de argumentos de línea de comandos en texto plano (process-plaintext-db-credentials-in-cli-args).
+ */
+export function extraerEntornoPg(url: string): { env: NodeJS.ProcessEnv; dbName?: string } {
+    try {
+        const u = new URL(url);
+        const env: NodeJS.ProcessEnv = {
+            ...process.env,
+            PGHOST: u.hostname,
+            PGPORT: u.port || '5432',
+            PGUSER: decodeURIComponent(u.username),
+            PGPASSWORD: decodeURIComponent(u.password),
+        };
+        const dbName = u.pathname.replace(/^\//, '') || undefined;
+        if (dbName) {
+            env.PGDATABASE = dbName;
+        }
+        return { env, dbName };
+    } catch {
+        return { env: { ...process.env } };
+    }
+}
+
+/**
  * La URL que arma el sistema lleva parámetros que solo entiende Prisma
  * (`schema`, `connection_limit`, `pgbouncer`…). `pg_dump` los rechaza con
  * "parámetro de URI no válido" y el respaldo no se hace. Se quitan.
@@ -146,12 +171,13 @@ export async function respaldarLiceo(
             'direct'
         );
 
-        await ejecutar(
-            herramienta('pg_dump'),
-            ['--format=custom', '--no-owner', '--no-acl', '--file', archivo, urlParaHerramientas(url)],
-            {
-            ...process.env,
-        });
+        const { env: pgEnv, dbName } = extraerEntornoPg(url);
+        const args = ['--format=custom', '--no-owner', '--no-acl', '--file', archivo];
+        if (dbName) {
+            args.push('--dbname', dbName);
+        }
+
+        await ejecutar(herramienta('pg_dump'), args, pgEnv);
 
         const bytes = statSync(archivo).size;
         if (bytes === 0) throw new Error('el archivo salió vacío');
@@ -217,11 +243,14 @@ export async function restaurarLiceo(archivo: string, urlDestino: string): Promi
         destino: maskDatabaseUrl(urlDestino),
     });
 
-    await ejecutar(
-        herramienta('pg_restore'),
-        ['--clean', '--if-exists', '--no-owner', '--no-acl', '--dbname', urlParaHerramientas(urlDestino), archivo],
-        { ...process.env }
-    );
+    const { env: pgEnv, dbName } = extraerEntornoPg(urlDestino);
+    const args = ['--clean', '--if-exists', '--no-owner', '--no-acl'];
+    if (dbName) {
+        args.push('--dbname', dbName);
+    }
+    args.push(archivo);
+
+    await ejecutar(herramienta('pg_restore'), args, pgEnv);
 }
 
 /** Borra los respaldos más viejos que el plazo configurado. */

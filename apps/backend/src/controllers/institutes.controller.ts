@@ -49,11 +49,24 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
     const userId = request.user?.userId!;
     const instituteId = getInstId(request);
 
+    // Validar formato seguro para logo si se envía (mitigación path traversal)
+    let sanitizedLogo = data.logo;
+    if (sanitizedLogo !== undefined && sanitizedLogo !== null) {
+      if (typeof sanitizedLogo !== 'string' || sanitizedLogo.includes('..') || sanitizedLogo.includes('\0')) {
+        return reply.status(400).send({ error: 'Ruta de logo no válida', code: 'INVALID_LOGO_PATH' });
+      }
+      const isAllowedPattern = /^\/uploads\/[a-zA-Z0-9_\-\/.]+\.(png|jpg|jpeg|svg|webp|ico)$/i.test(sanitizedLogo) ||
+                               /^https?:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(\/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=-]*)?$/i.test(sanitizedLogo);
+      if (!isAllowedPattern) {
+        return reply.status(400).send({ error: 'Formato o protocolo de ruta de logo no permitido', code: 'INVALID_LOGO_FORMAT' });
+      }
+    }
+
     // Campos directos del modelo Institute
     const allowedFields: any = {
       name: data.name,
       code: data.code,
-      logo: data.logo,
+      logo: sanitizedLogo,
       address: data.address,
       phone: data.phone,
       email: data.email,

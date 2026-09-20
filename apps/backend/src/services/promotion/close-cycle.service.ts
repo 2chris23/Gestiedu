@@ -9,16 +9,11 @@ export interface AcademicConfig {
     permitePendientesEnUltimoAno: boolean;
     /**
      * A partir de qué porcentaje de asistencia se deja de avisar al representante.
-     *
-     * Solo decide **cuándo se enciende el aviso** "Asistencia baja" en el panel
-     * del representante. No toca notas, ni promedios, ni la promoción: un alumno
-     * por debajo de este número no queda reprobado por eso.
-     *
-     * Estaba escrito a mano en el código (80) y no se podía cambiar. Cada liceo
-     * tiene su criterio, así que ahora se configura; 80 sigue siendo el valor de
-     * partida para que nadie note el cambio.
      */
     asistenciaMinima: number;
+    modalidad?: 'MEDIA_GENERAL' | 'MEDIA_TECNICA';
+    maxGradeLevel?: number;
+    turnosHabilitados?: ('MANANA' | 'TARDE' | 'INTEGRAL')[];
 }
 
 export const DEFAULT_ACADEMIC_CONFIG: AcademicConfig = {
@@ -26,6 +21,9 @@ export const DEFAULT_ACADEMIC_CONFIG: AcademicConfig = {
     maxMateriasPendientesParaPromover: 2,
     permitePendientesEnUltimoAno: false,
     asistenciaMinima: 80,
+    modalidad: 'MEDIA_GENERAL',
+    maxGradeLevel: 5,
+    turnosHabilitados: ['MANANA', 'TARDE'],
 };
 
 /** El porcentaje de asistencia va de 0 a 100 y no admite otra cosa. */
@@ -37,21 +35,31 @@ export async function getAcademicConfig(instituteId: string): Promise<AcademicCo
     const inst = await platformPrisma.institute.findUnique({ where: { id: instituteId }, select: { academicConfig: true } });
     if (!inst) return { ...DEFAULT_ACADEMIC_CONFIG };
     const raw = (inst.academicConfig || {}) as Partial<AcademicConfig>;
+    const modalidad = raw.modalidad === 'MEDIA_TECNICA' ? 'MEDIA_TECNICA' : 'MEDIA_GENERAL';
+    const defaultMax = modalidad === 'MEDIA_TECNICA' ? 6 : 5;
     return {
         notaMinimaAprobatoria: typeof raw.notaMinimaAprobatoria === 'number' ? raw.notaMinimaAprobatoria : DEFAULT_ACADEMIC_CONFIG.notaMinimaAprobatoria,
         maxMateriasPendientesParaPromover: typeof raw.maxMateriasPendientesParaPromover === 'number' ? raw.maxMateriasPendientesParaPromover : DEFAULT_ACADEMIC_CONFIG.maxMateriasPendientesParaPromover,
         permitePendientesEnUltimoAno: typeof raw.permitePendientesEnUltimoAno === 'boolean' ? raw.permitePendientesEnUltimoAno : DEFAULT_ACADEMIC_CONFIG.permitePendientesEnUltimoAno,
         asistenciaMinima: esAsistenciaMinimaValida(raw.asistenciaMinima) ? raw.asistenciaMinima : DEFAULT_ACADEMIC_CONFIG.asistenciaMinima,
+        modalidad,
+        maxGradeLevel: typeof raw.maxGradeLevel === 'number' ? raw.maxGradeLevel : defaultMax,
+        turnosHabilitados: Array.isArray(raw.turnosHabilitados) ? raw.turnosHabilitados : DEFAULT_ACADEMIC_CONFIG.turnosHabilitados,
     };
 }
 
 export async function updateAcademicConfig(instituteId: string, patch: Partial<AcademicConfig>): Promise<AcademicConfig> {
     const current = await getAcademicConfig(instituteId);
+    const modalidad = patch.modalidad ?? current.modalidad;
+    const defaultMax = modalidad === 'MEDIA_TECNICA' ? 6 : 5;
     const next: AcademicConfig = {
         notaMinimaAprobatoria: patch.notaMinimaAprobatoria ?? current.notaMinimaAprobatoria,
         maxMateriasPendientesParaPromover: patch.maxMateriasPendientesParaPromover ?? current.maxMateriasPendientesParaPromover,
         permitePendientesEnUltimoAno: patch.permitePendientesEnUltimoAno ?? current.permitePendientesEnUltimoAno,
         asistenciaMinima: esAsistenciaMinimaValida(patch.asistenciaMinima) ? patch.asistenciaMinima : current.asistenciaMinima,
+        modalidad,
+        maxGradeLevel: patch.maxGradeLevel ?? current.maxGradeLevel ?? defaultMax,
+        turnosHabilitados: patch.turnosHabilitados ?? current.turnosHabilitados,
     };
     await platformPrisma.institute.update({
         where: { id: instituteId },
@@ -67,10 +75,12 @@ export interface StudentSuggestion {
     name: string;
     gender: string | null;
     currentSection: string | null;
+    currentShift?: string | null;
     gradeLevel: number;
     isLastGrade: boolean;
     defaultTargetGrade: number | null;
     defaultTargetSection: string | null;
+    defaultTargetShift?: string | null;
     subjectGrades: Array<{ subjectId: string; subjectName: string; average: number; approved: boolean }>;
     failedSubjects: Array<{ name: string; average: number }>;
     pendingCount: number;
@@ -104,6 +114,7 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                     id: true,
                     section: true,
                     grade: true,
+                    shift: true,
                     subjects: {
                         include: { subject: { select: { id: true, name: true } } },
                     },
@@ -138,7 +149,8 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                     ? Math.round((graded.reduce((a, b) => a + b.average, 0) / graded.length) * 100) / 100
                     : 0;
 
-                const isLastGrade = classroom.grade >= 5;
+                const ultimoAno = config.maxGradeLevel ?? (config.modalidad === 'MEDIA_TECNICA' ? 6 : 5);
+                const isLastGrade = classroom.grade >= ultimoAno;
 
                 let suggestedStatus: SuggestionStatus;
                 if (pendingCount === 0) {
@@ -165,10 +177,12 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                     name: `${enr.student.firstName} ${enr.student.lastName}`.trim(),
                     gender: enr.student.gender,
                     currentSection: classroom.section,
+                    currentShift: classroom.shift || 'MANANA',
                     gradeLevel: classroom.grade,
                     isLastGrade,
                     defaultTargetGrade,
                     defaultTargetSection: classroom.section,
+                    defaultTargetShift: classroom.shift || 'MANANA',
                     subjectGrades,
                     failedSubjects: failed.map(f => ({ name: f.subjectName, average: f.average })),
                     pendingCount,
@@ -190,6 +204,7 @@ export interface CloseDecision {
     targetGrade?: number | null;
     assignedClassroomId?: string | null;
     targetSectionLetter?: string | null;
+    targetShift?: string | null;
 }
 
 export interface CloseConfirmInput {
@@ -378,24 +393,39 @@ export async function confirmClose(
                 const targetGrade = decision.targetGrade ?? s.defaultTargetGrade ?? s.gradeLevel + 1;
                 const targetSection = (decision.targetSectionLetter || s.currentSection || 'A').toUpperCase();
 
+                const targetShift = decision.targetShift ?? s.defaultTargetShift ?? (s as any).currentShift ?? 'MANANA';
+
                 // Buscar aula en el año destino
                 let targetClassroom = await tx.classroom.findFirst({
                     where: {
                         academicYearId: nextAcademicYear.id,
                         grade: targetGrade,
                         section: targetSection,
+                        shift: targetShift,
                     },
                 });
 
                 // Auto-crear aula si no existe en el año nuevo
                 if (!targetClassroom) {
-                    const gradeName = `${targetGrade}º Año ${targetSection}`;
+                    const gradeNames: Record<number, string> = {
+                        1: '1er Año',
+                        2: '2do Año',
+                        3: '3er Año',
+                        4: '4to Año',
+                        5: '5to Año',
+                        6: '6to Año',
+                    };
+                    const gradeName = gradeNames[targetGrade] || `${targetGrade}º Año`;
+                    const shiftSuffix = targetShift === 'TARDE' ? ' (Tarde)' : targetShift === 'INTEGRAL' ? ' (Integral)' : '';
+                    const fullName = `${gradeName} ${targetSection}${shiftSuffix}`;
+                    const slugShift = targetShift === 'TARDE' ? '-tarde' : targetShift === 'INTEGRAL' ? '-integral' : '';
                     targetClassroom = await tx.classroom.create({
                         data: {
-                            name: gradeName,
-                            slug: `${targetGrade}er-ano-${targetSection.toLowerCase()}-${nextAcademicYear.id}`,
+                            name: fullName,
+                            slug: `${targetGrade}er-ano-${targetSection.toLowerCase()}${slugShift}-${nextAcademicYear.id}`,
                             grade: targetGrade,
                             section: targetSection,
+                            shift: targetShift,
                             capacity: 35,
                             academicYearId: nextAcademicYear.id,
                         },

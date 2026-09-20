@@ -57,17 +57,35 @@ export const upload: any = multer({
     fileFilter: fileFilter as any
 });
 
-// Middleware para eliminar archivo anterior
+// Middleware para eliminar archivo anterior de forma segura (mitigación path traversal)
 export const deleteOldFile = (filePath: string | null) => {
-    if (!filePath) return;
+    if (!filePath || typeof filePath !== 'string') return;
 
-    const cleanPath = filePath.replace(/^\/+/, '');
+    // Rechazar caracteres nulos o secuencias de escape de directorio
+    if (filePath.includes('..') || filePath.includes('\0')) {
+        console.warn('Intento de path traversal rechazado en deleteOldFile:', filePath);
+        return;
+    }
+
+    const cleanPath = filePath.replace(/^[/\\]+/, '');
+
+    const allowedBases = [
+        path.resolve(process.cwd(), 'public', 'uploads'),
+        path.resolve(process.cwd(), 'uploads'),
+    ];
+
     const pathsToTry = [
-        path.join(process.cwd(), cleanPath),
-        path.join(process.cwd(), 'public', cleanPath),
+        path.resolve(process.cwd(), cleanPath),
+        path.resolve(process.cwd(), 'public', cleanPath),
     ];
 
     for (const p of pathsToTry) {
+        // Verificar que la ruta resuelta resida estrictamente dentro de los directorios de uploads permitidos
+        const isSafe = allowedBases.some(base => p === base || p.startsWith(base + path.sep));
+        if (!isSafe) {
+            continue;
+        }
+
         if (fs.existsSync(p)) {
             try {
                 fs.unlinkSync(p);

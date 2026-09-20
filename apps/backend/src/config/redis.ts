@@ -165,6 +165,88 @@ export class RedisCache {
   private static memoryStore = new Map<string, { value: any; expiresAt: number }>();
 
   /**
+   * EL ÍNDICE POR PERSONA DE LA MEMORIA DE RESPALDO
+   *
+   * Lo que se guarda de las pantallas tiene la forma
+   * `cache:<liceo>:<ruta>:<persona>:<parámetros>`, y al guardar algo se borra
+   * lo de las personas afectadas con patrones `cache:<liceo>:*:<persona>:*`.
+   *
+   * Sin índice, cada borrado recorría **todas** las claves de la memoria y las
+   * comparaba contra cada patrón. El coste de guardar crecía con la gente
+   * conectada: medido en la prueba de estrés incremental, 300 personas y los
+   * profesores guardando asistencia llevaban el p99 de 16 ms a 215 ms y el peor
+   * caso a 1,5 s — y no solo a quien guardaba: el recorrido bloquea el proceso y
+   * hace esperar a todas las peticiones que llegan mientras tanto.
+   *
+   * Con el índice, borrar lo de una persona mira solo sus claves. Los patrones
+   * con otra forma (poco frecuentes) siguen recorriendo todo, como antes.
+   *
+   * La clave del índice ya lleva el liceo (va dentro de la clave completa), así
+   * que no mezcla liceos.
+   */
+  private static indicePorPersona = new Map<string, Set<string>>();
+
+  /** `…cache:<liceo>:<ruta>:<persona>:…` → "…cache:<liceo>:\0<persona>", o null si no tiene esa forma. */
+  private static personaDeLaClave(key: string): string | null {
+    const m = /^(.*?cache:[^:]*:)[^:]*:([^:]+):/.exec(key);
+    return m ? `${m[1]}\u0000${m[2]}` : null;
+  }
+
+  /** Lo mismo para un patrón, si nombra a UNA persona concreta y un liceo concreto. */
+  private static personaDelPatron(pattern: string): string | null {
+    const m = /^(.*?cache:[^:*]*:)[^:]*:([^:*]+):/.exec(pattern);
+    if (!m || m[1].includes('*')) return null;
+    return `${m[1]}\u0000${m[2]}`;
+  }
+
+  private static guardarEnMemoria(key: string, entry: { value: any; expiresAt: number }): void {
+    this.memoryStore.set(key, entry);
+    const persona = this.personaDeLaClave(key);
+    if (persona) {
+      let claves = this.indicePorPersona.get(persona);
+      if (!claves) this.indicePorPersona.set(persona, (claves = new Set()));
+      claves.add(key);
+    }
+  }
+
+  private static borrarDeMemoria(key: string): void {
+    if (!this.memoryStore.delete(key)) return;
+    const persona = this.personaDeLaClave(key);
+    if (!persona) return;
+    const claves = this.indicePorPersona.get(persona);
+    if (claves) {
+      claves.delete(key);
+      if (claves.size === 0) this.indicePorPersona.delete(persona);
+    }
+  }
+
+  /**
+   * Borra de la memoria lo que casa con alguno de los patrones. Los que nombran
+   * a una persona van por el índice; si queda alguno de otra forma, se recorre
+   * todo una sola vez para esos.
+   */
+  private static borrarDeMemoriaPorPatrones(patronesConPrefijo: string[]): void {
+    const sueltos: Array<(k: string) => boolean> = [];
+    for (const patron of patronesConPrefijo) {
+      const persona = this.personaDelPatron(patron);
+      const coincide = this.matchPattern(patron);
+      if (!persona) {
+        sueltos.push(coincide);
+        continue;
+      }
+      const claves = this.indicePorPersona.get(persona);
+      if (!claves) continue;
+      for (const key of Array.from(claves)) {
+        if (coincide(key)) this.borrarDeMemoria(key);
+      }
+    }
+    if (sueltos.length === 0) return;
+    for (const key of Array.from(this.memoryStore.keys())) {
+      if (sueltos.some((m) => m(key))) this.borrarDeMemoria(key);
+    }
+  }
+
+  /**
    * La clave con la que se guarda de verdad.
    *
    * Lleva **el liceo de la petición** delante, y por eso dos liceos que pidan
@@ -208,7 +290,7 @@ export class RedisCache {
 
     for (const [key, entry] of this.memoryStore) {
       if (entry.expiresAt !== 0 && entry.expiresAt < now) {
-        this.memoryStore.delete(key);
+        this.borrarDeMemoria(key);
       }
     }
   }
@@ -217,7 +299,7 @@ export class RedisCache {
     const entry = this.memoryStore.get(key);
     if (!entry) return null;
     if (entry.expiresAt !== 0 && entry.expiresAt < Date.now()) {
-      this.memoryStore.delete(key);
+      this.borrarDeMemoria(key);
       return null;
     }
     return entry.value;
@@ -225,7 +307,7 @@ export class RedisCache {
 
   private static memorySet(key: string, value: any, ttlSeconds?: number): void {
     this.pruneMemory();
-    this.memoryStore.set(key, {
+    this.guardarEnMemoria(key, {
       value,
       expiresAt: ttlSeconds ? Date.now() + ttlSeconds * 1000 : 0,
     });
@@ -273,7 +355,7 @@ export class RedisCache {
         await redis.del(redisKey);
       }
     } catch { /* noop */ }
-    this.memoryStore.delete(redisKey);
+    this.borrarDeMemoria(redisKey);
   }
 
   // Alias para delete
@@ -338,10 +420,7 @@ export class RedisCache {
         }
       }
     } catch { /* noop */ }
-    const matcher = this.matchPattern(redisPattern);
-    for (const key of Array.from(this.memoryStore.keys())) {
-      if (matcher(key)) this.memoryStore.delete(key);
-    }
+    this.borrarDeMemoriaPorPatrones([redisPattern]);
   }
 
   /**
@@ -387,9 +466,7 @@ export class RedisCache {
       }
     } catch { /* noop */ }
 
-    for (const key of Array.from(this.memoryStore.keys())) {
-      if (coincideAlguno(key)) this.memoryStore.delete(key);
-    }
+    this.borrarDeMemoriaPorPatrones(conPrefijo);
   }
 
   private static matchPattern(pattern: string): (key: string) => boolean {

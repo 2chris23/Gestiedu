@@ -488,6 +488,27 @@ export async function registerPayment(
             // la primera y vea lo ya pagado.
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pagos:${studentId}`}))`;
 
+            // SEGURIDAD: Prevenir pagos duplicados idénticos enviados simultáneamente (payments-missing-idempotency-race-condition)
+            const refLimpia = limpio(b.reference, 60);
+            const duplicadoReciente = await tx.payment.findFirst({
+                where: {
+                    studentId,
+                    academicYearId: ciclo.id,
+                    amount: deCentimos(montoCents),
+                    method: b.method,
+                    reference: refLimpia,
+                    annulledAt: null,
+                    createdAt: { gte: new Date(Date.now() - 30 * 1000) },
+                },
+                select: { id: true },
+            });
+            if (duplicadoReciente) {
+                throw Object.assign(
+                    new Error('Se detectó un pago idéntico registrado recientemente para este estudiante'),
+                    { statusCode: 409, code: 'DUPLICATE_PAYMENT_DETECTED' }
+                );
+            }
+
             const inscrito = await tx.studentClassroom.count({ where: { studentId, academicYearId: ciclo.id, isActive: true } });
             if (!inscrito) throw Object.assign(new Error('El estudiante no está inscrito en el ciclo actual'), { statusCode: 404, code: 'NOT_ENROLLED' });
 
@@ -563,15 +584,27 @@ export async function annulPayment(
         const motivo = String(request.body?.reason ?? '').replace(/[<>]/g, '').trim().slice(0, 200);
         if (motivo.length < 3) return reply.status(400).send({ error: 'Indica el motivo de la anulación', code: 'ANNUL_REASON_REQUIRED' });
 
-        // Solo se anula lo que no está anulado: dos clics no pisan el motivo.
-        const hecho = await prisma.payment.updateMany({
-            where: { id: request.params.paymentId, annulledAt: null },
-            data: { annulledAt: new Date(), annulledById: idDe(request), annulReason: motivo },
+        // Verificar que el pago existe antes de adquirir bloqueo
+        const paymentInfo = await prisma.payment.findUnique({
+            where: { id: request.params.paymentId },
+            select: { id: true, studentId: true, annulledAt: true },
+        });
+        if (!paymentInfo || paymentInfo.annulledAt) {
+            return reply.status(404).send({ error: 'Pago no encontrado o ya anulado' });
+        }
+
+        // SEGURIDAD: Serializar la anulación con el candado del estudiante para evitar condiciones de carrera con nuevos cobros
+        const hecho = await prisma.$transaction(async (tx: any) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pagos:${paymentInfo.studentId}`}))`;
+
+            return tx.payment.updateMany({
+                where: { id: request.params.paymentId, annulledAt: null },
+                data: { annulledAt: new Date(), annulledById: idDe(request), annulReason: motivo },
+            });
         });
         if (hecho.count === 0) return reply.status(404).send({ error: 'Pago no encontrado o ya anulado' });
 
-        const p = await prisma.payment.findUnique({ where: { id: request.params.paymentId }, select: { studentId: true } });
-        request.aQuienAfecta = { studentIds: [p.studentId] };
+        request.aQuienAfecta = { studentIds: [paymentInfo.studentId] };
         await prisma.auditLog
             .create({
                 data: {

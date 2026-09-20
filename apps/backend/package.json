@@ -53,7 +53,8 @@
     "contar:consultas": "tsx src/scripts/contar-consultas.ts",
     "probar:pgbouncer": "tsx src/scripts/probar-pgbouncer.ts",
     "medir:pozo": "tsx src/scripts/medir-pozo-y-repartidor.ts",
-    "medir:aguante": "tsx src/scripts/medir-aguante.ts"
+    "medir:aguante": "tsx src/scripts/medir-aguante.ts",
+    "medir:estres": "tsx src/scripts/medir-estres-incremental.ts"
   },
   "dependencies": {
     "@fastify/compress": "^9.2.0",

@@ -18,6 +18,7 @@ import AssignTeacherModal from '@/components/academic/AssignTeacherModal';
 import { classroomService, Classroom } from '@/services/classroom.service';
 import { studentsService } from '@/services/students.service';
 import { Card } from '@/components/ui';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 interface Student {
     id: string;
@@ -250,13 +251,12 @@ export default function ClassroomDetailPage() {
                                     <tr key={student.id} className="hover:bg-gray-50 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex items-center">
-                                                <div className="flex-shrink-0 h-10 w-10">
-                                                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                                                        <span className="text-white font-semibold text-sm">
-                                                            {student.firstName[0]}{student.lastName[0]}
-                                                        </span>
-                                                    </div>
-                                                </div>
+                                                <UserAvatar
+                                                    name={`${student.firstName} ${student.lastName}`}
+                                                    src={(student as any).avatar}
+                                                    className="h-10 w-10"
+                                                    initialsClassName="text-sm"
+                                                />
                                                 <div className="ml-4">
                                                     <div className="text-sm font-medium text-gray-900">
                                                         {student.firstName} {student.lastName}

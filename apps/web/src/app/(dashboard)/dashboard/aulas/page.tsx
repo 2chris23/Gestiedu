@@ -9,6 +9,7 @@ import { Toaster, toast } from 'sonner';
 import ClassroomModal from '@/components/classrooms/ClassroomModal';
 import { classroomService, Classroom } from '@/services/classroom.service';
 import { academicYearService, AcademicYear } from '@/services/academic-year.service';
+import TurnoBadge from '@/components/common/TurnoBadge';
 
 export default function ClassroomsPage() {
     const confirmDialog = useConfirm();
@@ -142,7 +143,10 @@ export default function ClassroomsPage() {
                                         <BookOpen className="h-6 w-6" />
                                     </div>
                                     <div>
-                                        <h3 className="text-lg font-semibold text-gray-900">{classroom.name}</h3>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-lg font-semibold text-gray-900">{classroom.name}</h3>
+                                            <TurnoBadge turno={classroom.shift} />
+                                        </div>
                                         <p className="text-xs text-gray-500">
                                             Profesor: {classroom.teacher ? `${classroom.teacher.firstName} ${classroom.teacher.lastName}` : 'Sin asignar'}
                                         </p>

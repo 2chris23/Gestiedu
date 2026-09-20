@@ -89,8 +89,23 @@ export async function buildServer(): Promise<FastifyInstance> {
     // se trabaja.
     if (config.isDevelopment) return `dev:${request.id}`;
 
+    // SEGURIDAD: Rutas públicas y de autenticación se limitan estrictamente por IP del cliente
+    // para evitar que atacantes eludan el rate limit enviando cabeceras de autorización arbitrarias
+    // (ratelimit-bypass-unauthenticated-header).
+    const ruta = request.url.split('?')[0];
+    const esRutaPublica =
+      ruta === '/health' ||
+      ruta.startsWith('/health/') ||
+      ruta === '/api/auth/login' ||
+      ruta === '/api/superadmin/auth/login' ||
+      ruta.startsWith('/api/instituto/');
+
+    if (esRutaPublica) {
+      return `ip:${request.ip}`;
+    }
+
     const credencial = request.headers.authorization;
-    if (credencial) {
+    if (credencial && credencial.startsWith('Bearer ') && credencial.length > 20) {
       return `s:${createHash('sha256').update(credencial).digest('hex').slice(0, 32)}`;
     }
 
@@ -289,8 +304,15 @@ export async function buildServer(): Promise<FastifyInstance> {
   await setupAcademicYearCronJob(server);
   logger.info('Academic year auto-sync job configured');
 
-  // Ruta de salud extendida
-  server.get('/health', async () => {
+  // Caché de comprobación profunda de salud para evitar agotar el pool de conexiones (dos-health-check-db-pool-exhaustion)
+  let estadoSaludCache: { db: boolean; redis: boolean; timestamp: number } | null = null;
+
+  const verificarSaludInfraestructura = async () => {
+    const ahora = Date.now();
+    if (estadoSaludCache && ahora - estadoSaludCache.timestamp < 15000) {
+      return estadoSaludCache;
+    }
+
     let dbHealthy = false;
     try {
       await server.prisma.$queryRaw`SELECT 1`;
@@ -306,14 +328,27 @@ export async function buildServer(): Promise<FastifyInstance> {
         return false;
       }
     })();
+
+    estadoSaludCache = { db: dbHealthy, redis: redisHealthy, timestamp: ahora };
+    return estadoSaludCache;
+  };
+
+  // Ruta de salud extendida (con estado de infraestructura protegido por caché)
+  server.get('/health', async () => {
+    const infra = await verificarSaludInfraestructura();
     return {
       status: 'ok',
       timestamp: new Date().toISOString(),
       environment: config.nodeEnv,
       version: process.env.npm_package_version || '1.0.0',
-      database: dbHealthy ? 'connected' : 'disconnected',
-      redis: redisHealthy ? 'connected' : 'disconnected',
+      database: infra.db ? 'connected' : 'disconnected',
+      redis: infra.redis ? 'connected' : 'disconnected',
     };
+  });
+
+  // Sonda de salud liveness en memoria (sin consultar BD ni Redis)
+  server.get('/health/live', async () => {
+    return { status: 'ok', timestamp: new Date().toISOString() };
   });
 
   // Ruta raíz informativa

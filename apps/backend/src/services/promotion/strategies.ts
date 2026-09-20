@@ -15,11 +15,15 @@ export interface StudentForPlacement {
     gender?: string | null;
     /** Letra de la sección actual (ej. 'A', 'B'). */
     currentSection?: string | null;
-    /** Año actual del estudiante (1 a 5). */
+    /** Año actual del estudiante (1 a 6). */
     currentGrade: number;
-    /** Año destino calculado (1 a 5, o null si es egresado/retirado). */
+    /** Turno actual (MANANA | TARDE | INTEGRAL). */
+    currentShift?: string | null;
+    /** Año destino calculado (1 a 6, o null si es egresado/retirado). */
     targetGrade: number | null;
-    /** Indica si es el último año (5to año / egresado). */
+    /** Turno destino calculado. */
+    targetShift?: string | null;
+    /** Indica si es el último año (egresado). */
     isLastGrade?: boolean;
     /** Nombre para mensajes (opcional). */
     name?: string;
@@ -29,8 +33,10 @@ export interface SectionOption {
     id: string;
     /** Letra de la sección (ej. 'A', 'B', 'C'). */
     section: string;
-    /** Año al que pertenece la sección (1, 2, 3, 4, 5). */
+    /** Año al que pertenece la sección (1 a 6). */
     grade: number;
+    /** Turno de la sección (MANANA | TARDE | INTEGRAL). */
+    shift?: string | null;
     /** Capacidad máxima de cupos. */
     capacity?: number | null;
 }

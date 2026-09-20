@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
  * que importa: cuántos deben.
  */
 
-const ANOS = ['1er Año', '2do Año', '3er Año', '4to Año', '5to Año'];
+const ANOS = ['1er Año', '2do Año', '3er Año', '4to Año', '5to Año', '6to Año'];
 type Filtro = 'TODOS' | EstadoDelAlumno;
 
 export default function PagosPage() {
