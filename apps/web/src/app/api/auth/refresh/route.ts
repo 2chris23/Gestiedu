@@ -76,6 +76,17 @@ export async function POST(_request: NextRequest) {
             maxAge: 15 * 60,
         });
 
+        // ROTACIÓN DE REFRESH TOKENS: Guardar el nuevo refresh token emitido
+        if (data.refreshToken) {
+            responseNext.cookies.set('refresh_token', data.refreshToken, {
+                httpOnly: true,
+                secure: SOLO_POR_CONEXION_CIFRADA,
+                sameSite: 'lax',
+                path: '/',
+                maxAge: 7 * 24 * 60 * 60,
+            });
+        }
+
         return responseNext;
     } catch (error) {
         console.error('Refresh token error:', error);

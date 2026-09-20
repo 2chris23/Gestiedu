@@ -159,7 +159,15 @@ export async function proxy(request: NextRequest) {
         pathname.startsWith(API_ROUTES_PREFIX) ||
         pathname.startsWith('/_next/') ||
         pathname.startsWith('/static/') ||
-        pathname === '/favicon.ico'
+        pathname.startsWith('/screenshots/') ||
+        pathname.startsWith('/images/') ||
+        pathname.startsWith('/icons/') ||
+        pathname === '/favicon.ico' ||
+        pathname === '/favicon.svg' ||
+        pathname.endsWith('.png') ||
+        pathname.endsWith('.jpg') ||
+        pathname.endsWith('.svg') ||
+        pathname.endsWith('.ico')
     ) {
         return NextResponse.next();
     }
@@ -270,8 +278,13 @@ export async function proxy(request: NextRequest) {
     // FALLBACK: Regular routes (no subdomain)
     // ========================================
 
+    // La Landing Page en la raíz (localhost:3000/) es siempre pública
+    if (pathname === '/') {
+        return NextResponse.next();
+    }
+
     // Skip public routes
-    if (PUBLIC_ROUTES.some(route => pathname.startsWith(route))) {
+    if (PUBLIC_ROUTES.some(route => pathname === route || pathname.startsWith(route + '/'))) {
         const accessToken = request.cookies.get('access_token')?.value;
         // If already logged in and visiting login, redirect to dashboard
         if (pathname === '/login' && accessToken) {
@@ -313,8 +326,8 @@ export const config = {
          * - _next/static (static files)
          * - _next/image (image optimization files)
          * - favicon.ico (favicon file)
-         * - public folder
+         * - screenshots, public folder
          */
-        '/((?!_next/static|_next/image|favicon.ico|public/).*)',
+        '/((?!_next/static|_next/image|favicon.ico|screenshots/|images/|icons/|public/).*)',
     ],
 };

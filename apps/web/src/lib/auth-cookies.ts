@@ -136,4 +136,5 @@ export async function clearAuthCookies() {
     cookieStore.delete(ACCESS_TOKEN_COOKIE);
     cookieStore.delete(REFRESH_TOKEN_COOKIE);
     cookieStore.delete(USER_DATA_COOKIE);
+    cookieStore.delete('institute_slug');
 }

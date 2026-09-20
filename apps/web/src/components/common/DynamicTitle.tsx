@@ -6,20 +6,29 @@ import { useInstituteConfig } from '@/hooks/useInstitute';
 
 export function DynamicTitle() {
     const pathname = usePathname();
+    const isRoot = pathname === '/';
     const isSuperAdmin = pathname?.startsWith('/superadmin');
+    const isLogin = pathname === '/login';
 
-    // No cargar config si estamos en SuperAdmin
-    const { data: config, isLoading } = useInstituteConfig({ enabled: !isSuperAdmin });
+    const { data: config } = useInstituteConfig({ enabled: !isSuperAdmin && !isRoot && !isLogin });
 
     useEffect(() => {
-        // Actualizar el título inmediatamente cuando los datos estén disponibles o cambie la ruta
+        if (isRoot) {
+            document.title = 'GestiEdu | Sistema de Gestión Escolar para Liceos';
+            return;
+        }
+
+        if (isSuperAdmin) {
+            document.title = 'SuperAdmin | GestiEdu Plataforma';
+            return;
+        }
+
         if (config?.name) {
             document.title = config.name;
-        } else if (!isLoading && !config?.name) {
-            // Si no hay datos y no está cargando, usar título predeterminado
-            document.title = 'Sistema de Gestión Escolar';
+        } else {
+            document.title = 'GestiEdu | Sistema de Gestión Escolar';
         }
-    }, [config?.name, isLoading, pathname]); // pathname como dependencia para actualizar en cada navegación
+    }, [config?.name, pathname, isRoot, isSuperAdmin]);
 
-    return null; // Este componente no renderiza nada;
+    return null;
 }

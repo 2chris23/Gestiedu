@@ -11,6 +11,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { BookOpen } from 'lucide-react';
 import { BACKEND_URL } from '@/config/env';
+import NotFound from '@/app/not-found';
 
 const loginSchema = z.object({
     instituteSlug: z.string().min(1, 'Ingresa el slug del instituto'),
@@ -63,6 +64,9 @@ export default function LoginPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
 
+    const [isCheckingScope, setIsCheckingScope] = useState(true);
+    const [directAccessForbidden, setDirectAccessForbidden] = useState(false);
+
     const [detectedSlug, setDetectedSlug] = useState<string | null>(null);
     const [instituteData, setInstituteData] = useState<{
         name: string;
@@ -78,17 +82,17 @@ export default function LoginPage() {
         const sub = getSubdomainFromBrowser();
         if (sub) {
             setDetectedSlug(sub);
+            setIsCheckingScope(false);
         } else if (typeof window !== 'undefined') {
             const params = new URLSearchParams(window.location.search);
             const slugParam = params.get('slug') || params.get('instituto') || params.get('institute');
             if (slugParam) {
                 setDetectedSlug(slugParam);
+                setIsCheckingScope(false);
             } else {
-                // Si no hay slug en URL, buscar en cookie si ya inició sesión previamente en un instituto
-                const match = document.cookie.match(/(?:^|;\s*)institute_slug=([^;]+)/);
-                if (match?.[1]) {
-                    setDetectedSlug(decodeURIComponent(match[1]));
-                }
+                // Sin subdominio ni parámetro: se prohíbe el acceso directo y se muestra 404
+                setDirectAccessForbidden(true);
+                setIsCheckingScope(false);
             }
         }
     }, []);
@@ -116,7 +120,6 @@ export default function LoginPage() {
                     setInstituteNotFound(true);
                     setInstituteData(null);
                 } else {
-                    // Si hubo otro error o el instituto no está activo
                     const err = await res.json().catch(() => ({}));
                     setError(err.error || 'Error al validar el instituto');
                 }
@@ -135,7 +138,7 @@ export default function LoginPage() {
         };
     }, [detectedSlug]);
 
-    // Si el instituto tiene favicon, actualizarlo dinámicamente en la pantalla de login
+    // Si el instituto tiene favicon, actualizarlo dinámicamente en la pantalla de login y restaurar al salir
     useEffect(() => {
         if (instituteData?.favicon) {
             const faviconUrl = instituteData.favicon.startsWith('/uploads')
@@ -152,6 +155,17 @@ export default function LoginPage() {
             iconLink.href = finalUrl;
             document.head.appendChild(iconLink);
         }
+
+        return () => {
+            const existingLinks = document.querySelectorAll("link[rel*='icon']");
+            existingLinks.forEach(el => el.remove());
+
+            const iconLink = document.createElement('link');
+            iconLink.rel = 'icon';
+            iconLink.type = 'image/x-icon';
+            iconLink.href = '/favicon.ico';
+            document.head.appendChild(iconLink);
+        };
     }, [instituteData?.favicon]);
 
     const hasAutoSlug = !!detectedSlug;
@@ -245,6 +259,14 @@ export default function LoginPage() {
     const displayName = instituteData?.name || (detectedSlug
         ? detectedSlug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
         : '');
+
+    if (isCheckingScope) {
+        return <div className="min-h-screen bg-slate-50" />;
+    }
+
+    if (directAccessForbidden || !detectedSlug) {
+        return <NotFound />;
+    }
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
