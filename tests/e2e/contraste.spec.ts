@@ -19,7 +19,9 @@ import { WEB_BASE, loginViaUI } from './helpers';
 type Pantalla = { nombre: string; ruta: string; conSesion: boolean; temaOscuro?: boolean };
 
 const PANTALLAS: Pantalla[] = [
-    { nombre: 'entrar', ruta: '/login', conSesion: false },
+    // Con el liceo en la dirección: sin slug, la pantalla de entrar no se pinta
+    // —responde "no existe"— y se estaría midiendo el 404, no el formulario.
+    { nombre: 'entrar', ruta: '/login?slug=instituto-testing', conSesion: false },
     { nombre: 'guía de diseño', ruta: '/diseno', conSesion: false, temaOscuro: true },
     { nombre: 'panel', ruta: '/dashboard', conSesion: true },
     { nombre: 'usuarios', ruta: '/dashboard/usuarios', conSesion: true },
