@@ -7,6 +7,8 @@ import { ArrowLeft, Plus, Layers, Pencil, GraduationCap } from 'lucide-react';
 import { academicYearService, AcademicYear } from '@/services/academic-year.service';
 import { classroomService, Classroom } from '@/services/classroom.service';
 import GradeAccordion from '@/components/academic/GradeAccordion';
+import TurnoBadge from '@/components/common/TurnoBadge';
+import { Turno } from '@/lib/turnos';
 import ClassroomModal from '@/components/classrooms/ClassroomModal';
 import AcademicYearModal from '@/components/academic/AcademicYearModal';
 import { toast } from 'sonner';
@@ -86,11 +88,27 @@ export default function AcademicYearDashboard() {
         setClassroomModalOpen(true);
     };
 
+    /**
+     * FILTRO POR TURNO
+     *
+     * Un liceo de dos turnos tiene el doble de secciones en esta pantalla, y de
+     * dos en dos con el mismo nombre. Con el filtro se mira un turno cada vez.
+     * `TODOS` es lo normal; el filtro solo aparece si de verdad hay dos turnos.
+     */
+    const [turnoElegido, setTurnoElegido] = useState<'TODOS' | Turno>('TODOS');
+
+    const turnosQueHay = useMemo(
+        () => Array.from(new Set(classrooms.map((c) => (c.shift as Turno) || 'MANANA'))).sort(),
+        [classrooms]
+    );
+
     const classroomsByGrade = useMemo(() => {
         const grouped: Record<number, Classroom[]> = {};
-        [1, 2, 3, 4, 5].forEach(g => grouped[g] = []);
+        [1, 2, 3, 4, 5, 6].forEach(g => grouped[g] = []);
 
-        classrooms.forEach(c => {
+        classrooms
+            .filter((c) => turnoElegido === 'TODOS' || ((c.shift as Turno) || 'MANANA') === turnoElegido)
+            .forEach(c => {
             if (grouped[c.grade]) grouped[c.grade].push(c);
         });
 
@@ -99,7 +117,7 @@ export default function AcademicYearDashboard() {
         });
 
         return grouped;
-    }, [classrooms]);
+    }, [classrooms, turnoElegido]);
 
     const handleEditSection = (classroom: Classroom) => {
         setClassroomToEdit(classroom);
@@ -280,10 +298,38 @@ export default function AcademicYearDashboard() {
                             <Layers className="w-5 h-5 text-indigo-600" />
                             Gestión por Niveles
                         </h2>
+
+                        {turnosQueHay.length > 1 && (
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setTurnoElegido('TODOS')}
+                                    aria-pressed={turnoElegido === 'TODOS'}
+                                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                                        turnoElegido === 'TODOS'
+                                            ? 'border-indigo-600 bg-indigo-600 text-white'
+                                            : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    Todos los turnos
+                                </button>
+                                {turnosQueHay.map((t) => (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => setTurnoElegido(t)}
+                                        aria-pressed={turnoElegido === t}
+                                        className={`rounded-full ${turnoElegido === t ? 'ring-2 ring-indigo-600' : ''}`}
+                                    >
+                                        <TurnoBadge turno={t} tamano="md" />
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div className="space-y-4">
-                        {[1, 2, 3, 4, 5].map((grade) => (
+                        {[1, 2, 3, 4, 5, 6].map((grade) => (
                             <GradeAccordion
                                 key={grade}
                                 grade={grade}
@@ -307,6 +353,7 @@ export default function AcademicYearDashboard() {
                 defaultYearId={year.id}
                 defaultGrade={selectedGradeForCreation}
                 classroomToEdit={classroomToEdit}
+                existingClassrooms={classroomsByGrade[selectedGradeForCreation] || []}
                 existingSections={(classroomsByGrade[selectedGradeForCreation] || []).map(c => c.section)}
             />
 

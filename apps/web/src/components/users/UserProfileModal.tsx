@@ -6,6 +6,7 @@ import { Dialog, Transition } from '@headlessui/react';
 import { X, User as UserIcon, Mail, Phone, MapPin, Calendar, BookOpen, Users, Shield, Eye, EyeOff, Key } from 'lucide-react';
 import { userService } from '@/services/user.service';
 import { useAuthStore } from '@/store/auth.store';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 interface Tutoring {
     tutor: { firstName: string; lastName: string };
@@ -159,13 +160,12 @@ export function UserProfileModal({ isOpen, onClose, userId }: UserProfileModalPr
                                         <X className="h-6 w-6" />
                                     </button>
                                     <div className="absolute -bottom-16 left-8 flex items-end">
-                                        <div className="relative h-32 w-32 rounded-full border-4 border-white bg-white shadow-md overflow-hidden flex items-center justify-center text-gray-400">
-                                            {user.avatar ? (
-                                                <Image src={user.avatar} alt="Avatar" fill sizes="128px" className="object-cover" />
-                                            ) : (
-                                                <UserIcon className="h-16 w-16" />
-                                            )}
-                                        </div>
+                                        <UserAvatar
+                                            name={`${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || 'Usuario'}
+                                            src={user.avatar}
+                                            className="h-32 w-32 border-4 border-white shadow-md"
+                                            initialsClassName="text-3xl"
+                                        />
                                     </div>
                                 </div>
 

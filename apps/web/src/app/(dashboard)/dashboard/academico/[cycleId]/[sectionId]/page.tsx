@@ -34,6 +34,7 @@ import { getAcademicRisk } from '@/utils/academicRisk';
 import SectionObservationsTab from '@/components/classroom/SectionObservationsTab';
 import StudentObservationsModal from '@/components/observations/StudentObservationsModal';
 import { useRouter } from 'next/navigation';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 // Params refactored: year -> cycleId, slug -> sectionId
 export default function SectionPage({ params }: { params: Promise<{ cycleId: string, sectionId: string }> }) {
@@ -379,19 +380,12 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                     <>
                                         {/* Avatar del profesor */}
                                         <div className="relative">
-                                            <div className="relative w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
-                                                {(classroom.teacher as any).avatar ? (
-                                                    <Image
-                                                        src={(classroom.teacher as any).avatar}
-                                                        alt={`${classroom.teacher.firstName} ${classroom.teacher.lastName}`}
-                                                        fill
-                                                        sizes="48px"
-                                                        className="rounded-full object-cover"
-                                                    />
-                                                ) : (
-                                                    `${classroom.teacher.firstName[0]}${classroom.teacher.lastName[0]}`
-                                                )}
-                                            </div>
+                                            <UserAvatar
+                                                name={`${classroom.teacher.firstName} ${classroom.teacher.lastName}`}
+                                                src={(classroom.teacher as any).avatar}
+                                                className="h-12 w-12 shadow-md"
+                                                initialsClassName="text-sm"
+                                            />
                                             <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></div>
                                         </div>
 
@@ -538,9 +532,12 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                             >
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div className="flex items-center">
-                                                        <div className="flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center font-bold text-sm bg-indigo-100 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                                                            {student.firstName?.[0]}{student.lastName?.[0]}
-                                                        </div>
+                                                        <UserAvatar
+                                                            name={`${student.firstName} ${student.lastName}`}
+                                                            src={(student as any).avatar}
+                                                            className="h-10 w-10"
+                                                            initialsClassName="text-sm"
+                                                        />
                                                         <div className="ml-4">
                                                             <div className="text-sm font-medium text-gray-900 group-hover:text-indigo-600 transition-colors flex items-center gap-1.5">
                                                                 {student.firstName} {student.lastName}
@@ -861,9 +858,12 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                                                         <div className="mr-3">
                                                                             {isSelected ? <CheckCircle2 className="h-5 w-5 text-indigo-600" /> : <div className="h-5 w-5 rounded-full border-2 border-gray-300" />}
                                                                         </div>
-                                                                        <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600 mr-3">
-                                                                            {s.firstName[0]}{s.lastName[0]}
-                                                                        </div>
+                                                                        <UserAvatar
+                                                                            name={`${s.firstName} ${s.lastName}`}
+                                                                            src={(s as any).avatar}
+                                                                            className="h-8 w-8 mr-3"
+                                                                            initialsClassName="text-xs"
+                                                                        />
                                                                         <div>
                                                                             <div className="text-sm font-medium text-gray-900">{s.firstName} {s.lastName}</div>
                                                                             <div className="text-xs text-gray-500">{s.studentCode || s.email}</div>

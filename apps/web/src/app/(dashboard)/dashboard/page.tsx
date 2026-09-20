@@ -8,6 +8,8 @@ import { useStudentDashboard } from '@/hooks/useStudents';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import { PagosDelRepresentante } from '@/components/pagos/PagosDelRepresentante';
+import MiDiaDeClases from '@/components/dashboard/MiDiaDeClases';
+import MisRepresentados from '@/components/dashboard/MisRepresentados';
 import {
     Users,
     TrendingUp,
@@ -37,6 +39,11 @@ interface AdminDashboardData {
 
 // Tipos para el dashboard de estudiante
 interface StudentDashboardData {
+    student?: {
+        id: string;
+        fullName: string;
+        currentSection?: { id: string; name: string; academicYearName?: string | null } | null;
+    };
     kpis: {
         globalAverage: number;
         failedSubjects: number;
@@ -199,6 +206,19 @@ export default function DashboardPage() {
                     />
                 ))}
             </div>
+
+            {/* El alumno: su horario de hoy y lo que le falta. */}
+            {user?.role === 'STUDENT' && (
+                <MiDiaDeClases
+                    studentId={user.id}
+                    classroomId={studentStats?.student?.currentSection?.id}
+                    nombre={`${user.firstName ?? ''} ${user.lastName ?? ''}`.trim()}
+                    seccion={studentStats?.student?.currentSection?.name}
+                />
+            )}
+
+            {/* Representante: sus representados y lo que les falta. */}
+            {user?.role === 'TUTOR' && <MisRepresentados />}
 
             {/* Representante: estado de pago de sus representados (si el liceo usa pagos) */}
             {user?.role === 'TUTOR' && <PagosDelRepresentante />}

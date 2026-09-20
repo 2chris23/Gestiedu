@@ -5,6 +5,7 @@ import { Classroom } from '@/services/classroom.service';
 import AcademicStats from './AcademicStats';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import TurnoBadge from '@/components/common/TurnoBadge';
 
 interface GradeAccordionProps {
     grade: number;
@@ -53,7 +54,7 @@ export default function GradeAccordion({ grade, classrooms, onAddSection, onEdit
                     </div>
                     <div>
                         <h3 className={`font-bold text-lg ${isOpen ? 'text-indigo-900' : 'text-gray-700'}`}>
-                            {grade === 1 ? 'Primer' : grade === 2 ? 'Segundo' : grade === 3 ? 'Tercer' : grade === 4 ? 'Cuarto' : 'Quinto'} Año
+                            {grade === 1 ? 'Primer' : grade === 2 ? 'Segundo' : grade === 3 ? 'Tercer' : grade === 4 ? 'Cuarto' : grade === 5 ? 'Quinto' : 'Sexto'} Año
                         </h3>
                         <p className="text-sm text-gray-400 mt-0.5">
                             {classrooms.length} Secciones
@@ -124,7 +125,10 @@ export default function GradeAccordion({ grade, classrooms, onAddSection, onEdit
                                                         {c.section}
                                                     </div>
                                                     <div>
-                                                        <p className="font-semibold text-gray-900 text-sm">Sección &quot;{c.section}&quot;</p>
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="font-semibold text-gray-900 text-sm">Sección &quot;{c.section}&quot;</p>
+                                                            <TurnoBadge turno={c.shift} />
+                                                        </div>
                                                         <p className="text-xs text-gray-500">{count}/{capacity} Cupos</p>
                                                     </div>
                                                 </div>

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useClassroomObservations, useDeleteObservation, ClassroomObservationItem, InvolvedStudentInfo } from '@/hooks/useObservations';
 import { useAuthStore } from '@/store/auth.store';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 interface Props {
   classroomId: string;
@@ -181,13 +182,12 @@ export default function SectionObservationsTab({ classroomId }: Props) {
                           key={st.id}
                           className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white border border-gray-200/90 shadow-2xs hover:border-indigo-300 transition-colors"
                         >
-                          <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center shrink-0">
-                            {st.avatar ? (
-                              <img src={st.avatar} alt="" className="w-full h-full rounded-full object-cover" />
-                            ) : (
-                              st.name?.[0] || 'E'
-                            )}
-                          </div>
+                          <UserAvatar
+                            name={st.name || 'Estudiante'}
+                            src={st.avatar}
+                            className="h-6 w-6"
+                            initialsClassName="text-[10px]"
+                          />
                           <div className="min-w-0">
                             <span className="text-xs font-semibold text-gray-800 block truncate max-w-[140px]">
                               {st.name}

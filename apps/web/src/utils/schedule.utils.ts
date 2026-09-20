@@ -1,9 +1,48 @@
+export type ShiftType = 'MANANA' | 'TARDE' | 'INTEGRAL';
+
 export interface ScheduleConfig {
     startTime: string;
     blockDuration: number;
     totalBlocks: number;
     breakAfterBlock: number;
     breakDuration: number;
+}
+
+export const DEFAULT_MORNING_SCHEDULE: ScheduleConfig = {
+    startTime: '07:00',
+    blockDuration: 45,
+    totalBlocks: 7,
+    breakAfterBlock: 3,
+    breakDuration: 15
+};
+
+export const DEFAULT_AFTERNOON_SCHEDULE: ScheduleConfig = {
+    startTime: '13:00',
+    blockDuration: 45,
+    totalBlocks: 6,
+    breakAfterBlock: 3,
+    breakDuration: 15
+};
+
+export const TIME_SLOTS_MANANA = [
+    "07:00", "07:45", "08:30", "09:15", "10:00", "10:45", "11:30", "12:15"
+];
+
+export const TIME_SLOTS_TARDE = [
+    "13:00", "13:45", "14:30", "15:15", "16:00", "16:45", "17:30"
+];
+
+export function getScheduleConfigForShift(baseConfig?: ScheduleConfig | null, shift: ShiftType = 'MANANA'): ScheduleConfig {
+    if (shift === 'TARDE') {
+        return {
+            startTime: '13:00',
+            blockDuration: baseConfig?.blockDuration || 45,
+            totalBlocks: baseConfig?.totalBlocks || 6,
+            breakAfterBlock: baseConfig?.breakAfterBlock || 3,
+            breakDuration: baseConfig?.breakDuration || 15
+        };
+    }
+    return baseConfig || DEFAULT_MORNING_SCHEDULE;
 }
 
 export interface Period {

@@ -7,38 +7,79 @@ import { classroomService, Classroom } from '@/services/classroom.service';
 import { academicYearService } from '@/services/academic-year.service';
 import { BookOpen, Users, Calendar as CalendarIcon } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
+import { useAuthStore } from '@/store/auth.store';
+import api from '@/lib/axios';
 
 export default function CalendarioPage() {
     const [classrooms, setClassrooms] = useState<Classroom[]>([]);
     const [selectedClassroomId, setSelectedClassroomId] = useState<string>('');
     const [loading, setLoading] = useState(true);
+    const { user } = useAuthStore();
 
+    /**
+     * CADA UNO VE SUS SECCIONES
+     *
+     * Esta pantalla pedía TODAS las secciones del liceo y abría la primera. Al
+     * alumno y al representante —que también usan el calendario, por eso está
+     * abierto a ellos— les salía un aviso de error y una pantalla vacía: esa
+     * lista es de personal.
+     *
+     * Ahora: el alumno ve la suya, el representante las de sus representados, y
+     * el personal, todas.
+     */
     useEffect(() => {
-        const fetchClassrooms = async () => {
+        const cargarSecciones = async () => {
             try {
                 setLoading(true);
+
+                if (user?.role === 'STUDENT') {
+                    const { data } = await api.get('/students/my-dashboard');
+                    const seccion = data?.data?.student?.currentSection;
+                    const suyas = seccion
+                        ? [{ id: seccion.id, name: seccion.name, section: '', grade: 0 } as unknown as Classroom]
+                        : [];
+                    setClassrooms(suyas);
+                    if (suyas.length) setSelectedClassroomId(suyas[0].id);
+                    return;
+                }
+
+                if (user?.role === 'TUTOR') {
+                    const { data } = await api.get('/dashboard/tutor');
+                    const deSusHijos = (data?.data?.children ?? [])
+                        .filter((h: any) => h.classroomId)
+                        .map((h: any) => ({
+                            id: h.classroomId,
+                            name: `${h.fullName} · ${h.classroom ?? ''}`.trim(),
+                            section: '',
+                            grade: 0,
+                        })) as unknown as Classroom[];
+                    setClassrooms(deSusHijos);
+                    if (deSusHijos.length) setSelectedClassroomId(deSusHijos[0].id);
+                    return;
+                }
+
                 const years = await academicYearService.getAcademicYears();
                 const activeYear = years.find(y => y.status === 'ACTIVE') || years[0];
-                
+
                 if (activeYear) {
                     const data = await classroomService.getClassrooms(activeYear.id);
                     const classes = Array.isArray(data) ? data : data.classrooms;
                     setClassrooms(classes);
-                    
+
                     if (classes.length > 0) {
                         setSelectedClassroomId(classes[0].id);
                     }
                 }
             } catch (error) {
                 console.error(error);
-                toast.error('Error al cargar aulas');
+                toast.error('No se pudieron cargar las secciones');
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchClassrooms();
-    }, []);
+        cargarSecciones();
+    }, [user?.role]);
 
     return (
         <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -73,7 +114,7 @@ export default function CalendarioPage() {
                         <SelectContent>
                             {classrooms.map((c) => (
                                 <SelectItem key={c.id} value={c.id}>
-                                    {c.name} - Sección {c.section}
+                                    {c.section ? `${c.name} - Sección ${c.section}` : c.name}
                                 </SelectItem>
                             ))}
                         </SelectContent>

@@ -18,6 +18,7 @@ import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { useTeacherScheduleBlocks, transformTeacherScheduleData, useClassroomSchedule, transformScheduleData } from '@/hooks/useSchedules';
 import Link from 'next/link';
 import { RepresentantesDelAlumno } from '@/components/users/RepresentantesDelAlumno';
+import ActividadesDelAlumno from '@/components/profile/ActividadesDelAlumno';
 import api from '@/lib/axios';
 import { comprimirFotoEnElDispositivo, pesoLegible } from '@/lib/foto-comprimida';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -355,6 +356,9 @@ export default function UserProfilePage({ params }: PageProps) {
                     schedule={scheduleData} 
                     role={user.role === 'student' || user.role === 'teacher' ? user.role : 'student'} 
                     showActions={true}
+                    // Sin la sección, el horario salía sin tema y con los
+                    // contadores en cero: el resumen del día se pide POR sección.
+                    classroomId={user.role === 'student' ? studentClassroomId : undefined}
                     editUrl={user.role === 'teacher' ? `/dashboard/horarios?profesor=${cedula}` : undefined}
                     titulo={`Horario · ${user.name}`}
                     subtitulo={user.role === 'teacher' ? 'Profesor' : 'Estudiante'}
@@ -367,6 +371,15 @@ export default function UserProfilePage({ params }: PageProps) {
 
                 {/* Left Column: Personal Information Detail (Ficha) */}
                 <div className="lg:col-span-1 space-y-6 animate-in slide-in-from-left duration-500 delay-150">
+                    {/* Lo que le falta al alumno: la pregunta que más se hace un
+                        representante y que la ficha no sabía responder. */}
+                    {user.role === 'student' && (
+                        <ActividadesDelAlumno
+                            studentId={user.cedula}
+                            academicYearId={selectedStudentYearId || undefined}
+                        />
+                    )}
+
                     {/* Teacher Guide Section - First for teachers */}
                     {user.role === 'teacher' && (
                         <div

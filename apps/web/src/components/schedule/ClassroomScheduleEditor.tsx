@@ -12,6 +12,7 @@ interface ClassroomScheduleEditorProps {
     classroomId: string;
     initialBlocks: any[];
     subjects: any[]; // The subjects assigned to this classroom (ClassroomSubjects)
+    shift?: 'MANANA' | 'TARDE' | 'INTEGRAL';
 }
 
 const DAYS = [
@@ -91,7 +92,7 @@ function DroppableCell({ id, block, onRemove }: { id: string, block?: any, onRem
     );
 }
 
-export default function ClassroomScheduleEditor({ classroomId, initialBlocks, subjects }: ClassroomScheduleEditorProps) {
+export default function ClassroomScheduleEditor({ classroomId, initialBlocks, subjects, shift }: ClassroomScheduleEditorProps) {
     const [blocks, setBlocks] = useState<any[]>([]);
     const [deletedIds, setDeletedIds] = useState<string[]>([]);
     const [isDirty, setIsDirty] = useState(false);
@@ -99,9 +100,13 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
     const [isRandomizeModalOpen, setIsRandomizeModalOpen] = useState(false);
     const confirmDialog = useConfirm();
     
+    const autoShift = initialBlocks?.some(b => b.startTime >= '12:45') ? 'TARDE' : 'MANANA';
+    const [currentShift, setCurrentShift] = useState<'MANANA' | 'TARDE'>(
+        shift === 'TARDE' ? 'TARDE' : autoShift
+    );
     const bulkUpdate = useBulkUpdateSchedule(classroomId);
     const autoGenerate = useAutoGenerateSchedule();
-    const { periods: dynamicPeriods, isLoading } = useSchedulePeriods();
+    const { periods: dynamicPeriods, isLoading } = useSchedulePeriods(currentShift);
 
     useEffect(() => {
         // Map initial blocks to our internal state format
@@ -367,7 +372,41 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
                 {/* Grid del Horario */}
                 <div className="flex-1 overflow-x-auto">
                     <div className="min-w-[700px] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                        <div className="grid grid-cols-6 border-b border-gray-200 bg-gray-50">
+                        {/* Selector de Turno */}
+                        <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-gray-700">Turno de clase:</span>
+                                <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-xs font-semibold">
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentShift('MANANA')}
+                                        className={`rounded-md px-3 py-1 transition-colors ${
+                                            currentShift === 'MANANA'
+                                                ? 'bg-indigo-600 text-white shadow-sm'
+                                                : 'text-gray-600 hover:text-gray-900'
+                                        }`}
+                                    >
+                                        Mañana (07:00 - 12:15)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentShift('TARDE')}
+                                        className={`rounded-md px-3 py-1 transition-colors ${
+                                            currentShift === 'TARDE'
+                                                ? 'bg-indigo-600 text-white shadow-sm'
+                                                : 'text-gray-600 hover:text-gray-900'
+                                        }`}
+                                    >
+                                        Tarde (13:00 - 17:30)
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="text-[11px] text-gray-500">
+                                {currentShift === 'MANANA' ? 'Bloques de 45 min • Turno Matutino' : 'Bloques de 45 min • Turno Vespertino'}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-6 border-b border-gray-200 bg-gray-50/75">
                             <div className="p-3 text-center text-xs font-bold text-gray-500 uppercase">Hora</div>
                             {DAYS.map(day => (
                                 <div key={day.id} className="p-3 text-center text-xs font-bold text-gray-700 uppercase border-l border-gray-200">
