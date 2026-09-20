@@ -90,3 +90,6 @@ apps/backend/.playwright-cli/
 # Restos de compilación y de Redis: se regeneran solos, no van al repositorio.
 *.tsbuildinfo
 dump.rdb
+
+# Lo que sueltan las mediciones: son resultados de una máquina y una tarde.
+docs/mediciones/
