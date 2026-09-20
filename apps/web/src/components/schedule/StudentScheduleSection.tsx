@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo } from 'react';
 import {
     Calendar, Clock, Coffee, Edit, Search, MapPin, User,
     ChevronLeft, ChevronRight, ListTodo, BookOpen, CalendarDays
@@ -13,7 +13,11 @@ import ScheduleHistoryModal from '@/components/schedule/ScheduleHistoryModal';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSchedulePeriods } from '@/hooks/useSchedulePeriods';
-import { useLiveOverview } from '@/hooks/useLiveClass';
+import { useLiveOverview, LiveOverviewSubject } from '@/hooks/useLiveClass';
+import { ClaseDelAlumnoDialogo } from '@/components/schedule/ClaseDelAlumnoDialogo';
+import { useArrastrarParaDesplazar } from '@/hooks/useArrastrarParaDesplazar';
+import TurnoBadge from '@/components/common/TurnoBadge';
+import { turnoDeLaHora } from '@/lib/turnos';
 import { toLocalYMD } from '@/utils/date.utils';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
 
@@ -95,11 +99,22 @@ const MODERN_SUBJECT_STYLES = [
 export default function StudentScheduleSection({ schedule, role, showActions = false, classroomId, editUrl, titulo = 'Horario semanal', subtitulo, teacherId }: Props) {
     const [viewMode, setViewMode] = React.useState<'day' | 'week'>('day');
     const [isCalendarModalOpen, setIsCalendarModalOpen] = React.useState(false);
-    const { periods: dynamicPeriods, isLoading } = useSchedulePeriods();
+    /**
+     * EL TURNO MANDA EN LAS HORAS
+     *
+     * Una sección de la tarde empieza a la una, no a las siete. Si se pintan
+     * las horas de la mañana, el horario sale vacío: las clases caen fuera de
+     * todos los bloques. El turno sale de la propia sección; si no se sabe
+     * todavía, de la hora del primer bloque que tenga.
+     */
+    const turnoDeLosBloques = React.useMemo(
+        () => (schedule.length ? turnoDeLaHora([...schedule].sort((a, b) => a.startTime.localeCompare(b.startTime))[0].startTime) : 'MANANA'),
+        [schedule]
+    );
     const router = useRouter();
 
-    // Ref para el carrusel de 5 bloques
-    const carouselRef = useRef<HTMLDivElement>(null);
+    // El carril de bloques: se arrastra con el ratón, además de las flechas.
+    const { ref: carouselRef, arrastrando } = useArrastrarParaDesplazar<HTMLDivElement>();
 
     // Get current day and time
     const now = new Date();
@@ -142,17 +157,41 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
         return target.toISOString().split('T')[0];
     };
 
-    // Tema generador y actividades por materia para el horario en vivo
+    // Tema generador y actividades por materia para el horario en vivo.
+    // Lo pide también el alumno: es SU sección (lo comprueba el servidor).
     const activeOverviewDate = histDate || todayDateStr;
     const { data: liveOverview } = useLiveOverview(classroomId || '', activeOverviewDate);
+    const turno = liveOverview?.shift ?? turnoDeLosBloques;
+    const { periods: dynamicPeriods, isLoading } = useSchedulePeriods(turno === 'INTEGRAL' ? 'MANANA' : turno);
 
-    const handleClassClick = (classItem: (ScheduleBlock & { classroomIdDeLaClase?: string }) | null) => {
-        const seccion = classItem?.classroomIdDeLaClase ?? classroomId;
-        if (role !== 'teacher' || !classItem || !classItem.subjectId || !seccion) return;
-        const blockDate = (viewMode === 'day' && histDate) ? histDate : getDateForDayKey(classItem.day || '');
-        router.push(
-            `/dashboard/clase-en-vivo/${seccion}/${classItem.subjectId}?date=${blockDate}&start=${encodeURIComponent(classItem.startTime)}&end=${encodeURIComponent(classItem.endTime)}`
-        );
+    /**
+     * ENTRAR A UNA CLASE
+     *
+     * El profesor va a la Clase en Vivo, donde trabaja. El alumno —y quien mira
+     * su horario— abre la ficha de esa hora: tema, qué hay que hacer y su nota.
+     * Antes el bloque no respondía a nadie que no fuera profesor y el alumno se
+     * quedaba mirando una tarjeta muerta.
+     */
+    const [claseAbierta, setClaseAbierta] = React.useState<
+        (ScheduleBlock & { reemplazaA?: string; classroomIdDeLaClase?: string }) | null
+    >(null);
+
+    const handleClassClick = (
+        classItem: (ScheduleBlock & { reemplazaA?: string; classroomIdDeLaClase?: string }) | null
+    ) => {
+        if (!classItem?.subjectId) return;
+        const seccion = classItem.classroomIdDeLaClase ?? classItem.classroomId ?? classroomId;
+        if (!seccion) return;
+
+        if (role === 'teacher') {
+            const blockDate = (viewMode === 'day' && histDate) ? histDate : getDateForDayKey(classItem.day || '');
+            router.push(
+                `/dashboard/clase-en-vivo/${seccion}/${classItem.subjectId}?date=${blockDate}&start=${encodeURIComponent(classItem.startTime)}&end=${encodeURIComponent(classItem.endTime)}`
+            );
+            return;
+        }
+
+        setClaseAbierta(classItem);
     };
 
     // Scroll por bloque completo en el carrusel
@@ -375,8 +414,11 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             <Calendar size={18} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-gray-900 text-sm sm:text-base leading-tight">Horario en Vivo</h3>
-                            <p className="text-[11px] text-gray-500 font-medium">
+                            <div className="flex items-center gap-2">
+                                <h3 className="font-bold text-gray-900 text-sm sm:text-base leading-tight">Horario en Vivo</h3>
+                                <TurnoBadge turno={turno} />
+                            </div>
+                            <p className="text-[11px] text-gray-600 font-medium">
                                 {histLabel}
                             </p>
                         </div>
@@ -479,7 +521,9 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                 {viewMode === 'day' && (
                     <div
                         ref={carouselRef}
-                        className="flex w-full gap-3 overflow-x-auto pb-2 pt-0.5 snap-x snap-mandatory scroll-smooth no-scrollbar"
+                        className={`flex w-full gap-3 overflow-x-auto pb-2 pt-0.5 snap-x snap-mandatory no-scrollbar select-none ${
+                            arrastrando ? 'cursor-grabbing scroll-auto' : 'cursor-grab scroll-smooth'
+                        }`}
                         style={{
                             scrollbarWidth: 'none',
                             msOverflowStyle: 'none',
@@ -525,14 +569,14 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                 }
 
                                 const classItem = period.class;
-                                const isClickable =
-                                    role === 'teacher' && classItem?.subjectId && (classItem?.classroomIdDeLaClase || classroomId);
+                                const isClickable = Boolean(
+                                    classItem?.subjectId && (classItem?.classroomIdDeLaClase || classItem?.classroomId || classroomId)
+                                );
 
                                 // Datos enriquecidos desde el Plan de Evaluación y Actividades
                                 const subjectInfo = classItem?.subjectId ? liveOverview?.overview?.[classItem.subjectId] : null;
                                 const temaGenerador = subjectInfo?.temaGenerador || null;
                                 const firstColLabel = subjectInfo?.firstColumnLabel || 'Tema Generador';
-                                const activitiesCount = subjectInfo?.activitiesCount ?? 0;
                                 const todayActivitiesCount = subjectInfo?.todayActivitiesCount ?? 0;
                                 const nextActivitiesCount = subjectInfo?.nextActivitiesCount ?? 0;
 
@@ -612,38 +656,40 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                             )}
                                         </div>
 
-                                        {/* Footer del Bloque: Contador de Actividades (Hoy y Próx) + Docente/Aula */}
-                                        {classItem && (
+                                        {/*
+                                          * Pie del bloque. Solo se enseña lo que hay:
+                                          *   · «1 para hoy» — lo que toca en esta clase;
+                                          *   · «1 para otro día» — lo que se DEJÓ aquí para más adelante;
+                                          *   · el aula, si la sección tiene aula asignada.
+                                          * Los ceros y el «Sin aula» se fueron: ocupaban sitio para
+                                          * decir que no hay nada que decir.
+                                          */}
+                                        {classItem && (todayActivitiesCount > 0 || nextActivitiesCount > 0 || classItem.location) && (
                                             <div className="pt-2 border-t border-gray-100/80 flex items-center justify-between gap-1 mt-auto flex-wrap">
-                                                <div className="flex items-center gap-1">
-                                                    {/* Hoy */}
-                                                    <div
-                                                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${
-                                                            todayActivitiesCount > 0
-                                                                ? 'bg-blue-100 text-blue-800'
-                                                                : 'bg-gray-100 text-gray-500'
-                                                        }`}
-                                                        title={`${todayActivitiesCount} actividad(es) para hoy`}
-                                                    >
-                                                        <span>Hoy: {todayActivitiesCount}</span>
-                                                    </div>
-
-                                                    {/* Próx */}
-                                                    <div
-                                                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${
-                                                            nextActivitiesCount > 0
-                                                                ? 'bg-purple-100 text-purple-800'
-                                                                : 'bg-gray-100 text-gray-500'
-                                                        }`}
-                                                        title={`${nextActivitiesCount} actividad(es) para la próxima clase`}
-                                                    >
-                                                        <span>Próx: {nextActivitiesCount}</span>
-                                                    </div>
+                                                <div className="flex items-center gap-1 flex-wrap">
+                                                    {todayActivitiesCount > 0 && (
+                                                        <span
+                                                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-blue-100 text-blue-900"
+                                                            title={`${todayActivitiesCount} actividad(es) para esta clase`}
+                                                        >
+                                                            {todayActivitiesCount} para hoy
+                                                        </span>
+                                                    )}
+                                                    {nextActivitiesCount > 0 && (
+                                                        <span
+                                                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-purple-100 text-purple-900"
+                                                            title={`En esta clase se dejaron ${nextActivitiesCount} actividad(es) para otro día`}
+                                                        >
+                                                            {nextActivitiesCount} para otro día
+                                                        </span>
+                                                    )}
                                                 </div>
 
-                                                <span className="text-[10px] text-gray-400 truncate max-w-[65px]">
-                                                    {classItem.location || 'Sin aula'}
-                                                </span>
+                                                {classItem.location && (
+                                                    <span className="text-[10px] text-gray-600 truncate max-w-[70px]">
+                                                        {classItem.location}
+                                                    </span>
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -744,7 +790,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                                 const classItem = cell.classItem!;
                                                 const subjectKey = (classItem.subject || '').trim().toLowerCase();
                                                 const style = subjectStyleMap[subjectKey] || MODERN_SUBJECT_STYLES[0];
-                                                const isClickable = role === 'teacher' && classItem.subjectId && classroomId;
+                                                const isClickable = Boolean(classItem.subjectId && (classItem.classroomId || classroomId));
 
                                                 const teacherName = classItem.detail
                                                     ? classItem.detail.replace(/^Prof\.\s*/i, '').trim()
@@ -792,6 +838,23 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                     </div>
                 )}
             </div>
+
+            {/* La ficha de una clase para quien no es profesor: solo lectura. */}
+            <ClaseDelAlumnoDialogo
+                abierto={Boolean(claseAbierta)}
+                alCerrar={() => setClaseAbierta(null)}
+                materia={claseAbierta?.subject}
+                hora={claseAbierta ? `${claseAbierta.startTime} - ${claseAbierta.endTime}` : undefined}
+                profesor={claseAbierta?.detail || undefined}
+                aula={claseAbierta?.location || undefined}
+                fecha={histLabel}
+                reemplazaA={claseAbierta?.reemplazaA}
+                datos={
+                    (claseAbierta?.subjectId
+                        ? liveOverview?.overview?.[claseAbierta.subjectId]
+                        : null) as LiveOverviewSubject | null
+                }
+            />
 
             {/* Modal de Calendario e Historial */}
             {classroomId && (

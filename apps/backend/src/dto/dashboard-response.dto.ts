@@ -118,6 +118,8 @@ export interface TutorDashboardDto {
         fullName: string;
         avatar: string | null;
         classroom: string | null;
+        classroomId?: string | null;
+        shift?: string | null;
         average: number;
         attendancePercentage: number;
         relationship: string;

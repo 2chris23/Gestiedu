@@ -547,7 +547,7 @@ export class DashboardService {
                                         // Sin este campo, el filtro de más abajo se queda vacío
                                         // y se vuelve a contar toda la vida escolar — en silencio.
                                         academicYearId: true,
-                                        classroom: { select: { grade: true, section: true } }
+                                        classroom: { select: { id: true, grade: true, section: true, shift: true } }
                                     }
                                 }
                             }
@@ -598,6 +598,9 @@ export class DashboardService {
                     classroom: childClassroom
                         ? `${childClassroom.grade}° ${childClassroom.section}`
                         : null,
+                    // La sección, para poder abrir SU horario y su calendario.
+                    classroomId: childClassroom?.id ?? null,
+                    shift: childClassroom?.shift ?? null,
                     average: parseFloat(Number(stats?.average || 0).toFixed(1)),
                     attendancePercentage: Math.round(Number(stats?.attendancePercentage || 0)),
                     relationship: child.relationship

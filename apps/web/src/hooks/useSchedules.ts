@@ -60,7 +60,9 @@ export function transformScheduleData(data: BackendScheduleBlock[] | undefined):
         startTime: block.startTime,
         endTime: block.endTime,
         subject: block.classroomSubject?.subject?.name || 'Materia desconocida',
-        location: block.location || 'Sin aula',
+        // Sin aula asignada no se inventa un texto: «Sin aula» ocupaba sitio en
+        // cada bloque del horario para decir que no hay nada que decir.
+        location: block.location || '',
         detail: block.classroomSubject?.teacher
             ? `Prof. ${block.classroomSubject.teacher.firstName} ${block.classroomSubject.teacher.lastName}`
             : 'Sin profesor',
@@ -280,12 +282,16 @@ export function transformTeacherScheduleData(data: any[] | undefined): ScheduleB
         startTime: block.startTime,
         endTime: block.endTime,
         subject: block.classroomSubject?.subject?.name || 'Materia desconocida',
-        location: block.classroomSubject?.classroom?.name || 'Sin aula',
+        location: block.classroomSubject?.classroom?.name || '',
         detail: block.classroomSubject?.classroom
             ? `${block.classroomSubject.classroom.name}`
             : 'Sin sección',
         color: block.classroomSubject?.subject?.color || '#6366f1',
-        link: block.classroomSubject?.subject ? `/dashboard/materias/${block.classroomSubject.subject.id}` : '#'
+        link: block.classroomSubject?.subject ? `/dashboard/materias/${block.classroomSubject.subject.id}` : '#',
+        // Sin esto, el profesor no podía ENTRAR a su clase desde su propio
+        // horario: al bloque le faltaban la materia y la sección.
+        subjectId: block.classroomSubject?.subject?.id,
+        classroomId: block.classroomSubject?.classroom?.id,
     }));
 }
 
@@ -313,7 +319,7 @@ export interface ClassSessionHistory {
 /**
  * Hook para obtener el historial de clases por fecha
  */
-export function useClassroomHistory(classroomId: string, date: string) {
+export function useClassroomHistory(classroomId: string, date: string, activo = true) {
     return useQuery({
         queryKey: ['classroomHistory', classroomId, date],
         queryFn: async () => {
@@ -322,6 +328,10 @@ export function useClassroomHistory(classroomId: string, date: string) {
             });
             return response.data;
         },
-        enabled: !!classroomId && !!date,
+        // `activo` = "la ventana está abierta". El modal se monta siempre, así
+        // que sin esto se pedía el historial —que es de personal— nada más
+        // entrar: al alumno le respondía 403 en cada carga de su pantalla.
+        enabled: activo && !!classroomId && !!date,
+        retry: false,
     });
 }
