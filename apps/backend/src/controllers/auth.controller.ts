@@ -2,8 +2,8 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { authService } from '../services/auth.service';
 import { logger } from '../utils/logger';
 import { RequestUser } from '../types/fastify';
-import { invalidateUserSession } from '../middleware/auth.middleware';
-import { verifyRefreshToken } from '../config/jwt';
+import { invalidateUserSession, revokeAccessToken } from '../middleware/auth.middleware';
+import { verifyRefreshToken, extractTokenFromHeader } from '../config/jwt';
 import {
   comoEstaLaCuenta,
   apuntarFallo,
@@ -129,11 +129,17 @@ export async function logout(
     const user = request.user as RequestUser;
     const userId = user?.userId;
     const { refreshToken } = request.body || {};
+    const token = extractTokenFromHeader(request.headers.authorization);
 
     if (userId) {
       await authService.logout(userId, request.tenantPrisma, refreshToken);
       // Invalidar caché de sesión para que el usuario deslogueado no revalide
       await invalidateUserSession(request.institute?.id ?? user?.instituteId, userId);
+
+      // Revocar el access token actual en Redis para que no pueda seguir siendo usado
+      if (token) {
+        await revokeAccessToken(request.institute?.id ?? user?.instituteId, token);
+      }
     }
 
     return reply.status(200).send({

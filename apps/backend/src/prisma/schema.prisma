@@ -291,6 +291,10 @@ model RefreshToken {
   ip         String? // IP con la que se creó la sesión
   lastUsedAt DateTime @default(now()) // último uso actualizado en cada refresh
   rememberMe Boolean  @default(false) // sliding expiration activa
+  /// Cuándo se cambió por uno nuevo. Sigue valiendo unos segundos más: dos
+  /// pestañas que renuevan a la vez mandan el mismo token y una se quedaría
+  /// fuera. Ver `GRACIA_DE_ROTACION_MS` en auth.service.ts.
+  replacedAt DateTime?
 
   @@index([userId])
   @@index([expiresAt])
@@ -410,6 +414,7 @@ model Classroom {
   section     String
   grade       Int
   capacity    Int?
+  shift       String  @default("MANANA") // "MANANA" | "TARDE" | "INTEGRAL"
   isActive    Boolean @default(true)
 
   // Instituto
@@ -444,6 +449,7 @@ model Classroom {
   @@index([academicYearId])
   @@index([teacherId])
   @@index([grade])
+  @@index([shift])
   @@map("classrooms")
 }
 

@@ -77,6 +77,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           // `accessToken` y `expiresIn`. Fastify serializaba la respuesta a {}
           // y el frontend (route.ts de refresh) recibía accessToken undefined.
           accessToken: { type: 'string' },
+          // La llave de volver a entrar CAMBIA en cada renovación, y el
+          // navegador tiene que quedarse con la nueva. Sin esta línea, Fastify
+          // la borraba de la respuesta (solo deja pasar lo que está declarado)
+          // y el navegador seguía con la vieja: a los pocos segundos se
+          // quedaba fuera sin explicación.
+          refreshToken: { type: 'string' },
           expiresIn: { type: 'string' },
         },
       },

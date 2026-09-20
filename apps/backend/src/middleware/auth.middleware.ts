@@ -50,6 +50,29 @@ export async function invalidateUserSession(
 }
 
 /**
+ * Revoca un access token en Redis durante 1 hora (mitigación auth-bypass-logout-access-token)
+ */
+export async function revokeAccessToken(
+  instituteId: string | null | undefined,
+  token: string
+): Promise<void> {
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  await conLiceo(instituteId ?? '', () => RedisCache.set(`auth:revoked_token:${tokenHash}`, true, 3600));
+}
+
+/**
+ * Comprueba si un access token fue revocado en logout
+ */
+export async function isTokenRevoked(
+  instituteId: string | null | undefined,
+  token: string
+): Promise<boolean> {
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  const revoked = await conLiceo(instituteId ?? '', () => RedisCache.get<boolean>(`auth:revoked_token:${tokenHash}`));
+  return Boolean(revoked);
+}
+
+/**
  * Carga el usuario para autenticación con caché en Redis.
  * Si Redis no está disponible degrada a consulta directa (fallos silenciosos).
  */
@@ -102,6 +125,16 @@ export async function authenticate(
 
     // Verificar y decodificar el token
     const payload = verifyAccessToken(token);
+
+    // SEGURIDAD: Verificar si el token fue revocado explícitamente en logout (auth-bypass-logout-access-token)
+    const revocado = await isTokenRevoked((request as any).institute?.id, token);
+    if (revocado) {
+      return reply.status(401).send({
+        error: ERROR_MESSAGES.UNAUTHORIZED,
+        message: 'Token de acceso revocado por cierre de sesión',
+        code: 'TOKEN_REVOKED',
+      });
+    }
 
     // SEGURIDAD: Usar tenantPrisma (DB del tenant) para encontrar el usuario.
     // NO hay fallback al server.prisma (platform DB). Si tenantPrisma no está

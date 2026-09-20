@@ -2,6 +2,7 @@ import { UserRole } from '../utils/prisma-enums';
 import * as jwt from 'jsonwebtoken';
 import { createSecretKey, KeyObject } from 'crypto';
 import { config } from './environment';
+import { randomUUID } from 'crypto';
 
 // =====================================================
 // Tipos para JWT de Instituto (usuarios normales)
@@ -117,6 +118,17 @@ export function generateAccessToken(payload: Omit<JWTPayload, 'iat' | 'exp'>): s
     algorithm: jwtConfig.algorithm,
     issuer: jwtConfig.issuer,
     audience: jwtConfig.audience,
+    /**
+     * CADA TOKEN, DISTINTO DE TODOS LOS DEMÁS
+     *
+     * La hora dentro del token va en segundos: dos sesiones de la MISMA persona
+     * abiertas en el mismo segundo salían con el token idéntico, letra por
+     * letra. Y como al cerrar sesión el token se anula por su huella, cerrar en
+     * el teléfono dejaba fuera también a la computadora.
+     *
+     * Con un número de serie propio no hay dos iguales.
+     */
+    jwtid: randomUUID(),
   });
 }
 
