@@ -57,7 +57,10 @@ public class MainActivity extends BridgeActivity {
                 }
 
                 peticion.setTitle(nombre);
-                peticion.setDescription("Descargando desde " + getString(R.string.app_name));
+                // El nombre de la app se pregunta al sistema, no a `R`: el
+                // paquete del código es uno y el de la app instalada puede ser
+                // otro (uno por liceo), y ahí `R` deja de resolverse.
+                peticion.setDescription("Descargando desde " + getApplicationInfo().loadLabel(getPackageManager()));
                 peticion.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
                 peticion.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, nombre);
 

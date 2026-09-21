@@ -53,12 +53,21 @@ icono, su nombre y a pantalla completa.
 
 | | Qué |
 |---|---|
-| Java | JDK 21 (`winget install Microsoft.OpenJDK.21`) |
+| Java | **JDK 21**, ni más ni menos (`winget install Microsoft.OpenJDK.21`) |
 | Android | Android Studio, o las «command line tools» del SDK |
-| Variable | `ANDROID_HOME` apuntando al SDK |
+| Variables | `JAVA_HOME` al JDK 21 y `ANDROID_HOME` al SDK |
 
-**En esta máquina no está ninguno de los tres**, así que el proyecto está
-preparado pero la APK todavía no se ha compilado aquí.
+**Tiene que ser el 21.** Gradle 8.11 —el que trae este proyecto— no sabe correr
+con Java 25, y el que viene dentro de Android Studio es justo ese. Si el
+ordenador tiene los dos instalados, `JAVA_HOME` decide cuál se usa:
+
+```powershell
+$env:JAVA_HOME="$env:ProgramFiles\Microsoft\jdk-21.0.12.101-hotspot"
+$env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
+```
+
+Ya compilada aquí una vez: 4 MB, `com.gestiedu.institutotesting`, con el nombre
+y el icono del liceo dentro.
 
 ### Preparar la app de un liceo
 
@@ -86,6 +95,18 @@ npm run apk:pruebas
 Sale en `android/app/build/outputs/apk/debug/app-debug.apk`. Se pasa al teléfono
 y se instala permitiendo «orígenes desconocidos». **Esta no sirve para Play
 Store**: no está firmada.
+
+**Probarla contra tu propio ordenador**, antes de que exista el servidor del
+liceo: se prepara con `--pruebas` y la dirección de red local del ordenador,
+con los dos servidores arriba y el teléfono en el mismo wifi.
+
+```bash
+node scripts/preparar-liceo.mjs --liceo=sanmiguel --pruebas --url="http://192.168.1.156:3000/login?slug=sanmiguel"
+```
+
+`--pruebas` es lo único que permite `http`, y solo hacia una dirección de red
+local. Esa APK **no se reparte**: por ahí van la contraseña y la sesión sin
+cifrar, y en el wifi de un liceo eso lo lee cualquiera.
 
 ### La versión firmada
 
@@ -130,4 +151,4 @@ y `npm run apk:firmada`.
 - La cámara para el QR de asistencia, cuando esa función exista.
 - Publicación en Google Play: cuenta de desarrollador (25 $ una vez), ficha,
   capturas y política de privacidad.
-- Nadie ha compilado la APK todavía: falta la máquina con Java y el SDK.
+- Firmarla y publicarla: falta la llave y la cuenta de desarrollador.
