@@ -32,8 +32,16 @@ test.describe.serial('Pagos', () => {
              WHERE u.status = 'ACTIVE' AND NOT EXISTS (SELECT 1 FROM payments p WHERE p."studentId" = u.id)
              ORDER BY u."lastName" LIMIT 1`
         );
+        /**
+         * Un representante DEL LICEO DE PRUEBAS, no cualquiera: la base trae
+         * cuentas de demostración con otra contraseña, y al tocarle el turno a
+         * una de ellas la prueba fallaba al entrar, no en lo que mide.
+         */
         const [tutor] = await queryTenantDb(
-            `SELECT id, email FROM users WHERE role = 'TUTOR' AND "isActive" = true AND status = 'ACTIVE' ORDER BY id LIMIT 1`
+            `SELECT id, email FROM users
+              WHERE role = 'TUTOR' AND "isActive" = true AND status = 'ACTIVE'
+              ORDER BY (email LIKE '%@testing.edu.ve') DESC, id
+              LIMIT 1`
         );
         // El liceo de pruebas no trae representantes asignados: se crea el vínculo y se quita al final.
         await queryTenantDb(
@@ -61,7 +69,16 @@ test.describe.serial('Pagos', () => {
             await page.goto(`${WEB_BASE}/dashboard/configuracion`);
             await page.getByRole('button', { name: 'Pagos', exact: true }).click();
 
-            await page.getByText('Activar control de pagos').click();
+            /**
+             * SE DEJA ACTIVADO, NO SE "CAMBIA"
+             *
+             * Esto pulsaba la casilla a ciegas. Si el liceo de pruebas ya tenía
+             * los pagos activados —porque otra tanda se quedó a medias—, el
+             * pulsado los APAGABA, y entonces todo lo de debajo se deshabilita y
+             * la prueba fallaba por algo que no tiene que ver con lo que mide.
+             */
+            const casilla = page.getByRole('checkbox').first();
+            await casilla.check();
             await page.getByRole('radio', { name: 'Mensual' }).click();
             await page.getByLabel('Día del mes').fill('1');
             await page.getByLabel(/Monto de cada cuota/).fill('30');

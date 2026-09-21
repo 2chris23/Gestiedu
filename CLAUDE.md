@@ -22,8 +22,8 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
 ```bash
 cd apps/backend && npm run dev      # API en :3001
 cd apps/web && npm run dev          # web en :3000
-cd apps/backend && npx jest         # 791 pruebas (integración + cálculo)
-npm run test:e2e                    # 161 pruebas de navegador (Playwright), con los dos servidores arriba
+cd apps/backend && npx jest         # 793 pruebas (integración + cálculo)
+npm run test:e2e                    # 195 pruebas de navegador (Playwright), con los dos servidores arriba
 cd apps/backend && npm run typecheck
 cd apps/backend && npm run migrate:tenants[:status]   # migra todos los liceos
 ```
@@ -57,6 +57,11 @@ cierra, llega SIGPIPE y el proceso muere. Cuesta horas de pruebas falsas en rojo
 - No edites archivos mientras hay una tanda de pruebas corriendo; salen fallos fantasma.
 - Las sustituciones de texto a ciegas ya han corrompido pruebas dos veces
   (`studentId`→`studentIds`, literales SQL). Cambios dirigidos y verificados.
+- **Las llaves guardadas de las pruebas de navegador se cambian al prestarlas.**
+  `tests/e2e/helpers.ts` guarda la sesión en disco para no chocar con el límite
+  de intentos de entrada; como la llave de volver a entrar es de un solo uso
+  (rotación), repartir la misma a cinco pruebas dejaba catorce en rojo por algo
+  que el producto hace bien. `loginApi` la renueva antes de devolverla.
 
 ## Reglas del producto que NO son fallos
 
@@ -150,6 +155,27 @@ ve lo de sus representados. Cambiar la frecuencia con pagos en el ciclo: 409.
 
 **Solo el admin suspende.** Puede poner otra materia de la sección en ese hueco
 (`class_replacements`), solo si su profesor está libre. Ver `class-replacements.service.ts`.
+
+## Lo que ve cada rol en las listas
+
+`GET /api/classrooms` daba TODAS las secciones a cualquiera con sesión. Parecía
+inofensivo —solo nombres— y no lo era: el calendario abre la PRIMERA de la
+lista, así que al profesor le tocaba una ajena y el servidor respondía 403; en
+la pantalla se veía como «el calendario sale roto». Ahora el profesor recibe las
+que guía y aquellas donde imparte (`las-secciones-que-me-tocan.test.ts`).
+
+**Y el rol lo dice el servidor.** Las pantallas lo leían del almacén del
+navegador (`auth.store`), que en la primera pintada todavía está vacío: durante
+ese instante un alumno pasaba por personal y pedía lo que no es suyo. Para eso
+está `hooks/useQuienSoy.ts`.
+
+## El portal de cada liceo
+
+`/instituto/<liceo>/login` y `/instituto/<liceo>` se abren **sin sesión**: son
+la puerta que se le da a la gente del liceo. Estaban protegidas, así que quien
+llegaba a entrar acababa en `/login` sin liceo, que responde «no existe»
+(ABRE-07). El resto de `/instituto/<liceo>/...` sigue pidiendo sesión, y cuando
+el guardián manda a `/login` lleva el liceo en la dirección.
 
 ## Contraste
 

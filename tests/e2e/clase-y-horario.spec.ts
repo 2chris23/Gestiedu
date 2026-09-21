@@ -133,12 +133,27 @@ test.describe('La clase en vivo', () => {
             await page.getByRole('button', { name: 'Ausente' }).first().click();
             await expect(page.getByText(/Guardado \d{1,2}:\d{2}/)).toBeVisible({ timeout: 20000 });
 
-            const hoy = new Date().toISOString().slice(0, 10);
-            const marcas = await queryTenantDb(
-                `SELECT status FROM daily_attendance
-                  WHERE "classroomId" = $1 AND date::date = $2::date AND status = 'ABSENT'`,
-                [clase.classroom_id, hoy]
-            );
+            /**
+             * EL DÍA LO PONE EL SERVIDOR, NO `toISOString()`
+             *
+             * Esto preguntaba por `new Date().toISOString()`, que es la fecha en
+             * UTC: en Caracas (UTC-4), a partir de las ocho de la noche eso ya
+             * es el día siguiente, así que la consulta miraba un día vacío y la
+             * prueba fallaba de noche y pasaba de día. `CURRENT_DATE` es el día
+             * de la base, que es el mismo que el del liceo.
+             *
+             * Y se da un margen: «Guardado» puede ser el de la marca anterior,
+             * y lo que se comprueba es que la de ahora LLEGÓ.
+             */
+            let marcas: any[] = [];
+            for (let intento = 0; intento < 20 && marcas.length === 0; intento++) {
+                marcas = await queryTenantDb(
+                    `SELECT status FROM daily_attendance
+                      WHERE "classroomId" = $1 AND date::date = CURRENT_DATE AND status = 'ABSENT'`,
+                    [clase.classroom_id]
+                );
+                if (marcas.length === 0) await page.waitForTimeout(500);
+            }
             expect(marcas.length).toBeGreaterThan(0);
 
             // Se deja como estaba: todos presentes.
