@@ -138,34 +138,46 @@ export default function LoginPage() {
         };
     }, [detectedSlug]);
 
-    // Si el instituto tiene favicon, actualizarlo dinámicamente en la pantalla de login y restaurar al salir
+    /**
+     * EL ICONITO DE LA PESTAÑA, EL DEL LICEO — Y SOLO EL NUESTRO
+     *
+     * Esto quitaba del documento TODOS los enlaces de icono, incluidos los que
+     * pone React (`metadata.icons` en `app/layout.tsx`; ojo:
+     * `rel="apple-touch-icon"` también contiene la palabra «icon»). Cuando
+     * React iba a tocar uno de esos nodos ya no estaba, y reventaba con
+     * «Cannot read properties of null (reading 'removeChild')» — justo al
+     * cambiar de pantalla, porque la limpieza corre al salir de esta.
+     *
+     * Eso no se ve como un error: se ve como que **la pantalla se queda
+     * pegada**. Se entraba, la dirección pasaba a `/dashboard` y se seguía
+     * viendo este formulario hasta recargar a mano (AUTH-01).
+     *
+     * Regla: solo se toca lo que se crea aquí, y por eso va marcado.
+     */
     useEffect(() => {
-        if (instituteData?.favicon) {
-            const faviconUrl = instituteData.favicon.startsWith('/uploads')
-                ? `${BACKEND_URL}${instituteData.favicon}`
-                : instituteData.favicon;
-            const finalUrl = `${faviconUrl}?v=login`;
+        const MARCA = 'data-icono-del-liceo';
+        const quitarLosNuestros = () =>
+            document.querySelectorAll(`link[${MARCA}]`).forEach((el) => el.remove());
 
-            const existingLinks = document.querySelectorAll("link[rel*='icon']");
-            existingLinks.forEach(el => el.remove());
-
-            const iconLink = document.createElement('link');
-            iconLink.rel = 'icon';
-            iconLink.type = faviconUrl.endsWith('.ico') ? 'image/x-icon' : 'image/png';
-            iconLink.href = finalUrl;
-            document.head.appendChild(iconLink);
+        if (!instituteData?.favicon) {
+            quitarLosNuestros();
+            return quitarLosNuestros;
         }
 
-        return () => {
-            const existingLinks = document.querySelectorAll("link[rel*='icon']");
-            existingLinks.forEach(el => el.remove());
+        const faviconUrl = instituteData.favicon.startsWith('/uploads')
+            ? `${BACKEND_URL}${instituteData.favicon}`
+            : instituteData.favicon;
 
-            const iconLink = document.createElement('link');
-            iconLink.rel = 'icon';
-            iconLink.type = 'image/x-icon';
-            iconLink.href = '/favicon.ico';
-            document.head.appendChild(iconLink);
-        };
+        quitarLosNuestros();
+
+        const iconLink = document.createElement('link');
+        iconLink.rel = 'icon';
+        iconLink.type = faviconUrl.endsWith('.ico') ? 'image/x-icon' : 'image/png';
+        iconLink.href = `${faviconUrl}?v=login`;
+        iconLink.setAttribute(MARCA, '');
+        document.head.appendChild(iconLink);
+
+        return quitarLosNuestros;
     }, [instituteData?.favicon]);
 
     const hasAutoSlug = !!detectedSlug;
