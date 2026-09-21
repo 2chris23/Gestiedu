@@ -230,6 +230,19 @@ la barra de gestos del teléfono (`env(safe-area-inset-bottom)`) y cada botón m
 44 px de alto. El contenido lleva `pb-28` en móvil para que la barra no tape el
 último botón de la pantalla.
 
+## En el teléfono, lo que se comprueba cada vez
+
+Tres cosas que se rompieron y no dan error, solo «se ve raro»:
+
+- **Nada se sale de ancho.** Una fila con un selector y un botón cabe en el
+  escritorio y empuja la pantalla en un móvil. Se mide con
+  `document.documentElement.scrollWidth > innerWidth` en cada pantalla.
+- **La barra de abajo tapa lo último de la pantalla.** «Cerrar Sesión» quedaba
+  justo debajo: se veía, pero el dedo pulsaba la barra, y había que girar el
+  teléfono para salir de la sesión.
+- **Salir devuelve al portal del liceo**, no a `/login` pelado, que responde
+  «no existe»: lo último que veía quien cerraba sesión era un 404.
+
 ## La app del teléfono
 
 Dos caminos, la misma web: **instalarla desde el navegador** (ya funciona: ficha
@@ -253,6 +266,12 @@ desde el repositorio: es la identidad del liceo en Google Play. Todo en
 mismo wifi. No es `npm run dev` con otro nombre: `localhost` en un teléfono ES
 el teléfono, y los dos servidores solo le abren la puerta a `localhost` (CORS y
 `allowedDevOrigins`). Sin eso, la app sale **en blanco** y nada lo avisa.
+
+**El servidor de datos también tiene que dejar pasar al teléfono.** En
+desarrollo se aceptan los orígenes de las tres redes privadas (192.168.x.x,
+10.x.x.x, 172.16–31.x.x) además de `localhost`; en producción manda
+`CORS_ORIGIN` y nada más. Ojo: los archivos `.env` **ganan** a las variables
+del entorno (`override: true`), así que esto cuelga del modo, no del valor.
 
 **Una dirección de red no nombra a ningún liceo.** `192.168.1.156` partido por
 puntos daba cuatro trozos y el primero se leía como el liceo: «el instituto 192

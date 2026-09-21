@@ -96,9 +96,11 @@ export default function ClassroomsPage() {
                     <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Aulas y Secciones</h1>
                     <p className="text-sm text-gray-500 mt-1">Administra los espacios académicos por año escolar</p>
                 </div>
-                <div className="flex gap-4 items-center">
+                {/* Apilado en el teléfono: el selector de año y «Nueva Aula»
+                    en una sola fila se salían de la pantalla. */}
+                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:gap-4">
                     <Select value={selectedYearId || undefined} onValueChange={setSelectedYearId}>
-                        <SelectTrigger className="w-48">
+                        <SelectTrigger className="w-full sm:w-48">
                             <SelectValue placeholder="Seleccionar Año..." />
                         </SelectTrigger>
                         <SelectContent>

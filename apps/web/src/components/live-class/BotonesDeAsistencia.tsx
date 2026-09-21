@@ -26,7 +26,7 @@ interface Props {
 
 export function BotonesDeAsistencia({ estado, alCambiar, desactivado, nombre }: Props) {
     return (
-        <div className="flex items-center gap-1.5" role="group" aria-label={`Asistencia de ${nombre}`}>
+        <div className="flex items-center gap-1 sm:gap-1.5" role="group" aria-label={`Asistencia de ${nombre}`}>
             {ORDEN.map((clave) => {
                 const def = ATTENDANCE_CONFIG[clave];
                 const Icono = def.icon;
@@ -40,7 +40,9 @@ export function BotonesDeAsistencia({ estado, alCambiar, desactivado, nombre }: 
                         onClick={() => alCambiar(clave)}
                         title={def.label}
                         className={cn(
-                            'flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-xs font-bold transition-all disabled:opacity-50',
+                            // 44 px de alto: el mínimo para un dedo. El ancho se
+                            // aprieta en el teléfono para que quepan los cuatro.
+                            'flex h-11 items-center gap-1.5 rounded-xl border px-2 text-xs font-bold transition-all disabled:opacity-50 sm:px-2.5',
                             activo
                                 ? def.btnActive
                                 : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'

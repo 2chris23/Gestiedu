@@ -222,7 +222,9 @@ export default function UsersPage() {
                             : 'Gestiona administradores, profesores, estudiantes y personal.'}
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
+                {/* Que se repartan en dos filas en el teléfono: en una sola,
+                    «Nuevo Usuario» se salía de la pantalla. */}
+                <div className="flex flex-wrap items-center gap-2">
                     {viewMode === 'active' ? (
                         <Button
                             variant="outline"

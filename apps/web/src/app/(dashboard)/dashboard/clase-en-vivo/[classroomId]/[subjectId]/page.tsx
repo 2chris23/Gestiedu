@@ -704,7 +704,7 @@ function LiveClassPageInner() {
                                         {/* Perfil */}
                                         <th
                                             scope="col"
-                                            className="px-6 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
+                                            className={`py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors ${modoAsistencia ? 'px-3 sm:px-6' : 'px-6'}`}
                                             onClick={() => handleSort('nombre')}
                                         >
                                             <div className="flex items-center gap-1.5">
@@ -729,7 +729,7 @@ function LiveClassPageInner() {
                                             </th>
                                         )}
 
-                                        <th scope="col" className="px-6 py-3.5 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                                        <th scope="col" className={`py-3.5 text-left text-xs font-bold text-gray-600 uppercase tracking-wider ${modoAsistencia ? 'px-2 sm:px-6' : 'px-6'}`}>
                                             Asistencia
                                         </th>
 
@@ -773,8 +773,12 @@ function LiveClassPageInner() {
                                                         activeGradingActivity ? 'hover:bg-blue-50/20' : ''
                                                     }`}
                                                 >
-                                                    {/* Perfil — con su foto, la misma que en su ficha */}
-                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                    {/* Perfil — con su foto, la misma que en su ficha.
+                                                        Pasando asistencia, en el teléfono, el margen se
+                                                        recorta: con el de siempre, el cuarto botón
+                                                        («Justificado») se salía de la pantalla y había
+                                                        que arrastrar la tabla de lado para marcarlo. */}
+                                                    <td className={`py-4 whitespace-nowrap ${modoAsistencia ? 'px-3 sm:px-6' : 'px-6'}`}>
                                                         <div className="flex items-center">
                                                             <UserAvatar
                                                                 name={`${student.firstName} ${student.lastName}`}
@@ -802,7 +806,7 @@ function LiveClassPageInner() {
                                                     )}
 
                                                     {/* Asistencia: de un toque en modo asistencia, desplegable fuera de él */}
-                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                    <td className={`py-4 whitespace-nowrap ${modoAsistencia ? 'px-2 sm:px-6' : 'px-6'}`}>
                                                         {modoAsistencia ? (
                                                             <BotonesDeAsistencia
                                                                 estado={currentAtt}

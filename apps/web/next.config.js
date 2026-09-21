@@ -1,6 +1,19 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+
+  /**
+   * Las dos pelotitas de desarrollo, fuera del pulgar.
+   *
+   * El indicador de Next se pinta abajo a la izquierda y las herramientas de
+   * React Query abajo a la derecha: justo encima de la barra de tareas del
+   * teléfono, tapando «Inicio» y «Horarios». Probando en un móvil parecía que
+   * la app estuviera mal hecha. Esto es solo de desarrollo —en el liceo no
+   * existe ninguna de las dos—, pero estorbaba justo donde se prueba.
+   */
+  devIndicators: {
+    position: 'top-left',
+  },
   transpilePackages: ['@repo/ui'],
 
   // Permite subdominios *.localhost en desarrollo y dominios de túnel público

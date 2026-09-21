@@ -58,6 +58,21 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
     useSessionKeepAlive();
 
     const handleLogout = async () => {
+        /**
+         * SALIR DEVUELVE AL PORTAL DEL LICEO, NO A UN 404
+         *
+         * `/login` a secas responde «esta dirección no existe»: la pantalla de
+         * entrar necesita saber de qué liceo es. Al cerrar sesión se mandaba
+         * ahí, así que lo último que veía quien salía era un error, con un
+         * botón a la portada de la plataforma y sin forma de volver a entrar en
+         * su liceo. Se apunta el liceo ANTES de borrar las credenciales, que se
+         * lo llevan por delante.
+         */
+        const liceo = document.cookie
+            .split('; ')
+            .find((c) => c.startsWith('institute_slug='))
+            ?.split('=')[1];
+
         // Clear cookies via API route
         await fetch('/api/auth/logout', { method: 'POST' });
         // Y la llave que estaba en la memoria de la pestaña: si no, seguiría
@@ -65,7 +80,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
         olvidarCredencial();
         // Clear Zustand UI state
         zustandLogout();
-        router.push('/login');
+        router.push(liceo ? `/login?slug=${encodeURIComponent(liceo)}` : '/login');
     };
 
     // IMPORTANTE: los roles deben coincidir con el enum UserRole del backend
@@ -174,6 +189,10 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                                 <Link
                                     key={item.name}
                                     href={item.href}
+                                    // En el teléfono el menú es una cortina: si
+                                    // no se cierra al elegir, tapa la pantalla
+                                    // que se acaba de abrir.
+                                    onClick={() => setSidebarOpen(false)}
                                     className={clsx(
                                         "flex items-center px-4 py-3 text-sm font-medium rounded-md transition-colors",
                                         isActive
@@ -188,8 +207,15 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                         })}
                     </nav>
 
-                    {/* Footer Actions */}
-                    <div className="p-4 border-t">
+                    {/*
+                        Footer Actions
+
+                        El hueco de abajo (`pb-…`) es la altura de la barra del
+                        teléfono. Sin él, «Cerrar Sesión» quedaba JUSTO DEBAJO de
+                        esa barra: se veía, pero el dedo pulsaba la barra. Había
+                        que girar el teléfono para poder salir de la sesión.
+                    */}
+                    <div className="border-t p-4 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-4">
                         <button
                             onClick={handleLogout}
                             className="flex w-full items-center px-4 py-3 text-sm font-medium text-red-600 rounded-md hover:bg-red-50 transition-colors"

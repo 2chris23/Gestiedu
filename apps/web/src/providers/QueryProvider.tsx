@@ -51,8 +51,13 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
             {/* Escucha los avisos del servidor y refresca lo que esté a la vista:
                 nadie tiene que recargar la página para ver lo que otro cambió. */}
             <TiempoRealProvider>{children}</TiempoRealProvider>
+            {/* Su botón se pinta abajo a la derecha, encima de la barra de
+                tareas del teléfono. En pantalla pequeña no se enseña: estorba
+                justo donde se prueba la app. */}
             {process.env.NODE_ENV === 'development' && (
-                <ReactQueryDevtools initialIsOpen={false} />
+                <div className="hidden lg:block">
+                    <ReactQueryDevtools initialIsOpen={false} />
+                </div>
             )}
         </QueryClientProvider>
     );
