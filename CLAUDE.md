@@ -22,8 +22,8 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
 ```bash
 cd apps/backend && npm run dev      # API en :3001
 cd apps/web && npm run dev          # web en :3000
-cd apps/backend && npx jest         # 793 pruebas (integración + cálculo)
-npm run test:e2e                    # 195 pruebas de navegador (Playwright), con los dos servidores arriba
+cd apps/backend && npx jest         # 797 pruebas (integración + cálculo)
+npm run test:e2e                    # 198 pruebas de navegador (Playwright), con los dos servidores arriba
 cd apps/backend && npm run typecheck
 cd apps/backend && npm run migrate:tenants[:status]   # migra todos los liceos
 ```
@@ -230,8 +230,26 @@ la barra de gestos del teléfono (`env(safe-area-inset-bottom)`) y cada botón m
 44 px de alto. El contenido lleva `pb-28` en móvil para que la barra no tape el
 último botón de la pantalla.
 
+## La app del teléfono
+
+Dos caminos, la misma web: **instalarla desde el navegador** (ya funciona: ficha
+por liceo en `app/manifest.webmanifest/route.ts`, iconos y `public/sw.js`) y la
+**APK** (`apps/movil`, Capacitor). Las dos enseñan el sistema que vive en el
+servidor del liceo, así que una nota corregida se ve en el acto y no hay que
+actualizar nada desde una tienda.
+
+El icono NO es el logo tal cual: el logo de un liceo es apaisado y el teléfono
+lo estira o le come los bordes al recortarlo. El servidor lo redibuja en
+cuadrado sobre el color del liceo (`GET /institutes/current/icono`).
+
+`node apps/movil/scripts/preparar-liceo.mjs --liceo=… --url=…` deja el proyecto
+de Android listo para ESE liceo. La llave de firma no se genera ni se guarda
+desde el repositorio: es la identidad del liceo en Google Play. Todo en
+`docs/APP-MOVIL.md`.
+
 ## Dónde se anota lo que se hace
 
 - `docs/AUDITORIA-FUNCIONAL.md` — auditoría funcional y el porcentaje de avance.
 - `docs/MAPA_DE_CALCULOS.md` — toda regla de cálculo.
 - `docs/DESPLIEGUE.md` — despliegue y operación.
+- `docs/APP-MOVIL.md` — la app del teléfono: PWA y APK.

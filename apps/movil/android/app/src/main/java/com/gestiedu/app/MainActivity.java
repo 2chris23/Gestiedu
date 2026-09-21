@@ -1,0 +1,74 @@
+package com.gestiedu.app;
+
+import android.app.DownloadManager;
+import android.net.Uri;
+import android.os.Bundle;
+import android.os.Environment;
+import android.webkit.CookieManager;
+import android.webkit.URLUtil;
+import android.widget.Toast;
+
+import com.getcapacitor.BridgeActivity;
+
+/**
+ * LA APP DEL LICEO
+ *
+ * Casi todo lo hace Capacitor solo: abrir el sistema del liceo a pantalla
+ * completa, el botón de atrás del teléfono, el teclado. Aquí solo está lo que
+ * sin tocarlo NO funciona.
+ *
+ * BAJAR UN ARCHIVO
+ *
+ * Dentro de una app, pulsar «Comprobante en imagen» o «Descargar el boletín»
+ * no hace absolutamente nada: la ventana de una app no sabe bajar archivos —eso
+ * lo hace el navegador, y aquí no hay navegador—. El usuario pulsa, no pasa
+ * nada, y da por hecho que la app está rota.
+ *
+ * Esto se lo pasa al gestor de descargas de Android, el mismo que usa Chrome:
+ * el archivo cae en «Descargas», sale el aviso de siempre y se puede abrir o
+ * compartir. Se le pasa también la credencial de la sesión (la cookie), porque
+ * el comprobante de un pago no es público y sin ella el servidor respondería
+ * que no.
+ */
+public class MainActivity extends BridgeActivity {
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        getBridge().getWebView().setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
+            try {
+                // Un `data:` o un `blob:` no se pueden bajar así: los genera la
+                // propia página y no hay dirección que pedirle al servidor.
+                if (!URLUtil.isNetworkUrl(url)) {
+                    Toast.makeText(this, "Este archivo no se puede guardar desde la app", Toast.LENGTH_LONG).show();
+                    return;
+                }
+
+                String nombre = URLUtil.guessFileName(url, contentDisposition, mimeType);
+
+                DownloadManager.Request peticion = new DownloadManager.Request(Uri.parse(url));
+                peticion.setMimeType(mimeType);
+                peticion.addRequestHeader("User-Agent", userAgent);
+
+                String credencial = CookieManager.getInstance().getCookie(url);
+                if (credencial != null) {
+                    peticion.addRequestHeader("Cookie", credencial);
+                }
+
+                peticion.setTitle(nombre);
+                peticion.setDescription("Descargando desde " + getString(R.string.app_name));
+                peticion.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                peticion.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, nombre);
+
+                DownloadManager gestor = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                gestor.enqueue(peticion);
+
+                Toast.makeText(this, "Guardando " + nombre + " en Descargas", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                // Que falle una descarga no puede tumbar la app: se avisa y ya.
+                Toast.makeText(this, "No se pudo guardar el archivo", Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+}

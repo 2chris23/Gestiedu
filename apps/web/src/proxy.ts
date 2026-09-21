@@ -176,6 +176,13 @@ export async function proxy(request: NextRequest) {
         pathname.startsWith('/images/') ||
         pathname.startsWith('/icons/') ||
         pathname === '/favicon.ico' ||
+        // La ficha de la app: el teléfono la pide ANTES de que nadie entre, y
+        // sin sesión. Si se le manda a entrar, no hay app que instalar.
+        pathname === '/manifest.webmanifest' ||
+        // El ayudante de la app y la pantalla de «sin conexión»: los pide el
+        // navegador por su cuenta, sin sesión.
+        pathname === '/sw.js' ||
+        pathname === '/sin-conexion.html' ||
         pathname === '/favicon.svg' ||
         pathname.endsWith('.png') ||
         pathname.endsWith('.jpg') ||

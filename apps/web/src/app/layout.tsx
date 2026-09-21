@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { Suspense } from 'react';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { Toaster } from 'sonner';
@@ -7,6 +8,8 @@ import { ConfirmProvider } from '@/hooks/useConfirm';
 import { DynamicFavicon } from '@/components/common/DynamicFavicon';
 import { DynamicTitle } from '@/components/common/DynamicTitle';
 import { DynamicColors } from '@/components/common/DynamicColors';
+import { FichaDeLaApp } from '@/components/common/FichaDeLaApp';
+import { AyudanteDeLaApp } from '@/components/common/AyudanteDeLaApp';
 import { ProveedorDeGlobos } from '@/components/ui/boton-icono';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -14,6 +17,25 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
     title: 'Sistema de Gestión Escolar',
     description: 'Plataforma integral para la gestión educativa',
+    /**
+     * LA FICHA QUE HACE QUE SE PUEDA INSTALAR
+     *
+     * Sin este enlace, el teléfono no ofrece «añadir a la pantalla de inicio» y
+     * el sistema se queda en «una web dentro del navegador». La ficha se arma
+     * por liceo en `app/manifest.webmanifest/route.ts`.
+     */
+    manifest: '/manifest.webmanifest',
+    appleWebApp: {
+        // iPhone no lee el manifest: estas tres líneas son su equivalente.
+        capable: true,
+        title: 'GestiEdu',
+        statusBarStyle: 'default',
+    },
+    icons: {
+        icon: '/favicon.svg',
+        shortcut: '/favicon.ico',
+        apple: '/icons/apple-touch-icon.png',
+    },
 };
 
 /**
@@ -64,6 +86,10 @@ export default function RootLayout({
                             <DynamicFavicon />
                             <DynamicTitle />
                             <DynamicColors />
+                            <Suspense fallback={null}>
+                                <FichaDeLaApp />
+                            </Suspense>
+                            <AyudanteDeLaApp />
                             {children}
                         </ProveedorDeGlobos>
                     </ConfirmProvider>
