@@ -7,14 +7,14 @@ import { classroomService, Classroom } from '@/services/classroom.service';
 import { academicYearService } from '@/services/academic-year.service';
 import { BookOpen, Users, Calendar as CalendarIcon } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
-import { useAuthStore } from '@/store/auth.store';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
 import api from '@/lib/axios';
 
 export default function CalendarioPage() {
     const [classrooms, setClassrooms] = useState<Classroom[]>([]);
     const [selectedClassroomId, setSelectedClassroomId] = useState<string>('');
     const [loading, setLoading] = useState(true);
-    const { user } = useAuthStore();
+    const { yo, cargando: sinSaberQuienEs } = useQuienSoy();
 
     /**
      * CADA UNO VE SUS SECCIONES
@@ -27,12 +27,24 @@ export default function CalendarioPage() {
      * Ahora: el alumno ve la suya, el representante las de sus representados, y
      * el personal, todas.
      */
+    /**
+     * PRIMERO SABER QUIÉN ES, LUEGO PEDIR
+     *
+     * Los datos de la sesión se recuperan del navegador en el primer pintado,
+     * así que durante un instante el rol es `null`. Este efecto corría antes de
+     * eso y caía en la rama del personal: al alumno le pedía TODAS las
+     * secciones del liceo y abría la primera, que no es la suya, y el servidor
+     * —con razón— respondía 403. Se veía como una pantalla rota nada más
+     * entrar. Ahora se espera a saber quién llama.
+     */
     useEffect(() => {
+        if (sinSaberQuienEs) return;
+
         const cargarSecciones = async () => {
             try {
                 setLoading(true);
 
-                if (user?.role === 'STUDENT') {
+                if (yo?.role === 'STUDENT') {
                     const { data } = await api.get('/students/my-dashboard');
                     const seccion = data?.data?.student?.currentSection;
                     const suyas = seccion
@@ -43,7 +55,7 @@ export default function CalendarioPage() {
                     return;
                 }
 
-                if (user?.role === 'TUTOR') {
+                if (yo?.role === 'TUTOR') {
                     const { data } = await api.get('/dashboard/tutor');
                     const deSusHijos = (data?.data?.children ?? [])
                         .filter((h: any) => h.classroomId)
@@ -79,7 +91,7 @@ export default function CalendarioPage() {
         };
 
         cargarSecciones();
-    }, [user?.role]);
+    }, [yo?.role, sinSaberQuienEs]);
 
     return (
         <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">

@@ -129,6 +129,27 @@ export const getClassrooms = async (request: FastifyRequest, reply: FastifyReply
     if (section) where.section = section;
     if (shift) where.shift = shift;
 
+    /**
+     * EL PROFESOR VE SUS SECCIONES, NO EL LICEO ENTERO
+     *
+     * Esta lista salía completa para cualquiera con sesión, y de ahí venía un
+     * fallo con cara de error del sistema: el calendario abre la PRIMERA
+     * sección de la lista, y al profesor le tocaba una que no es suya, así que
+     * el servidor —con razón— respondía 403 y la pantalla salía rota nada más
+     * entrar.
+     *
+     * Suyas son las que guía y aquellas en las que imparte alguna materia, que
+     * es lo mismo que mira `canSeeClassroom`. Al administrador no le cambia
+     * nada.
+     */
+    if (request.user?.role === 'TEACHER') {
+      const profesorId = request.user.userId;
+      where.OR = [
+        { teacherId: profesorId },
+        { subjects: { some: { teacherId: profesorId } } },
+      ];
+    }
+
     const classrooms = await request.tenantPrisma.classroom.findMany({
       where,
       orderBy: [
