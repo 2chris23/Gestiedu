@@ -12,6 +12,7 @@ import Image from 'next/image';
 import { BookOpen } from 'lucide-react';
 import { BACKEND_URL } from '@/config/env';
 import NotFound from '@/app/not-found';
+import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
 
 const loginSchema = z.object({
     instituteSlug: z.string().min(1, 'Ingresa el slug del instituto'),
@@ -23,40 +24,9 @@ const loginSchema = z.object({
 type LoginInput = z.input<typeof loginSchema>;
 type LoginFormData = z.output<typeof loginSchema>;
 
-const TUNNEL_HOSTS = ['lhr.life', 'localhost.run', 'localtunnel.me', 'ngrok-free.app', 'trycloudflare.com', 'pinggy.link', 'pinggy.io'];
-
-/**
- * Extrae el subdominio del hostname actual.
- * san-miguel.localhost → "san-miguel"
- * localhost → null
- */
-function getSubdomainFromBrowser(): string | null {
-    if (typeof window === 'undefined') return null;
-    const host = window.location.hostname;
-
-    // Ignorar hosts de túneles públicos
-    for (const tunnel of TUNNEL_HOSTS) {
-        if (host === tunnel || host.endsWith('.' + tunnel)) {
-            return null;
-        }
-    }
-
-    if (host.endsWith('.localhost')) {
-        const sub = host.slice(0, host.length - '.localhost'.length);
-        if (sub && sub !== 'www' && sub !== 'superadmin' && sub !== 'super-admin') {
-            return sub;
-        }
-    }
-    // Producción: sub.tuapp.com
-    const parts = host.split('.');
-    if (parts.length >= 3) {
-        const sub = parts[0];
-        if (sub !== 'www' && sub !== 'superadmin' && sub !== 'super-admin') {
-            return sub;
-        }
-    }
-    return null;
-}
+/** Ver `lib/el-liceo-de-la-direccion.ts`: una dirección de red no nombra a ningún liceo. */
+const getSubdomainFromBrowser = () =>
+    typeof window === 'undefined' ? null : elLiceoDelHost(window.location.hostname);
 
 export default function LoginPage() {
     const router = useRouter();

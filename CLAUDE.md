@@ -247,6 +247,18 @@ de Android listo para ESE liceo. La llave de firma no se genera ni se guarda
 desde el repositorio: es la identidad del liceo en Google Play. Todo en
 `docs/APP-MOVIL.md`.
 
+## Probar en un teléfono de verdad
+
+`npm run telefono` levanta los dos servidores para que los vea un móvil del
+mismo wifi. No es `npm run dev` con otro nombre: `localhost` en un teléfono ES
+el teléfono, y los dos servidores solo le abren la puerta a `localhost` (CORS y
+`allowedDevOrigins`). Sin eso, la app sale **en blanco** y nada lo avisa.
+
+**Una dirección de red no nombra a ningún liceo.** `192.168.1.156` partido por
+puntos daba cuatro trozos y el primero se leía como el liceo: «el instituto 192
+no está registrado». La cuenta vive ahora en un solo sitio,
+`lib/el-liceo-de-la-direccion.ts`, y estaba copiada en tres.
+
 ## Dónde se anota lo que se hace
 
 - `docs/AUDITORIA-FUNCIONAL.md` — auditoría funcional y el porcentaje de avance.

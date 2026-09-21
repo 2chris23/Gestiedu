@@ -97,10 +97,27 @@ y se instala permitiendo «orígenes desconocidos». **Esta no sirve para Play
 Store**: no está firmada.
 
 **Probarla contra tu propio ordenador**, antes de que exista el servidor del
-liceo: se prepara con `--pruebas` y la dirección de red local del ordenador,
-con los dos servidores arriba y el teléfono en el mismo wifi.
+liceo. Los servidores se levantan con un comando aparte, desde la raíz:
 
 ```bash
+npm run telefono
+```
+
+No es `npm run dev` con otro nombre: cambia dos cosas sin las cuales la app se
+queda **en blanco**, y ninguna de las dos avisa.
+
+- **`localhost` en un teléfono es el teléfono.** La web le dice al navegador a
+  qué dirección pedir los datos, y en desarrollo eso es `localhost:3001`.
+  Abierta en el móvil, el teléfono se los pide a sí mismo.
+- **Los dos servidores solo le abren la puerta a `localhost`** (CORS en el de
+  datos, `allowedDevOrigins` en el de pantallas). Desde el teléfono todo es
+  «otro origen».
+
+El comando dice la dirección de este ordenador en la red; con ella se prepara
+la APK:
+
+```bash
+cd apps/movil
 node scripts/preparar-liceo.mjs --liceo=sanmiguel --pruebas --url="http://192.168.1.156:3000/login?slug=sanmiguel"
 ```
 

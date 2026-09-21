@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
 
 // Routes that don't require authentication
 /**
@@ -22,47 +23,12 @@ const PORTAL_DEL_LICEO = /^\/instituto\/[^/]+(\/login)?\/?$/;
 const API_ROUTES_PREFIX = '/api/';
 const SUPERADMIN_LOGIN = '/superadmin/login';
 
-const TUNNEL_HOSTS = ['lhr.life', 'localhost.run', 'localtunnel.me', 'ngrok-free.app', 'trycloudflare.com', 'pinggy.link', 'pinggy.io'];
-
 /**
- * Extrae el subdomain del hostname.
- *
- * Soporta:
- *   - sanmiguel.localhost:3000  → "sanmiguel"  (desarrollo)
- *   - sanmiguel.tuapp.com       → "sanmiguel"  (producción)
- *   - localhost:3000            → null
- *   - tuapp.com                 → null
+ * Qué liceo nombra la dirección. La cuenta está en un solo sitio
+ * (`lib/el-liceo-de-la-direccion.ts`) porque estaba copiada en tres y solo una
+ * copia sabía que una dirección de red no nombra a ningún liceo.
  */
-function extractSubdomain(hostname: string): string | null {
-    // Remove port
-    const host = hostname.split(':')[0];
-
-    // Check if host is a known tunnel service
-    for (const tunnel of TUNNEL_HOSTS) {
-        if (host === tunnel || host.endsWith('.' + tunnel)) {
-            return null;
-        }
-    }
-
-    // *.localhost  (desarrollo: sanmiguel.localhost)
-    if (host.endsWith('.localhost')) {
-        const sub = host.slice(0, host.length - '.localhost'.length);
-        return sub || null;
-    }
-
-    // Raw localhost or IP — no subdomain
-    if (host === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(host)) {
-        return null;
-    }
-
-    // Normal domain with >=3 parts  (sanmiguel.tuapp.com)
-    const parts = host.split('.');
-    if (parts.length >= 3) {
-        return parts[0];
-    }
-
-    return null;
-}
+const extractSubdomain = (hostname: string): string | null => elLiceoDelHost(hostname);
 
 // Helper function to check if request is for SuperAdmin
 function isSuperAdminRequest(hostname: string, pathname: string): boolean {

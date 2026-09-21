@@ -1,23 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { instituteService, InstituteConfig, UpdateInstituteDto } from '@/services/institute.service';
 import { toast } from 'sonner';
+import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
 
 function getActiveTenantSlug(): string | null {
     if (typeof window === 'undefined') return null;
-    const host = window.location.hostname;
-    if (host.endsWith('.localhost')) {
-        const sub = host.slice(0, host.length - '.localhost'.length);
-        if (sub && sub !== 'www' && sub !== 'superadmin' && sub !== 'super-admin') {
-            return sub;
-        }
-    }
-    const parts = host.split('.');
-    if (parts.length >= 3) {
-        const sub = parts[0];
-        if (sub !== 'www' && sub !== 'superadmin' && sub !== 'super-admin') {
-            return sub;
-        }
-    }
+    // Ver `lib/el-liceo-de-la-direccion.ts`: una dirección de red (probar desde
+    // el teléfono) no nombra a ningún liceo, y antes se leía como «192».
+    const delHost = elLiceoDelHost(window.location.hostname);
+    if (delHost) return delHost;
+
     // Si viene en parámetro de URL
     const params = new URLSearchParams(window.location.search);
     const slugParam = params.get('slug') || params.get('instituto') || params.get('institute');

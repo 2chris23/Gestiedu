@@ -19,6 +19,16 @@ const nextConfig = {
     '*.trycloudflare.com',
     '*.pinggy.link',
     '*.pinggy.io',
+    /**
+     * Y la red de casa, para probar en un teléfono de verdad (`npm run
+     * telefono`). Sin esto, el servidor de desarrollo corta lo que le pide una
+     * dirección que no sea `localhost` —y desde el móvil, TODO lo es—: la app
+     * se quedaba en blanco sin decir por qué. Es solo de desarrollo; en el
+     * servidor del liceo esta lista no pinta nada.
+     */
+    '192.168.*.*',
+    '10.*.*.*',
+    '172.*.*.*',
   ],
 
   // Configurar dominios permitidos para imágenes
