@@ -6,6 +6,19 @@ import { NextRequest, NextResponse } from 'next/server';
  * liceo, solo tarjetas de ejemplo. Va aquí para poder abrirlo sin entrar.
  */
 const PUBLIC_ROUTES = ['/login', '/register', '/forgot-password', '/diseno'];
+
+/**
+ * EL PORTAL DE CADA LICEO SE ABRE SIN HABER ENTRADO
+ *
+ * `/instituto/<liceo>/login` es la puerta propia del liceo: la dirección que se
+ * le da a su gente. No estaba entre las públicas, así que a quien llegaba sin
+ * sesión —es decir, a todo el que va a entrar— se le mandaba a `/login`, y esa
+ * pantalla, sin liceo en la dirección, responde "no existe". Resultado: el
+ * portal del liceo daba 404 justamente a quien venía a usarlo (ABRE-07).
+ *
+ * Solo la puerta: el resto de `/instituto/<liceo>/...` sigue pidiendo sesión.
+ */
+const PORTAL_DEL_LICEO = /^\/instituto\/[^/]+(\/login)?\/?$/;
 const API_ROUTES_PREFIX = '/api/';
 const SUPERADMIN_LOGIN = '/superadmin/login';
 
@@ -283,6 +296,11 @@ export async function proxy(request: NextRequest) {
         return NextResponse.next();
     }
 
+    // El portal propio del liceo: se abre sin sesión, como la pantalla de entrar.
+    if (PORTAL_DEL_LICEO.test(pathname)) {
+        return NextResponse.next();
+    }
+
     // Skip public routes
     if (PUBLIC_ROUTES.some(route => pathname === route || pathname.startsWith(route + '/'))) {
         const accessToken = request.cookies.get('access_token')?.value;
@@ -307,6 +325,13 @@ export async function proxy(request: NextRequest) {
             // No tokens at all — redirect to login
             const loginUrl = new URL('/login', request.url);
             loginUrl.searchParams.set('redirect', pathname);
+            /**
+             * Y con el liceo a cuestas: la pantalla de entrar necesita saber de
+             * qué liceo es. Sin eso responde "no existe", y quien solo había
+             * dejado pasar el tiempo se encontraba un 404 en vez del formulario.
+             */
+            const liceo = request.cookies.get('institute_slug')?.value;
+            if (liceo) loginUrl.searchParams.set('slug', liceo);
             return NextResponse.redirect(loginUrl);
         }
 
