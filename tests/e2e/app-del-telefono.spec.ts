@@ -56,8 +56,23 @@ test.describe('La app del teléfono', () => {
         const ayudante = await request.get(`${WEB_BASE}/sw.js`);
         expect(ayudante.status()).toBe(200);
         expect(ayudante.headers()['content-type']).toContain('javascript');
-        // No guarda copias de datos del liceo: eso enseñaría notas viejas.
-        expect(await ayudante.text()).not.toMatch(/cache\.put|caches\.match\(peticion\)/);
+        /**
+         * LO QUE GUARDA, Y LO QUE NO
+         *
+         * Ahora sí guarda la CÁSCARA —la página, el javascript, los estilos—,
+         * que es lo que hace que la app abra sin internet. Lo que sigue sin
+         * tocar son los datos del liceo, y el motivo no es técnico: lo que
+         * guarda un ayudante de estos es del NAVEGADOR, no de la persona. En un
+         * teléfono prestado, el siguiente que entrara vería las notas del
+         * anterior servidas desde ahí.
+         *
+         * Los datos se guardan en el otro sitio, donde la llave lleva el liceo
+         * y la cédula de quien los descargó (`lib/lo-guardado-en-el-telefono.ts`).
+         */
+        const codigo = await ayudante.text();
+        expect(codigo).toMatch(/esDelServidor/);
+        expect(codigo).toMatch(/pathname\.startsWith\('\/api\/'\)/);
+        expect(codigo).toMatch(/pathname\.startsWith\('\/uploads\/'\)/);
 
         const sinConexion = await request.get(`${WEB_BASE}/sin-conexion.html`);
         expect(sinConexion.status()).toBe(200);

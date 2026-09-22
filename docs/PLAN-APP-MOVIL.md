@@ -7,6 +7,41 @@ roles.
 
 ---
 
+## CERRADO — 22/09/2026
+
+`npm run movil`: **31 pantallas, 31 limpias**, para Administrador, Profesor,
+Estudiante y Representante. Se entró midiendo 31 con el reloj tapando la
+cabecera, 27 con botones demasiado pequeños, 23 que se arrastraban de lado y
+16 con letra por debajo de 12 px.
+
+| Fase | Estado |
+|---|---|
+| 0 · Medir de verdad | Hecha — `scripts/reglas-del-telefono.mjs`, `npm run movil`, `tests/e2e/movil.spec.ts` |
+| 1 · El marco | Hecha — zona segura, cabecera con la foto, «Mi cuenta», barra con Inicio en el centro, fuera la cortina |
+| 2 · El panel | Hecha — sin saludo, 2 × 2, accesos, fuera las tarjetas de «Próximamente» |
+| 3 · Listas | Hecha — siete tablas a `TablaAdaptable`, con orden en el teléfono |
+| 4 · Las dos densas | Hecha — horario por días, plan por bloques, botón de girar |
+| 5 · Entrar + huella | Hecha — pantalla rediseñada y llave de teléfono (`LLAVE-01…07`) |
+| 6 · Repaso | Hecha — 804 de servidor, 203 de navegador, 41 de web, typechecks y compilación |
+
+**Añadido sobre la marcha, a petición:** lo que se descargó se guarda en el
+teléfono y sin señal se ve (`lib/lo-guardado-en-el-telefono.ts`,
+`SIN-01…03`); guardar sigue necesitando internet.
+
+**Lo que se encontró por el camino y no estaba en el plan:**
+
+- `/api/auth/logout` **no llamaba al servidor**: solo borraba las cookies del
+  navegador, así que la sesión seguía viva por dentro hasta quince minutos.
+- `/login` sin liceo responde «no existe», y ahí es donde mandaba a quien se le
+  caducaba la sesión.
+- El panel pedía los números del liceo entero **también para el profesor**, y
+  el servidor respondía 403.
+- En el plan de evaluación, **desde un teléfono no se podían unir semanas** (el
+  botón aparecía al pasar el cursor) y **al guardar se perdía qué columna
+  estaba unida**.
+
+---
+
 ## 0. Por qué no lo vi yo antes
 
 `npm run fotos` recorrió 19 pantallas a 390 × 844 y dijo *«ninguna se sale de

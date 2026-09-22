@@ -169,18 +169,27 @@ test.describe('La clase en vivo', () => {
 test.describe('En el teléfono', () => {
     test.use({ viewport: { width: 390, height: 844 } });
 
-    test('MOVIL-UI-01: hay barra abajo, con el menú en el centro', async ({ page }, testInfo) => {
+    /**
+     * EL SITIO DE HONOR ES INICIO, NO UN CAJÓN DE SASTRE
+     *
+     * En el centro había un botón de «Menú» que abría una cortina lateral con
+     * todo. El sitio del medio —el más grande, el que se pulsa sin mirar— lo
+     * ocupaba un cajón de sastre en vez de la pantalla a la que todo el mundo
+     * vuelve. Ahora lo que estaba en la cortina vive en el propio panel de
+     * inicio, así que la cortina sobra y el centro es Inicio.
+     */
+    test('MOVIL-UI-01: hay barra abajo, con Inicio en el centro', async ({ page }, testInfo) => {
         try {
             await loginViaUI(page, 'admin@testing.edu.ve', '123456');
             await page.goto(`${WEB_BASE}/dashboard`);
 
             const barra = page.getByRole('navigation', { name: 'Navegación principal' });
             await expect(barra).toBeVisible({ timeout: 30000 });
-            await expect(barra.getByRole('button', { name: /Menú/ })).toBeVisible();
+            await expect(barra.getByRole('link', { name: 'Inicio' })).toBeVisible();
 
-            // El botón del centro abre el menú completo.
-            await barra.getByRole('button', { name: /Menú/ }).click();
-            await expect(page.getByRole('link', { name: 'Configuración' })).toBeVisible();
+            // Y lo que antes estaba detrás del «Menú», ahora está a la vista en
+            // el propio panel.
+            await expect(page.getByRole('link', { name: /Configuración/ }).first()).toBeVisible({ timeout: 30000 });
 
             await page.screenshot({ path: 'test-results/evidencia/barra-de-abajo.png', fullPage: false });
         } catch (error) {

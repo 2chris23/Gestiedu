@@ -232,16 +232,97 @@ la barra de gestos del teléfono (`env(safe-area-inset-bottom)`) y cada botón m
 
 ## En el teléfono, lo que se comprueba cada vez
 
-Tres cosas que se rompieron y no dan error, solo «se ve raro»:
+```bash
+npm run movil            # 31 pantallas, los 4 roles, con foto de cada una
+npm run movil -- --exigir   # y acaba en rojo si algo incumple
+```
 
-- **Nada se sale de ancho.** Una fila con un selector y un botón cabe en el
-  escritorio y empuja la pantalla en un móvil. Se mide con
-  `document.documentElement.scrollWidth > innerWidth` en cada pantalla.
+Seis reglas. Cada una estuvo rota en veinte o treinta pantallas a la vez, y
+ninguna daba error: solo «se ve raro».
+
+| | Qué |
+|---|---|
+| `ancho` | La pantalla no se sale de ancho |
+| `arrastre` | Nada de dentro se arrastra de lado (tablas, rejillas, carriles) |
+| `banda-arriba` | La franja del reloj está TAPADA por algo opaco |
+| `banda-abajo` | Lo mismo con la barra de gestos |
+| `dedo` | Lo que se pulsa mide 44 px o más, de alto y de ancho |
+| `letra` | Nada por debajo de 12 px |
+
+Y una séptima que no es de diseño sino de honradez: `sin-cargar`. Si la
+pantalla seguía diciendo «Cargando…» al medirla, no se midió nada y sale
+limpia — pasó, y tres pantallas cambiaron de rojo a verde entre dos tandas sin
+tocar una línea.
+
+Las reglas viven en `scripts/reglas-del-telefono.mjs` y las usan dos: la
+auditoría con sus fotos y `tests/e2e/movil.spec.ts`, que se pone en rojo.
+
+**Tres trampas del medidor, que costaron tandas enteras:**
+
+- **`window.innerWidth` no dice cuánto mide el teléfono.** Cuando algo se sale
+  de ancho, el navegador de un móvil ENSANCHA la ventana, así que
+  `scrollWidth > innerWidth` da falso: el fallo se tapa a sí mismo. Se mide
+  contra `visualViewport`.
+- **En un ordenador `env(safe-area-inset-top)` vale 0**, así que una
+  comprobación de píxeles no vería nunca lo de las bandas. Por eso la app no
+  lee `env()` a pelo: lo guarda en `--zona-segura-arriba` / `--zona-segura-abajo`
+  (globals.css) y la auditoría les pone el valor de un Android de verdad.
+- **`animate-pulse` no significa «cargando»**: un icono que late de adorno no
+  es un esqueleto. Un esqueleto es una barra ancha y sin texto.
+
+Y tres cosas más que ya estaban y siguen valiendo:
+
 - **La barra de abajo tapa lo último de la pantalla.** «Cerrar Sesión» quedaba
   justo debajo: se veía, pero el dedo pulsaba la barra, y había que girar el
   teléfono para salir de la sesión.
 - **Salir devuelve al portal del liceo**, no a `/login` pelado, que responde
-  «no existe»: lo último que veía quien cerraba sesión era un 404.
+  «no existe»: lo último que veía quien cerraba sesión era un 404. La cuenta
+  está en `lib/la-puerta-del-liceo.ts`, y ojo: **justo cuando hace falta, la
+  cookie del liceo ya no está** —cerrar sesión se la lleva—, así que el liceo
+  se apunta la primera vez que se ve.
+- **De pie, las dos pantallas densas cambian de forma.** El horario y el plan
+  de evaluación piden 700 y 1000 px. El corte se hace **por ancho** (700 px),
+  no por «es un móvil»: así el mismo teléfono tumbado ya enseña la rejilla
+  entera, y hay un botón que pide el giro (`lib/girar-la-pantalla.ts`).
+  - Horario: un día cada vez, en vertical (`HorarioPorDias`).
+  - Plan de evaluación: por bloques (`PlanPorBloques`). El plan no es una
+    rejilla: las columnas las pone el profesor y una celda abarca varias
+    semanas, así que es **una sucesión de bloques de trabajo en el tiempo**.
+
+## Sin señal se mira, no se toca
+
+El teléfono guarda lo último que se descargó y sin conexión lo enseña, con un
+aviso de que es lo de antes. Guardar, corregir o borrar siguen necesitando
+internet, y se dice en el acto: se corta en `lib/axios.ts` antes de salir.
+
+**No se deja nada «pendiente de enviar»** —que es lo que hace React Query por
+defecto— porque media hora después se mandaría una nota sobre datos que
+mientras tanto ha tocado otro profesor, y nadie se entera.
+
+**Lo guardado es de quien lo descargó.** La llave lleva el liceo y la cédula
+(`lib/lo-guardado-en-el-telefono.ts`): un teléfono que se presta no enseña lo
+del anterior. Al cerrar sesión se borra, y caduca a los siete días.
+
+**El ayudante (`public/sw.js`) sigue sin guardar datos del liceo**, y el motivo
+no es técnico: lo que guarda un service worker es del NAVEGADOR, no de la
+persona. Ahí solo vive la cáscara —la página, el javascript y los estilos—, que
+es igual para todo el mundo; y es lo que hace que la app ABRA sin internet.
+
+## La huella
+
+La huella **no entra al sistema**: abre un cajón del propio teléfono (el
+almacén de claves de Android) donde ese teléfono guardó una llave, y esa llave
+es la que se canjea por una sesión. **La primera vez en un teléfono se entra
+siempre con correo y contraseña**; la huella es para volver a entrar.
+
+La llave es aparte de la de la sesión, a propósito: la de la sesión rota en
+cada uso y vive en una cookie que la página no puede leer, y eso no se toca.
+De la nueva se guarda **solo el resumen**, se cambia en cada uso, caduca a los
+60 días y se anula al cerrar sesión. Ver `services/llave-del-telefono.service.ts`
+y `LLAVE-01…07`.
+
+Solo dentro de la APK: en un navegador no hay dónde guardar algo así detrás de
+una huella, y ofrecerlo sería fingir seguridad.
 
 ## La app del teléfono
 

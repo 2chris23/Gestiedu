@@ -13,11 +13,66 @@ web. No compiten: la segunda se apoya en la primera.
 | Bajar un comprobante | Como en el navegador | Va a «Descargas» del teléfono |
 | Google Play | No | Sí |
 | Hay que actualizarla | Nunca (es la web) | Solo si cambia el envoltorio |
+| Sin señal, enseña lo último descargado | Sí | Sí |
+| Entrar con la huella | No | Sí |
 
 **Las dos enseñan la web que vive en el servidor del liceo.** Eso es a propósito:
 el liceo corrige una nota y se ve en el acto, sin que nadie tenga que actualizar
-nada desde una tienda. Por eso la app necesita internet; sin señal enseña una
-pantalla propia («No hay conexión») en vez del error del navegador.
+nada desde una tienda.
+
+---
+
+## Sin señal
+
+**Se mira, no se toca.** El teléfono guarda lo último que se descargó y sin
+conexión lo enseña, con un aviso arriba de que es lo de antes. Guardar,
+corregir o borrar siguen necesitando internet, y se dice en el acto.
+
+No se deja nada «pendiente de enviar». Suena bien y no lo es: media hora
+después se mandaría una nota sobre datos que mientras tanto ha tocado otro
+profesor, y nadie se entera.
+
+- **Los datos**, en `lib/lo-guardado-en-el-telefono.ts` (IndexedDB). La llave
+  lleva **el liceo y la cédula** de quien los descargó: un teléfono que se
+  presta no enseña lo del anterior. Se borran al cerrar sesión y caducan a los
+  siete días.
+- **La app en sí**, en `public/sw.js`. Ahí solo vive la cáscara —la página, el
+  javascript y los estilos—, que es igual para todo el mundo, y es lo que hace
+  que la app ABRA sin internet. Los datos del liceo NO pasan por ahí, y el
+  motivo no es técnico: lo que guarda un service worker es del navegador, no de
+  la persona.
+- Sin nada guardado todavía, se ve la pantalla propia («No hay conexión») en
+  vez del error del navegador.
+
+> En una APK de pruebas por `http` el ayudante no se registra (los navegadores
+> solo lo permiten por https o en localhost), así que ahí, sin señal, se ve la
+> pantalla de «No hay conexión» y no lo guardado. Con el servidor de verdad del
+> liceo, por https, funciona.
+
+---
+
+## Entrar con la huella
+
+**La huella no entra al sistema.** Abre un cajón del propio teléfono —el
+almacén de claves de Android, el respaldado por hardware— donde ese teléfono
+guardó una llave, y esa llave es la que se canjea por una sesión.
+
+Por eso la regla se mantiene entera: **la primera vez en un teléfono se entra
+siempre con correo y contraseña**. Después, desde *Mi cuenta → Entrar con la
+huella*, ese teléfono guarda su llave; y en la pantalla de entrar sale el botón.
+
+Lo que la hace segura:
+
+- en la base se guarda **solo el resumen** (SHA-256): quien se lleve la base no
+  se lleva ninguna llave;
+- **se cambia en cada uso**, así que una copia robada deja de valer en cuanto
+  su dueño abre la app;
+- caduca a los 60 días y **se anula al cerrar sesión**;
+- entrar con ella lleva el mismo freno de intentos que el login;
+- si no vale, se responde lo mismo que a una contraseña mala, sin decir por qué.
+
+Solo en la APK (`capacitor-native-biometric`). En un navegador no se ofrece: no
+hay dónde guardar algo así detrás de una huella, y fingirlo sería peor.
 
 ---
 
@@ -159,7 +214,15 @@ y `npm run apk:firmada`.
   archivo cae en «Descargas».
 - **El botón de atrás** del teléfono navega hacia atrás en vez de cerrar la app
   (lo hace Capacitor).
-- **La barra de estado** va del color del liceo.
+- **La barra de estado** va del color de la cabecera de la app (blanco), con el
+  reloj en oscuro, como Facebook o WhatsApp. Sin eso se ve una banda negra
+  pegada a una cabecera blanca, que es lo que delata a una app envuelta. Y no
+  vale arreglarlo con CSS: en Android `env(safe-area-inset-top)` mide la
+  MUESCA, no la barra de estado, así que en un teléfono sin muesca vale cero
+  aunque el reloj tape media cabecera. El hueco lo reserva
+  `dejarSitioParaElReloj` en `MainActivity.java`.
+- **Entrar con la huella** y **girar la pantalla** en el horario y el plan de
+  evaluación (`@capacitor/screen-orientation` desde la web).
 
 ### Lo que queda por hacer
 

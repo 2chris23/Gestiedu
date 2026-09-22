@@ -67,6 +67,17 @@ interface StudentDashboardData {
     }>;
 }
 
+// Lo que el servidor le da a un profesor: lo suyo, no lo del liceo entero.
+interface TeacherDashboardData {
+    classrooms: Array<{ id: string; name: string; studentCount: number }>;
+    upcomingActivities: Array<{ id: string; title: string; dueDate: string }>;
+    stats: {
+        totalStudents: number;
+        totalClassrooms: number;
+        pendingGrades: number;
+    };
+}
+
 interface Cifra {
     titulo: string;
     valor: number | string;
@@ -112,13 +123,35 @@ export default function DashboardPage() {
         retry: false,
     });
 
+    /**
+     * CADA UNO PIDE LO SUYO
+     *
+     * Esta pantalla pedía `/dashboard/admin` también para el profesor, y el
+     * servidor —con razón— respondía 403: esos números son del liceo entero.
+     * No se veía porque el rol se leía del almacén del navegador y en la
+     * primera pintada estaba vacío, así que muchas veces la petición ni salía.
+     * Al preguntarle el rol al servidor (`useQuienSoy`), el 403 salió a la luz.
+     *
+     * El profesor tiene su propia ruta, con lo que sí es suyo: sus alumnos,
+     * sus secciones y lo que le falta por calificar.
+     */
     const { data: adminData, isLoading: isLoadingAdmin } = useQuery({
         queryKey: ['adminDashboard'],
         queryFn: async () => {
             const response = await api.get<{ data: AdminDashboardData }>('/dashboard/admin');
             return response.data.data;
         },
-        enabled: rol === 'ADMIN' || rol === 'TEACHER',
+        enabled: rol === 'ADMIN',
+        staleTime: 2 * 60 * 1000,
+    });
+
+    const { data: teacherData, isLoading: isLoadingTeacher } = useQuery({
+        queryKey: ['teacherDashboard'],
+        queryFn: async () => {
+            const response = await api.get<{ data: TeacherDashboardData }>('/dashboard/teacher');
+            return response.data.data;
+        },
+        enabled: rol === 'TEACHER',
         staleTime: 2 * 60 * 1000,
     });
 
@@ -128,7 +161,8 @@ export default function DashboardPage() {
         value: p.average,
     }));
 
-    const cargandoCifras = rol === 'STUDENT' ? isLoadingStudent : isLoadingAdmin;
+    const cargandoCifras =
+        rol === 'STUDENT' ? isLoadingStudent : rol === 'TEACHER' ? isLoadingTeacher : isLoadingAdmin;
 
     const cifras: Cifra[] = (() => {
         if (rol === 'STUDENT' && studentStats) {
@@ -140,7 +174,40 @@ export default function DashboardPage() {
             ];
         }
 
-        if ((rol === 'ADMIN' || rol === 'TEACHER') && adminData) {
+        if (rol === 'TEACHER' && teacherData) {
+            return [
+                {
+                    titulo: 'Mis estudiantes',
+                    valor: teacherData.stats.totalStudents,
+                    icono: Users,
+                    color: 'indigo',
+                    pie: 'En mis secciones',
+                },
+                {
+                    titulo: 'Mis secciones',
+                    valor: teacherData.stats.totalClassrooms,
+                    icono: School,
+                    color: 'cian',
+                    pie: 'Donde doy clase',
+                },
+                {
+                    titulo: 'Por calificar',
+                    valor: teacherData.stats.pendingGrades,
+                    icono: AlertTriangle,
+                    color: 'ambar',
+                    pie: 'Actividades sin notas',
+                },
+                {
+                    titulo: 'Próximas',
+                    valor: teacherData.upcomingActivities.length,
+                    icono: Calendar,
+                    color: 'menta',
+                    pie: 'Actividades por venir',
+                },
+            ];
+        }
+
+        if (rol === 'ADMIN' && adminData) {
             return [
                 {
                     titulo: 'Estudiantes',
