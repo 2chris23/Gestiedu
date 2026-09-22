@@ -93,6 +93,7 @@ dump.rdb
 
 # Lo que sueltan las mediciones: son resultados de una máquina y una tarde.
 docs/mediciones/
+docs/capturas-movil/
 
 
 # Las APK compiladas: pesan y se rehacen con un comando.

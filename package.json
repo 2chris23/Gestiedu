@@ -8,6 +8,7 @@
   "packageManager": "npm@10.2.4",
   "scripts": {
     "telefono": "node scripts/servidores-para-el-telefono.mjs",
+    "fotos": "node scripts/fotos-del-telefono.mjs",
     "test:e2e": "playwright test -c playwright.config.ts",
     "test:seed": "npx tsx apps/backend/src/scripts/seed-load-test.ts",
     "test:seed:clean": "npx tsx apps/backend/src/scripts/seed-load-test.ts --clean",
