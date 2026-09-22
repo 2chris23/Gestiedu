@@ -517,6 +517,9 @@
      frase, que es justo lo que se busca — ahí manda la línea de texto. */
   a[href] {
     min-height: 44px;
+    /* Solo si ya es un bloque: a un enlace en mitad de una frase, `min-width`
+       tampoco le hace nada, que es lo que se busca. */
+    min-width: 44px;
   }
 
   /* Los enlaces de una ruta de migas o de una barra de navegación son
@@ -531,6 +534,7 @@
   /* La letra menuda. Estos tamaños están escritos a mano por toda la
      aplicación para que quepa una tabla; de pie ya no hay tabla que
      estrechar, así que se leen. */
+  .text-\[8px\],
   .text-\[9px\],
   .text-\[10px\],
   .text-\[11px\],

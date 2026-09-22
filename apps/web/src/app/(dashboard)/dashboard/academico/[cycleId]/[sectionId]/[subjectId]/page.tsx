@@ -355,8 +355,11 @@ export default function SectionSubjectDashboard() {
                             </div>
                         </div>
 
-                        {/* Teacher and Hours Card */}
-                        <div className="flex items-center gap-6 bg-white rounded-full border border-gray-200 shadow-sm px-4 py-2">
+                        {/* Teacher and Hours Card — de pie se parte y se
+                            redondea menos: en una línea de 390 px, el profesor
+                            más «Cambiar» más las horas sacaban la pantalla
+                            434 px de ancho. */}
+                        <div className="flex w-full flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-gray-200 bg-white px-4 py-2 shadow-sm sm:w-auto sm:flex-nowrap sm:rounded-full">
                             <div className="flex items-center gap-3">
                                 {teacher ? (
                                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center text-white font-bold text-sm">
@@ -380,7 +383,7 @@ export default function SectionSubjectDashboard() {
                                 {teacher ? 'Cambiar' : 'Asignar'}
                             </button>
 
-                            <div className="h-8 w-px bg-gray-200" />
+                            <div className="hidden h-8 w-px bg-gray-200 sm:block" />
                             <div className="flex items-center gap-2">
                                 <Clock className="w-4 h-4 text-gray-400" />
                                 <div>

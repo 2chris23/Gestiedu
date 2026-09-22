@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { AssignSubjectTeacherModal } from './AssignSubjectTeacherModal';
 import SubjectSectionStudentsModal from './SubjectSectionStudentsModal';
 import UserAvatar from '@/components/ui/UserAvatar';
+import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
 
 interface Section {
     id: string;
@@ -138,143 +139,150 @@ export function SectionDistributionTable({ sections, subjectId, cycleId = '2025-
 
                             {/* Secciones del Año */}
                             {isExpanded && (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm text-left">
-                                        <thead className="bg-gray-50/40 text-gray-400 text-xs font-semibold uppercase tracking-wider border-b border-gray-100">
-                                            <tr>
-                                                <th className="px-5 py-2.5 w-1/4">Sección</th>
-                                                <th className="px-5 py-2.5 w-1/3">Profesor Titular</th>
-                                                <th className="px-5 py-2.5">Carga Horaria</th>
-                                                <th className="px-5 py-2.5 text-center">Promedio</th>
-                                                <th className="px-5 py-2.5 text-right">Acción</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100">
-                                            {gradeSections.length === 0 ? (
-                                                <tr>
-                                                    <td colSpan={5} className="px-5 py-6 text-center text-gray-400 text-xs italic">
-                                                        No hay secciones creadas para este año en este ciclo.
-                                                    </td>
-                                                </tr>
-                                            ) : (
-                                                gradeSections.map((section) => {
-                                                    const hasTeacher = !!section.teacher;
-                                                    const hours = section.hoursPerWeek ?? ((section.weeklyBlocks ?? 4) * 45 / 60);
-                                                    const blocks = section.weeklyBlocks ?? 4;
-
-                                                    return (
-                                                        <tr
-                                                            key={section.id}
-                                                            className={cn(
-                                                                "group transition-colors",
-                                                                !hasTeacher ? "bg-red-50/20 hover:bg-red-50/40" : "hover:bg-gray-50/50"
-                                                            )}
+                                <div className="p-3 sm:p-4">
+                                    <TablaAdaptable<(typeof gradeSections)[number]>
+                                        datos={gradeSections}
+                                        clave={(s) => s.id}
+                                        vacio={
+                                            <p className="text-cuerpo text-tinta-suave">
+                                                No hay secciones creadas para este año en este ciclo.
+                                            </p>
+                                        }
+                                        columnas={[
+                                            {
+                                                id: 'seccion',
+                                                titulo: 'Sección',
+                                                principal: true,
+                                                celda: (section) => (
+                                                    <div>
+                                                        <p className="text-sm font-bold text-gray-900">{section.name}</p>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setViewingStudentsSection(section);
+                                                            }}
+                                                            className="mt-0.5 inline-flex items-center gap-1 text-xs font-semibold text-indigo-600"
+                                                            title="Ver estudiantes y sus notas en esta materia"
                                                         >
-                                                            <td className="px-5 py-3.5">
-                                                                <div className="font-bold text-gray-900 text-sm">{section.name}</div>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setViewingStudentsSection(section)}
-                                                                    className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline mt-0.5"
-                                                                    title="Ver estudiantes y sus notas en esta materia"
-                                                                >
-                                                                    <Users size={12} />
-                                                                    {section.studentCount} Estudiantes
-                                                                </button>
-                                                            </td>
-                                                            <td className="px-5 py-3.5">
-                                                                {hasTeacher ? (
-                                                                    <button
-                                                                        onClick={() => setAssigningSection(section)}
-                                                                        className="flex items-center gap-2.5 group/teacher hover:opacity-80 transition-opacity text-left"
-                                                                        title="Cambiar profesor"
-                                                                    >
-                                                                        <UserAvatar
-                                                                            name={section.teacher!.name}
-                                                                            src={section.teacher!.avatar}
-                                                                            className="h-8 w-8 shrink-0"
-                                                                            initialsClassName="text-xs"
-                                                                        />
-                                                                        <div className="min-w-0">
-                                                                            <span className="font-semibold text-gray-800 text-xs group-hover/teacher:text-indigo-600 transition-colors block truncate">
-                                                                                {section.teacher!.name}
-                                                                            </span>
-                                                                            <span className="text-[11px] text-gray-400 block truncate">
-                                                                                {section.teacher!.email}
-                                                                            </span>
-                                                                        </div>
-                                                                    </button>
-                                                                ) : (
-                                                                    <div className="flex items-center gap-1.5 text-rose-600 bg-rose-50 px-2.5 py-1 rounded-md w-fit border border-rose-100">
-                                                                        <AlertCircle size={13} />
-                                                                        <span className="text-[11px] font-bold">Sin profesor asignado</span>
-                                                                    </div>
-                                                                )}
-                                                            </td>
-                                                            <td className="px-5 py-3.5">
-                                                                <div className="flex items-center gap-1.5 text-gray-700 bg-gray-50 px-2.5 py-1 rounded-md w-fit border border-gray-200/60">
-                                                                    <Clock size={13} className="text-indigo-500" />
-                                                                    <span className="text-xs font-semibold">
-                                                                        {hours.toFixed(1)}h / sem
-                                                                    </span>
-                                                                    <span className="text-[11px] text-gray-400">
-                                                                        ({blocks} blq)
-                                                                    </span>
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-5 py-3.5 text-center">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setViewingStudentsSection(section)}
-                                                                    title="Ver notas de los estudiantes"
-                                                                    className={cn(
-                                                                        "font-bold px-2 py-0.5 rounded text-xs transition-transform hover:scale-105",
-                                                                        section.average >= 15 ? "text-emerald-700 bg-emerald-50 border border-emerald-200" :
-                                                                            section.average >= 10 ? "text-amber-700 bg-amber-50 border border-amber-200" :
-                                                                                "text-gray-600 bg-gray-100"
-                                                                    )}
-                                                                >
-                                                                    {section.average > 0 ? `${section.average.toFixed(1)} pts` : '—'}
-                                                                </button>
-                                                            </td>
-                                                            <td className="px-5 py-3.5 text-right">
-                                                                {hasTeacher ? (
-                                                                    <div className="flex items-center justify-end gap-2">
-                                                                        <button
-                                                                            onClick={() => setAssigningSection(section)}
-                                                                            className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 px-2.5 py-1 rounded-lg transition-colors bg-white"
-                                                                        >
-                                                                            <User size={12} />
-                                                                            Cambiar
-                                                                        </button>
-                                                                        <Link
-                                                                            href={`/dashboard/academico/${cycleId}/${
-                                                                                cycleId && section.slug?.endsWith(`-${cycleId}`)
-                                                                                    ? section.slug.slice(0, -(cycleId.length + 1))
-                                                                                    : section.slug || section.id
-                                                                            }/${subjectId}`}
-                                                                            className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 px-2.5 py-1 rounded-lg transition-colors"
-                                                                        >
-                                                                            Ver Detalles
-                                                                            <ArrowRight size={14} />
-                                                                        </Link>
-                                                                    </div>
-                                                                ) : (
-                                                                    <button
-                                                                        onClick={() => setAssigningSection(section)}
-                                                                        className="inline-flex items-center gap-1 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-lg shadow-xs transition-all"
-                                                                    >
-                                                                        <UserPlus size={13} />
-                                                                        Asignar
-                                                                    </button>
-                                                                )}
-                                                            </td>
-                                                        </tr>
+                                                            <Users size={12} />
+                                                            {section.studentCount} Estudiantes
+                                                        </button>
+                                                    </div>
+                                                ),
+                                            },
+                                            {
+                                                id: 'profesor',
+                                                titulo: 'Profesor Titular',
+                                                celda: (section) =>
+                                                    section.teacher ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setAssigningSection(section)}
+                                                            className="flex items-center gap-2.5 text-left"
+                                                            title="Cambiar profesor"
+                                                        >
+                                                            <UserAvatar
+                                                                name={section.teacher.name}
+                                                                src={section.teacher.avatar}
+                                                                className="h-8 w-8 shrink-0"
+                                                                initialsClassName="text-xs"
+                                                            />
+                                                            <span className="min-w-0">
+                                                                <span className="block truncate text-xs font-semibold text-gray-800">
+                                                                    {section.teacher.name}
+                                                                </span>
+                                                                <span className="block truncate text-xs text-gray-400">
+                                                                    {section.teacher.email}
+                                                                </span>
+                                                            </span>
+                                                        </button>
+                                                    ) : (
+                                                        <span className="inline-flex w-fit items-center gap-1.5 rounded-md border border-rose-100 bg-rose-50 px-2.5 py-1 text-rose-600">
+                                                            <AlertCircle size={13} />
+                                                            <span className="text-xs font-bold">Sin profesor asignado</span>
+                                                        </span>
+                                                    ),
+                                            },
+                                            {
+                                                id: 'horas',
+                                                titulo: 'Carga Horaria',
+                                                celda: (section) => {
+                                                    const hours =
+                                                        section.hoursPerWeek ?? ((section.weeklyBlocks ?? 4) * 45) / 60;
+                                                    const blocks = section.weeklyBlocks ?? 4;
+                                                    return (
+                                                        <span className="inline-flex w-fit items-center gap-1.5 rounded-md border border-gray-200/60 bg-gray-50 px-2.5 py-1 text-gray-700">
+                                                            <Clock size={13} className="text-indigo-500" />
+                                                            <span className="text-xs font-semibold">{hours.toFixed(1)}h / sem</span>
+                                                            <span className="text-xs text-gray-400">({blocks} blq)</span>
+                                                        </span>
                                                     );
-                                                })
-                                            )}
-                                        </tbody>
-                                    </table>
+                                                },
+                                            },
+                                            {
+                                                id: 'promedio',
+                                                titulo: 'Promedio',
+                                                alinear: 'derecha',
+                                                celda: (section) => (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setViewingStudentsSection(section)}
+                                                        title="Ver notas de los estudiantes"
+                                                        className={cn(
+                                                            'rounded px-2 py-0.5 text-xs font-bold',
+                                                            section.average >= 15
+                                                                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                                                                : section.average >= 10
+                                                                  ? 'border border-amber-200 bg-amber-50 text-amber-700'
+                                                                  : 'bg-gray-100 text-gray-600'
+                                                        )}
+                                                    >
+                                                        {section.average > 0 ? `${section.average.toFixed(1)} pts` : '—'}
+                                                    </button>
+                                                ),
+                                            },
+                                            {
+                                                id: 'accion',
+                                                titulo: 'Acción',
+                                                acciones: true,
+                                                alinear: 'derecha',
+                                                celda: (section) =>
+                                                    section.teacher ? (
+                                                        <span className="flex flex-wrap items-center justify-end gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setAssigningSection(section)}
+                                                                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-600"
+                                                            >
+                                                                <User size={12} />
+                                                                Cambiar
+                                                            </button>
+                                                            <Link
+                                                                href={`/dashboard/academico/${cycleId}/${
+                                                                    cycleId && section.slug?.endsWith(`-${cycleId}`)
+                                                                        ? section.slug.slice(0, -(cycleId.length + 1))
+                                                                        : section.slug || section.id
+                                                                }/${subjectId}`}
+                                                                className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold text-indigo-600"
+                                                            >
+                                                                Ver Detalles
+                                                                <ArrowRight size={14} />
+                                                            </Link>
+                                                        </span>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setAssigningSection(section)}
+                                                            className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs"
+                                                        >
+                                                            <UserPlus size={13} />
+                                                            Asignar
+                                                        </button>
+                                                    ),
+                                            },
+                                        ]}
+                                    />
                                 </div>
                             )}
                         </div>

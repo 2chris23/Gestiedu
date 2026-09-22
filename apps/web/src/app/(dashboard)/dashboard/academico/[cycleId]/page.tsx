@@ -229,13 +229,17 @@ export default function AcademicYearDashboard() {
         <div className="min-h-screen bg-gray-50/50 pb-20">
             <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                    <div className="flex items-center gap-4 mb-4 justify-between">
-                        <div className="flex items-center gap-4">
+                    {/* Se parte en vez de empujar la pantalla: el nombre del
+                        ciclo, su selector, el del lapso y «Finalizar Ciclo
+                        Escolar» en una sola línea sacaban la pantalla a 730 px
+                        en un teléfono de 390. */}
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex min-w-0 flex-wrap items-center gap-3">
                             <button onClick={handleBack} className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500">
                                 <ArrowLeft className="w-5 h-5" />
                             </button>
                             <div>
-                                <h1 className="text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
+                                <h1 className="flex flex-wrap items-center gap-2 text-xl font-bold tracking-tight text-gray-900 sm:gap-3 sm:text-2xl">
                                     {year.name}
                                     <YearSelector cycles={cyclesForSelector} />
                                     <LapsoSelector periods={(year.periods || []).map((p) => ({ id: p.id as string, name: p.name }))} value={lapsoId} onChange={setLapsoId} compact />
@@ -250,7 +254,7 @@ export default function AcademicYearDashboard() {
                                         </button>
                                     )}
                                 </h1>
-                                <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                                <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-500">
                                     {(() => {
                                         const now = new Date();
                                         const start = new Date(year.startDate);

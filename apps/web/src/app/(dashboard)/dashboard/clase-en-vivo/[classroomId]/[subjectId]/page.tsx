@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import AnimatedAttendancePicker, { ATTENDANCE_CONFIG, AttendanceStatusType } from '@/components/live-class/AnimatedAttendancePicker';
 import BotonesDeAsistencia from '@/components/live-class/BotonesDeAsistencia';
 import UserAvatar from '@/components/ui/UserAvatar';
+import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
 import TurnoBadge from '@/components/common/TurnoBadge';
 import LiveTopicMirrorCard from '@/components/live-class/LiveTopicMirrorCard';
 import LiveActivitiesCard from '@/components/live-class/LiveActivitiesCard';
@@ -231,15 +232,6 @@ function LiveClassPageInner() {
             setSortColumn(col);
             setSortDirection('asc');
         }
-    };
-
-    const SortIcon = ({ column }: { column: string }) => {
-        if (sortColumn !== column) return <ArrowUpDown className="h-3.5 w-3.5 text-gray-300" />;
-        return sortDirection === 'asc' ? (
-            <ArrowUpIcon className="h-3.5 w-3.5 text-indigo-600" />
-        ) : (
-            <ArrowDown className="h-3.5 w-3.5 text-indigo-600" />
-        );
     };
 
     const guardarLaClase = async () => {
@@ -697,229 +689,193 @@ function LiveClassPageInner() {
                         </div>
 
                         {/* Tabla Idéntica a la Vista de Sección */}
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-gray-50/80">
-                                    <tr>
-                                        {/* Perfil */}
-                                        <th
-                                            scope="col"
-                                            className={`py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors ${modoAsistencia ? 'px-3 sm:px-6' : 'px-6'}`}
-                                            onClick={() => handleSort('nombre')}
-                                        >
-                                            <div className="flex items-center gap-1.5">
-                                                Perfil <SortIcon column="nombre" />
-                                            </div>
-                                        </th>
+                        {/*
+                            CADA ALUMNO, UNA FILA QUE CABE
 
-                                        {/*
-                                          * En modo asistencia la tabla se queda en lo justo: quién es y
-                                          * cómo se marca. Las notas y las observaciones estorban cuando
-                                          * lo que se está haciendo es pasar lista.
-                                          */}
-                                        {!modoAsistencia && (
-                                            <th
-                                                scope="col"
-                                                className="px-6 py-3.5 text-left text-xs font-bold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                                                onClick={() => handleSort('cedula')}
-                                            >
-                                                <div className="flex items-center gap-1.5">
-                                                    ID / Cédula <SortIcon column="cedula" />
+                            Fuera del modo asistencia son cinco columnas —quién
+                            es, cédula, asistencia, notas y observaciones— y en
+                            un teléfono eso son 862 px: había que arrastrar de
+                            lado para llegar a la nota, y al llegar ya no se
+                            sabía de qué alumno era. De pie, cada alumno es una
+                            tarjeta con todo lo suyo junto; en pantalla ancha
+                            sigue siendo la misma tabla.
+                        */}
+                        <div className="p-3 sm:p-4">
+                            <TablaAdaptable<(typeof sortedStudents)[number]>
+                                datos={sortedStudents}
+                                clave={(a) => a.id}
+                                orden={sortColumn ? { por: sortColumn, hacia: sortDirection } : null}
+                                alOrdenar={handleSort}
+                                vacio={
+                                    <p className="text-cuerpo text-tinta-suave">
+                                        {studentSearch
+                                            ? 'No se encontraron estudiantes con esa búsqueda.'
+                                            : 'No hay estudiantes registrados en esta sección.'}
+                                    </p>
+                                }
+                                columnas={[
+                                    {
+                                        id: 'nombre',
+                                        titulo: 'Perfil',
+                                        tituloCorto: 'Nombre',
+                                        principal: true,
+                                        ordenable: true,
+                                        celda: (student) => (
+                                            <div className="flex items-center gap-3">
+                                                <UserAvatar
+                                                    name={`${student.firstName} ${student.lastName}`}
+                                                    src={(student as any).avatar}
+                                                    className="h-9 w-9 shrink-0"
+                                                    initialsClassName="text-xs"
+                                                />
+                                                <div className="min-w-0">
+                                                    <p className="truncate text-sm font-bold text-gray-900">
+                                                        {student.firstName} {student.lastName}
+                                                    </p>
+                                                    <p className="truncate font-mono text-xs text-gray-600 @2xl:hidden">
+                                                        {student.studentCode || student.id}
+                                                    </p>
                                                 </div>
-                                            </th>
-                                        )}
-
-                                        <th scope="col" className={`py-3.5 text-left text-xs font-bold text-gray-600 uppercase tracking-wider ${modoAsistencia ? 'px-2 sm:px-6' : 'px-6'}`}>
-                                            Asistencia
-                                        </th>
-
-                                        {!modoAsistencia && (
-                                            <>
-                                                <th
-                                                    scope="col"
-                                                    className={`px-6 py-3.5 text-left text-xs font-bold uppercase tracking-wider transition-colors ${
-                                                        activeGradingActivity ? 'bg-blue-50/60 text-blue-900' : 'text-gray-600'
-                                                    }`}
-                                                >
-                                                    {activeGradingActivity ? 'Nota de Actividad (0 - 20 pts)' : 'Calificaciones'}
-                                                </th>
-
-                                                <th scope="col" className="px-6 py-3.5 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                                    Observaciones
-                                                </th>
-                                            </>
-                                        )}
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white divide-y divide-gray-100">
-                                    {sortedStudents.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={modoAsistencia ? 2 : 5} className="px-6 py-8 text-center text-xs text-gray-600 font-medium">
-                                                {studentSearch ? 'No se encontraron estudiantes con esa búsqueda.' : 'No hay estudiantes registrados en esta sección.'}
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        sortedStudents.map((student) => {
+                                            </div>
+                                        ),
+                                    },
+                                    ...(modoAsistencia
+                                        ? []
+                                        : [
+                                              {
+                                                  id: 'cedula',
+                                                  titulo: 'ID / Cédula',
+                                                  ordenable: true,
+                                                  soloAncha: true,
+                                                  celda: (student: (typeof sortedStudents)[number]) => (
+                                                      <span className="font-mono text-xs text-gray-700">
+                                                          {student.studentCode || student.id}
+                                                      </span>
+                                                  ),
+                                              },
+                                          ]),
+                                    {
+                                        id: 'asistencia',
+                                        titulo: 'Asistencia',
+                                        celda: (student) => {
                                             const currentAtt = attendance[student.id] || 'PRESENT';
-
-                                            // Score draft for active grading activity
-                                            const activeActId = activeGradingActivity?.id;
-                                            const currentScore = activeActId ? activityGradesDraft[activeActId]?.[student.id] : undefined;
-
-                                            return (
-                                                <tr
-                                                    key={student.id}
-                                                    className={`hover:bg-gray-50/80 transition-colors ${
-                                                        activeGradingActivity ? 'hover:bg-blue-50/20' : ''
-                                                    }`}
-                                                >
-                                                    {/* Perfil — con su foto, la misma que en su ficha.
-                                                        Pasando asistencia, en el teléfono, el margen se
-                                                        recorta: con el de siempre, el cuarto botón
-                                                        («Justificado») se salía de la pantalla y había
-                                                        que arrastrar la tabla de lado para marcarlo. */}
-                                                    <td className={`py-4 whitespace-nowrap ${modoAsistencia ? 'px-3 sm:px-6' : 'px-6'}`}>
-                                                        <div className="flex items-center">
-                                                            <UserAvatar
-                                                                name={`${student.firstName} ${student.lastName}`}
-                                                                src={(student as any).avatar}
-                                                                className="h-9 w-9"
-                                                                initialsClassName="text-xs"
-                                                            />
-                                                            <div className="ml-3">
-                                                                <div className="text-xs font-bold text-gray-900">
-                                                                    {student.firstName} {student.lastName}
-                                                                </div>
-                                                                {modoAsistencia && (
-                                                                    <div className="text-[11px] text-gray-600 font-mono">
-                                                                        {student.studentCode || student.id}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </td>
-
-                                                    {!modoAsistencia && (
-                                                        <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-700 font-mono">
-                                                            {student.studentCode || student.id}
-                                                        </td>
-                                                    )}
-
-                                                    {/* Asistencia: de un toque en modo asistencia, desplegable fuera de él */}
-                                                    <td className={`py-4 whitespace-nowrap ${modoAsistencia ? 'px-2 sm:px-6' : 'px-6'}`}>
-                                                        {modoAsistencia ? (
-                                                            <BotonesDeAsistencia
-                                                                estado={currentAtt}
-                                                                nombre={`${student.firstName} ${student.lastName}`}
-                                                                alCambiar={(nuevo) => handleAttendanceChange(student.id, nuevo)}
-                                                                desactivado={!canEdit}
-                                                            />
-                                                        ) : (
-                                                            <AnimatedAttendancePicker
-                                                                status={currentAtt}
-                                                                onChange={(newSt) => handleAttendanceChange(student.id, newSt)}
-                                                                disabled={!canEdit}
-                                                            />
-                                                        )}
-                                                    </td>
-
-                                                    {/* Columna Calificaciones / Modo Calificación */}
-                                                    {!modoAsistencia && (
-                                                    <td
-                                                        className={`px-6 py-4 whitespace-nowrap ${
-                                                            activeGradingActivity ? 'bg-blue-50/20' : ''
-                                                        }`}
-                                                    >
-                                                        {activeGradingActivity ? (
-                                                            /* MODO CALIFICACIÓN: SLIDER + INPUT */
-                                                            <LiveGradesSliderInput
-                                                                studentId={student.id}
-                                                                studentName={`${student.firstName} ${student.lastName}`}
-                                                                score={currentScore}
-                                                                maxScore={activeGradingActivity.maxScore || 20}
-                                                                onChange={handleGradeScoreChange}
-                                                                disabled={!canEdit}
-                                                            />
-                                                        ) : (
-                                                            /* MODO NORMAL: Badges con progreso por actividad del día */
-                                                            <div className="flex items-center gap-2 flex-wrap">
-                                                                {currentActivitiesList.length === 0 ? (
-                                                                    <span className="text-[11px] text-gray-400 italic">
-                                                                        Sin notas hoy
-                                                                    </span>
-                                                                ) : (
-                                                                    currentActivitiesList.map((act, actIdx) => {
-                                                                        const actScores = activityGradesDraft[act.id] || {};
-                                                                        const sc = actScores[student.id];
-                                                                        const hasScore = sc !== undefined && sc !== null;
-                                                                        const maxSc = act.maxScore || 20;
-                                                                        const ratio = hasScore ? (sc as number) / maxSc : 0;
-                                                                        const badgeColor = !hasScore
-                                                                            ? 'bg-gray-100 text-gray-500'
-                                                                            : ratio >= 0.75
-                                                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                                            : ratio >= 0.5
-                                                                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                                            : 'bg-rose-50 text-rose-700 border border-rose-200';
-
-                                                                        return (
-                                                                            <button
-                                                                                key={act.id}
-                                                                                type="button"
-                                                                                onClick={() => setActiveGradingActivity(act)}
-                                                                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold shadow-2xs hover:scale-105 transition-all ${badgeColor}`}
-                                                                                title={`Hacer clic para calificar "${act.title}"`}
-                                                                            >
-                                                                                <span>Act #{actIdx + 1}:</span>
-                                                                                <span>{hasScore ? `${sc}/${maxSc}` : '—'}</span>
-                                                                            </button>
-                                                                        );
-                                                                    })
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                    )}
-
-                                                    {/* Observaciones */}
-                                                    {!modoAsistencia && (
-                                                    <td className="px-6 py-4 whitespace-nowrap text-xs">
-                                                        {((student as any).observationsCount || 0) > 0 ? (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setSelectedObsStudentId(student.id);
-                                                                    setIsLiveObsModalOpen(true);
-                                                                }}
-                                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 transition-colors shadow-2xs"
-                                                            >
-                                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                                                {(student as any).observationsCount} {(student as any).observationsCount === 1 ? 'observación' : 'observaciones'}
-                                                            </button>
-                                                        ) : (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setSelectedObsStudentId(student.id);
-                                                                    setIsLiveObsModalOpen(true);
-                                                                }}
-                                                                className="text-gray-400 hover:text-indigo-600 transition-colors italic text-xs flex items-center gap-1"
-                                                            >
-                                                                <Plus className="w-3 h-3" /> Sin observaciones
-                                                            </button>
-                                                        )}
-                                                    </td>
-                                                    )}
-                                                    {/*
-                                                      * Aquí había un botón de tres puntos que abría un menú
-                                                      * que no existía: se pulsaba y no pasaba nada. Fuera.
-                                                      */}
-                                                </tr>
+                                            return modoAsistencia ? (
+                                                <BotonesDeAsistencia
+                                                    estado={currentAtt}
+                                                    nombre={`${student.firstName} ${student.lastName}`}
+                                                    alCambiar={(nuevo) => handleAttendanceChange(student.id, nuevo)}
+                                                    desactivado={!canEdit}
+                                                />
+                                            ) : (
+                                                <AnimatedAttendancePicker
+                                                    status={currentAtt}
+                                                    onChange={(newSt) => handleAttendanceChange(student.id, newSt)}
+                                                    disabled={!canEdit}
+                                                />
                                             );
-                                        })
-                                    )}
-                                </tbody>
-                            </table>
+                                        },
+                                    },
+                                    ...(modoAsistencia
+                                        ? []
+                                        : [
+                                              {
+                                                  id: 'calificaciones',
+                                                  titulo: activeGradingActivity
+                                                      ? 'Nota de Actividad (0 - 20 pts)'
+                                                      : 'Calificaciones',
+                                                  tituloCorto: 'Nota',
+                                                  celda: (student: (typeof sortedStudents)[number]) => {
+                                                      const activeActId = activeGradingActivity?.id;
+                                                      const currentScore = activeActId
+                                                          ? activityGradesDraft[activeActId]?.[student.id]
+                                                          : undefined;
+
+                                                      if (activeGradingActivity) {
+                                                          return (
+                                                              <LiveGradesSliderInput
+                                                                  studentId={student.id}
+                                                                  studentName={`${student.firstName} ${student.lastName}`}
+                                                                  score={currentScore}
+                                                                  maxScore={activeGradingActivity.maxScore || 20}
+                                                                  onChange={handleGradeScoreChange}
+                                                                  disabled={!canEdit}
+                                                              />
+                                                          );
+                                                      }
+
+                                                      if (currentActivitiesList.length === 0) {
+                                                          return <span className="text-xs italic text-gray-400">Sin notas hoy</span>;
+                                                      }
+
+                                                      return (
+                                                          <span className="flex flex-wrap items-center justify-end gap-2 @2xl:justify-start">
+                                                              {currentActivitiesList.map((act, actIdx) => {
+                                                                  const actScores = activityGradesDraft[act.id] || {};
+                                                                  const sc = actScores[student.id];
+                                                                  const hasScore = sc !== undefined && sc !== null;
+                                                                  const maxSc = act.maxScore || 20;
+                                                                  const ratio = hasScore ? (sc as number) / maxSc : 0;
+                                                                  const badgeColor = !hasScore
+                                                                      ? 'bg-gray-100 text-gray-500'
+                                                                      : ratio >= 0.75
+                                                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                                        : ratio >= 0.5
+                                                                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                                          : 'bg-rose-50 text-rose-700 border border-rose-200';
+
+                                                                  return (
+                                                                      <button
+                                                                          key={act.id}
+                                                                          type="button"
+                                                                          onClick={() => setActiveGradingActivity(act)}
+                                                                          className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold shadow-2xs ${badgeColor}`}
+                                                                          title={`Hacer clic para calificar "${act.title}"`}
+                                                                      >
+                                                                          <span>Act #{actIdx + 1}:</span>
+                                                                          <span>{hasScore ? `${sc}/${maxSc}` : '—'}</span>
+                                                                      </button>
+                                                                  );
+                                                              })}
+                                                          </span>
+                                                      );
+                                                  },
+                                              },
+                                              {
+                                                  id: 'observaciones',
+                                                  titulo: 'Observaciones',
+                                                  tituloCorto: 'Obs.',
+                                                  celda: (student: (typeof sortedStudents)[number]) => {
+                                                      const cuantas = (student as any).observationsCount || 0;
+                                                      return (
+                                                          <button
+                                                              type="button"
+                                                              onClick={() => {
+                                                                  setSelectedObsStudentId(student.id);
+                                                                  setIsLiveObsModalOpen(true);
+                                                              }}
+                                                              className={
+                                                                  cuantas > 0
+                                                                      ? 'inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-800'
+                                                                      : 'inline-flex items-center gap-1 text-xs italic text-gray-500'
+                                                              }
+                                                          >
+                                                              {cuantas > 0 ? (
+                                                                  <>
+                                                                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                                                      {cuantas} {cuantas === 1 ? 'observación' : 'observaciones'}
+                                                                  </>
+                                                              ) : (
+                                                                  <>
+                                                                      <Plus className="h-3 w-3" /> Sin observaciones
+                                                                  </>
+                                                              )}
+                                                          </button>
+                                                      );
+                                                  },
+                                              },
+                                          ]),
+                                ]}
+                            />
                         </div>
                     </div>
                 </>

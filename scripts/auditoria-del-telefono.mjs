@@ -448,7 +448,22 @@ async function sigueCargando(page) {
         .evaluate(() => {
             const texto = document.body?.innerText || '';
             if (/Cargando|Loading/i.test(texto)) return true;
-            return document.querySelector('.animate-pulse, .animate-latir, [aria-busy="true"]') !== null;
+            if (document.querySelector('[aria-busy="true"]')) return true;
+
+            /**
+             * UN PUNTO QUE LATE NO ES UNA PANTALLA CARGANDO
+             *
+             * `animate-pulse` a secas daba falsos positivos: un icono de
+             * calendario de 24 px y el puntito de «EN CURSO» laten como
+             * adorno, y por ellos tres pantallas salían marcadas como «seguía
+             * cargando» estando perfectamente cargadas. Un esqueleto de verdad
+             * es una barra ancha y sin texto.
+             */
+            return [...document.querySelectorAll('.animate-pulse, .animate-latir')].some((el) => {
+                if (el.textContent && el.textContent.trim().length > 0) return false;
+                const r = el.getBoundingClientRect();
+                return r.width >= 60 && r.height >= 12;
+            });
         })
         .catch(() => false);
 }

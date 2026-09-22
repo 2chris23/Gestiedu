@@ -426,8 +426,11 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                         </div>
                     </div>
 
-                    {/* Acciones y Toggle */}
-                    <div className="flex items-center gap-2">
+                    {/* Acciones y Toggle — se parten en vez de empujar la
+                        pantalla: con los botones a 44 px, «Hoy · Semana ·
+                        Historial» más las acciones ya no caben en una línea de
+                        390 px. */}
+                    <div className="flex flex-wrap items-center gap-2">
                         {/* Controles de avance por bloque (solo en vista Hoy si hay más de 5 bloques).
                             De pie no se pintan: ahí las horas van una debajo de
                             otra y no hay carril que mover. */}
