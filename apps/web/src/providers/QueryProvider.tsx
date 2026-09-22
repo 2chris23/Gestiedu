@@ -4,6 +4,8 @@ import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { useState } from 'react';
 import { TiempoRealProvider } from './TiempoRealProvider';
+import { MemoriaDelTelefono } from './MemoriaDelTelefono';
+import { MAXIMO_DE_DIAS } from '@/lib/lo-guardado-en-el-telefono';
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
     const [queryClient] = useState(() => {
@@ -34,11 +36,36 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
             defaultOptions: {
                 queries: {
                     staleTime: 5 * 60 * 1000, // 5 minutos - datos se consideran frescos
-                    gcTime: 10 * 60 * 1000, // 10 minutos - tiempo en caché (antes cacheTime)
+                    /**
+                     * DIEZ MINUTOS ERA POCO PARA UN TELÉFONO
+                     *
+                     * Pasado este tiempo sin usarse, React Query tira el dato
+                     * de la memoria. Y lo que no está en memoria no se puede
+                     * guardar en el teléfono: el horario que se miró por la
+                     * mañana desaparecía a mediodía y por la tarde, sin señal,
+                     * la pantalla salía vacía. Ahora dura lo mismo que lo
+                     * guardado (`MAXIMO_DE_DIAS`), que es quien manda.
+                     */
+                    gcTime: MAXIMO_DE_DIAS * 24 * 60 * 60 * 1000,
                     refetchOnWindowFocus: false, // No refetch al cambiar de ventana
                     retry: 1, // Solo 1 reintento en caso de error
                     retryDelay: 1000, // 1 segundo entre reintentos
-                    networkMode: 'online', // Solo ejecutar queries cuando hay conexión
+                    // Sin conexión no se pide nada; lo que ya estaba guardado
+                    // se sigue viendo, que es justo lo que se busca.
+                    networkMode: 'online',
+                },
+                mutations: {
+                    /**
+                     * SIN SEÑAL, GUARDAR FALLA — NO SE QUEDA ESPERANDO
+                     *
+                     * Por defecto React Query PAUSA lo que se guarda sin
+                     * conexión y lo manda solo cuando vuelve. Suena bien y no
+                     * lo es: media hora después se enviaría una nota sobre
+                     * datos que mientras tanto ha cambiado otro profesor, y
+                     * nadie se entera. Aquí se intenta y se falla en el acto,
+                     * con un mensaje claro (ver `lib/axios.ts`).
+                     */
+                    networkMode: 'always',
                 },
             },
         });
@@ -48,9 +75,14 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
 
     return (
         <QueryClientProvider client={queryClient}>
-            {/* Escucha los avisos del servidor y refresca lo que esté a la vista:
-                nadie tiene que recargar la página para ver lo que otro cambió. */}
-            <TiempoRealProvider>{children}</TiempoRealProvider>
+            {/* Guarda en el teléfono lo último que se descargó y lo devuelve
+                al abrir sin señal. */}
+            <MemoriaDelTelefono>
+                {/* Escucha los avisos del servidor y refresca lo que esté a la
+                    vista: nadie tiene que recargar la página para ver lo que
+                    otro cambió. */}
+                <TiempoRealProvider>{children}</TiempoRealProvider>
+            </MemoriaDelTelefono>
             {/* Su botón se pinta abajo a la derecha, encima de la barra de
                 tareas del teléfono. En pantalla pequeña no se enseña: estorba
                 justo donde se prueba la app. */}

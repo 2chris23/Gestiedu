@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { useAuthStore } from '@/store/auth.store';
 import { conseguirCredencial, guardarCredencial, olvidarCredencial } from './credencial-en-memoria';
+import { laPuertaDelLiceo } from './la-puerta-del-liceo';
 import { API_URL } from '@/config/env';
 
 // Asegurar que la baseURL del cliente axios siempre tenga el prefijo /api
@@ -16,9 +17,42 @@ const api = axios.create({
 });
 
 
+/**
+ * SIN CONEXIÓN SE MIRA, NO SE TOCA
+ *
+ * El teléfono guarda lo último que se descargó y sin señal la app lo enseña
+ * (`providers/MemoriaDelTelefono.tsx`). Mirar, sí. Cambiar, no: poner una nota,
+ * pasar asistencia o cobrar un pago necesitan hablar con el servidor.
+ *
+ * Y se corta AQUÍ, en el acto, en vez de dejarlo «pendiente de enviar». Una
+ * cola de cambios que se mandan solos media hora después, sobre datos que
+ * mientras tanto ha tocado otro profesor, es la forma más rápida de perder una
+ * nota sin que nadie se entere. Mejor decirlo cuando la persona está delante.
+ *
+ * `navigator.onLine` no es una verdad absoluta —dice si hay red, no si el
+ * servidor contesta—, pero cuando dice que NO, no hay. Cuando dice que sí y no
+ * la hay, la petición sale y falla con su error de siempre.
+ */
+const SOLO_MIRAR = new Set(['get', 'head', 'options']);
+
+export class SinConexion extends Error {
+    constructor() {
+        super('Sin conexión. Esto necesita internet para guardarse: inténtalo cuando vuelvas a tener señal.');
+        this.name = 'SinConexion';
+    }
+}
+
 // Request Interceptor: Inyectar Token y Slug del Instituto
 api.interceptors.request.use(
     async (config) => {
+        const metodo = (config.method || 'get').toLowerCase();
+        if (
+            !SOLO_MIRAR.has(metodo) &&
+            typeof navigator !== 'undefined' &&
+            navigator.onLine === false
+        ) {
+            throw new SinConexion();
+        }
 
         if (typeof document !== 'undefined') {
             /**
@@ -128,7 +162,9 @@ api.interceptors.response.use(
             olvidarCredencial();
             useAuthStore.getState().logout();
             if (typeof window !== 'undefined') {
-                window.location.href = '/login';
+                // Con el liceo: `/login` a secas responde «no existe», y quien
+                // se quedaba sin sesión acababa en un 404.
+                window.location.href = laPuertaDelLiceo();
             }
             return Promise.reject(error);
         } catch (refreshError) {
@@ -136,7 +172,9 @@ api.interceptors.response.use(
             olvidarCredencial();
             useAuthStore.getState().logout();
             if (typeof window !== 'undefined') {
-                window.location.href = '/login';
+                // Con el liceo: `/login` a secas responde «no existe», y quien
+                // se quedaba sin sesión acababa en un 404.
+                window.location.href = laPuertaDelLiceo();
             }
             return Promise.reject(refreshError);
         } finally {

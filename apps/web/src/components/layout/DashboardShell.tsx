@@ -4,6 +4,9 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/auth.store';
 import { olvidarCredencial } from '@/lib/credencial-en-memoria';
+import { olvidarLoDescargado } from '@/lib/lo-guardado-en-el-telefono';
+import { laPuertaDelLiceo } from '@/lib/la-puerta-del-liceo';
+import AvisoSinConexion from '@/components/common/AvisoSinConexion';
 import { LogOut, GraduationCap } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useInstituteConfig } from '@/hooks/useInstitute';
@@ -62,19 +65,19 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
          * su liceo. Se apunta el liceo ANTES de borrar las credenciales, que se
          * lo llevan por delante.
          */
-        const liceo = document.cookie
-            .split('; ')
-            .find((c) => c.startsWith('institute_slug='))
-            ?.split('=')[1];
+        const puerta = laPuertaDelLiceo();
 
         // Clear cookies via API route
         await fetch('/api/auth/logout', { method: 'POST' });
         // Y la llave que estaba en la memoria de la pestaña: si no, seguiría
         // sirviendo hasta que caduque aunque la sesión esté cerrada.
         olvidarCredencial();
+        // Y lo descargado a este teléfono. Cerrar sesión es cerrar sesión: en
+        // un móvil que se presta, lo de antes no se enseña al siguiente.
+        await olvidarLoDescargado();
         // Clear Zustand UI state
         zustandLogout();
-        router.push(liceo ? `/login?slug=${encodeURIComponent(liceo)}` : '/login');
+        router.push(puerta);
     };
 
     const menu = elMenuDe(user?.role, Boolean(pagos?.enabled));
@@ -99,6 +102,9 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 esAdmin={user?.role === 'ADMIN'}
                 alCerrarSesion={handleLogout}
             />
+
+            {/* Sin señal se sigue viendo lo de antes, y hay que decirlo. */}
+            <AvisoSinConexion />
 
             {/*
                 LA BARRA LATERAL ES DEL ORDENADOR
