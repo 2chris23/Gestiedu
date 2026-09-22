@@ -20,6 +20,8 @@ import {
 } from '@/hooks/useEvaluationPlan';
 import api from '@/lib/axios';
 import { DEFAULT_PLAN_COLUMNS, type PlanColumnDef } from './planColumns';
+import PlanPorBloques from './PlanPorBloques';
+import CamposDelPlan from './CamposDelPlan';
 
 // ────────────────────────────────────────────────
 // CONSTANTS
@@ -92,13 +94,44 @@ function dbRowsToWeekRows(dbRows: Partial<EvaluationPlanRow>[], totalWeeks: numb
     });
     // Also store any extra keys (custom columns)
     const extra = (r as any).extraData;
+    let unionesGuardadas: Record<string, number> | null = null;
     if (extra) {
-      try { Object.assign(d, typeof extra === 'string' ? JSON.parse(extra) : extra); } catch {}
+      try {
+        const leido = typeof extra === 'string' ? JSON.parse(extra) : extra;
+        // `__uniones` no es un dato del plan: es cuántas semanas abarca cada
+        // columna. Se saca antes de volcar lo demás para que no aparezca como
+        // si fuera una columna más.
+        if (leido && typeof leido === 'object') {
+          unionesGuardadas = (leido.__uniones as Record<string, number>) ?? null;
+          delete leido.__uniones;
+          Object.assign(d, leido);
+        }
+      } catch {}
     }
-    // Apply span to all mergeable columns
-    DEFAULT_PLAN_COLUMNS.filter(c => c.mergeable).forEach(col => {
-      base[wn].colSpan[col.key] = span;
-    });
+
+    /**
+     * LA UNIÓN ES POR COLUMNA, Y ASÍ SE DEVUELVE
+     *
+     * Antes se guardaba UN `endWeekNumber` por fila —el mayor de todas las
+     * columnas— y al volver se le aplicaba a las marcadas `mergeable`. Si el
+     * profesor unía «Actividad» durante tres semanas, al recargar la unión
+     * había saltado a «Tejido temático»; y en una columna suya, añadida por
+     * él, se perdía entera.
+     */
+    if (unionesGuardadas) {
+      Object.entries(unionesGuardadas).forEach(([col, semanas]) => {
+        const n = Number(semanas);
+        if (!Number.isFinite(n) || n < 1) return;
+        base[wn].colSpan[col] = n;
+        for (let i = wn + 1; i < wn + n && i < base.length; i++) base[i].colSpan[col] = 0;
+      });
+    } else if (span > 1) {
+      // Planes guardados antes de esto: solo se sabe el total de la fila.
+      DEFAULT_PLAN_COLUMNS.filter(c => c.mergeable).forEach(col => {
+        base[wn].colSpan[col.key] = span;
+        for (let i = wn + 1; i < wn + span && i < base.length; i++) base[i].colSpan[col.key] = 0;
+      });
+    }
   });
   return base;
 }
@@ -131,9 +164,18 @@ function weekRowsToDbRows(weeks: WeekRow[], totalWeeks: number): any[] {
     });
     // Store extra cols as extraData JSON
     const extraKeys = Object.keys(w.data).filter(k => !DEFAULT_PLAN_COLUMNS.find(c => c.key === k));
-    if (extraKeys.length > 0) {
-      const extraData: any = {};
-      extraKeys.forEach(k => { extraData[k] = w.data[k]; });
+    const extraData: any = {};
+    extraKeys.forEach(k => { extraData[k] = w.data[k]; });
+
+    // Y cuántas semanas abarca CADA columna, que es lo que el `endWeekNumber`
+    // de la fila no sabe contar.
+    const uniones: Record<string, number> = {};
+    Object.entries(w.colSpan).forEach(([col, n]) => {
+      if (Number(n) > 1) uniones[col] = Number(n);
+    });
+    if (Object.keys(uniones).length > 0) extraData.__uniones = uniones;
+
+    if (Object.keys(extraData).length > 0) {
       row.extraData = JSON.stringify(extraData);
     }
     out.push(row);
@@ -150,7 +192,7 @@ function ExpandHandle({ onExpand, onCollapse, canCollapse }: {
   canCollapse: boolean;
 }) {
   return (
-    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex items-center gap-1 pb-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+    <div className="absolute bottom-0 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 pb-0.5 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">
       <button
         title="Expandir hacia abajo (abarcar semana siguiente)"
         onClick={onExpand}
@@ -389,6 +431,29 @@ export default function EvaluationPlanSection({
     setColumns([...DEFAULT_PLAN_COLUMNS]);
   };
 
+  /**
+   * SI UN CAMPO ABARCA VARIAS SEMANAS O ES DE CADA SEMANA
+   *
+   * Venía fijo en el código para dos columnas concretas —tema generador y
+   * tejido temático—, así que una columna añadida por el profesor no podía
+   * abarcar nunca, y las dos de fábrica no podían dejar de hacerlo. Es una
+   * decisión suya, no nuestra.
+   */
+  const cambiarSiAbarca = (key: string, abarca: boolean) => {
+    setColumns(prev => prev.map(c => (c.key === key ? { ...c, mergeable: abarca } : c)));
+    if (!abarca) {
+      // Deja de abarcar: se sueltan las semanas que tenía cogidas, o
+      // quedarían escondidas sin nada que las enseñe.
+      setWeeks(prev =>
+        prev.map(w => {
+          const colSpan = { ...w.colSpan };
+          delete colSpan[key];
+          return { ...w, colSpan };
+        })
+      );
+    }
+  };
+
   // ── Helpers: cell mutation ────────────────────
   const setCell = useCallback((weekIdx: number, colKey: string, value: string | number) => {
     setWeeks(prev => {
@@ -438,6 +503,27 @@ export default function EvaluationPlanSection({
       return next;
     });
   }, []);
+
+  /**
+   * ALARGAR O ACORTAR UN BLOQUE
+   *
+   * En la tabla, unir celdas se hace columna a columna con un botón que sale
+   * al pasar el cursor. De pie no hay cursor y no hay tabla: hay bloques, y un
+   * bloque se alarga entero. Se aplica a las columnas que abarcan semanas
+   * —las `mergeable`—, que es lo mismo que se guarda.
+   */
+  const alargarBloque = useCallback((indice: number) => {
+    columns.filter(c => c.mergeable).forEach(col => expandCell(indice, col.key));
+  }, [columns, expandCell]);
+
+  const acortarBloque = useCallback((indice: number) => {
+    columns.filter(c => c.mergeable).forEach(col => collapseCell(indice, col.key));
+  }, [columns, collapseCell]);
+
+  const fechasDeLaSemana = useCallback(
+    (numero: number) => getWeekDates(autoPopulated?.lapsoStartDate, numero),
+    [autoPopulated?.lapsoStartDate]
+  );
 
   // ── Auto-distribute ───────────────────────────
   const distributeEqually = () => {
@@ -939,14 +1025,40 @@ export default function EvaluationPlanSection({
         <div className="bg-indigo-50 border-b border-indigo-100 px-6 py-2 flex items-center gap-3 text-xs text-indigo-700 shrink-0">
           <Sparkles className="w-4 h-4 shrink-0 text-indigo-400" />
           <span>
-            <strong>Tip:</strong> Cada fila es una semana del lapso. Para que un tema abarque varias semanas, escríbelo y luego pasa el cursor sobre la celda — aparecerá un botón <strong>↓</strong> para expandirla hacia abajo. Añade o elimina columnas desde la cabecera de la tabla (➕ / ✕).
+            <strong>Tip:</strong> Cada fila es una semana del lapso. Para que un tema abarque varias semanas,
+            escríbelo y usa el botón <strong>↓</strong> de la celda (en un teléfono, los botones <strong>+</strong> y
+            <strong>−</strong> de la cabecera del bloque). Añade o elimina columnas desde la cabecera de la tabla (➕ / ✕).
           </span>
         </div>
 
         {/* CANVAS */}
         <div className="flex-1 overflow-auto p-4 sm:p-6">
           <div className="max-w-[1600px] mx-auto space-y-4">
-            <div className="rounded-xl overflow-hidden shadow-xl border border-gray-300">
+            <div className="space-y-3 min-[700px]:hidden">
+              {/* Añadir, renombrar y quitar campos: en la tabla eso son dos
+                  iconos de 16 px en una cabecera de mil píxeles de ancho, o
+                  sea, fuera de la pantalla de cualquier teléfono. */}
+              <CamposDelPlan
+                columnas={columns}
+                alRenombrar={renameColumn}
+                alQuitar={removeColumn}
+                alAnadir={addColumn}
+                alCambiarSiAbarca={cambiarSiAbarca}
+                alRestaurar={resetColumns}
+              />
+
+              <PlanPorBloques
+                semanas={weeks}
+                columnas={columns}
+                fechasDe={fechasDeLaSemana}
+                puedeEditar
+                alEscribir={(indice, columna, valor) => setCell(indice, columna, valor)}
+                alAlargar={alargarBloque}
+                alAcortar={acortarBloque}
+              />
+            </div>
+
+            <div className="hidden rounded-xl overflow-hidden shadow-xl border border-gray-300 min-[700px]:block">
               {renderMembrete('edit')}
               {renderEditTable()}
             </div>
@@ -1073,8 +1185,28 @@ export default function EvaluationPlanSection({
         <div className="shrink-0">
           {renderMembrete('view')}
         </div>
+        {/*
+            DE PIE, POR BLOQUES
+
+            La tabla del plan son diez columnas por dieciocho semanas: mil y
+            pico de píxeles. De pie se enseña lo mismo contado como lo que es
+            —bloques de trabajo con sus semanas dentro—, y la tabla sale en
+            cuanto hay ancho, incluido el teléfono tumbado.
+        */}
+        <div className="flex-1 overflow-auto p-3 min-[700px]:hidden print:hidden">
+          <PlanPorBloques
+            semanas={weeks}
+            columnas={columns}
+            fechasDe={fechasDeLaSemana}
+            puedeEditar={false}
+            alEscribir={() => {}}
+            alAlargar={() => {}}
+            alAcortar={() => {}}
+          />
+        </div>
+
         {/* Table fills remaining height */}
-        <div className="flex-1 overflow-hidden">
+        <div className="hidden flex-1 overflow-hidden min-[700px]:block print:block">
           {renderViewTable()}
         </div>
       </div>

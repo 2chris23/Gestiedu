@@ -295,7 +295,7 @@ export default function SectionSubjectDashboard() {
             <header className="bg-white border-b border-gray-200">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                     {/* Breadcrumbs */}
-                    <nav className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+                    <nav className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
                         <Link href="/dashboard" className="hover:text-indigo-600">
                             <Home className="w-4 h-4" />
                         </Link>
@@ -315,9 +315,12 @@ export default function SectionSubjectDashboard() {
                         <span className="font-semibold text-gray-900">{subject.name}</span>
                     </nav>
 
-                    {/* Title Row */}
-                    <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-4">
+                    {/* Title Row — se parte en vez de empujar la pantalla: en un
+                        teléfono, «Educación Física 5to Año A» más el código, los
+                        estudiantes y el selector de lapso en una sola línea sacaban
+                        la pantalla 440 px de ancho. */}
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
                             <Link
                                 href={`/dashboard/academico/${cycleId}/${sectionId}`}
                                 className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
@@ -325,11 +328,11 @@ export default function SectionSubjectDashboard() {
                                 <ArrowLeft className="w-5 h-5" />
                             </Link>
                             <div>
-                                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                                <h1 className="flex flex-wrap items-center gap-x-2 text-xl font-bold text-gray-900 sm:text-2xl">
                                     {subject.name}{' '}
                                     <span className="text-indigo-600">{sectionName}</span>
                                 </h1>
-                                <div className="flex items-center gap-4 mt-1">
+                                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2">
                                     {subject.code && (
                                         <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded">
                                             {subject.code}

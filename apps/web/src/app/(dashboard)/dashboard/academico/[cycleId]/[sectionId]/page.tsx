@@ -310,7 +310,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     return (
         <div className="min-h-screen bg-[#F3F4F6] p-6 space-y-6 text-slate-800">
             <header className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 text-sm text-gray-500">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
                     <Link href={`/dashboard/academico/${cycleId}`} className="hover:text-indigo-600 flex items-center gap-1">
                         <ChevronLeft className="w-4 h-4" /> Volver
                     </Link>
@@ -320,12 +320,12 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                     <span className="font-semibold text-gray-700">{classroom?.name || 'Sección...'}</span>
                 </div>
 
-                <div className="flex items-start justify-between gap-6">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0">
+                        <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
                             {classroom ? `${classroom.name}` : 'Cargando...'}
                         </h1>
-                        <div className="text-gray-500 mt-1 flex items-center gap-2">
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-gray-500">
                             <span className="flex items-center gap-1 text-sm">
                                 <Users className="w-4 h-4" /> {students.length} Estudiantes
                             </span>
@@ -340,8 +340,11 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                         </div>
                     </div>
 
-                    {/* Tarjeta del Profesor Guía - Inline */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 min-w-[400px]">
+                    {/* Tarjeta del Profesor Guía - Inline.
+                        `min-w-[400px]` en una pantalla de 390 px hace exactamente
+                        lo que dice: sacar la pantalla de ancho. Solo se exige
+                        cuando hay sitio. */}
+                    <div className="w-full rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:w-auto sm:min-w-[400px]">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 {classroom?.teacher ? (
