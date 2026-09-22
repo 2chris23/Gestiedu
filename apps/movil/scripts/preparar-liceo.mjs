@@ -119,6 +119,13 @@ async function dibujarIconos(fuente, color) {
         join(ANDROID, 'res', 'values', 'ic_launcher_background.xml'),
         `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">${color}</color>\n</resources>\n`
     );
+
+    // El mismo color para la franja del reloj: ahí no llega la web, llega el
+    // fondo de la ventana (ver `dejarSitioParaElReloj` en MainActivity.java).
+    await writeFile(
+        join(ANDROID, 'res', 'values', 'colors.xml'),
+        `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="color_del_liceo">${color}</color>\n</resources>\n`
+    );
 }
 
 async function main() {

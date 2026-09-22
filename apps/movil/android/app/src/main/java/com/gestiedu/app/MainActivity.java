@@ -4,9 +4,14 @@ import android.app.DownloadManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.URLUtil;
 import android.widget.Toast;
+
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -29,12 +34,29 @@ import com.getcapacitor.BridgeActivity;
  * compartir. Se le pasa también la credencial de la sesión (la cookie), porque
  * el comprobante de un pago no es público y sin ella el servidor respondería
  * que no.
+ *
+ * LA FRANJA DEL RELOJ
+ *
+ * Desde Android 15, una app que apunta a la plataforma 35 —como esta— dibuja
+ * de borde a borde POR OBLIGACIÓN: la ventana empieza detrás del reloj y la
+ * batería, y no hay forma de pedir lo contrario (`setDecorFitsSystemWindows`
+ * ya no hace nada). En el teléfono se veía el nombre del liceo partido por el
+ * reloj y los botones de arriba no se podían pulsar: el dedo daba en la barra
+ * del sistema.
+ *
+ * Y no vale arreglarlo solo con CSS: en Android `env(safe-area-inset-top)` NO
+ * mide la barra de estado, mide la MUESCA de la pantalla. En un teléfono sin
+ * muesca vale cero aunque el reloj esté tapando media cabecera. Por eso el
+ * hueco se reserva aquí, preguntándole al sistema cuánto ocupa, y se pinta del
+ * color del liceo.
  */
 public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        dejarSitioParaElReloj();
 
         getBridge().getWebView().setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
             try {
@@ -72,6 +94,26 @@ public class MainActivity extends BridgeActivity {
                 // Que falle una descarga no puede tumbar la app: se avisa y ya.
                 Toast.makeText(this, "No se pudo guardar el archivo", Toast.LENGTH_LONG).show();
             }
+        });
+    }
+
+    /**
+     * Le pide al sistema cuánto ocupan el reloj y la muesca, y aparta esa
+     * altura para que la web empiece por debajo. Solo arriba: el hueco de la
+     * barra de gestos de abajo ya lo aparta Capacitor.
+     */
+    private void dejarSitioParaElReloj() {
+        final View contenido = findViewById(android.R.id.content);
+        if (contenido == null) return;
+
+        contenido.setBackgroundColor(getResources().getColor(R.color.color_del_liceo, getTheme()));
+
+        ViewCompat.setOnApplyWindowInsetsListener(contenido, (vista, insets) -> {
+            Insets sistema = insets.getInsets(
+                WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.displayCutout()
+            );
+            vista.setPadding(vista.getPaddingLeft(), sistema.top, vista.getPaddingRight(), vista.getPaddingBottom());
+            return insets;
         });
     }
 }

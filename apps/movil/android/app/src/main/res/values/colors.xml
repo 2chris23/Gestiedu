@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        El color del liceo. Lo reescribe `scripts/preparar-liceo.mjs` con el que
+        tenga ese liceo en su configuración; esto es solo el de fábrica.
+
+        Se ve en la franja del reloj y la batería: ahí no llega la web, llega el
+        fondo de la ventana de la app.
+    -->
+    <color name="color_del_liceo">#2563EB</color>
+</resources>

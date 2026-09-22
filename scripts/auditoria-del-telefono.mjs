@@ -245,6 +245,20 @@ async function losRecorridos() {
  */
 const MEDIR = ({ bandaArriba, bandaAbajo, dedo, letra }) => {
     const faltas = [];
+
+    /**
+     * CUÁNTO MIDE EL TELÉFONO DE VERDAD
+     *
+     * `window.innerWidth` NO sirve para esto, y es lo que usaba la versión
+     * anterior. Cuando algo se sale de ancho, el navegador de un móvil ENSANCHA
+     * la ventana para que quepa: en una pantalla que pedía 6 px de más,
+     * `innerWidth` valía 396 y `scrollWidth` también 396, así que
+     * `scrollWidth > innerWidth` daba falso. El fallo se tapaba a sí mismo.
+     *
+     * Lo que sí mide el cristal del teléfono es `visualViewport`.
+     */
+    const anchoDelTelefono = Math.round(window.visualViewport?.width ?? document.documentElement.clientWidth);
+    const altoDelTelefono = Math.round(window.visualViewport?.height ?? document.documentElement.clientHeight);
     const visible = (el) => {
         const e = getComputedStyle(el);
         return e.display !== 'none' && e.visibility !== 'hidden' && e.opacity !== '0';
@@ -257,10 +271,17 @@ const MEDIR = ({ bandaArriba, bandaAbajo, dedo, letra }) => {
 
     // ── 1. La pantalla se sale de ancho ───────────────────────────────────
     const anchoDoc = document.documentElement.scrollWidth;
-    if (anchoDoc > window.innerWidth + 1) {
+    if (anchoDoc > anchoDelTelefono + 1) {
+        const culpables = [...document.querySelectorAll('body *')]
+            .filter((el) => visible(el) && el.getBoundingClientRect().right > anchoDelTelefono + 1)
+            .filter((el, _i, todos) => !todos.some((otro) => otro !== el && otro.contains(el)))
+            .slice(0, 2)
+            .map(comoSeLlama);
         faltas.push({
             regla: 'ancho',
-            detalle: `la pantalla mide ${anchoDoc} px y el teléfono ${window.innerWidth}`,
+            detalle:
+                `la pantalla mide ${anchoDoc} px y el teléfono ${anchoDelTelefono}` +
+                (culpables.length ? ` — sobresale ${culpables.join(', ')}` : ''),
         });
     }
 
@@ -297,7 +318,11 @@ const MEDIR = ({ bandaArriba, bandaAbajo, dedo, letra }) => {
             const alfa = fondo.startsWith('rgba') ? parseFloat(fondo.split(',')[3]) : fondo === 'transparent' ? 0 : 1;
             if (alfa < 0.85) continue;
             const r = el.getBoundingClientRect();
-            if (r.left > 1 || r.right < window.innerWidth - 1) continue;
+            // 98 % y no «de borde a borde»: cuando la pantalla se sale de
+            // ancho, la cabecera mide lo que el cuerpo y no lo que la ventana
+            // ensanchada, y sin esta holgura se daba por destapada una franja
+            // que sí estaba tapada.
+            if (r.left > 1 || r.right < anchoDelTelefono * 0.98) continue;
             if (r.top <= desde + 1 && r.bottom >= hasta - 1) return true;
         }
         return false;
@@ -328,9 +353,8 @@ const MEDIR = ({ bandaArriba, bandaAbajo, dedo, letra }) => {
         }
     }
 
-    const altoVista = window.innerHeight;
-    if (!estaTapada(altoVista - bandaAbajo, altoVista)) {
-        const asoma = loQueAsomaEn(altoVista - bandaAbajo, altoVista);
+    if (!estaTapada(altoDelTelefono - bandaAbajo, altoDelTelefono)) {
+        const asoma = loQueAsomaEn(altoDelTelefono - bandaAbajo, altoDelTelefono);
         if (asoma.length) {
             faltas.push({
                 regla: 'banda-abajo',
@@ -345,7 +369,7 @@ const MEDIR = ({ bandaArriba, bandaAbajo, dedo, letra }) => {
         if (!visible(el)) continue;
         const r = el.getBoundingClientRect();
         if (r.width < 2 || r.height < 2) continue; // escondido de verdad
-        if (r.top > window.innerHeight || r.bottom < 0) continue; // fuera de la vista
+        if (r.top > altoDelTelefono || r.bottom < 0) continue; // fuera de la vista
         if (r.height >= dedo && r.width >= dedo) continue;
         // Un enlace dentro de un párrafo no es un botón: se salta el texto corrido.
         if (el.tagName === 'A' && el.parentElement && /^(P|SPAN|LI|TD)$/.test(el.parentElement.tagName)) continue;
@@ -365,7 +389,7 @@ const MEDIR = ({ bandaArriba, bandaAbajo, dedo, letra }) => {
         const tam = parseFloat(getComputedStyle(el).fontSize);
         if (isNaN(tam) || tam >= letra) continue;
         const r = el.getBoundingClientRect();
-        if (r.top > window.innerHeight || r.bottom < 0) continue;
+        if (r.top > altoDelTelefono || r.bottom < 0) continue;
         menudas.set(`${tam} px`, (menudas.get(`${tam} px`) || 0) + 1);
     }
     if (menudas.size) {
