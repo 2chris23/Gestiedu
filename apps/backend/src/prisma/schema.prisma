@@ -263,6 +263,7 @@ model User {
 
   // Sesiones y tokens
   refreshTokens RefreshToken[]
+  llavesDeTelefono DeviceKey[]
 
   // Notificaciones
   notifications Notification[]
@@ -299,6 +300,41 @@ model RefreshToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("refresh_tokens")
+}
+
+/// LA LLAVE QUE GUARDA UN TELÉFONO PARA VOLVER A ENTRAR
+///
+/// No sirve para entrar por primera vez: se crea DESPUÉS de una entrada con
+/// correo y contraseña, en ese teléfono y solo si su dueño lo pide. Lo que
+/// hace la huella es abrir el cajón donde el teléfono la guardó (el almacén de
+/// claves de Android, respaldado por hardware); la huella no viaja a ningún
+/// sitio ni se guarda aquí.
+///
+/// Tres cosas la hacen segura, y las tres importan:
+///   · aquí se guarda **solo el resumen** (SHA-256). Quien se lleve la base de
+///     datos no se lleva ninguna llave;
+///   · **se cambia en cada uso**, como la de volver a entrar: una copia robada
+///     deja de valer en cuanto su dueño abre la app;
+///   · caduca sola, y al cerrar sesión se anula.
+model DeviceKey {
+  id        String @id @default(cuid())
+  /// SHA-256 de la llave. La llave en claro solo existe en el teléfono.
+  tokenHash String @unique
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// «Android · Chrome», para que se reconozca en la lista de sesiones.
+  label String?
+
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("device_keys")
 }
 
 // =====================================================

@@ -112,6 +112,35 @@ class AuthService {
       throw AppErrors.InvalidCredentials();
     }
 
+    return this.abrirSesion(user, db, { keepSession, rememberMe }, instituteContextId, deviceMeta);
+  }
+
+  /**
+   * ABRIR LA SESIÓN DE ALGUIEN QUE YA SE HA IDENTIFICADO
+   *
+   * Todo lo que va DESPUÉS de comprobar quién es: el par de llaves, la fila de
+   * la sesión, la memoria rápida y la respuesta.
+   *
+   * Está aparte porque hay dos formas de identificarse y las dos terminan
+   * exactamente igual: con el correo y la contraseña (`login`) y con la llave
+   * que este teléfono guardó tras una entrada con contraseña
+   * (`llave-del-telefono.service.ts`). Escribirlo dos veces es garantizar que
+   * dentro de un mes una de las dos no invalide la sesión, o no la guarde en
+   * la memoria rápida, y nadie se entere.
+   *
+   * Aquí NO se comprueba ninguna credencial: quien llama ya lo hizo.
+   */
+  async abrirSesion(
+    user: { id: string; email: string; firstName: string; lastName: string; role: string; avatar?: string | null; instituteId?: string | null; institute?: unknown },
+    db: PrismaClient,
+    opciones: { keepSession?: boolean; rememberMe?: boolean },
+    instituteContextId?: string,
+    meta?: LoginDeviceMeta
+  ): Promise<LoginResponse> {
+    const keepSession = opciones.keepSession ?? false;
+    const rememberMe = opciones.rememberMe ?? false;
+    const deviceMeta = meta || {};
+
     // Generar ID único y tokens JWT (sin DB aún, evita race condition con token='')
     const tokenRecordId = randomUUID();
     const now = Date.now();

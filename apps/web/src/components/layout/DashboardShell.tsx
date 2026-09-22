@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useAuthStore } from '@/store/auth.store';
 import { olvidarCredencial } from '@/lib/credencial-en-memoria';
 import { olvidarLoDescargado } from '@/lib/lo-guardado-en-el-telefono';
-import { laPuertaDelLiceo } from '@/lib/la-puerta-del-liceo';
+import { laPuertaDelLiceo, elLiceoDeLaCookie } from '@/lib/la-puerta-del-liceo';
+import { laLlaveGuardada, olvidarLaLlave } from '@/lib/la-huella';
 import AvisoSinConexion from '@/components/common/AvisoSinConexion';
 import { LogOut, GraduationCap } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -65,10 +66,21 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
          * su liceo. Se apunta el liceo ANTES de borrar las credenciales, que se
          * lo llevan por delante.
          */
+        const liceo = elLiceoDeLaCookie();
         const puerta = laPuertaDelLiceo();
 
-        // Clear cookies via API route
-        await fetch('/api/auth/logout', { method: 'POST' });
+        // La llave de la huella de ESTE teléfono: se manda para que el
+        // servidor la anule, y se borra de aquí. Cerrar sesión es cerrar
+        // sesión: si se quedara, el siguiente que abriera la app entraría con
+        // la huella del dueño del móvil sin pasar por la contraseña.
+        const llaveDelTelefono = liceo ? await laLlaveGuardada(liceo) : null;
+
+        await fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ llaveDelTelefono: llaveDelTelefono ?? undefined }),
+        });
+        if (liceo) await olvidarLaLlave(liceo);
         // Y la llave que estaba en la memoria de la pestaña: si no, seguiría
         // sirviendo hasta que caduque aunque la sesión esté cerrada.
         olvidarCredencial();

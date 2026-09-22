@@ -4,11 +4,13 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Settings, KeyRound, LogOut, Smartphone, ChevronRight, Loader2 } from 'lucide-react';
+import { Settings, KeyRound, LogOut, Smartphone, ChevronRight, Loader2, Fingerprint } from 'lucide-react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import UserAvatar from '@/components/ui/UserAvatar';
 import api from '@/lib/axios';
 import { getApiErrorMessage } from '@/lib/utils';
+import { elLiceoDeLaCookie } from '@/lib/la-puerta-del-liceo';
+import { guardarLaLlave, hayHuella, hayLlaveGuardada, laLlaveGuardada, olvidarLaLlave } from '@/lib/la-huella';
 
 /**
  * MI CUENTA
@@ -144,6 +146,8 @@ export function FichaDeMiCuenta({
 
                     {cambiandoClave && <FormularioDeClave alTerminar={() => setCambiandoClave(false)} />}
 
+                    <LaHuellaDeEsteTelefono visible={abierta} correo={nombreCompleto} />
+
                     <SesionesAbiertas visible={abierta} />
 
                     <button
@@ -157,6 +161,92 @@ export function FichaDeMiCuenta({
                 </div>
             </SheetContent>
         </Sheet>
+    );
+}
+
+/**
+ * ENTRAR CON LA HUELLA EN ESTE TELÉFONO
+ *
+ * Solo aparece dentro de la app del liceo y solo si el teléfono tiene huella
+ * configurada. En un navegador no sale: no hay dónde guardar una llave detrás
+ * de una huella, y ofrecerlo sería fingir una seguridad que no está.
+ *
+ * Lo que se guarda es una llave que emite el servidor, en el almacén de claves
+ * del propio Android. La huella abre ese cajón; no entra al sistema. Al
+ * apagarlo, la llave se anula en el servidor y se borra del teléfono.
+ */
+function LaHuellaDeEsteTelefono({ visible, correo }: { visible: boolean; correo: string }) {
+    const [sePuede, setSePuede] = React.useState(false);
+    const [encendida, setEncendida] = React.useState(false);
+    const [trabajando, setTrabajando] = React.useState(false);
+
+    const liceo = React.useMemo(() => elLiceoDeLaCookie(), []);
+
+    React.useEffect(() => {
+        if (!visible || !liceo) return;
+        let vivo = true;
+        (async () => {
+            const puede = await hayHuella();
+            if (!vivo) return;
+            setSePuede(puede);
+            if (puede) setEncendida(await hayLlaveGuardada(liceo));
+        })();
+        return () => {
+            vivo = false;
+        };
+    }, [visible, liceo]);
+
+    if (!sePuede || !liceo) return null;
+
+    const cambiar = async (encender: boolean) => {
+        setTrabajando(true);
+        try {
+            if (encender) {
+                const r = await fetch('/api/auth/llave-del-telefono', { method: 'POST' });
+                if (!r.ok) throw new Error('No se pudo guardar la llave');
+                const { llave } = await r.json();
+                const guardada = await guardarLaLlave(liceo, correo, llave);
+                if (!guardada) throw new Error('El teléfono no dejó guardar la llave');
+                setEncendida(true);
+                toast.success('Listo: la próxima vez entras con la huella');
+            } else {
+                const llave = await laLlaveGuardada(liceo);
+                await olvidarLaLlave(liceo);
+                await fetch('/api/auth/llave-del-telefono', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ llave }),
+                });
+                setEncendida(false);
+                toast.success('Ya no se entra con la huella en este teléfono');
+            }
+        } catch (error) {
+            toast.error(getApiErrorMessage(error, 'No se pudo cambiar'));
+        } finally {
+            setTrabajando(false);
+        }
+    };
+
+    return (
+        <label className="flex min-h-[56px] w-full items-center gap-3 border-t border-gray-200 px-5 py-3 text-sm font-medium text-gray-800">
+            <Fingerprint className="h-5 w-5 shrink-0 text-gray-500" aria-hidden />
+            <span className="flex-1">
+                Entrar con la huella
+                <span className="mt-0.5 block text-xs font-normal text-gray-500">
+                    Solo en este teléfono. La primera vez siempre es con contraseña.
+                </span>
+            </span>
+            {trabajando ? (
+                <Loader2 className="h-5 w-5 animate-spin text-gray-400" aria-hidden />
+            ) : (
+                <input
+                    type="checkbox"
+                    checked={encendida}
+                    onChange={(e) => cambiar(e.target.checked)}
+                    className="h-6 w-6 shrink-0 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+            )}
+        </label>
     );
 }
 
