@@ -482,3 +482,60 @@
     letter-spacing: -0.03em;
   }
 }
+
+/* ── EL DEDO Y LA LETRA, EN UN TELÉFONO ──────────────────────────────────
+
+   Dos reglas que se rompen en cada pantalla nueva, una por una, y que
+   ninguna prueba veía porque no dan error: botones de 36 px y letra de 10.
+
+   Se ponen aquí y no en cada sitio por lo mismo que la papelera o los
+   colores: una regla escrita treinta veces se queda vieja en veintinueve.
+
+   El alcance está medido a propósito:
+
+     · `pointer: coarse` — solo donde se toca con el dedo. Con ratón, un
+       icono de 32 px se pulsa sin fallar y agrandarlo solo estorba.
+     · `max-width: 699px` — solo de pie. A partir de ahí salen las rejillas
+       densas (el horario, el plan de evaluación), que son tablas de verdad
+       y no se tocan.
+
+   44 px es el mínimo de Apple; Google pide 48. Se exige el menor de los dos.
+   Lo comprueba `npm run movil`. */
+@media (pointer: coarse) and (max-width: 699px) {
+  button,
+  [role='button'],
+  select,
+  summary {
+    min-height: 44px;
+    /* También de ancho: un icono de 36 px de alto pero 27 de ancho sigue
+       siendo un botón que se falla. */
+    min-width: 44px;
+  }
+
+  /* Un enlace vestido de botón (con su relleno y su borde) también se pulsa.
+     Solo el alto: `min-height` no le hace nada a un enlace en mitad de una
+     frase, que es justo lo que se busca — ahí manda la línea de texto. */
+  a[href] {
+    min-height: 44px;
+  }
+
+  /* Los enlaces de una ruta de migas o de una barra de navegación son
+     destinos, no texto corrido: se pulsan. Un enlace suelto dentro de un
+     párrafo se queda como está, que ahí lo que importa es la línea. */
+  nav a[href] {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* La letra menuda. Estos tamaños están escritos a mano por toda la
+     aplicación para que quepa una tabla; de pie ya no hay tabla que
+     estrechar, así que se leen. */
+  .text-\[9px\],
+  .text-\[10px\],
+  .text-\[11px\],
+  .text-micro {
+    font-size: 0.75rem;
+    line-height: 1.05rem;
+  }
+}
