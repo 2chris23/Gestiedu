@@ -43,6 +43,8 @@ const PANTALLAS: Array<[string, string]> = [
     ['Calendario', '/dashboard/calendario'],
 ];
 
+type Falta = { regla: string; detalle: string };
+
 const AJUSTES = { bandaArriba: BANDA_ARRIBA, bandaAbajo: BANDA_ABAJO, dedo: DEDO, letra: LETRA };
 
 async function esperarAQueTermine(page: Page, tope = 20000) {
@@ -53,7 +55,7 @@ async function esperarAQueTermine(page: Page, tope = 20000) {
             .evaluate(() => {
                 const texto = document.body?.innerText || '';
                 if (/\bCargando\b|\bLoading\b/i.test(texto)) return true;
-                return [...document.querySelectorAll('.animate-pulse, .animate-latir')].some((el) => {
+                return Array.from(document.querySelectorAll('.animate-pulse, .animate-latir')).some((el) => {
                     if (el.textContent && el.textContent.trim().length > 0) return false;
                     const r = el.getBoundingClientRect();
                     return r.width >= 60 && r.height >= 12;
@@ -84,17 +86,17 @@ test.describe('En el teléfono', () => {
                 await page.addStyleTag({ content: ZONAS_DE_UN_TELEFONO });
                 await page.waitForTimeout(300);
 
-                const arriba = await page.evaluate(MEDIR, AJUSTES);
+                const arriba = (await page.evaluate(MEDIR, AJUSTES)) as Falta[];
                 await page.evaluate(() => window.scrollBy(0, 400));
                 await page.waitForTimeout(400);
-                const alBajar = await page.evaluate(MEDIR, AJUSTES);
+                const alBajar = (await page.evaluate(MEDIR, AJUSTES)) as Falta[];
 
-                const todas = [...arriba];
+                const todas: Falta[] = [...arriba];
                 for (const f of alBajar) {
-                    if (!todas.some((x: { regla: string }) => x.regla === f.regla)) todas.push(f);
+                    if (!todas.some((x) => x.regla === f.regla)) todas.push(f);
                 }
 
-                for (const f of todas as Array<{ regla: string; detalle: string }>) {
+                for (const f of todas) {
                     faltas.push(
                         `${titulo} (${ruta}) — ${QUE_SIGNIFICA[f.regla] ?? f.regla}: ${f.detalle}`
                     );

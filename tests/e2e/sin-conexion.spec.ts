@@ -24,8 +24,26 @@ import { TENANT_SLUG, loginViaUI, captureEvidence } from './helpers';
 
 const MEMORIA = { base: 'gestiedu', almacen: 'lo-descargado', llave: 'react-query' };
 
+/**
+ * Lo que devuelve cuando NO se ha podido preguntar: el navegador estaba a
+ * mitad de una navegación y el contexto se destruyó bajo los pies. No es
+ * «no hay nada guardado» —eso es `null`— y por eso no vale confundirlos:
+ * devolviendo `null` ahí, SIN-03 se pondría verde sin haber comprobado nada.
+ * Con este valor, la espera sigue esperando y, si nunca se puede preguntar,
+ * acaba en rojo diciendo la verdad.
+ */
+const NO_SE_PUDO_PREGUNTAR = 'no-se-pudo-preguntar';
+
+/**
+ * Para las esperas: si justo ahora no se puede preguntar, se dice, y la espera
+ * vuelve a intentarlo.
+ */
+async function siSePuede(page: Page) {
+    return loGuardado(page).catch(() => NO_SE_PUDO_PREGUNTAR as unknown as null);
+}
+
 /** Lee la memoria del teléfono desde dentro del navegador. */
-async function loGuardado(page: Page) {
+function loGuardado(page: Page) {
     return page.evaluate(({ base, almacen, llave }) => {
         return new Promise<{ dueno: string; cuando: number; claves: string[] } | null>((resolver) => {
             let peticion: IDBOpenDBRequest;
@@ -65,7 +83,7 @@ test.describe('Sin conexión', () => {
             await expect(page.getByText('Estudiantes', { exact: false }).first()).toBeVisible({ timeout: 20000 });
 
             const guardado = await expect
-                .poll(async () => await loGuardado(page), { timeout: 20000 })
+                .poll(async () => await siSePuede(page), { timeout: 20000 })
                 .not.toBeNull()
                 .then(() => loGuardado(page));
 
@@ -117,7 +135,7 @@ test.describe('Sin conexión', () => {
             await page.waitForURL('**/dashboard**');
 
             await expect
-                .poll(async () => (await loGuardado(page))?.dueno ?? null, { timeout: 20000 })
+                .poll(async () => (await siSePuede(page))?.dueno ?? null, { timeout: 20000 })
                 .not.toBeNull();
 
             await page.locator('header button').first().click();
@@ -129,7 +147,7 @@ test.describe('Sin conexión', () => {
             await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 20000 });
 
             // Lo de la persona anterior no se queda en el teléfono.
-            await expect.poll(async () => await loGuardado(page), { timeout: 20000 }).toBeNull();
+            await expect.poll(async () => await siSePuede(page), { timeout: 20000 }).toBeNull();
         } catch (error) {
             await captureEvidence(testInfo, page, 'SIN-03', 'Al salir se borra lo guardado', error);
             throw error;
