@@ -95,6 +95,11 @@ dump.rdb
 docs/mediciones/
 docs/capturas-movil/
 
+# Las llaves guardadas de las pruebas de navegador. Son de la máquina de quien
+# las corre y son CREDENCIALES de sesión del liceo de pruebas: versionarlas es
+# meter llaves en el repositorio. `tests/e2e/helpers.ts` lo rehace solo.
+tests/e2e/.auth-tokens.json
+
 
 # Las APK compiladas: pesan y se rehacen con un comando.
 apks/
