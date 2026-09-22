@@ -30,6 +30,11 @@
  *  5. dedo         Lo que se pulsa mide 44 px o más.
  *  6. letra        Nada por debajo de 12 px.
  *
+ * Y una séptima que no es de diseño sino de honradez: **sin-cargar**. Si la
+ * pantalla sigue diciendo «Cargando…» cuando se mide, no se mide nada y sale
+ * limpia. Pasó: cinco pantallas cambiaron de rojo a verde entre dos tandas sin
+ * tocar una línea, porque en la segunda no habían terminado de cargar.
+ *
  * ─── LO DE LAS BANDAS, QUE TIENE TRUCO ──────────────────────────────────────
  *
  * En un ordenador `env(safe-area-inset-top)` vale 0: no hay muesca. Así que
@@ -102,27 +107,35 @@ async function consultar(sql, params = []) {
  * Las pantallas de dentro (una sección, una materia, el horario de un
  * profesor) llevan identificadores en la dirección. Escribirlos a mano aquí
  * los deja viejos en una semana, así que se preguntan a la base.
+ *
+ * OJO CON CUÁL: no todas las direcciones llevan el `id`. Las de Académico y
+ * Materias van por **nombre del ciclo y `slug`**
+ * (`/dashboard/academico/2026-2027/2026-2027-1-a/castellano`), y las de Aulas y
+ * Usuarios por id. Poniendo el id donde iba el slug, la pantalla no encuentra
+ * la sección y se queda para siempre en «Cargando sección…» — y una pantalla
+ * que no carga no incumple nada, así que salía impecable en la auditoría. Se
+ * comprueba mirando a dónde enlaza la propia aplicación, no adivinando.
  */
 async function lasPantallasDeDentro() {
     // El ciclo en curso se marca en `status`, no en `isActive` (que en los
     // datos de prueba está en false aunque el ciclo esté abierto). Si ninguno
     // lo dice, vale el más reciente: aquí solo hace falta UNA dirección viva.
     const [ciclo] = await consultar(
-        `SELECT id FROM academic_years
+        `SELECT id, name FROM academic_years
           ORDER BY (status = 'ACTIVE') DESC, "createdAt" DESC
           LIMIT 1`
     );
 
     const [seccion] = ciclo
         ? await consultar(
-              `SELECT id FROM classrooms WHERE "academicYearId" = $1 ORDER BY grade, section LIMIT 1`,
+              `SELECT id, slug FROM classrooms WHERE "academicYearId" = $1 ORDER BY grade, section LIMIT 1`,
               [ciclo.id]
           )
         : [];
 
     const [materia] = seccion
         ? await consultar(
-              `SELECT s.id, s.name FROM classroom_subjects cs
+              `SELECT s.id, s.slug, s.name FROM classroom_subjects cs
                  JOIN subjects s ON s.id = cs."subjectId"
                 WHERE cs."classroomId" = $1 ORDER BY s.name LIMIT 1`,
               [seccion.id]
@@ -154,11 +167,15 @@ async function elProfesorDeVerdad() {
         `SELECT u.email,
                 cs."classroomId",
                 cs."subjectId",
-                c."academicYearId",
+                c.slug   AS "seccionSlug",
+                s.slug   AS "materiaSlug",
+                a.name   AS "cicloNombre",
                 count(*) OVER (PARTITION BY u.id) AS imparte
            FROM classroom_subjects cs
            JOIN users u ON u.id = cs."teacherId"
            JOIN classrooms c ON c.id = cs."classroomId"
+           JOIN subjects s ON s.id = cs."subjectId"
+           LEFT JOIN academic_years a ON a.id = c."academicYearId"
           WHERE u."isActive" = true
           ORDER BY imparte DESC, u.email
           LIMIT 1`
@@ -179,14 +196,14 @@ async function losRecorridos() {
             pantallas: conIds([
                 ['Inicio', '/dashboard'],
                 ['Académico', '/dashboard/academico'],
-                ['Ciclo', `/dashboard/academico/${ciclo?.id}`],
-                ['Sección', `/dashboard/academico/${ciclo?.id}/${seccion?.id}`],
-                ['Sección · materia', `/dashboard/academico/${ciclo?.id}/${seccion?.id}/${materia?.id}`],
-                ['Promoción', `/dashboard/academico/${ciclo?.id}/promocion`],
+                ['Ciclo', `/dashboard/academico/${ciclo?.name}`],
+                ['Sección', `/dashboard/academico/${ciclo?.name}/${seccion?.slug}`],
+                ['Sección · materia', `/dashboard/academico/${ciclo?.name}/${seccion?.slug}/${materia?.slug}`],
+                ['Promoción', `/dashboard/academico/${ciclo?.name}/promocion`],
                 ['Aulas', '/dashboard/aulas'],
                 ['Un aula', `/dashboard/aulas/${seccion?.id}`],
                 ['Materias', '/dashboard/materias'],
-                ['Una materia', `/dashboard/materias/${ciclo?.id}/${materia?.id}`],
+                ['Una materia', `/dashboard/materias/${ciclo?.name}/${materia?.slug}`],
                 ['Horarios', '/dashboard/horarios'],
                 ['Horario de sección', `/dashboard/horarios/seccion/${seccion?.id}`],
                 ['Horario de profesor', `/dashboard/horarios/profesor/${profe?.id}`],
@@ -204,10 +221,10 @@ async function losRecorridos() {
             pantallas: conIds([
                 ['Inicio', '/dashboard'],
                 ['Académico', '/dashboard/academico'],
-                ['Su sección', `/dashboard/academico/${suyo?.academicYearId}/${suyo?.classroomId}`],
+                ['Su sección', `/dashboard/academico/${suyo?.cicloNombre}/${suyo?.seccionSlug}`],
                 [
                     'Plan de evaluación',
-                    `/dashboard/academico/${suyo?.academicYearId}/${suyo?.classroomId}/${suyo?.subjectId}`,
+                    `/dashboard/academico/${suyo?.cicloNombre}/${suyo?.seccionSlug}/${suyo?.materiaSlug}`,
                 ],
                 ['Clase en vivo', `/dashboard/clase-en-vivo/${suyo?.classroomId}/${suyo?.subjectId}`],
                 ['Materias', '/dashboard/materias'],
@@ -414,6 +431,43 @@ const nombreDeArchivo = (rol, pantalla) =>
 /** El teléfono de verdad tiene muesca; el ordenador no. Se le pone. */
 const ZONAS_DE_UN_TELEFONO = `:root{--zona-segura-arriba:${BANDA_ARRIBA}px !important;--zona-segura-abajo:${BANDA_ABAJO}px !important}`;
 
+/**
+ * ESPERAR A QUE LA PANTALLA SEA LA PANTALLA
+ *
+ * Con tres segundos fijos, las pantallas que piden varias cosas al servidor se
+ * medían mientras aún decían «Cargando sección…»: sin contenido no hay nada
+ * que incumpla, así que salían impecables. Cinco pasaron de rojo a verde entre
+ * dos tandas sin tocar una línea de código.
+ *
+ * Aquí se espera a que no quede tráfico y a que no quede ni un «Cargando» ni un
+ * esqueleto latiendo. Si no termina, se dice.
+ */
+/** ¿La pantalla está enseñando un «Cargando» o un esqueleto AHORA MISMO? */
+async function sigueCargando(page) {
+    return page
+        .evaluate(() => {
+            const texto = document.body?.innerText || '';
+            if (/Cargando|Loading/i.test(texto)) return true;
+            return document.querySelector('.animate-pulse, .animate-latir, [aria-busy="true"]') !== null;
+        })
+        .catch(() => false);
+}
+
+async function esperarAQueTermine(page, tope = 20000) {
+    await page.waitForLoadState('networkidle', { timeout: tope }).catch(() => {});
+
+    const hasta = Date.now() + tope;
+    while (Date.now() < hasta) {
+        const sigue = await sigueCargando(page);
+        if (!sigue) {
+            await page.waitForTimeout(600);
+            return true;
+        }
+        await page.waitForTimeout(500);
+    }
+    return false;
+}
+
 async function entrar(page, email) {
     await page.goto(`${WEB}/login?slug=${LICEO}`, { waitUntil: 'domcontentloaded' });
     await page.fill('input[type="email"]', email);
@@ -452,9 +506,15 @@ async function main() {
         for (const [titulo, ruta] of recorrido.pantallas) {
             try {
                 await page.goto(`${WEB}${ruta}`, { waitUntil: 'domcontentloaded' });
-                await page.waitForTimeout(3000);
+                const cargada = await esperarAQueTermine(page);
                 await page.addStyleTag({ content: ZONAS_DE_UN_TELEFONO });
                 await page.waitForTimeout(250);
+
+                // Otra vez, justo antes de medir: hay pantallas que terminan de
+                // cargar y vuelven a «Cargando» cuando algo se refresca por
+                // detrás. Si se mide en ese instante, sale impecable porque no
+                // hay nada pintado.
+                const aunCargando = await sigueCargando(page);
 
                 const archivo = `${nombreDeArchivo(recorrido.rol, titulo)}.png`;
                 await page.screenshot({ path: join(CARPETA, archivo) });
@@ -479,6 +539,12 @@ async function main() {
                 const todas = [...faltas];
                 for (const f of alBajar) {
                     if (!todas.some((x) => x.regla === f.regla)) todas.push({ ...f, alBajar: true });
+                }
+                if (!cargada || aunCargando) {
+                    todas.unshift({
+                        regla: 'sin-cargar',
+                        detalle: 'seguía cargando al medirla: lo de abajo no se ha comprobado',
+                    });
                 }
 
                 fichas.push({ rol: recorrido.rol, titulo, ruta, archivo, faltas: todas });
@@ -520,6 +586,7 @@ const QUE_SIGNIFICA = {
     'banda-abajo': 'La barra de gestos tapa contenido',
     dedo: 'Botones más pequeños que un dedo',
     letra: 'Letra por debajo de 12 px',
+    'sin-cargar': 'Seguía cargando al medirla',
 };
 
 function hoja(fichas) {

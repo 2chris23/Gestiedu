@@ -39,7 +39,7 @@ export default function ConfiguracionPage() {
             {/* Tabs */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                 <div className="border-b border-gray-200">
-                    <nav className="-mb-px flex overflow-x-auto" aria-label="Tabs">
+                    <nav className="-mb-px flex flex-wrap" aria-label="Tabs">
                         {tabs.map((tab) => {
                             const Icon = tab.icon;
                             const isActive = activeTab === tab.id;

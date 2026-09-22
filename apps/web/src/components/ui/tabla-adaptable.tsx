@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -43,6 +44,14 @@ import { cn } from '@/lib/utils';
  *
  * `principal` marca la columna que hace de titular de la tarjeta en el teléfono.
  * Si no se marca ninguna, se usa la primera.
+ *
+ * ─── ORDENAR ────────────────────────────────────────────────────────────────
+ *
+ * Se marca `ordenable` en las columnas que lo admitan y se pasan `orden` y
+ * `alOrdenar`. En pantalla ancha, la cabecera se pulsa, como siempre. En el
+ * teléfono NO hay cabecera que pulsar —son tarjetas—, así que sale una fila de
+ * fichas: «Ordenar por: Nombre · Cédula · Promedio». Sin eso, ordenar una lista
+ * desde el móvil era imposible: la función existía y no había dónde tocarla.
  */
 
 export interface ColumnaAdaptable<T> {
@@ -66,6 +75,23 @@ export interface ColumnaAdaptable<T> {
      * etiqueta, separada por una línea.
      */
     acciones?: boolean;
+    /** Se puede ordenar por ella: cabecera pulsable y ficha en el teléfono. */
+    ordenable?: boolean;
+    /**
+     * No se repite en la tarjeta del teléfono porque ese dato YA está dentro
+     * del titular (la cédula debajo del nombre, por ejemplo). Es la única
+     * excepción a «en la tarjeta está todo», y solo vale cuando el dato se ve
+     * igualmente: esconderlo de verdad es lo que esta tabla existe para evitar.
+     */
+    soloAncha?: boolean;
+    /** El nombre corto para la ficha del teléfono, si el título es largo. */
+    tituloCorto?: string;
+}
+
+/** Por qué columna está ordenada la lista, y en qué sentido. */
+export interface OrdenDeTabla {
+    por: string;
+    hacia: 'asc' | 'desc';
 }
 
 interface Props<T> {
@@ -80,6 +106,11 @@ interface Props<T> {
     cargando?: boolean;
     /** Cuántos esqueletos pintar mientras carga. */
     filasFantasma?: number;
+    /** Por qué columna está ordenada ahora mismo. */
+    orden?: OrdenDeTabla | null;
+    /** Se llama al pulsar una columna ordenable. Le toca a quien usa la tabla
+     *  decidir si invierte el sentido o empieza de nuevo. */
+    alOrdenar?: (por: string) => void;
     className?: string;
 }
 
@@ -97,11 +128,14 @@ export function TablaAdaptable<T>({
     vacio,
     cargando = false,
     filasFantasma = 5,
+    orden,
+    alOrdenar,
     className,
 }: Props<T>) {
     const principal = columnas.find((c) => c.principal) ?? columnas[0];
-    const secundarias = columnas.filter((c) => c !== principal && !c.acciones);
+    const secundarias = columnas.filter((c) => c !== principal && !c.acciones && !c.soloAncha);
     const deAcciones = columnas.filter((c) => c.acciones);
+    const ordenables = columnas.filter((c) => c.ordenable && !c.acciones);
 
     if (cargando) return <Fantasma columnas={columnas.length} filas={filasFantasma} />;
 
@@ -129,13 +163,36 @@ export function TablaAdaptable<T>({
                                 <th
                                     key={col.id}
                                     scope="col"
+                                    aria-sort={
+                                        orden?.por === col.id
+                                            ? orden.hacia === 'asc'
+                                                ? 'ascending'
+                                                : 'descending'
+                                            : undefined
+                                    }
                                     className={cn(
                                         'px-5 py-3.5 text-etiqueta font-semibold uppercase tracking-wide text-tinta-suave',
                                         alineacion[col.alinear ?? 'izquierda'].split(' ')[0],
                                         col.ancho
                                     )}
                                 >
-                                    {col.acciones ? <span className="sr-only">{col.titulo}</span> : col.titulo}
+                                    {col.acciones ? (
+                                        <span className="sr-only">{col.titulo}</span>
+                                    ) : col.ordenable && alOrdenar ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => alOrdenar(col.id)}
+                                            className={cn(
+                                                'inline-flex items-center gap-1 uppercase transition-colors hover:text-tinta',
+                                                orden?.por === col.id && 'text-tinta'
+                                            )}
+                                        >
+                                            {col.titulo}
+                                            <FlechaDeOrden columna={col.id} orden={orden} />
+                                        </button>
+                                    ) : (
+                                        col.titulo
+                                    )}
                                 </th>
                             ))}
                         </tr>
@@ -167,7 +224,39 @@ export function TablaAdaptable<T>({
                 </table>
             </div>
 
-            {/* ══ SI NO CABE: una tarjeta por fila, con TODOS los datos ══════ */}
+            {/* ══ SI NO CABE: una tarjeta por fila, con TODOS los datos ══════
+                Y antes, cómo ordenarlas: en una tarjeta no hay cabecera que
+                pulsar, así que ordenar se quedaba sin sitio. Se envuelven las
+                fichas (`flex-wrap`) en vez de ponerlas en un carril: una fila
+                que se arrastra de lado es justo lo que no queremos. */}
+            {ordenables.length > 0 && alOrdenar && (
+                <div className="mb-3 flex flex-wrap items-center gap-2 @2xl:hidden">
+                    <span className="text-etiqueta font-medium uppercase tracking-wide text-tinta-tenue">
+                        Ordenar por
+                    </span>
+                    {ordenables.map((col) => {
+                        const activa = orden?.por === col.id;
+                        return (
+                            <button
+                                key={col.id}
+                                type="button"
+                                onClick={() => alOrdenar(col.id)}
+                                aria-pressed={activa}
+                                className={cn(
+                                    'inline-flex min-h-[44px] items-center gap-1 rounded-pastilla border px-3 text-etiqueta font-semibold transition-colors',
+                                    activa
+                                        ? 'border-indigo bg-indigo text-indigo-encima'
+                                        : 'border-linea bg-tarjeta text-tinta-suave'
+                                )}
+                            >
+                                {col.tituloCorto ?? col.titulo}
+                                <FlechaDeOrden columna={col.id} orden={orden} />
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+
             <ul className="flex flex-col gap-2.5 @2xl:hidden">
                 {datos.map((fila, i) => (
                     <li key={clave(fila, i)}>
@@ -223,6 +312,16 @@ export function TablaAdaptable<T>({
                 ))}
             </ul>
         </div>
+    );
+}
+
+/** La flecha que dice por dónde va el orden. Sin color, para no gritar. */
+function FlechaDeOrden({ columna, orden }: { columna: string; orden?: OrdenDeTabla | null }) {
+    if (orden?.por !== columna) return <ArrowUpDown className="h-3.5 w-3.5 opacity-40" aria-hidden />;
+    return orden.hacia === 'asc' ? (
+        <ArrowUp className="h-3.5 w-3.5" aria-hidden />
+    ) : (
+        <ArrowDown className="h-3.5 w-3.5" aria-hidden />
     );
 }
 

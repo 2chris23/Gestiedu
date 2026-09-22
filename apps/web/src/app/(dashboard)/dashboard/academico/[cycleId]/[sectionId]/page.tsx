@@ -5,10 +5,10 @@ import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { conseguirCredencial } from '@/lib/credencial-en-memoria';
 import {
-    ChevronLeft, MoreVertical, Calendar, Clock,
+    ChevronLeft, Calendar, Clock,
     BookOpen, Users, GraduationCap, Bell, Search,
     Filter, UserPlus, Trash2,
-    ArrowUpDown, ArrowUp, ArrowDown, X, CheckCircle2
+    CheckCircle2
 } from 'lucide-react';
 import Link from 'next/link';
 import { useStudents, useAvailableStudents, useAssignStudent } from '@/hooks/useStudents';
@@ -35,6 +35,7 @@ import SectionObservationsTab from '@/components/classroom/SectionObservationsTa
 import StudentObservationsModal from '@/components/observations/StudentObservationsModal';
 import { useRouter } from 'next/navigation';
 import UserAvatar from '@/components/ui/UserAvatar';
+import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
 
 // Params refactored: year -> cycleId, slug -> sectionId
 export default function SectionPage({ params }: { params: Promise<{ cycleId: string, sectionId: string }> }) {
@@ -70,11 +71,8 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     const [searchTerm, setSearchTerm] = useState('');
     const [sortColumn, setSortColumn] = useState<string | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
     const [removeModalOpen, setRemoveModalOpen] = useState(false);
     const [studentToRemove, setStudentToRemove] = useState<{ id: string; name: string } | null>(null);
-    const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
-    const buttonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
 
     // Subject assignment state
     const [isAssignSubjectModalOpen, setIsAssignSubjectModalOpen] = useState(false);
@@ -192,24 +190,6 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
         }
     };
 
-    const SortIcon = ({ column }: { column: string }) => {
-        if (sortColumn !== column) return <ArrowUpDown className="h-4 w-4 text-gray-400" />;
-        return sortDirection === 'asc' ? <ArrowUp className="h-4 w-4 text-indigo-600" /> : <ArrowDown className="h-4 w-4 text-indigo-600" />;
-    };
-
-    useEffect(() => {
-        if (openMenuId && buttonRefs.current[openMenuId]) {
-            const button = buttonRefs.current[openMenuId];
-            const rect = button!.getBoundingClientRect();
-            setMenuPosition({
-                top: rect.bottom + window.scrollY + 8,
-                left: rect.right + window.scrollX - 224
-            });
-        } else {
-            setMenuPosition(null);
-        }
-    }, [openMenuId]);
-
     // Load subject statistics when Materias tab is active
     // Load subjects when switching to materias tab
     useEffect(() => {
@@ -222,18 +202,6 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
         refetchSubjects();
         toast.success('Materias asignadas exitosamente');
     };
-
-    useEffect(() => {
-        const handleClickOutside = () => {
-            if (openMenuId) setOpenMenuId(null);
-        };
-        if (openMenuId) {
-            document.addEventListener('click', handleClickOutside);
-        }
-        return () => {
-            document.removeEventListener('click', handleClickOutside);
-        };
-    }, [openMenuId]);
 
     const handleOpenAddModal = () => {
         setIsAddStudentModalOpen(true);
@@ -444,7 +412,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
 
             <main>
                 <div className="border-b border-gray-200 mb-6">
-                    <nav className="-mb-px flex space-x-8 overflow-x-auto">
+                    <nav className="-mb-px flex flex-wrap gap-x-6">
                         {[
                             { id: 'estudiantes', label: 'Estudiantes', icon: Users },
                             { id: 'materias', label: 'Materias', icon: BookOpen },
@@ -493,171 +461,185 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                             </div>
                         </div>
 
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-gray-50">
-                                    <tr>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('nombre')}>
-                                            <div className="flex items-center gap-2">Perfil <SortIcon column="nombre" /></div>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('cedula')}>
-                                            <div className="flex items-center gap-2">ID / Cédula <SortIcon column="cedula" /></div>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('riesgo')}>
-                                            <div className="flex items-center gap-2">Riesgo Académico <SortIcon column="riesgo" /></div>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('promedio')}>
-                                            <div className="flex items-center gap-2">Promedio <SortIcon column="promedio" /></div>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('asistencia')}>
-                                            <div className="flex items-center gap-2">Asistencia <SortIcon column="asistencia" /></div>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('observaciones')}>
-                                            <div className="flex items-center gap-2">Observaciones <SortIcon column="observaciones" /></div>
-                                        </th>
-                                        <th scope="col" className="relative px-6 py-3"><span className="sr-only">Acciones</span></th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
-                                    {isLoading ? (
-                                        <tr><td colSpan={7} className="px-6 py-4 text-center text-gray-500">Cargando estudiantes...</td></tr>
-                                    ) : sortedStudents.length === 0 ? (
-                                        <tr><td colSpan={7} className="px-6 py-4 text-center text-gray-500">{searchTerm ? 'No se encontraron estudiantes.' : 'No hay estudiantes inscritos.'}</td></tr>
-                                    ) : (
-                                        sortedStudents.map((student: SectionStudent) => (
-                                            <tr
-                                                key={student.id}
-                                                onClick={() => router.push(`/dashboard/usuarios/${student.id}`)}
-                                                className="hover:bg-indigo-50/40 cursor-pointer transition-colors group"
+                        {/*
+                            LA LISTA DE ALUMNOS, SIN ARRASTRAR
+
+                            Eran siete columnas con `whitespace-nowrap` dentro
+                            de un `overflow-x-auto`: 785 px de tabla en una
+                            pantalla de 390. El profesor tenía que arrastrar de
+                            lado, y al llegar a la nota ya no sabía de qué
+                            alumno era. Ordenar tampoco se podía: se ordenaba
+                            pulsando la cabecera, y en el teléfono la cabecera
+                            estaba fuera de la pantalla.
+
+                            Ahora cada alumno es una tarjeta con TODO lo suyo,
+                            la cédula debajo del nombre, y las fichas de
+                            «Ordenar por» encima. En pantalla ancha sigue
+                            siendo la misma tabla de siempre.
+                        */}
+                        <div className="p-4 sm:p-5">
+                            <TablaAdaptable<SectionStudent>
+                                datos={sortedStudents}
+                                cargando={isLoading}
+                                clave={(a) => a.id}
+                                alPulsar={(a) => router.push(`/dashboard/usuarios/${a.id}`)}
+                                orden={sortColumn ? { por: sortColumn, hacia: sortDirection } : null}
+                                alOrdenar={handleSort}
+                                vacio={
+                                    <p className="text-cuerpo text-tinta-suave">
+                                        {searchTerm ? 'No se encontraron estudiantes.' : 'No hay estudiantes inscritos.'}
+                                    </p>
+                                }
+                                columnas={[
+                                    {
+                                        id: 'nombre',
+                                        titulo: 'Perfil',
+                                        tituloCorto: 'Nombre',
+                                        principal: true,
+                                        ordenable: true,
+                                        celda: (a) => (
+                                            <div className="flex items-center gap-3">
+                                                <UserAvatar
+                                                    name={`${a.firstName} ${a.lastName}`}
+                                                    src={(a as any).avatar}
+                                                    className="h-10 w-10 shrink-0"
+                                                    initialsClassName="text-sm"
+                                                />
+                                                <div className="min-w-0">
+                                                    <p className="truncate font-medium text-gray-900">
+                                                        {a.firstName} {a.lastName}
+                                                    </p>
+                                                    {/* La cédula, debajo del nombre: en la tarjeta
+                                                        ahorra una línea entera. En la tabla ancha
+                                                        tiene su propia columna. */}
+                                                    <p className="truncate font-mono text-xs text-gray-500 @2xl:hidden">
+                                                        {a.studentCode || a.id}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ),
+                                    },
+                                    {
+                                        id: 'cedula',
+                                        titulo: 'ID / Cédula',
+                                        ordenable: true,
+                                        soloAncha: true,
+                                        celda: (a) => (
+                                            <span className="font-mono text-sm text-gray-500">{a.studentCode || a.id}</span>
+                                        ),
+                                    },
+                                    {
+                                        id: 'riesgo',
+                                        titulo: 'Riesgo',
+                                        ordenable: true,
+                                        celda: (a) => {
+                                            const failedCount = (a as any).failedSubjectsCount || 0;
+                                            if (failedCount > 0) {
+                                                return (
+                                                    <span
+                                                        className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700"
+                                                        title={`${failedCount} ${failedCount === 1 ? 'materia con calificación menor a' : 'materias con calificación menor a'} ${passingGrade} pts`}
+                                                    >
+                                                        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                                                        Riesgo Alto ({failedCount} &lt; 10)
+                                                    </span>
+                                                );
+                                            }
+                                            const risk = getAcademicRisk(a.average, passingGrade);
+                                            return (
+                                                <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${risk.className}`}>
+                                                    {risk.label}
+                                                </span>
+                                            );
+                                        },
+                                    },
+                                    {
+                                        id: 'promedio',
+                                        titulo: 'Promedio',
+                                        ordenable: true,
+                                        alinear: 'derecha',
+                                        celda: (a) =>
+                                            a.average ? (
+                                                <span className="inline-flex rounded bg-indigo-50 px-2 py-0.5 text-sm font-semibold text-indigo-700">
+                                                    {a.average.toFixed(1)}
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex rounded bg-gray-100 px-2 py-0.5 text-sm font-medium text-gray-500">
+                                                    Sin calificar
+                                                </span>
+                                            ),
+                                    },
+                                    {
+                                        id: 'asistencia',
+                                        titulo: 'Asistencia',
+                                        ordenable: true,
+                                        alinear: 'derecha',
+                                        celda: (a) => (
+                                            <span className="inline-flex items-center gap-2">
+                                                <span className="text-sm text-gray-900">
+                                                    {a.attendancePercentage != null ? `${a.attendancePercentage}%` : '0%'}
+                                                </span>
+                                                <span className="h-1.5 w-16 rounded-full bg-gray-200">
+                                                    <span
+                                                        className={`block h-1.5 rounded-full ${(a.attendancePercentage || 0) >= 80 ? 'bg-green-500' : (a.attendancePercentage || 0) >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                                                        style={{ width: `${Math.min(a.attendancePercentage || 0, 100)}%` }}
+                                                    />
+                                                </span>
+                                            </span>
+                                        ),
+                                    },
+                                    {
+                                        id: 'observaciones',
+                                        titulo: 'Observaciones',
+                                        tituloCorto: 'Obs.',
+                                        ordenable: true,
+                                        celda: (a) => (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSelectedStudentForObs(a);
+                                                }}
+                                                className={
+                                                    ((a as any).observationsCount || 0) > 0
+                                                        ? 'inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-800'
+                                                        : 'inline-flex min-h-[44px] items-center px-1 text-xs italic text-gray-500'
+                                                }
                                             >
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="flex items-center">
-                                                        <UserAvatar
-                                                            name={`${student.firstName} ${student.lastName}`}
-                                                            src={(student as any).avatar}
-                                                            className="h-10 w-10"
-                                                            initialsClassName="text-sm"
-                                                        />
-                                                        <div className="ml-4">
-                                                            <div className="text-sm font-medium text-gray-900 group-hover:text-indigo-600 transition-colors flex items-center gap-1.5">
-                                                                {student.firstName} {student.lastName}
-                                                                <span className="text-[11px] text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity font-normal">↗</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{student.studentCode || student.id}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    {(() => {
-                                                        const failedCount = (student as any).failedSubjectsCount || 0;
-                                                        if (failedCount > 0) {
-                                                            return (
-                                                                <span
-                                                                    className="px-2.5 py-0.5 inline-flex items-center gap-1.5 text-xs leading-5 font-semibold rounded-full bg-rose-50 text-rose-700 border border-rose-200"
-                                                                    title={`${failedCount} ${failedCount === 1 ? 'materia con calificación menor a' : 'materias con calificación menor a'} ${passingGrade} pts`}
-                                                                >
-                                                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                                                                    <span>Riesgo Alto</span>
-                                                                    <span className="text-[11px] font-medium text-rose-600">
-                                                                        ({failedCount} {failedCount === 1 ? 'materia < 10' : 'materias < 10'})
-                                                                    </span>
-                                                                </span>
-                                                            );
-                                                        }
-                                                        const risk = getAcademicRisk(student.average, passingGrade);
-                                                        return (
-                                                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${risk.className}`}>
-                                                                {risk.label}
-                                                            </span>
-                                                        );
-                                                    })()}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    {student.average ? (
-                                                        <span className="px-2 py-0.5 inline-flex text-sm font-semibold rounded bg-indigo-50 text-indigo-700">{student.average.toFixed(1)}</span>
-                                                    ) : (
-                                                        <span className="px-2 py-0.5 inline-flex text-sm font-medium rounded bg-gray-100 text-gray-500">Sin calificar</span>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="flex items-center">
-                                                        <span className="text-sm text-gray-900 mr-2">{student.attendancePercentage != null ? `${student.attendancePercentage}%` : '0%'}</span>
-                                                        <div className="w-16 h-1.5 bg-gray-200 rounded-full">
-                                                            <div className={`h-1.5 rounded-full ${(student.attendancePercentage || 0) >= 80 ? 'bg-green-500' : (student.attendancePercentage || 0) >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${Math.min(student.attendancePercentage || 0, 100)}%` }}></div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm" onClick={(e) => e.stopPropagation()}>
-                                                    {((student as any).observationsCount || 0) > 0 ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setSelectedStudentForObs(student);
-                                                            }}
-                                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 transition-colors shadow-2xs cursor-pointer"
-                                                        >
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                                            {(student as any).observationsCount} {(student as any).observationsCount === 1 ? 'obs' : 'obs'}
-                                                        </button>
-                                                    ) : (
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setSelectedStudentForObs(student);
-                                                            }}
-                                                            className="text-gray-400 hover:text-indigo-600 transition-colors italic text-xs cursor-pointer"
-                                                        >
-                                                            Sin observaciones
-                                                        </button>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        {openMenuId === student.id ? (
-                                                            <>
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setStudentToRemove({ id: student.id, name: `${student.firstName} ${student.lastName}` });
-                                                                        setRemoveModalOpen(true);
-                                                                        setOpenMenuId(null);
-                                                                    }}
-                                                                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 animate-in fade-in zoom-in-95"
-                                                                    title="Eliminar estudiante"
-                                                                >
-                                                                    <Trash2 className="w-4 h-4" />
-                                                                </button>
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setOpenMenuId(null);
-                                                                    }}
-                                                                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200 animate-in fade-in zoom-in-95"
-                                                                    title="Cancelar"
-                                                                >
-                                                                    <X className="w-4 h-4" />
-                                                                </button>
-                                                            </>
-                                                        ) : (
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setOpenMenuId(student.id);
-                                                                }}
-                                                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200"
-                                                            >
-                                                                <MoreVertical className="w-5 h-5" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
+                                                {((a as any).observationsCount || 0) > 0 ? (
+                                                    <>
+                                                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                                        {(a as any).observationsCount} obs
+                                                    </>
+                                                ) : (
+                                                    'Sin observaciones'
+                                                )}
+                                            </button>
+                                        ),
+                                    },
+                                    {
+                                        id: 'acciones',
+                                        titulo: 'Acciones',
+                                        acciones: true,
+                                        alinear: 'derecha',
+                                        celda: (a) => (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setStudentToRemove({ id: a.id, name: `${a.firstName} ${a.lastName}` });
+                                                    setRemoveModalOpen(true);
+                                                }}
+                                                title="Sacar de la sección"
+                                                className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-red-600 transition-colors hover:bg-red-50"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                                <span className="sr-only">Sacar de la sección</span>
+                                            </button>
+                                        ),
+                                    },
+                                ]}
+                            />
                         </div>
 
 
