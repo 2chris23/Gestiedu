@@ -20,8 +20,8 @@
       "showSpinner": true
     },
     "StatusBar": {
-      "style": "DARK",
-      "backgroundColor": "#2563EB"
+      "style": "LIGHT",
+      "backgroundColor": "#FFFFFF"
     },
     "Keyboard": {
       "resize": "body"

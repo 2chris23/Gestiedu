@@ -120,11 +120,15 @@ async function dibujarIconos(fuente, color) {
         `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">${color}</color>\n</resources>\n`
     );
 
-    // El mismo color para la franja del reloj: ahí no llega la web, llega el
-    // fondo de la ventana (ver `dejarSitioParaElReloj` en MainActivity.java).
+    // Dos colores, y distintos a propósito: la franja del reloj va del color de
+    // la cabecera de la app (blanca) y el del liceo se guarda para la pantalla
+    // de arranque. Ver `dejarSitioParaElReloj` en MainActivity.java.
     await writeFile(
         join(ANDROID, 'res', 'values', 'colors.xml'),
-        `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="color_del_liceo">${color}</color>\n</resources>\n`
+        `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n` +
+            `    <color name="color_de_la_barra_de_estado">#FFFFFF</color>\n` +
+            `    <color name="color_del_liceo">${color}</color>\n` +
+            `</resources>\n`
     );
 }
 
@@ -178,7 +182,11 @@ async function main() {
     const enClaro = dePruebas && esDeCasa;
     config.server = { url, cleartext: enClaro, androidScheme: enClaro ? 'http' : 'https' };
     config.plugins.SplashScreen.backgroundColor = color;
-    config.plugins.StatusBar.backgroundColor = color;
+    // La barra de estado NO se pinta del color del liceo: va del color de la
+    // cabecera de la app, que es blanca, como hacen Facebook o WhatsApp. Una
+    // raya de otro color encima de una cabecera blanca se ve como un borde
+    // pegado, no como parte de la aplicación. El color del liceo identifica
+    // donde toca: el icono y la pantalla de arranque.
     await writeFile(join(RAIZ, 'capacitor.config.json'), JSON.stringify(config, null, 2) + '\n');
 
     // 2. El nombre que sale debajo del icono y el paquete.

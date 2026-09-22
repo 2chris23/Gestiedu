@@ -120,8 +120,22 @@ export async function GET(request: NextRequest) {
         scope: '/',
         display: 'standalone',
         orientation: 'portrait',
-        background_color: '#f5f6f9',
-        theme_color: principal,
+        // El arranque sí es del liceo: es su momento de identificar, y es lo
+        // mismo que enseña la APK (`SplashScreen.backgroundColor`).
+        background_color: principal,
+        /**
+         * LA BARRA DE ESTADO, DEL COLOR DE LA APP
+         *
+         * `theme_color` es lo que pinta la franja del reloj cuando la web está
+         * instalada. Iba del color del liceo, y encima de una cabecera blanca
+         * eso se ve como una raya de otro color pegada arriba, no como parte de
+         * la aplicación. Las apps que la gente usa a diario —Facebook,
+         * WhatsApp— pintan esa franja del mismo blanco de su cabecera.
+         *
+         * El color del liceo identifica donde toca: el icono y el arranque. La
+         * APK hace lo mismo (`color_de_la_barra_de_estado`, colors.xml).
+         */
+        theme_color: '#ffffff',
         categories: ['education'],
         icons: [
             ...suyo,

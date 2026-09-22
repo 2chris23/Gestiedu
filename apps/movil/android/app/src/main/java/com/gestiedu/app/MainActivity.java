@@ -11,7 +11,9 @@ import android.widget.Toast;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -47,8 +49,13 @@ import com.getcapacitor.BridgeActivity;
  * Y no vale arreglarlo solo con CSS: en Android `env(safe-area-inset-top)` NO
  * mide la barra de estado, mide la MUESCA de la pantalla. En un teléfono sin
  * muesca vale cero aunque el reloj esté tapando media cabecera. Por eso el
- * hueco se reserva aquí, preguntándole al sistema cuánto ocupa, y se pinta del
- * color del liceo.
+ * hueco se reserva aquí, preguntándole al sistema cuánto ocupa.
+ *
+ * Y se pinta **del color de la app**, no de negro. Esa franja sin color es lo
+ * que delata a una aplicación envuelta: se ve una banda negra pegada a una
+ * cabecera blanca. Facebook y WhatsApp pintan ahí el blanco de su cabecera y
+ * ponen el reloj en oscuro encima, y por eso parecen una sola pieza. Lo segundo
+ * es tan importante como lo primero: un reloj blanco sobre blanco desaparece.
  */
 public class MainActivity extends BridgeActivity {
 
@@ -106,7 +113,13 @@ public class MainActivity extends BridgeActivity {
         final View contenido = findViewById(android.R.id.content);
         if (contenido == null) return;
 
-        contenido.setBackgroundColor(getResources().getColor(R.color.color_del_liceo, getTheme()));
+        contenido.setBackgroundColor(getResources().getColor(R.color.color_de_la_barra_de_estado, getTheme()));
+
+        // El reloj, el wifi y la batería, en oscuro: la franja es clara y con
+        // los iconos claros de fábrica no se vería absolutamente nada.
+        WindowInsetsControllerCompat barras =
+            WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        barras.setAppearanceLightStatusBars(true);
 
         ViewCompat.setOnApplyWindowInsetsListener(contenido, (vista, insets) -> {
             Insets sistema = insets.getInsets(
