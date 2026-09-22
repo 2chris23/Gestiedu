@@ -322,7 +322,9 @@ export default function SubjectScheduleSection({
             {/* VISTA DE CLASES SECUENCIALES (2 ANTERIORES + HOY + SIGUIENTES HASTA 10) */}
             <div
                 ref={carouselRef}
-                className="flex w-full gap-3 overflow-x-auto pb-2 pt-0.5 snap-x snap-mandatory scroll-smooth no-scrollbar"
+                /* De pie, en vertical: cinco tarjetas de 190 px no caben en 390,
+                   y arrastrar de lado para ver la clase de las 10 es un fastidio. */
+                className="flex w-full flex-col gap-3 pb-2 pt-0.5 min-[700px]:flex-row min-[700px]:snap-x min-[700px]:snap-mandatory min-[700px]:overflow-x-auto min-[700px]:scroll-smooth min-[700px]:no-scrollbar"
                 style={{
                     scrollbarWidth: 'none',
                     msOverflowStyle: 'none',
@@ -362,7 +364,7 @@ export default function SubjectScheduleSection({
                                           }
                                         : undefined
                                 }
-                                className={`snap-start flex-shrink-0 w-[calc((100%-48px)/5)] min-w-[190px] min-h-[160px] p-3.5 rounded-2xl border-2 transition-all flex flex-col justify-between ${
+                                className={`w-full min-h-[96px] min-[700px]:snap-start min-[700px]:flex-shrink-0 min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[190px] min-[700px]:min-h-[160px] p-3.5 rounded-2xl border-2 transition-all flex flex-col justify-between ${
                                     isClickable ? 'cursor-pointer hover:ring-2 hover:ring-indigo-400 hover:shadow-xs' : ''
                                 } ${
                                     isCurrent

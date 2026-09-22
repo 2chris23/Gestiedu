@@ -35,6 +35,8 @@ interface Props {
 }
 
 // Días de la semana laborables
+import HorarioPorDias from '@/components/schedule/HorarioPorDias';
+
 const WORKING_DAYS = [
     { key: 'Lun', label: 'Lunes', fullLabel: 'lunes' },
     { key: 'Mar', label: 'Martes', fullLabel: 'martes' },
@@ -426,9 +428,11 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
 
                     {/* Acciones y Toggle */}
                     <div className="flex items-center gap-2">
-                        {/* Controles de avance por bloque (solo en vista Hoy si hay más de 5 bloques) */}
+                        {/* Controles de avance por bloque (solo en vista Hoy si hay más de 5 bloques).
+                            De pie no se pintan: ahí las horas van una debajo de
+                            otra y no hay carril que mover. */}
                         {viewMode === 'day' && timeline.length > 5 && (
-                            <div className="flex items-center gap-1 bg-gray-50 p-0.5 rounded-lg border border-gray-200/60">
+                            <div className="hidden items-center gap-1 rounded-lg border border-gray-200/60 bg-gray-50 p-0.5 min-[700px]:flex">
                                 <button
                                     type="button"
                                     onClick={() => scrollByBlock('prev')}
@@ -521,7 +525,17 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                 {viewMode === 'day' && (
                     <div
                         ref={carouselRef}
-                        className={`flex w-full gap-3 overflow-x-auto pb-2 pt-0.5 snap-x snap-mandatory no-scrollbar select-none ${
+                        /*
+                            EN UN TELÉFONO, EN VERTICAL
+
+                            Las cinco horas del día iban en un carril que se
+                            arrastra de lado: 1168 px en una pantalla de 390. En
+                            un ordenador se ven las cinco de un vistazo y está
+                            bien; de pie, una debajo de otra se baja con el
+                            dedo, que es el gesto que ya se está haciendo para
+                            leer la pantalla.
+                        */
+                        className={`flex w-full flex-col gap-3 pb-2 pt-0.5 select-none min-[700px]:flex-row min-[700px]:snap-x min-[700px]:snap-mandatory min-[700px]:overflow-x-auto min-[700px]:no-scrollbar ${
                             arrastrando ? 'cursor-grabbing scroll-auto' : 'cursor-grab scroll-smooth'
                         }`}
                         style={{
@@ -542,7 +556,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                     return (
                                         <div
                                             key={index}
-                                            className={`snap-start flex-shrink-0 w-[calc((100%-48px)/5)] min-w-[170px] min-h-[145px] p-3 rounded-2xl border transition-all flex flex-col justify-center items-center text-center ${
+                                            className={`w-full min-h-[92px] min-[700px]:snap-start min-[700px]:flex-shrink-0 min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[170px] min-[700px]:min-h-[145px] p-3 rounded-2xl border transition-all flex flex-col justify-center items-center text-center ${
                                                 status === 'current'
                                                     ? 'bg-amber-50 border-amber-300 shadow-xs ring-2 ring-amber-200'
                                                     : status === 'past'
@@ -592,7 +606,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                                   }
                                                 : undefined
                                         }
-                                        className={`snap-start flex-shrink-0 w-[calc((100%-48px)/5)] min-w-[170px] min-h-[145px] p-3 rounded-2xl border-2 transition-all flex flex-col justify-between ${
+                                        className={`w-full min-h-[92px] min-[700px]:snap-start min-[700px]:flex-shrink-0 min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[170px] min-[700px]:min-h-[145px] p-3 rounded-2xl border-2 transition-all flex flex-col justify-between ${
                                             isClickable ? 'cursor-pointer hover:ring-2 hover:ring-indigo-400 hover:shadow-xs' : ''
                                         } ${
                                             !classItem?.color
@@ -703,7 +717,48 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                 {/* 2. VISTA DE SEMANA (TABLA MATRIZ COMPACTA, ELEGANTE Y PRO)    */}
                 {/* ───────────────────────────────────────────────────────────── */}
                 {viewMode === 'week' && (
-                    <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-2xs">
+                    <>
+                        {/*
+                            LA SEMANA, DE PIE
+
+                            La rejilla de la semana son cinco días por siete
+                            horas: 700 px largos. De pie había que arrastrarla, y
+                            al llegar al viernes ya no se sabía qué hora se
+                            miraba. Aquí va un día cada vez, en vertical, con las
+                            fichas de los días arriba; la rejilla entera sale en
+                            cuanto hay ancho, y eso incluye el teléfono tumbado.
+                        */}
+                        <div className="min-[700px]:hidden">
+                            <HorarioPorDias
+                                dias={WORKING_DAYS.map((d) => ({ id: d.key, label: d.label }))}
+                                periodos={dynamicPeriods.map((p) => ({
+                                    id: `${p.startTime}-${p.endTime}`,
+                                    label: p.label,
+                                    startTime: p.startTime,
+                                    endTime: p.endTime,
+                                    type: p.type,
+                                }))}
+                                cargando={isLoading}
+                                motivoDelGiro="Para ver la semana entera"
+                                loDeLaHora={(dia, periodo) => {
+                                    const clase = schedule.find(
+                                        (c) =>
+                                            c.day === dia.id &&
+                                            (c.startTime === periodo.startTime ||
+                                                (c.startTime <= periodo.startTime && c.endTime > periodo.startTime))
+                                    );
+                                    if (!clase) return null;
+                                    return {
+                                        titulo: clase.subject,
+                                        subtitulo: clase.detail
+                                            ? clase.detail.replace(/^Prof\.\s*/i, '').trim()
+                                            : undefined,
+                                    };
+                                }}
+                            />
+                        </div>
+
+                        <div className="hidden overflow-x-auto rounded-xl border border-gray-200 shadow-2xs min-[700px]:block">
                         <table className="w-full border-collapse text-center text-xs">
                             {/* Cabecera Estilizada */}
                             <thead>
@@ -836,6 +891,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             </tbody>
                         </table>
                     </div>
+                    </>
                 )}
             </div>
 

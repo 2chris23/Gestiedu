@@ -15,6 +15,8 @@ interface ClassroomScheduleEditorProps {
     shift?: 'MANANA' | 'TARDE' | 'INTEGRAL';
 }
 
+import HorarioPorDias from '@/components/schedule/HorarioPorDias';
+
 const DAYS = [
     { id: 1, label: 'Lunes' },
     { id: 2, label: 'Martes' },
@@ -369,8 +371,35 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
                     </div>
                 </div>
 
+                {/*
+                    DE PIE, UN DÍA CADA VEZ
+
+                    La rejilla necesita 700 px —cinco días por siete horas— y un
+                    teléfono de pie tiene 390: había que arrastrarla de lado, y
+                    al llegar al viernes ya no se sabía qué hora se miraba. El
+                    corte se hace por ancho y no por «móvil»: la rejilla sale en
+                    cuanto cabe, y eso incluye el mismo teléfono tumbado.
+                */}
+                <div className="flex-1 min-[700px]:hidden">
+                    <HorarioPorDias
+                        dias={DAYS}
+                        periodos={dynamicPeriods}
+                        cargando={isLoading}
+                        motivoDelGiro="Para mover materias de hueco"
+                        loDeLaHora={(dia, periodo) => {
+                            const bloque = blocks.find((b) => b.cellId === `${dia.id}-${periodo.startTime}`);
+                            if (!bloque) return null;
+                            return {
+                                titulo: bloque.subjectName,
+                                subtitulo: bloque.teacherName,
+                                color: bloque.color || undefined,
+                            };
+                        }}
+                    />
+                </div>
+
                 {/* Grid del Horario */}
-                <div className="flex-1 overflow-x-auto">
+                <div className="hidden flex-1 overflow-x-auto min-[700px]:block">
                     <div className="min-w-[700px] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                         {/* Selector de Turno */}
                         <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
