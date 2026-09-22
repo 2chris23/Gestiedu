@@ -415,6 +415,35 @@
 }
 
 @layer components {
+  /* ── LO QUE SE COME EL TELÉFONO ──────────────────────────────────────────
+     Arriba, el reloj y la batería. Abajo, la barra de gestos. Un teléfono con
+     muesca se los queda, y lo que se pinte ahí NO se ve y NO se puede pulsar:
+     la cabecera quedaba partida por el reloj y «Cerrar Sesión» debajo de la
+     barra de gestos, tan cerca que el dedo pulsaba la barra.
+
+     `env()` no se escribe suelto por la app, sino a través de estas dos
+     variables, por un motivo concreto: en un ordenador `env()` vale 0 —no hay
+     muesca— y entonces esto no se puede MEDIR, ni antes ni después de
+     arreglarlo. La auditoría del teléfono (`npm run movil`) les pone el valor
+     de un Android de verdad y comprueba que no quede nada debajo. */
+  :root {
+    --zona-segura-arriba: env(safe-area-inset-top, 0px);
+    --zona-segura-abajo: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* El hueco de arriba, para lo que se pega al borde superior. */
+  .zona-segura-arriba {
+    padding-top: var(--zona-segura-arriba);
+  }
+  /* El hueco de abajo. */
+  .zona-segura-abajo {
+    padding-bottom: var(--zona-segura-abajo);
+  }
+  /* Una pantalla entera de teléfono, descontando lo que se come el sistema. */
+  .alto-util {
+    min-height: calc(100dvh - var(--zona-segura-arriba) - var(--zona-segura-abajo));
+  }
+
   /* ── LO QUE SE ARRASTRA ──────────────────────────────────────────────────
      Carruseles: se lleva con el dedo, engancha en cada tarjeta, y la barra de
      desplazamiento no se ve. */

@@ -226,57 +226,97 @@ escritas en `CLAUDE.md`, que es donde no se pierden.
 
 ---
 
-## 3. El plan de evaluación en un teléfono: tres formas
+## 3. El plan de evaluación en un teléfono
 
-El plan real es una hoja apaisada: 18-24 semanas por diez columnas. Eso en 390
-px no se «adapta»; hay que contarlo de otra manera. **En pantalla ancha, en
-horizontal y en el Word que se entrega, la tabla se queda exactamente como
-está** — un plan tiene que parecer un plan. Lo que sigue es solo para el
-teléfono en vertical.
+### Lo que el plan es de verdad
 
-### A. Una semana por pantalla
+Antes de dibujar nada hay que mirar cómo está hecho
+(`components/evaluation/EvaluationPlanSection.tsx`), porque tiene dos cosas que
+una tabla estrecha no sabe contar:
 
-Arriba, una tira de fichas: `S.1 S.2 S.3 …`, marcadas según estén llenas,
-vacías o a medias. Debajo, la semana elegida: su título y sus fechas
-(`S.4 · 14 – 20 sep`) y los diez campos uno debajo de otro, con su nombre
-delante, como un formulario corto. Se baja con el dedo y se escribe. Al final
-de la semana, «Siguiente semana →».
+1. **Las columnas las pone el profesor.** Se añaden, se borran y **se les
+   cambia el nombre** (`addColumn`, `removeColumn`, `renameColumn`), y la lista
+   se guarda con el plan (`metadata.customColumns`). Las diez de
+   `planColumns.ts` son el punto de partida del MPPE, no una ley.
+2. **Una celda abarca varias semanas.** `colSpan[columna]` dice cuántas semanas
+   se come ese trozo, y es **por columna**: «El agua en mi comunidad» puede
+   cubrir las semanas 1 a 4 mientras la actividad cambia cada semana.
 
-- **A favor:** es la única en la que el profesor *nunca* arrastra de lado. Es
-  literalmente «solo scroll hacia abajo». Escribir en un campo ancho y alto es
-  cómodo; en una celda de 70 px, no.
-- **En contra:** no se ven dos semanas a la vez mientras se escribe.
+O sea: el plan no es una rejilla de semanas por campos. Es **una sucesión de
+bloques de trabajo en el tiempo**, cada uno con sus campos, y dentro de cada
+bloque las semanas con lo suyo. La rejilla es solo cómo se imprime en papel.
 
-### B. Acordeón de semanas
+Y de ahí salen dos fallos que hay que arreglar igual, se cambie o no el diseño:
 
-Las 18 semanas en una lista compacta: cada una una línea con su resumen (tema
-generador, ponderación, si está completa). Se toca una y se abre ahí mismo el
-formulario de A; se cierra y sigue la lista.
+- **En un teléfono no se pueden unir celdas.** El botón `↓` que las expande
+  vive en `ExpandHandle`, con `opacity-0 group-hover:opacity-100`
+  (L152). En una pantalla táctil **no hay puntero que se pose**: el botón no
+  existe. Y el texto de ayuda de la propia pantalla dice «pasa el cursor sobre
+  la celda» (L942).
+- **Al guardar se pierde qué columna estaba unida.** `weekRowsToDbRows` guarda
+  un solo `endWeekNumber` por fila —el mayor de todas las columnas— y
+  `dbRowsToWeekRows` lo devuelve **solo a las columnas marcadas `mergeable`**
+  (tema generador y tejido temático). Si el profesor une «Actividad» a lo largo
+  de tres semanas, al recargar la unión ha saltado a otra columna. En una
+  columna suya, añadida por él, se pierde entera.
 
-- **A favor:** se ve el lapso entero de un vistazo y se edita sin cambiar de
-  pantalla.
-- **En contra:** al abrir una, empuja todo lo de abajo; con 24 semanas la lista
-  es larga.
+### La propuesta: el plan como bloques, no como rejilla
 
-### C. Por columnas: rellenar de a un campo
+Solo en el teléfono y en vertical. En pantalla ancha, en horizontal y en el
+Word que se entrega, **la tabla se queda exactamente como está**.
 
-El profesor elige una columna —*Tema generador*— y la rellena para las 18
-semanas seguidas, en vertical. Luego pasa a *Actividad*, y así.
+```
+┌──────────────────────────────────┐
+│ PLAN · 1er momento · 18 semanas  │
+│ Puntos 16 / 20  ·  faltan 4   ▸  │   ← siempre a la vista
+├──────────────────────────────────┤
+│ ┃ S.1 – S.4 · 19 ago – 13 sep    │   ← el bloque, y lo que abarca
+│ ┃ El agua en mi comunidad        │     (tema generador)
+│ ┃ Tejido temático: ciclo del agua│     (campos del bloque)
+│ ┃            − 1 sem   + 1 sem   │   ← unir/separar, con el dedo
+│ ┃ ───────────────────────────────│
+│ ┃  S.1  Diagnóstico          —   │   ← las semanas de dentro,
+│ ┃  S.2  Maqueta por equipos 4pt  │     con lo que cambia cada una
+│ ┃  S.3  —                    —   │
+│ ┃  S.4  Exposición          4pt  │
+├──────────────────────────────────┤
+│   S.5 – S.8 · sin actividad   +  │   ← lo vacío no gasta pantalla
+├──────────────────────────────────┤
+│ ┃ S.9 – S.10 · 21 oct – 3 nov    │
+│ ┃ …                              │
+└──────────────────────────────────┘
+```
 
-- **A favor:** es como se rellena un plan de verdad: primero todos los temas,
-  después todas las actividades. Es la forma más rápida de llenarlo de cero, y
-  encaja con el botón de «Distribuir equitativamente» que ya existe.
-- **En contra:** para ver una semana completa hay que cambiar a la vista de
-  semana.
+- **Solo se baja con el dedo.** Ni una barra horizontal, en ninguna parte.
+- **Lo que abarca un bloque se ve y se toca**: es la cabecera de la tarjeta y
+  dos botones de 44 px, no un `↓` que aparece al pasar el cursor.
+- **El formulario se construye con las columnas que haya en ese plan**, con el
+  nombre que el profesor les haya puesto. Si añade «Recursos», aparece
+  «Recursos» en la ficha de cada semana. No hay una lista de campos escrita a
+  mano en la pantalla del teléfono.
+- **Cada campo dice si es del bloque o de la semana.** Eso es lo que hoy
+  significa `mergeable`, pero decidido por el profesor y guardado con su
+  columna, en vez de fijo en el código.
+- **Las semanas vacías se juntan en una línea.** Un lapso de 18 semanas recién
+  empezado son tres o cuatro tarjetas, no dieciocho pantallas.
+- **La cuenta de puntos, siempre arriba.** Hoy el total está al final de una
+  tabla que hay que arrastrar: se escribe el plan sin saber cuánto se lleva
+  repartido.
+- **«Campos del plan»**, una pantalla aparte: añadir, renombrar, ordenar y
+  borrar columnas, y marcar cuáles abarcan varias semanas. Lo mismo que hoy se
+  hace con los ➕ y ✕ de la cabecera de la tabla, pero alcanzable con un dedo.
 
-### Lo que recomiendo
+Y **rellenar por columna** como segundo modo, para llenar de cero: se elige un
+campo —*Tema generador*— y se escribe para todas las semanas seguidas, en
+vertical; luego el siguiente. Es como se llena un plan de verdad, y es lo que
+ya supone el botón «Distribuir equitativamente».
 
-**A como vista principal, y C como segundo modo («Rellenar por columna»).** La
-tira de fichas de arriba en A ya da la vista general que aporta B, sin su
-lista larga. Y con las dos, el profesor tiene lo que hace falta: llenar rápido
-de cero (C) y repasar o corregir una semana concreta (A).
+### Lo que hay que arreglar por debajo para que esto se sostenga
 
----
+1. Guardar **la unión por columna**, no una por fila
+   (`endWeekNumber` → un mapa columna → semanas, o una fila por bloque).
+2. Que la unión funcione **sin pasar el cursor**: botones de verdad, en la
+   tabla del ordenador también.
 
 ## 4. Orden y tamaño
 
