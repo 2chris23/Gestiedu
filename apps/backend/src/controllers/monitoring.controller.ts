@@ -5,6 +5,7 @@ import { alertService } from '../services/alert.service';
 // en la DB principal (DATABASE_URL), no en las tenant DBs. No contienen datos
 // de tenant. El singleton legacy es su único consumidor legítimo restante.
 import { prisma } from '../config/database';
+import { leerEstado, saludDeLosRespaldos } from '../services/respaldos-programados.service';
 
 export class MonitoringController {
     // Endpoint para obtener métricas de queries en tiempo real
@@ -91,10 +92,25 @@ export class MonitoringController {
                 status = 'degraded';
             }
 
+            // Los respaldos, desde el `estado.json` que deja el contenedor de
+            // respaldos. «atrasado» sale aunque nadie haya visto un error: es
+            // el caso de un contenedor que se paró sin decir nada.
+            const estadoDeRespaldos = leerEstado();
+            const respaldos = saludDeLosRespaldos(estadoDeRespaldos);
+            if (respaldos === 'fallo' || respaldos === 'atrasado') status = 'critical';
+
             const health = {
                 status,
                 timestamp: new Date().toISOString(),
                 uptime: process.uptime(),
+                respaldos: {
+                    salud: respaldos,
+                    ultimaVez: estadoDeRespaldos?.ultimaVez ?? null,
+                    ultimaVezBien: estadoDeRespaldos?.ultimaVezBien ?? null,
+                    liceos: estadoDeRespaldos?.liceos ?? null,
+                    guardados: estadoDeRespaldos?.guardados ?? null,
+                    copiaFuera: estadoDeRespaldos?.copiaFuera ?? null,
+                },
                 metrics: {
                     queries: {
                         total: metrics.totalQueries,

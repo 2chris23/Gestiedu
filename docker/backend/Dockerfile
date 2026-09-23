@@ -31,8 +31,9 @@ FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
-# psql/pg_dump para los respaldos y para esperar a PostgreSQL al arrancar
-RUN apk add --no-cache postgresql-client
+# psql/pg_dump para los respaldos y para esperar a PostgreSQL al arrancar;
+# tzdata para que la hora del respaldo nocturno sea la del país (TZ).
+RUN apk add --no-cache postgresql-client tzdata
 
 COPY apps/backend/package*.json ./
 RUN npm ci --omit=dev --legacy-peer-deps && npm cache clean --force
@@ -43,6 +44,20 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 # La CLI de Prisma se invoca con --schema=src/prisma/... (alta de liceos y migrator)
 COPY --from=builder /app/src/prisma ./src/prisma
 COPY --from=builder /app/src/generated ./src/generated
+
+# LA CLI DE PRISMA, DENTRO. Crear un liceo desde el panel y el migrador
+# ejecutan `npx prisma migrate deploy`, y la CLI es una dependencia de
+# desarrollo: sin esta copia, `npx` se la bajaba de internet en el momento —la
+# ÚLTIMA versión, no la del proyecto— o fallaba sin red. Crear un liceo en
+# producción no funcionaba.
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+RUN mkdir -p node_modules/.bin \
+    && ln -sf ../prisma/build/index.js node_modules/.bin/prisma \
+    # Las carpetas de los volúmenes, del usuario que corre la aplicación: un
+    # volumen nuevo hereda los permisos de la imagen, y si no, sería de root
+    # y ni los archivos subidos ni los respaldos se podrían escribir.
+    && mkdir -p /app/uploads /app/backups \
+    && chown node:node /app/uploads /app/backups
 
 # No ejecutar como root
 USER node

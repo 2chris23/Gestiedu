@@ -3,23 +3,32 @@ import multer from 'fastify-multer';
 import path from 'path';
 import fs from 'fs';
 
-// Crear directorio de uploads si no existe
 const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'institute');
 const faviconDir = path.join(uploadsDir, 'favicon');
 const logosDir = path.join(uploadsDir, 'logos');
 
-[uploadsDir, faviconDir, logosDir].forEach(dir => {
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-});
+/**
+ * La carpeta se crea cuando hace falta, no al cargar el archivo.
+ *
+ * Se creaba al arrancar, solo por importar este módulo (lo importa el
+ * controlador de institutos para `deleteOldFile`). En el contenedor de
+ * producción la aplicación corre sin permisos de root y `/app/public` no se
+ * puede crear: el backend se caía al arrancar, antes de atender a nadie.
+ */
+function asegurarCarpeta(dir: string): string {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    return dir;
+}
 
 // Configuración de almacenamiento
 const storage = multer.diskStorage({
     destination: ((req: FastifyRequest, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
         // Determinar carpeta según el campo
-        const dest = file.fieldname === 'favicon' ? faviconDir : logosDir;
-        cb(null, dest);
+        try {
+            cb(null, asegurarCarpeta(file.fieldname === 'favicon' ? faviconDir : logosDir));
+        } catch (error) {
+            cb(error as Error, '');
+        }
     }) as any,
     filename: ((req: FastifyRequest, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
         // Generar nombre único: timestamp + extensión original

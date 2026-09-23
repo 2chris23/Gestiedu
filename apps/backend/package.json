@@ -47,6 +47,7 @@
     "papelera:limpiar": "tsx src/scripts/limpiar-papelera.ts",
     "backup:tenants": "tsx src/scripts/respaldar-liceos.ts",
     "restore:tenant": "tsx src/scripts/restaurar-liceo.ts",
+    "backup:cada-noche": "tsx src/scripts/respaldos-cada-noche.ts",
     "medir:pantallas": "tsx src/scripts/medir-pantallas.ts",
     "medir:concurrencia": "tsx src/scripts/medir-concurrencia.ts",
     "medir:guardado": "tsx src/scripts/medir-guardado.ts",

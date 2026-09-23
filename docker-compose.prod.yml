@@ -77,9 +77,12 @@ services:
       # Las migraciones van directas a PostgreSQL: PgBouncer en modo transacción
       # no mantiene los bloqueos que Prisma Migrate necesita.
       PGBOUNCER_HOST: ''
+    # El guion va COMPILADO: la imagen no lleva ni el código fuente de los
+    # guiones ni `tsx` (antes decía `npx tsx src/scripts/...`, que no existía
+    # dentro de la imagen, así que el migrador fallaba y el backend no arrancaba).
     command: >
       sh -c "npx prisma migrate deploy --schema=src/prisma/platform-schema.prisma &&
-             npx tsx src/scripts/migrate-all-tenants.ts"
+             node dist/scripts/migrate-all-tenants.js"
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,11 +99,46 @@ services:
       PGBOUNCER_HOST: pgbouncer
       PGBOUNCER_PORT: 6432
       TENANT_CONNECTION_LIMIT: ${TENANT_CONNECTION_LIMIT:-2}
+      # El puerto va FIJO aquí, porque nginx y la sonda de salud lo esperan en
+      # el 4000. Antes lo decía solo .env.production y nginx apuntaba al 3001:
+      # toda la API respondía 502 en cuanto alguien usara el ejemplo tal cual.
+      PUERTO_DEL_HOST: '4000'
+      BACKUP_DIR: /app/backups
+    volumes:
+      # Lo que sube la gente (logos, fotos, comprobantes). Sin volumen vivía
+      # DENTRO del contenedor, y cada despliegue crea uno nuevo: se perdía
+      # todo lo subido en cada actualización.
+      - uploads:/app/uploads
+      # Solo para leer cómo fue el último respaldo (panel del superadmin).
+      - respaldos:/app/backups:ro
     depends_on:
       migrator:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    networks: [interna]
+
+  # Los respaldos, solos, cada noche (HORA_DE_RESPALDO, 02:00 por defecto).
+  # Van directos a PostgreSQL, no por PgBouncer. Si se configuran
+  # BACKUP_S3_*, cada respaldo se sube además fuera del servidor.
+  # Ver src/services/respaldos-programados.service.ts y docs/DESPLIEGUE.md §8.
+  respaldos:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    restart: unless-stopped
+    env_file: [.env.production]
+    environment:
+      NODE_ENV: production
+      PGBOUNCER_HOST: ''
+      BACKUP_DIR: /app/backups
+      TZ: ${TZ:-America/Caracas}
+    command: node dist/scripts/respaldos-cada-noche.js
+    volumes:
+      - respaldos:/app/backups
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
     networks: [interna]
 
   web:
@@ -135,6 +173,8 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  uploads:
+  respaldos:
 
 networks:
   interna:
