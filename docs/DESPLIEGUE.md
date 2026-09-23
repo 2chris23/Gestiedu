@@ -320,6 +320,17 @@ npm run restore:tenant -- --slug=liceo-bolivar --confirmar
 Restaurar **borra lo que el liceo tenga ahora**: todo lo trabajado desde ese
 respaldo se pierde. Por eso, sin `--confirmar`, el comando solo explica qué haría.
 
+**La base de la plataforma también se guarda**, cada noche y la primera, en
+`_plataforma__<fecha>.dump` (ningún liceo puede llamarse así). Es la que dice
+qué base es de qué liceo y con qué llave se entra: sin ella, los archivos de los
+liceos no se pueden volver a enganchar. Antes no se guardaba (`RESP-07` la
+guarda y la devuelve). Si se pierde el servidor entero, se restaura primero la
+plataforma y luego cada liceo:
+
+```bash
+pg_restore --clean --if-exists --no-owner --dbname=gestion_escolar_platform backups/_plataforma__<fecha>.dump
+```
+
 ### Configuración
 
 | Variable | Para qué | Por defecto |

@@ -152,15 +152,9 @@ export async function respaldarLiceo(
     instituto: Awaited<ReturnType<typeof liceosActivos>>[number],
     carpeta = carpetaDeRespaldos()
 ): Promise<ResultadoDeRespaldo> {
-    const t0 = Date.now();
-
-    if (!existsSync(carpeta)) mkdirSync(carpeta, { recursive: true });
-
-    const archivo = path.join(carpeta, nombreDeArchivo(instituto.slug));
-
-    try {
-        // Conexión directa: los respaldos no pasan por PgBouncer.
-        const url = buildTenantDatabaseUrl(
+    // Conexión directa: los respaldos no pasan por PgBouncer.
+    return volcar(instituto.slug, carpeta, () =>
+        buildTenantDatabaseUrl(
             {
                 databaseName: instituto.databaseName,
                 databaseHost: instituto.databaseHost,
@@ -169,9 +163,45 @@ export async function respaldarLiceo(
                 databasePassword: instituto.databasePassword,
             } as any,
             'direct'
-        );
+        )
+    );
+}
 
-        const { env: pgEnv, dbName } = extraerEntornoPg(url);
+/**
+ * EL NOMBRE CON EL QUE SE GUARDA LA BASE DE LA PLATAFORMA.
+ *
+ * Empieza por `_` porque ningún liceo puede llamarse así (los nombres de los
+ * liceos son letras, números y guiones), y así no se confunden nunca.
+ */
+export const RESPALDO_DE_LA_PLATAFORMA = '_plataforma';
+
+/**
+ * LA BASE DE LA PLATAFORMA TAMBIÉN SE RESPALDA
+ *
+ * El respaldo nocturno guardaba cada liceo, pero no la base de la plataforma:
+ * la lista de liceos con la dirección y la llave de la base de cada uno, los
+ * superadministradores, el logo y los colores de cada liceo. Si el disco del
+ * servidor se perdía, quedaban los datos de cada liceo en su archivo, pero
+ * nada que los uniera: ni qué base es de quién, ni cómo entrar a ninguna.
+ */
+export async function respaldarPlataforma(carpeta = carpetaDeRespaldos()): Promise<ResultadoDeRespaldo> {
+    return volcar(RESPALDO_DE_LA_PLATAFORMA, carpeta, () => {
+        const url = process.env.PLATFORM_DATABASE_URL;
+        if (!url) throw new Error('falta PLATFORM_DATABASE_URL');
+        return urlParaHerramientas(url);
+    });
+}
+
+/** Guarda una base en un archivo de la carpeta, con el nombre de `quien`. */
+async function volcar(quien: string, carpeta: string, direccion: () => string): Promise<ResultadoDeRespaldo> {
+    const t0 = Date.now();
+
+    if (!existsSync(carpeta)) mkdirSync(carpeta, { recursive: true });
+
+    const archivo = path.join(carpeta, nombreDeArchivo(quien));
+
+    try {
+        const { env: pgEnv, dbName } = extraerEntornoPg(direccion());
         const args = ['--format=custom', '--no-owner', '--no-acl', '--file', archivo];
         if (dbName) {
             args.push('--dbname', dbName);
@@ -182,7 +212,7 @@ export async function respaldarLiceo(
         const bytes = statSync(archivo).size;
         if (bytes === 0) throw new Error('el archivo salió vacío');
 
-        return { slug: instituto.slug, ok: true, archivo, bytes, ms: Date.now() - t0 };
+        return { slug: quien, ok: true, archivo, bytes, ms: Date.now() - t0 };
     } catch (error) {
         // Un respaldo que falló no puede dejar un archivo a medias en la carpeta:
         // el día que haga falta, alguien lo vería ahí y creería que tiene con qué
@@ -194,7 +224,7 @@ export async function respaldarLiceo(
         }
 
         return {
-            slug: instituto.slug,
+            slug: quien,
             ok: false,
             error: error instanceof Error ? error.message : String(error),
             ms: Date.now() - t0,
@@ -202,11 +232,21 @@ export async function respaldarLiceo(
     }
 }
 
-/** Guarda todos los liceos, uno por uno. */
+/** Guarda la plataforma y todos los liceos, uno por uno. */
 export async function respaldarTodos(carpeta = carpetaDeRespaldos()): Promise<InformeDeRespaldo> {
     const t0 = Date.now();
     const institutos = await liceosActivos();
     const resultados: ResultadoDeRespaldo[] = [];
+
+    // Primero la plataforma: sin ella, los archivos de los liceos no dicen
+    // qué base es de quién. Si falla, cuenta como fallo del respaldo.
+    const plataforma = await respaldarPlataforma(carpeta);
+    resultados.push(plataforma);
+    if (plataforma.ok) {
+        logger.info('Plataforma respaldada', { bytes: plataforma.bytes, ms: plataforma.ms });
+    } else {
+        logger.error('No se pudo respaldar la base de la plataforma', { error: plataforma.error });
+    }
 
     for (const instituto of institutos) {
         const r = await respaldarLiceo(instituto, carpeta);
@@ -220,8 +260,10 @@ export async function respaldarTodos(carpeta = carpetaDeRespaldos()): Promise<In
 
     const fallidos = resultados.filter((r) => !r.ok);
     return {
+        // `total` y `guardados` cuentan liceos; la plataforma va en
+        // `resultados` (y en `fallidos` si falla).
         total: institutos.length,
-        guardados: resultados.length - fallidos.length,
+        guardados: resultados.filter((r) => r.ok && r.slug !== RESPALDO_DE_LA_PLATAFORMA).length,
         fallidos,
         resultados,
         carpeta,
