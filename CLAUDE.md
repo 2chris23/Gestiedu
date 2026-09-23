@@ -4,7 +4,8 @@ SaaS de gestión escolar multi-liceo. Monorepo: `apps/backend` (Fastify 5 + Pris
 PostgreSQL) y `apps/web` (Next.js 16 + React 19 + Tailwind).
 
 **Multi-tenant: una base de datos por liceo.** La BD de plataforma guarda la fila del
-instituto con sus credenciales; `getTenantPrisma` cachea hasta 50 clientes. El
+instituto con sus credenciales; `getTenantPrisma` cachea hasta 250 clientes con
+PgBouncer (50 sin él; `CLIENTES_DE_LICEO`). El
 `instituteId` del token manda: si la petición nombra otro liceo (slug, cabecera,
 subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siempre.
 
@@ -22,11 +23,16 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
 ```bash
 cd apps/backend && npm run dev      # API en :3001
 cd apps/web && npm run dev          # web en :3000
-cd apps/backend && npx jest         # 797 pruebas (integración + cálculo)
+cd apps/backend && npx jest         # 849 pruebas en 101 archivos (integración + cálculo)
 npm run test:e2e                    # 198 pruebas de navegador (Playwright), con los dos servidores arriba
 cd apps/backend && npm run typecheck
+cd apps/backend && npm run migrate:plataforma        # la base de la plataforma
 cd apps/backend && npm run migrate:tenants[:status]   # migra todos los liceos
 ```
+
+Las pruebas que necesitan un Redis de verdad (CUPO-*, DOBLE-*) salen **saltadas**
+sin `REDIS_PRUEBAS_URL`; aquí: `redis-server --port 6391` y
+`REDIS_PRUEBAS_URL=redis://127.0.0.1:6391 npx jest`.
 
 Mediciones (cada una dice en su cabecera qué mide y qué NO mide):
 
@@ -38,7 +44,11 @@ npm run medir:aguante       # 20 min seguidos: ¿se arrastra? ¿se llena la memo
 npm run medir:pozo          # el tope de conexiones, en la base y por la API
 npm run probar:pgbouncer    # el repartidor, levantado de verdad (ver la cabecera)
 npm run medir:estres        # estrés incremental: 5→500 personas, se para donde se dobla
+npm run seed:muchos-liceos  # LICEOS=50: muchos liceos pequeños, para medir con LICEOS='muchos-*'
 ```
+
+Todos guardan su resultado en `docs/mediciones/` (no va al repositorio: es de
+una máquina y una tarde).
 
 **Nunca arranques los servidores con tuberías** (`npm run dev | head -20`): la tubería se
 cierra, llega SIGPIPE y el proceso muere. Cuesta horas de pruebas falsas en rojo.
@@ -51,6 +61,13 @@ cierra, llega SIGPIPE y el proceso muere. Cuesta horas de pruebas falsas en rojo
   `src/scripts/push-all-dbs.ts` es un tope que se niega a correr, a propósito.
 - Las migraciones necesitan conexión **directa**, no PgBouncer (el pooling por transacción
   rompe los bloqueos de Prisma Migrate). Ver `src/config/tenant-db-url.ts`.
+- **La plataforma tiene SUS migraciones** (`src/prisma/plataforma/`), aparte de las de
+  los liceos, y se aplican con `npm run migrate:plataforma`. Prisma busca las
+  migraciones junto al esquema: cuando los dos esquemas compartían carpeta, el
+  despliegue le aplicaba a la plataforma las de los liceos (PLAT-01…04). Un esquema
+  de Prisma nuevo va en su propia carpeta.
+- **`.github/` estaba en `.gitignore`**: la integración continua y el despliegue
+  automático no llegaron nunca a GitHub. Ya no lo está (`ci.yml`).
 - Cada archivo de prueba crea **su propia base** (`CREATE DATABASE ... TEMPLATE`) en
   `tests/jest.dbEnvironment.js`. Si una prueba depende de datos de otra, se cae: es lo
   que se busca.
@@ -118,6 +135,38 @@ Excepciones a propósito: `refreshToken` (guardar sesiones es guardar llaves) y
 
 Borrar un liceo entero hace `DROP DATABASE`, que la papelera no alcanza: se
 respalda antes, y sin respaldo no se borra.
+
+## Respaldos
+
+Cada noche (servicio `respaldos`), **la plataforma primero** (`_plataforma__…dump`:
+qué base es de qué liceo y con qué llave) y luego cada liceo; con `BACKUP_S3_*`, una
+copia fuera del servidor (R2). `/health` dice si el último fue bien. Antes la
+plataforma no se respaldaba: perdido el disco, los archivos de los liceos no se
+podían volver a enganchar (RESP-07).
+
+## Varios procesos y muchos liceos
+
+Nada que importe vive ya en la memoria de UN proceso: con `--scale backend=N` todo
+sigue valiendo.
+
+- **El cupo de peticiones** cuenta en Redis (`plugins/cupo-compartido.ts`); si
+  Redis no contesta, en el proceso. Nunca se apaga ni hace esperar (CUPO-01…04).
+- **El freno del doble clic** pone su marca en Redis (`SET NX`): el proceso que
+  llega segundo devuelve la respuesta del primero (DOBLE-01…04).
+- **Los logos** van a la base de la plataforma (`archivos_de_liceo`), no al disco:
+  así los ve todo proceso y entran en el respaldo (LOGO-01…05).
+- **nginx**: la API al proceso menos ocupado; el tiempo real, siempre al mismo por
+  dirección. Y ningún `location` pone cabeceras propias: en nginx eso le quita
+  TODAS las del servidor (al tiempo real le llegaba sin `Host` ni la dirección).
+- **200 liceos**: el proceso guarda 250 clientes abiertos con PgBouncer
+  (`CLIENTES_DE_LICEO`), y veinte peticiones a la vez de un liceo nuevo abren UNA
+  conexión (CONN-10).
+
+Para medirlo: `LICEOS=50 npm run seed:muchos-liceos` y
+`LICEOS='muchos-*' CLAVE='Test123!' npm run medir:estres`. Medido en este PC (todo
+en la misma máquina, una conexión por liceo): 500 personas en 50 liceos, p95 124 ms,
+p99 277 ms, 0 fallos. La prueba en un servidor de verdad está escrita en
+`docs/DESPLIEGUE.md` §10-bis.
 
 ## Memoria rápida (lo guardado)
 
@@ -257,6 +306,11 @@ tocar una línea.
 Las reglas viven en `scripts/reglas-del-telefono.mjs` y las usan dos: la
 auditoría con sus fotos y `tests/e2e/movil.spec.ts`, que se pone en rojo.
 
+**No solo un teléfono de pie.** `MOVIL-03` mide también el teléfono tumbado
+(844×390), la tableta (768×1024), el portátil (1366×768) y el escritorio
+(1920×1080): en todos, nada se sale de ancho ni hay que arrastrar de lado; el dedo
+y la letra, solo en los táctiles.
+
 **Tres trampas del medidor, que costaron tandas enteras:**
 
 - **`window.innerWidth` no dice cuánto mide el teléfono.** Cuando algo se sale
@@ -363,7 +417,9 @@ lo estira o le come los bordes al recortarlo. El servidor lo redibuja en
 cuadrado sobre el color del liceo (`GET /institutes/current/icono`).
 
 `node apps/movil/scripts/preparar-liceo.mjs --liceo=… --url=…` deja el proyecto
-de Android listo para ESE liceo. La llave de firma no se genera ni se guarda
+de Android listo para ESE liceo. Pone también `server.errorPath`: sin él,
+Capacitor no enseña nunca `www/index.html` y sin servidor sale el error del
+navegador, en inglés. La llave de firma no se genera ni se guarda
 desde el repositorio: es la identidad del liceo en Google Play. Todo en
 `docs/APP-MOVIL.md`.
 

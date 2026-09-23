@@ -3085,3 +3085,65 @@ y el sistema hacía bien en rechazar un identificador con formato inválido. Per
 durante meses hubo una causa inventada escrita en un documento, y eso **cerró la
 investigación**: nadie vuelve a mirar algo que ya tiene explicación. Un "no lo
 sé" honesto habría durado menos.
+
+## 55. Doscientos liceos, ningún dato perdido, cualquier aparato (septiembre 2026)
+
+El objetivo cambió: antes de las tiendas de aplicaciones, que el sistema aguante
+**200 liceos y 15.000 personas** sin ser él lo lento, que **no pierda ni invente
+un dato**, y que funcione **igual en cualquier aparato**. Lo que apareció al
+mirarlo con esos ojos, todo con su prueba y casi todo fallando antes con el
+código viejo:
+
+**Datos que se perdían sin que nadie se enterara**
+
+- Las notas de la clase en vivo se guardaban leyendo y reescribiendo el objeto
+  entero: dos guardados cruzados (el automático y otra pestaña) y el segundo
+  borraba lo del primero. Medido: se perdían **7 de 8** (NOPISA-01…04). Ahora
+  es una sola escritura atómica.
+- El plan de evaluación: el último que guardaba ganaba, y lo que no venía se
+  borraba. Ahora lleva versión: si otra pestaña guardó antes, **409 y no se
+  borra nada** (PLANV-01…05, PLANUI-01).
+- Dos borrados se saltaban la papelera («Retirar y eliminar» de la promoción y
+  quitar una materia de un año). Y una prueba vigila que no aparezca otro
+  (BORRA-01).
+- **La base de la plataforma no se respaldaba** —la que dice qué base es de qué
+  liceo y con qué llave—, y los respaldos no se hacían solos ni salían del
+  servidor. Ahora cada noche, la plataforma primero, y una copia a R2/S3
+  (RESP-01…07).
+- **El despliegue migraba la plataforma con las migraciones de los liceos**:
+  en un servidor nuevo no habría arrancado (PLAT-01…04).
+
+**Lo que hacía lento al sistema, no al servidor**
+
+- Con 200 liceos el proceso solo tenía sitio para 50, y veinte peticiones de
+  un liceo nuevo abrían veinte conexiones (CONN-10, CONN-11).
+- El panel del alumno hacía ~180 consultas; la lista de alumnos sin sección
+  calculaba alumno por alumno (y daba 0 de promedio a todos); la clase en vivo
+  pedía diez cosas una detrás de otra; la lista de usuarios recorría la tabla
+  entera en cada búsqueda.
+- El cupo de peticiones, el freno del doble clic y los logos vivían en la
+  memoria o el disco de UN proceso: con varios, no valían. Ahora en Redis y en
+  la base (CUPO, DOBLE, LOGO).
+- nginx le quitaba al tiempo real el `Host` y la dirección de quien llama.
+
+**Medido** en este PC (servidor, base y generador en la misma máquina, una
+conexión por liceo): **500 personas en 50 liceos, p95 124 ms, p99 277 ms, 0
+fallos**; ninguna ruta con p95 por encima de 211 ms. Antes del plan, con UN
+liceo, la cola llegaba a 9–20 s. La prueba en un servidor de verdad queda
+escrita en `docs/DESPLIEGUE.md` §10-bis.
+
+**Sin servidor, el teléfono sigue enseñando lo último** (APAGADO-01/02): la
+sesión ya no se cierra por un fallo de red, lo guardado no se borra al abrir y
+guardar avisa de que hace falta conexión.
+
+**Cualquier aparato**: la app instalada no giraba nunca (`portrait` en la ficha)
+y la APK no tenía el complemento de giro; la pantalla de «sin conexión» de la
+APK no se veía nunca (faltaba `errorPath`); el iPhone instalaba la app como
+«GestiEdu» y no con el nombre del liceo; sin `dvh` los diálogos se salían de la
+pantalla. Y ahora se mide también el teléfono tumbado, la tableta, el portátil
+y el escritorio (MOVIL-03).
+
+**Y que se compruebe solo**: `.github/` estaba en `.gitignore`, así que la
+integración continua y el despliegue automático no llegaron nunca a GitHub.
+Ahora `ci.yml` pasa tipos y pruebas en cada cambio, y el despliegue solo sale si
+eso está en verde.
