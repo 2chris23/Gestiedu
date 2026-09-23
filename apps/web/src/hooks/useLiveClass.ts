@@ -321,6 +321,14 @@ export function useSaveActivityGrades() {
                 queryClient.setQueryData(clave, datos);
             });
 
+            // Una nota que el servidor rechaza por su valor (25 sobre 20, una
+            // letra…) no se apunta para reintentar: volvería a rechazarse
+            // siempre. Se dice qué tiene de malo y se corrige ahí mismo.
+            if (error?.response?.status === 400) {
+                toast.error(error?.response?.data?.error || 'Hay una nota que no es válida.');
+                return;
+            }
+
             // 2. Las notas NO se pierden.
             recordarPendiente({
                 id: `notas:${variables.activityId}`,

@@ -9,6 +9,7 @@ import { planWeekNumberFromRange, planWeekRangeFromRange } from '../utils/plan-w
 import { instituteTimezone, isFutureDate, todayInTimezone } from '../utils/school-time';
 import { assertClassroomScope, assertCanSeeClassroom, assertCanSeeStudent } from '../services/authorization.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
+import { revisarNotas, sumarNotas, arreglarNotasGuardadasComoTexto, Notas } from '../utils/notas-de-clase';
 
 /**
  * Parsea una fecha de input <input type="date"> (YYYY-MM-DD) a mediodía LOCAL.
@@ -1014,6 +1015,22 @@ export async function updateClassActivity(
             return reply.status(404).send({ error: 'Actividad no encontrada' });
         }
 
+        // Las notas que vengan aquí se AÑADEN, como en la puerta de las notas:
+        // antes reemplazaban el mapa entero y borraban las del resto de la clase.
+        if (scores !== undefined) {
+            const actual = await prisma.classActivity.findUnique({
+                where: { id: activityId },
+                select: { maxScore: true, scores: true },
+            });
+            const escala = maxScore !== undefined ? (maxScore ? Number(maxScore) : 20) : (actual?.maxScore ?? 20);
+            const problema = revisarNotas(scores, escala);
+            if (problema) {
+                return reply.status(400).send({ error: problema, code: 'NOTA_NO_VALIDA' });
+            }
+            await arreglarNotasGuardadasComoTexto(prisma as any, activityId, actual?.scores);
+            await sumarNotas(prisma as any, activityId, scores as Notas);
+        }
+
         const activity = await prisma.classActivity.update({
             where: { id: activityId },
             data: {
@@ -1024,7 +1041,6 @@ export async function updateClassActivity(
                 ...(tag !== undefined && { tag }),
                 ...(dueDate !== undefined && { dueDate: dueDate ? parseDayDate(dueDate) : null }),
                 ...(maxScore !== undefined && { maxScore: maxScore ? Number(maxScore) : 20 }),
-                ...(scores !== undefined && { scores }),
                 ...(isDone !== undefined && { isDone }),
                 ...(carriedOver !== undefined && { carriedOver }),
             },
@@ -1074,22 +1090,16 @@ export async function saveClassActivityGrades(
 
         await exigirActividadPropia(request, activityId, 'dar notas');
 
-        let existingScores: Record<string, any> = {};
-        if (activity.scores) {
-            try {
-                existingScores = typeof activity.scores === 'string' ? JSON.parse(activity.scores) : (activity.scores as Record<string, any>);
-            } catch { existingScores = {}; }
+        const escala = maxScore !== undefined ? Number(maxScore) : (activity.maxScore ?? 20);
+        const problema = revisarNotas(scores, escala);
+        if (problema) {
+            return reply.status(400).send({ error: problema, code: 'NOTA_NO_VALIDA' });
         }
 
-        const mergedScores = { ...existingScores, ...scores };
-
-        const updated = await prisma.classActivity.update({
-            where: { id: activityId },
-            data: {
-                scores: mergedScores,
-                ...(maxScore !== undefined && { maxScore: Number(maxScore) }),
-            },
-        });
+        // Se añaden a lo guardado en la misma escritura: ver `utils/notas-de-clase.ts`.
+        await arreglarNotasGuardadasComoTexto(prisma as any, activityId, activity.scores);
+        await sumarNotas(prisma as any, activityId, scores as Notas, maxScore);
+        const updated = await prisma.classActivity.findUnique({ where: { id: activityId } });
 
         // A quién le toca: a los alumnos que recibieron nota y al personal de la
         // sección. Antes se avisaba al liceo entero: con los profesores
