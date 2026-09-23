@@ -279,7 +279,8 @@ export default function UsersPage() {
                             <Filter className="h-4 w-4 text-gray-400" />
                         </div>
                         <Select value={roleFilter} onValueChange={setRoleFilter}>
-                            <SelectTrigger className="w-full">
+                            {/* pl-9: el embudo va encima, a la izquierda, y tapaba la «T» de «Todos». */}
+                            <SelectTrigger className="w-full pl-9">
                                 <SelectValue placeholder="Filtrar por rol" />
                             </SelectTrigger>
                             <SelectContent>

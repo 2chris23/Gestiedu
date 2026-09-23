@@ -778,7 +778,7 @@ export default function TeacherScheduleEditor({
                         />
                     </div>
 
-                    <div className="hidden flex-1 overflow-x-auto min-[700px]:block">
+                    <div className="rejilla-densa hidden flex-1 overflow-x-auto min-[700px]:block">
                         <div className="min-w-[700px] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                             <div className="grid grid-cols-6 border-b border-gray-200 bg-gray-50">
                                 <div className="p-3 text-center text-xs font-bold text-gray-500 uppercase">Hora</div>

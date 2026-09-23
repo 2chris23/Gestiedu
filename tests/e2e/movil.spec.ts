@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { WEB_BASE, TENANT_SLUG, loginViaUI, captureEvidence } from './helpers';
+import { WEB_BASE, TENANT_SLUG, loginViaUI, loginApi, injectSessionCookies, captureEvidence } from './helpers';
 // Las reglas viven en un solo sitio y las usan dos: esta prueba y la auditoría
 // que saca la hoja de contactos (`npm run movil`).
 import {
@@ -137,4 +137,68 @@ test.describe('En el teléfono', () => {
             throw error;
         }
     });
+});
+
+/**
+ * NO SOLO UN TELÉFONO DE PIE
+ *
+ * Todo lo de arriba se mide en UN aparato: un teléfono de 390×844, de pie. La
+ * gente del liceo usa también el teléfono tumbado (para el horario y el plan
+ * de evaluación, a propósito), tabletas, el portátil del profesor y el
+ * ordenador de la secretaría, y ninguno se había medido nunca.
+ *
+ * En los cuatro se exige que nada se salga de ancho ni haya que arrastrar de
+ * lado. El dedo y la letra solo en los táctiles: con ratón, un botón de 32 px
+ * se acierta sin problema. Las bandas del reloj y de los gestos son cosa del
+ * teléfono de pie y ya se miden arriba.
+ */
+const OTROS_APARATOS = [
+    { nombre: 'teléfono tumbado', viewport: { width: 844, height: 390 }, tactil: true },
+    { nombre: 'tableta', viewport: { width: 768, height: 1024 }, tactil: true },
+    { nombre: 'portátil', viewport: { width: 1366, height: 768 }, tactil: false },
+    { nombre: 'escritorio', viewport: { width: 1920, height: 1080 }, tactil: false },
+];
+
+test('MOVIL-03: en el teléfono tumbado, la tableta, el portátil y el escritorio, nada se sale ni hay que arrastrar', async ({ browser }, testInfo) => {
+    const faltas: string[] = [];
+
+    for (const aparato of OTROS_APARATOS) {
+        const contexto = await browser.newContext({
+            viewport: aparato.viewport,
+            isMobile: aparato.tactil && aparato.viewport.width < 1024,
+            hasTouch: aparato.tactil,
+        });
+        const page = await contexto.newPage();
+        try {
+            // Una sesión propia por aparato, como en la vida real. Prestar la
+            // misma a los cuatro no vale: la llave de volver a entrar se
+            // cambia en cada uso, y un aparato con la vieja es, para el
+            // servidor, alguien que la robó (se cierra la sesión entera).
+            const sesion = await loginApi('admin@testing.edu.ve', '123456', true, TENANT_SLUG, true);
+            await injectSessionCookies(page, sesion);
+
+            for (const [titulo, ruta] of PANTALLAS) {
+                await page.goto(`${WEB_BASE}${ruta}`, { waitUntil: 'domcontentloaded' });
+                await esperarAQueTermine(page);
+                const medidas = (await page.evaluate(MEDIR, {
+                    bandaArriba: 0,
+                    bandaAbajo: 0,
+                    dedo: aparato.tactil ? DEDO : 0,
+                    letra: aparato.tactil ? LETRA : 0,
+                })) as Falta[];
+                // Las bandas del reloj y de los gestos solo existen en el
+                // teléfono de pie (MOVIL-01): aquí no se miran.
+                for (const f of medidas.filter((m) => !m.regla.startsWith('banda'))) {
+                    faltas.push(`${aparato.nombre} ${aparato.viewport.width}×${aparato.viewport.height} · ${titulo} — ${QUE_SIGNIFICA[f.regla] ?? f.regla}: ${f.detalle}`);
+                }
+            }
+        } catch (error) {
+            await captureEvidence(testInfo, page, 'MOVIL-03', aparato.nombre, error);
+            throw error;
+        } finally {
+            await contexto.close();
+        }
+    }
+
+    expect(faltas, `\n${faltas.join('\n')}\n`).toEqual([]);
 });

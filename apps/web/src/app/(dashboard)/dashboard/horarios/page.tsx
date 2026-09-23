@@ -116,8 +116,10 @@ export default function HorariosPage() {
                 </div>
             </div>
 
-            {/* Controls */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            {/* Controls. `sm:flex-wrap`: en una tableta (768 px) los botones de
+                vista, el año y el buscador no caben en una fila y empujaban la
+                pantalla 4 px de lado (MOVIL-03); ahora el buscador baja. */}
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => setView('sections')}

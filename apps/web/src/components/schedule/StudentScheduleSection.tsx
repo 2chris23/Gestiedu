@@ -761,7 +761,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             />
                         </div>
 
-                        <div className="hidden overflow-x-auto rounded-xl border border-gray-200 shadow-2xs min-[700px]:block">
+                        <div className="rejilla-densa hidden overflow-x-auto rounded-xl border border-gray-200 shadow-2xs min-[700px]:block">
                         <table className="w-full border-collapse text-center text-xs">
                             {/* Cabecera Estilizada */}
                             <thead>

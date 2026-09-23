@@ -1128,7 +1128,7 @@ export default function EvaluationPlanSection({
               />
             </div>
 
-            <div className="hidden rounded-xl overflow-hidden shadow-xl border border-gray-300 min-[700px]:block">
+            <div className="rejilla-densa hidden rounded-xl overflow-hidden shadow-xl border border-gray-300 min-[700px]:block">
               {renderMembrete('edit')}
               {renderEditTable()}
             </div>
@@ -1276,7 +1276,7 @@ export default function EvaluationPlanSection({
         </div>
 
         {/* Table fills remaining height */}
-        <div className="hidden flex-1 overflow-hidden min-[700px]:block print:block">
+        <div className="rejilla-densa hidden flex-1 overflow-hidden min-[700px]:block print:block">
           {renderViewTable()}
         </div>
       </div>

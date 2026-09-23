@@ -547,6 +547,30 @@
   }
 }
 
+/* ── EL DEDO EN LA TABLETA Y EN EL TELÉFONO TUMBADO ─────────────────────
+
+   La regla de arriba se para en 699 px, y a partir de ahí la app se ponía a
+   medir para ratón aunque se usara con el dedo: en una tableta (768 px) o en
+   un teléfono tumbado (844 px), el filtro de usuarios medía 32 px de alto, las
+   cabeceras para ordenar 17 y los botones de «Expandir todos» 16. Medido con
+   MOVIL-03.
+
+   Lo mismo, con el dedo, a cualquier ancho. Menos dentro de las rejillas
+   densas (el horario, el plan de evaluación: `.rejilla-densa`), que son tablas
+   de verdad: agrandar cada celda las rompería, y para trabajar con ellas se
+   gira el teléfono a propósito. */
+@media (pointer: coarse) and (min-width: 700px) {
+  :where(button, [role='button'], select, summary):not(.rejilla-densa *) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  :where(.text-\[8px\], .text-\[9px\], .text-\[10px\], .text-\[11px\], .text-micro):not(.rejilla-densa *) {
+    font-size: 0.75rem;
+    line-height: 1.05rem;
+  }
+}
+
 /* ── dvh EN NAVEGADORES QUE NO LO CONOCEN ─────────────────────────────────────
    `dvh` es la altura que de verdad se ve en un teléfono (sin la barra del
    navegador). Un navegador que no lo conoce ignora la regla entera, y un

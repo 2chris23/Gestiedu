@@ -399,7 +399,7 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
                 </div>
 
                 {/* Grid del Horario */}
-                <div className="hidden flex-1 overflow-x-auto min-[700px]:block">
+                <div className="rejilla-densa hidden flex-1 overflow-x-auto min-[700px]:block">
                     <div className="min-w-[700px] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                         {/* Selector de Turno */}
                         <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
