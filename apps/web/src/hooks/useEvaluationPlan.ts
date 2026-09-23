@@ -118,9 +118,14 @@ export function useUpsertEvaluationPlanMetadata() {
     return useMutation({
         mutationFn: async (data: Partial<EvaluationPlanMetadata> & { classroomId: string; subjectId: string; lapso: string }) => {
             const res = await api.post('/evaluation-plan/metadata', data);
-            return res.data;
+            return res.data as { metadata?: EvaluationPlanMetadata };
         },
-        onSuccess: (_, variables) => {
+        onSuccess: (respuesta, variables) => {
+            const clave = ['evaluationPlanMetadata', { classroomId: variables.classroomId, subjectId: variables.subjectId, lapso: variables.lapso }];
+            // Lo guardado se ve ya (mismo motivo que en las filas, abajo).
+            if (respuesta?.metadata) {
+                queryClient.setQueryData(clave, (viejo: any) => (viejo ? { ...viejo, metadata: respuesta.metadata } : viejo));
+            }
             queryClient.invalidateQueries({
                 queryKey: ['evaluationPlanMetadata', { classroomId: variables.classroomId, subjectId: variables.subjectId, lapso: variables.lapso }]
             });
@@ -138,24 +143,49 @@ export function useEvaluationPlanRows(params: { classroomId?: string; subjectId?
         queryFn: async () => {
             if (!params.classroomId || !params.subjectId || !params.lapso) return null;
             const { data } = await api.get('/evaluation-plan/rows', { params });
-            return data as { rows: EvaluationPlanRow[]; grouped: Record<number, EvaluationPlanRow[]> };
+            return data as { rows: EvaluationPlanRow[]; grouped: Record<number, EvaluationPlanRow[]>; version?: string };
         },
         enabled: !!params.classroomId && !!params.subjectId && !!params.lapso,
     });
 }
 
+/**
+ * Guardar el plan. Va con la VERSIÓN que se tenía delante: si alguien guardó
+ * entretanto desde otra pestaña u otro dispositivo, el servidor responde 409 y
+ * no toca nada (ver `utils/version-del-plan.ts` en el servidor).
+ */
 export function useBatchUpsertRows() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (data: { classroomId: string; subjectId: string; lapso: string; rows: Partial<EvaluationPlanRow>[] }) => {
+        mutationFn: async (data: {
+            classroomId: string;
+            subjectId: string;
+            lapso: string;
+            rows: Partial<EvaluationPlanRow>[];
+            version?: string;
+        }) => {
             const res = await api.post('/evaluation-plan/rows/batch', data);
-            return res.data;
+            return res.data as { success: boolean; rows: EvaluationPlanRow[]; version?: string };
         },
-        onSuccess: (_, variables) => {
-            queryClient.invalidateQueries({ queryKey: ['evaluationPlanRows'] });
+        onSuccess: (respuesta, variables) => {
+            // Lo guardado pasa a ser lo que se ve, ya: sin esto, al cerrar el
+            // editor se pintaba un instante el plan de ANTES, hasta que llegaba
+            // la nueva lectura, y parecía que no se había guardado.
+            if (respuesta?.rows) {
+                queryClient.setQueryData(
+                    ['evaluationPlanRows', { classroomId: variables.classroomId, subjectId: variables.subjectId, lapso: variables.lapso }],
+                    { rows: respuesta.rows, grouped: agruparPorSemana(respuesta.rows), version: respuesta.version }
+                );
+            }
             queryClient.invalidateQueries({ queryKey: ['activities'] });
         },
     });
+}
+
+function agruparPorSemana(rows: EvaluationPlanRow[]): Record<number, EvaluationPlanRow[]> {
+    const grupos: Record<number, EvaluationPlanRow[]> = {};
+    for (const row of rows) (grupos[row.weekNumber] ??= []).push(row);
+    return grupos;
 }
 
 // ============================================================

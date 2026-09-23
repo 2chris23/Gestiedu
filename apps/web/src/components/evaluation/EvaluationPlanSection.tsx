@@ -19,6 +19,7 @@ import {
   type AutoPopulatedData
 } from '@/hooks/useEvaluationPlan';
 import api from '@/lib/axios';
+import { useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_PLAN_COLUMNS, type PlanColumnDef } from './planColumns';
 import PlanPorBloques from './PlanPorBloques';
 import CamposDelPlan from './CamposDelPlan';
@@ -272,9 +273,18 @@ export default function EvaluationPlanSection({
   const { data: rowsData, isLoading: isLoadingRows } = useEvaluationPlanRows({ classroomId, subjectId, lapso });
   const { mutateAsync: saveMeta, isPending: isSavingMeta } = useUpsertEvaluationPlanMetadata();
   const { mutateAsync: saveRows, isPending: isSavingRows } = useBatchUpsertRows();
+  const queryClient = useQueryClient();
 
   // ── Local state ──────────────────────────────
   const [isEditing, setIsEditing] = useState(false);
+  /**
+   * La versión del plan que se tenía delante al empezar a editar, y cómo
+   * estaba todo en ese momento (para saber si hay cambios sin guardar).
+   */
+  const versionAlEditar = useRef<string | undefined>(undefined);
+  const comoEstabaAlEditar = useRef<string>('');
+  /** Alguien guardó este plan desde otro sitio mientras se editaba aquí. */
+  const [choque, setChoque] = useState<string | null>(null);
   const [localMeta, setLocalMeta] = useState<Partial<EvaluationPlanMetadata>>({});
   const [weeks, setWeeks] = useState<WeekRow[]>([]);
   const [columns, setColumns] = useState<ColDef[]>([...DEFAULT_PLAN_COLUMNS]);
@@ -379,7 +389,14 @@ export default function EvaluationPlanSection({
   const totalWeeks = autoPopulated.lapsoWeeks || localMeta.totalSemanas || 24;
 
   // ── Sync from server ─────────────────────────
+  // MIENTRAS SE EDITA, LO DE LA PANTALLA NO SE TOCA.
+  // Estas dos sincronizaciones copiaban lo del servidor encima de lo que el
+  // profesor estaba escribiendo cada vez que llegaba una lectura nueva —y
+  // llega una tras CUALQUIER guardado de cualquier pantalla, y con cada aviso
+  // de tiempo real—. Veinte minutos de trabajo podían desaparecer sin que él
+  // hiciera nada. Al salir del editor, sí se vuelve a lo guardado.
   useEffect(() => {
+    if (isEditing) return;
     if (metaData?.metadata) {
       setLocalMeta(metaData.metadata);
       // restore custom columns if saved
@@ -393,16 +410,17 @@ export default function EvaluationPlanSection({
       setLocalMeta({});
       setColumns([...DEFAULT_PLAN_COLUMNS]);
     }
-  }, [metaData]);
+  }, [metaData, isEditing]);
 
   useEffect(() => {
+    if (isEditing) return;
     const tw = autoPopulated.lapsoWeeks || localMeta.totalSemanas || 24;
     if (rowsData?.rows && rowsData.rows.length > 0) {
       setWeeks(dbRowsToWeekRows(rowsData.rows, tw));
     } else {
       setWeeks(buildEmptyWeekRows(tw));
     }
-  }, [rowsData, autoPopulated.lapsoWeeks, localMeta.totalSemanas]);
+  }, [rowsData, autoPopulated.lapsoWeeks, localMeta.totalSemanas, isEditing]);
 
   // ── Totals ────────────────────────────────────
   const totalPuntos = useMemo(() =>
@@ -558,18 +576,57 @@ export default function EvaluationPlanSection({
   };
 
   // ── Save ──────────────────────────────────────
+  const fotoDelEditor = () =>
+    JSON.stringify([weekRowsToDbRows(weeks, totalWeeks), columns, localMeta]);
+
+  const empezarAEditar = () => {
+    versionAlEditar.current = rowsData?.version;
+    comoEstabaAlEditar.current = fotoDelEditor();
+    setChoque(null);
+    setIsEditing(true);
+  };
+
+  const salirDelEditor = () => {
+    if (fotoDelEditor() !== comoEstabaAlEditar.current &&
+        !window.confirm('Tienes cambios sin guardar en el plan. ¿Salir y perderlos?')) {
+      return;
+    }
+    setChoque(null);
+    setIsEditing(false);
+  };
+
+  /** Tras un choque: se deja lo de aquí y se carga lo que se guardó en el otro sitio. */
+  const cargarLoGuardado = async () => {
+    setChoque(null);
+    setIsEditing(false);
+    await queryClient.invalidateQueries({ queryKey: ['evaluationPlanRows'] });
+    await queryClient.invalidateQueries({ queryKey: ['evaluationPlanMetadata'] });
+  };
+
   const handleSave = async () => {
     try {
+      // Primero las filas: son el trabajo del profesor, y es donde se
+      // comprueba que nadie guardó entretanto. Si choca, no se guarda nada.
+      const dbRows = weekRowsToDbRows(weeks, totalWeeks);
+      const guardado = await saveRows({ classroomId, subjectId, lapso, rows: dbRows, version: versionAlEditar.current });
+      versionAlEditar.current = guardado?.version;
       await saveMeta({
         classroomId, subjectId, lapso,
         ...localMeta,
         customColumns: JSON.stringify(columns),
       });
-      const dbRows = weekRowsToDbRows(weeks, totalWeeks);
-      await saveRows({ classroomId, subjectId, lapso, rows: dbRows });
+      setChoque(null);
       setIsEditing(false);
-    } catch {
-      toast.error('Error al guardar el plan de evaluación.');
+      toast.success('Plan de evaluación guardado');
+    } catch (error: any) {
+      const datos = error?.response?.data;
+      if (error?.response?.status === 409) {
+        setChoque(datos?.error || 'Este plan se guardó desde otro sitio mientras lo editabas.');
+        return;
+      }
+      // El motivo exacto (p. ej. «la suma de puntos es 18 y debe ser 20») es
+      // lo que el profesor necesita para arreglarlo: se enseña tal cual.
+      toast.error(datos?.error || datos?.message || 'No se pudo guardar el plan de evaluación. Tus cambios siguen en pantalla.');
     }
   };
 
@@ -973,7 +1030,7 @@ export default function EvaluationPlanSection({
         {/* TOP BAR */}
         <div className="bg-white border-b border-gray-200 shadow-sm h-16 flex items-center justify-between px-6 shrink-0">
           <div className="flex items-center gap-4">
-            <button onClick={() => setIsEditing(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-600">
+            <button onClick={salirDelEditor} aria-label="Salir del editor" className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-600">
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
@@ -1020,6 +1077,19 @@ export default function EvaluationPlanSection({
             </button>
           </div>
         </div>
+
+        {choque && (
+          <div role="alert" className="bg-amber-50 border-b border-amber-200 px-6 py-3 flex flex-wrap items-center gap-3 text-sm text-amber-900 shrink-0">
+            <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600" />
+            <span className="flex-1 min-w-[16rem]">{choque}</span>
+            <button
+              onClick={cargarLoGuardado}
+              className="px-3 py-2 min-h-[44px] rounded-lg border border-amber-300 bg-white font-bold text-amber-800 hover:bg-amber-100"
+            >
+              Descartar mis cambios y cargar lo guardado
+            </button>
+          </div>
+        )}
 
         {/* HINT BAR */}
         <div className="bg-indigo-50 border-b border-indigo-100 px-6 py-2 flex items-center gap-3 text-xs text-indigo-700 shrink-0">
@@ -1096,7 +1166,7 @@ export default function EvaluationPlanSection({
             </button>
           )}
           {canEdit && (
-            <button onClick={() => setIsEditing(true)} className="flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-bold text-xs">
+            <button onClick={empezarAEditar} className="flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-bold text-xs">
               <Edit2 className="w-3.5 h-3.5 mr-1.5" /> Editar Plan
             </button>
           )}
