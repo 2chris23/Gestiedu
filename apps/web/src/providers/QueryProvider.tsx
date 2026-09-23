@@ -6,6 +6,9 @@ import { useState } from 'react';
 import { TiempoRealProvider } from './TiempoRealProvider';
 import { MemoriaDelTelefono } from './MemoriaDelTelefono';
 import { MAXIMO_DE_DIAS } from '@/lib/lo-guardado-en-el-telefono';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
+import { MENSAJE_SIN_CONEXION } from '@/lib/axios';
+import { toast } from 'sonner';
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
     const [queryClient] = useState(() => {
@@ -32,6 +35,13 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
                 onSuccess: () => {
                     cliente.invalidateQueries({ refetchType: 'active' });
                 },
+                // Guardar sin conexión: el aviso sale siempre, lo diga o no la
+                // pantalla. Con un solo `id` para no apilar veinte iguales.
+                onError: (error) => {
+                    if (esQueNoContesta(error)) {
+                        toast.error(MENSAJE_SIN_CONEXION, { id: 'sin-conexion', duration: 6000 });
+                    }
+                },
             }),
             defaultOptions: {
                 queries: {
@@ -48,7 +58,10 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
                      */
                     gcTime: MAXIMO_DE_DIAS * 24 * 60 * 60 * 1000,
                     refetchOnWindowFocus: false, // No refetch al cambiar de ventana
-                    retry: 1, // Solo 1 reintento en caso de error
+                    // Un reintento si el servidor contestó con un error; ninguno si
+                    // no contestó: insistir solo alarga la espera, y lo guardado
+                    // ya se está enseñando.
+                    retry: (intentos, error) => !esQueNoContesta(error) && intentos < 1,
                     retryDelay: 1000, // 1 segundo entre reintentos
                     // Sin conexión no se pide nada; lo que ya estaba guardado
                     // se sigue viendo, que es justo lo que se busca.

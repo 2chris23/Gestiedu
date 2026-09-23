@@ -44,10 +44,24 @@ profesor, y nadie se entera.
 - Sin nada guardado todavía, se ve la pantalla propia («No hay conexión») en
   vez del error del navegador.
 
-> En una APK de pruebas por `http` el ayudante no se registra (los navegadores
-> solo lo permiten por https o en localhost), así que ahí, sin señal, se ve la
-> pantalla de «No hay conexión» y no lo guardado. Con el servidor de verdad del
-> liceo, por https, funciona.
+**Sin servidor es lo mismo que sin señal.** El caso real es el teléfono con
+datos y el servidor apagado o reiniciándose. La app lo detecta (no solo mira
+si hay red), enseña lo guardado con el aviso y la hora («lo que ves es de hoy
+a las 07:45»), no cierra la sesión y, al guardar, dice que falta conexión.
+Cuando el servidor vuelve, el aviso se va solo y lo de la pantalla se renueva.
+Comprobado apagando el servidor de verdad: `tests/e2e/servidor-apagado.spec.ts`.
+
+> **Dos casos, y en pruebas solo funciona uno.**
+>
+> - **Con la app abierta** cuando se va el servidor: sigue todo a la vista,
+>   con el aviso. Funciona también en una APK de pruebas por `http`
+>   (APAGADO-02).
+> - **Abrir la app con el servidor ya apagado** necesita al ayudante, y los
+>   navegadores solo lo registran por **https** o en `localhost`. Con el
+>   servidor del liceo (https) funciona (APAGADO-01). En una APK de pruebas
+>   que apunta a la IP del ordenador por `http`, no: sale «No hay conexión».
+>   Y contra el servidor de **desarrollo** tampoco, porque Next en desarrollo
+>   no arranca sin su servidor: para probarlo, `npm run telefono:compilado`.
 
 ---
 

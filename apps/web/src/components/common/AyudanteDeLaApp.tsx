@@ -8,21 +8,21 @@ import { useEffect } from 'react';
  * Es lo que le falta al navegador para ofrecer «instalar aplicación»: la ficha
  * y los iconos ya están, pero sin un ayudante registrado el botón no aparece.
  *
- * El nuestro no guarda copias de nada (ver `public/sw.js`): solo enseña una
- * pantalla decente cuando no hay señal. Por eso registrarlo no puede dejar a
- * nadie viendo datos viejos.
+ * Y guarda la cáscara de la app (nunca datos: ver `public/sw.js`), que es lo
+ * que hace que la app ABRA sin conexión y enseñe lo último descargado.
  *
- * En desarrollo NO se registra. Un ayudante vivo en `localhost` se queda entre
- * el navegador y el servidor de desarrollo y convierte cualquier recarga en una
- * cacería de fantasmas.
+ * En desarrollo también se registra, en modo «la red primero» (`?modo=
+ * desarrollo`): con el servidor encendido nunca sirve código viejo, y con el
+ * servidor apagado la app sigue abriendo. Sin esto, probar en el teléfono y
+ * apagar el PC dejaba el teléfono sin nada.
  */
 export function AyudanteDeLaApp() {
     useEffect(() => {
-        if (process.env.NODE_ENV !== 'production') return;
         if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+        const url = process.env.NODE_ENV === 'production' ? '/sw.js' : '/sw.js?modo=desarrollo';
 
         const registrar = () => {
-            navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' }).catch(() => {
+            navigator.serviceWorker.register(url, { scope: '/', updateViaCache: 'none' }).catch(() => {
                 // Sin ayudante la app funciona igual; solo no se podrá instalar.
             });
         };

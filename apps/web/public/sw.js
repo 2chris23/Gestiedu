@@ -27,8 +27,20 @@
  * iguales para todo el mundo y no dicen nada de nadie.
  */
 
+/**
+ * EN DESARROLLO TAMBIÉN, PERO SIN GUARDAR NADA VIEJO POR DELANTE
+ *
+ * Este ayudante solo se registraba en producción, y probando en un teléfono
+ * contra el servidor de desarrollo pasaba lo peor: se apagaba el PC y el
+ * teléfono no enseñaba NADA, ni siquiera lo que acababa de ver. Ahora se
+ * registra también en desarrollo (`?modo=desarrollo`), y ahí TODO va primero a
+ * la red: con el servidor encendido se ve siempre el código recién cambiado, y
+ * solo si no contesta se tira de lo guardado.
+ */
+const EN_DESARROLLO = new URL(self.location.href).searchParams.get('modo') === 'desarrollo';
+
 const VERSION = 'gestiedu-v2';
-const CASCARA = `${VERSION}-cascara`;
+const CASCARA = `${VERSION}-${EN_DESARROLLO ? 'desarrollo' : 'cascara'}`;
 const SIN_CONEXION = '/sin-conexion.html';
 
 /** Lo que se guarda al instalar, para que la primera vez sin señal ya funcione. */
@@ -120,6 +132,14 @@ self.addEventListener('fetch', (evento) => {
 
     // Los datos del liceo, a la red siempre. Ver la cabecera de este archivo.
     if (esDelServidor(url)) return;
+
+    if (EN_DESARROLLO) {
+        // Lo que el servidor de desarrollo usa para recargar en caliente no se
+        // toca: no es de la app, y guardarlo solo estorbaría.
+        if (url.pathname.startsWith('/_next/webpack-hmr') || url.pathname.startsWith('/__nextjs') || url.pathname.includes('hot-update')) return;
+        evento.respondWith(laRedYSiNoLoGuardado(peticion));
+        return;
+    }
 
     if (esUnArchivoFijo(url)) {
         evento.respondWith(loGuardadoYSiNoLaRed(peticion));

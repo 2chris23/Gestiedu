@@ -5,6 +5,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
 import { API_URL } from '@/config/env';
 import { conseguirCredencial } from '@/lib/credencial-en-memoria';
+import { elServidorContesto } from '@/lib/estado-del-servidor';
+import { preguntarAlServidor } from '@/hooks/useConexion';
 
 /**
  * LO QUE CAMBIA, APARECE SOLO
@@ -166,6 +168,15 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
 
             // Al volver la conexión, lo que se ve puede estar viejo
             socket.on('reconnect', refrescarLoQueSeVe);
+
+            // Si el servidor se va (apagado, reiniciándose), el canal se corta
+            // al momento: es la primera noticia de que no hay servidor, antes
+            // de que nadie pulse nada. Se comprueba, y si no contesta sale el
+            // aviso de «estás viendo lo de antes» (`useConexion`).
+            socket.on('disconnect', (motivo) => {
+                if (motivo !== 'io client disconnect') void preguntarAlServidor();
+            });
+            socket.on('connect', () => elServidorContesto());
         })();
 
         return () => {

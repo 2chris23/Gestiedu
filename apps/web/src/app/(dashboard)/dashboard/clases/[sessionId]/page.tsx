@@ -15,7 +15,7 @@ export default function ClassSessionPage() {
     const router = useRouter();
     const sessionId = params.sessionId as string;
 
-    const { data: session, isLoading, isError } = useClassSession(sessionId);
+    const { data: session, isLoading } = useClassSession(sessionId);
     const updateSessionMutation = useUpdateClassSession(sessionId);
 
     // Fetch students for this classroom (for the evaluation plan)
@@ -35,7 +35,9 @@ export default function ClassSessionPage() {
         }
     }, [session]);
 
-    if (isLoading) {
+    // Con la sesión guardada se enseña aunque la última lectura fallara (sin
+    // conexión): lo de antes es mejor que «no encontrada».
+    if (isLoading && !session) {
         return (
             <div className="flex h-[80vh] items-center justify-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
@@ -43,7 +45,7 @@ export default function ClassSessionPage() {
         );
     }
 
-    if (isError || !session) {
+    if (!session) {
         return (
             <div className="flex flex-col items-center justify-center h-[50vh]">
                 <AlertCircle className="w-12 h-12 text-red-500 mb-4" />

@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useAcademicYears } from '@/hooks/useAcademicYears';
 import AcademicYearModal from '@/components/academic/AcademicYearModal';
 import AcademicTimeline from '@/components/academic/AcademicTimeline';
 import { toast } from 'sonner';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export default function AcademicPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -17,7 +18,12 @@ export default function AcademicPage() {
     // esperar al esqueleto de carga todas las veces.
     const { data: years = [], isLoading: loading, error } = useAcademicYears();
 
-    if (error) toast.error('Error al cargar años escolares');
+    // En un efecto y una vez: dentro del render salía un aviso por cada
+    // repintado. Y sin conexión no se avisa aquí: ya lo dice la franja de
+    // arriba, y los ciclos guardados se siguen viendo.
+    useEffect(() => {
+        if (error && !esQueNoContesta(error)) toast.error('Error al cargar años escolares');
+    }, [error]);
 
     const loadYears = () => queryClient.invalidateQueries({ queryKey: ['academicYears'] });
 

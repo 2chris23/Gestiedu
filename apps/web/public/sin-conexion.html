@@ -6,12 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>GestiEdu</title>
     <!--
-        ESTA PANTALLA SOLO SE VE CUANDO NO HAY INTERNET
+        ESTA PANTALLA SOLO SE VE CUANDO NO HAY CONEXIÓN CON EL LICEO
 
-        La enseña el ayudante (`sw.js`) cuando el teléfono se queda sin señal y
-        la pantalla que se pidió no se puede traer. Sin esto saldría el error
-        del navegador, ese de "ERR_INTERNET_DISCONNECTED" con letra pequeña, que
-        no le dice nada a un representante.
+        La enseña el ayudante (`sw.js`) cuando la pantalla que se pidió no se
+        puede traer y tampoco está guardada. Sin esto saldría el error del
+        navegador, ese de "ERR_INTERNET_DISCONNECTED" con letra pequeña, que no
+        le dice nada a un representante.
+
+        Y si el teléfono tiene guardada la app (el panel), no se queda aquí:
+        al abrir la app sin conexión (su página de entrada) se va directo a lo
+        último guardado, y desde cualquier otra se ofrece con un botón.
     -->
     <style>
         :root {
@@ -75,6 +79,16 @@
         button:active {
             background: #1d4ed8;
         }
+
+        button.otro {
+            background: transparent;
+            color: #2563eb;
+            border: 2px solid #bfdbfe;
+        }
+
+        .oculto {
+            display: none;
+        }
     </style>
 </head>
 
@@ -87,12 +101,39 @@
         </svg>
     </span>
 
-    <h1>No hay conexión</h1>
-    <p>
-        La aplicación necesita internet para mostrar el liceo. Revisa los datos o
-        el wifi y vuelve a intentarlo.
+    <h1>No hay conexión con el liceo</h1>
+    <p id="motivo">
+        No se puede llegar al servidor del liceo, y esta pantalla no está guardada en
+        este dispositivo. Cuando vuelva la conexión, se abrirá sola.
     </p>
-    <button type="button" onclick="location.reload()">Reintentar</button>
+    <button type="button" id="ver" class="oculto" onclick="location.href='/dashboard'">Ver lo último guardado</button>
+    <button type="button" id="reintentar" onclick="location.reload()">Reintentar</button>
+
+    <script>
+        (function () {
+            // ¿Está guardado el panel? Entonces hay algo que enseñar.
+            if (!('caches' in window)) return;
+            caches.match('/dashboard').then(function (guardado) {
+                if (!guardado) return;
+                var entrada = /^\/($|login|instituto\/[^/]+\/?(login)?\/?$)/.test(location.pathname);
+                if (entrada) {
+                    // Se abrió la app: directo a lo último guardado.
+                    location.replace('/dashboard');
+                    return;
+                }
+                document.getElementById('motivo').textContent =
+                    'Esta pantalla no se había abierto antes con conexión, así que no está guardada. Lo demás sí.';
+                document.getElementById('ver').classList.remove('oculto');
+                document.getElementById('reintentar').classList.add('otro');
+            });
+            // Y en cuanto vuelva la conexión, se intenta de nuevo sola.
+            setInterval(function () {
+                fetch(location.href, { method: 'HEAD', cache: 'no-store' })
+                    .then(function (r) { if (r.ok) location.reload(); })
+                    .catch(function () {});
+            }, 15000);
+        })();
+    </script>
 </body>
 
 </html>

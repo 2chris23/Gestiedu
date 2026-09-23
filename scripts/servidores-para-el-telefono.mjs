@@ -21,6 +21,16 @@
  *
  * Esto es SOLO para probar en desarrollo. Va por http y no sirve para el liceo:
  * ahí hay un servidor de verdad con https.
+ *
+ *   npm run telefono -- --compilado
+ *
+ * Igual, pero con las pantallas COMPILADAS, como en el liceo. Hace falta para
+ * probar la app sin conexión (apagar el PC y ver que el teléfono sigue
+ * enseñando lo último): el servidor de desarrollo de Next no arranca la app en
+ * el teléfono si no puede hablar con él —medido: la página sale pintada pero
+ * muerta, sin un solo botón que responda—. Compilada, arranca sola desde lo
+ * guardado. Tarda un par de minutos más en levantarse, y un cambio en el código
+ * no se ve hasta volver a lanzarlo.
  */
 
 import { spawn } from 'child_process';
@@ -59,8 +69,10 @@ const api = `http://${ip}:3001`;
 
 const hijos = [];
 
-function levantar(nombre, carpeta, variables, color) {
-    const proceso = spawn('npm', ['run', 'dev'], {
+const COMPILADO = process.argv.includes('--compilado');
+
+function levantar(nombre, carpeta, variables, orden = ['run', 'dev']) {
+    const proceso = spawn('npm', orden, {
         cwd: join(RAIZ, 'apps', carpeta),
         env: { ...process.env, ...variables },
         stdio: 'inherit',
@@ -98,4 +110,27 @@ console.log(
 );
 
 levantar('datos', 'backend', { CORS_ORIGIN: `${web},${api}` });
-levantar('pantallas', 'web', { NEXT_PUBLIC_API_URL: `${api}/api` });
+
+if (!COMPILADO) {
+    levantar('pantallas', 'web', { NEXT_PUBLIC_API_URL: `${api}/api` });
+} else {
+    // La dirección de los datos se queda dentro al compilar: por eso se
+    // compila aquí, con la de este ordenador, y no se reutiliza otra compilación.
+    console.log('Compilando las pantallas (un par de minutos)…');
+    const variables = { ...process.env, NEXT_PUBLIC_API_URL: `${api}/api` };
+    const compilar = spawn('npm', ['run', 'build'], {
+        cwd: join(RAIZ, 'apps', 'web'),
+        env: variables,
+        stdio: 'inherit',
+        shell: true,
+    });
+    hijos.push(compilar);
+    compilar.on('exit', (codigo) => {
+        if (codigo !== 0) {
+            console.error('No se pudo compilar la web. Mira el error de arriba.');
+            parar();
+            return;
+        }
+        levantar('pantallas', 'web', { NEXT_PUBLIC_API_URL: `${api}/api` }, ['run', 'start', '--', '-H', '0.0.0.0', '-p', '3000']);
+    });
+}

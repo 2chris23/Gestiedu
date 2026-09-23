@@ -308,6 +308,32 @@ no es técnico: lo que guarda un service worker es del NAVEGADOR, no de la
 persona. Ahí solo vive la cáscara —la página, el javascript y los estilos—, que
 es igual para todo el mundo; y es lo que hace que la app ABRA sin internet.
 
+**«Sin internet» y «sin servidor» no son lo mismo, y el caso real es el
+segundo:** el teléfono con datos y el servidor apagado. `navigator.onLine` dice
+que todo va bien. La cuenta de verdad la lleva `lib/estado-del-servidor.ts`
+(error de red, tiempo agotado o 502/503/504 = no contestó; un 4xx o un 500 en
+JSON = contestó), y `useConexion` pregunta a `/health` cada 15 s hasta que
+vuelve. Cuatro cosas que fallaban con el servidor apagado, todas medidas:
+
+- **La sesión se cerraba** si tocaba renovarla: cualquier fallo al renovar
+  mandaba al login. Ahora solo un 401/403 del servidor la cierra; y la ruta de
+  renovar responde 503, no 401, cuando el servidor de datos no está.
+- **Lo guardado se borraba al abrir.** Las pantallas pedían sus datos, fallaban,
+  y el dato bueno quedaba «con error»; la memoria guardaba solo lo «bueno» y lo
+  dejaba fuera. Ahora se guarda todo lo que tenga datos, y no se guarda nada
+  hasta haber devuelto lo guardado (`MemoriaDelTelefono`).
+- **Guardar daba un error sin motivo.** Ahora `SinConexion` trae la forma de
+  una respuesta (`response.data.error`) y lo dice igual en toda pantalla.
+- **La app abría en el login**, inútil sin servidor. Con sesión en el
+  teléfono, va a lo guardado (`SinConexionAlEntrar`, `sin-conexion.html`).
+
+**Con el servidor de DESARROLLO esto no se puede probar**, y no es un fallo: el
+cliente de desarrollo de Next no arranca la app sin su servidor (medido: la
+página sale pintada pero muerta). Para probarlo en el teléfono:
+`npm run telefono:compilado`. En el navegador: `npm run build` en `apps/web`,
+`npx next start -p 3108` y `WEB_DESTINO=3108 npx playwright test servidor-apagado`
+(APAGADO-01 apaga el servidor de verdad: una puerta TCP propia que se cierra).
+
 ## La huella
 
 La huella **no entra al sistema**: abre un cajón del propio teléfono (el

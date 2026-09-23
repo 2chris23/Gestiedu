@@ -53,6 +53,18 @@ export function MemoriaDelTelefono({ children }: { children: React.ReactNode }) 
 
     const dueno = deQuienEs(liceo, user?.id);
 
+    /**
+     * NO SE GUARDA NADA HASTA HABER DEVUELTO LO GUARDADO
+     *
+     * Medido abriendo la app con el servidor apagado: las pantallas pedían sus
+     * datos, fallaban (sin servidor), y a los dos segundos esta memoria
+     * guardaba «lo que había en pantalla» —nada— ENCIMA de lo que el teléfono
+     * tenía guardado. Lo de ayer se borraba justo en el momento en que hacía
+     * falta, y la pantalla salía vacía. Ahora primero se devuelve lo guardado,
+     * y solo después se empieza a guardar lo nuevo, que ya lo incluye.
+     */
+    const [devuelto, setDevuelto] = React.useState(false);
+
     // ── Devolver lo guardado ─────────────────────────────────────────────
     React.useEffect(() => {
         if (!isHydrated) return;
@@ -64,13 +76,18 @@ export function MemoriaDelTelefono({ children }: { children: React.ReactNode }) 
         }
 
         let cancelado = false;
-        void leerLoDescargado(dueno).then((guardado) => {
-            if (cancelado || !guardado) return;
-            // `hydrate` no pisa lo que ya esté más fresco en memoria: si una
-            // pantalla ya recibió respuesta del servidor, se queda la del
-            // servidor. Lo guardado solo rellena los huecos.
-            hydrate(cliente, guardado.estado);
-        });
+        setDevuelto(false); // otro dueño: vuelve a esperar a lo suyo
+        void leerLoDescargado(dueno)
+            .then((guardado) => {
+                if (cancelado || !guardado) return;
+                // `hydrate` no pisa lo que ya esté más fresco en memoria: si una
+                // pantalla ya recibió respuesta del servidor, se queda la del
+                // servidor. Lo guardado solo rellena los huecos.
+                hydrate(cliente, guardado.estado);
+            })
+            .finally(() => {
+                if (!cancelado) setDevuelto(true);
+            });
 
         return () => {
             cancelado = true;
@@ -79,7 +96,7 @@ export function MemoriaDelTelefono({ children }: { children: React.ReactNode }) 
 
     // ── Ir guardando lo que llega ────────────────────────────────────────
     React.useEffect(() => {
-        if (!dueno) return;
+        if (!dueno || !devuelto) return;
 
         let reloj: ReturnType<typeof setTimeout> | null = null;
 
@@ -88,13 +105,29 @@ export function MemoriaDelTelefono({ children }: { children: React.ReactNode }) 
             reloj = setTimeout(() => {
                 reloj = null;
                 const estado = dehydrate(cliente, {
-                    // Solo lo que salió bien. Un error guardado se devolvería
-                    // como si fuera el estado real de las cosas.
-                    shouldDehydrateQuery: (consulta) =>
-                        consulta.state.status === 'success' && consulta.state.data !== undefined,
+                    /**
+                     * TODO LO QUE TENGA DATOS, AUNQUE LA ÚLTIMA LECTURA FALLARA
+                     *
+                     * Se guardaba solo lo que estaba «bien». Pero sin servidor,
+                     * la pantalla vuelve a pedir sus datos, falla, y el dato
+                     * bueno de antes queda marcado «con error» (sigue ahí, es
+                     * lo que se ve). Al no contar como «bien», el guardado
+                     * siguiente lo dejaba FUERA: medido, abrir la app sin
+                     * servidor borraba del teléfono el panel que acababa de
+                     * enseñar, y la vez siguiente salía vacía.
+                     */
+                    shouldDehydrateQuery: (consulta) => consulta.state.data !== undefined,
                     // Nada de mutaciones: aquí no se guarda nada para enviar.
                     shouldDehydrateMutation: () => false,
                 });
+                // Lo guardado es el DATO, no el error de la última vez: se
+                // devuelve como bueno, y la pantalla lo pedirá de nuevo cuando
+                // haya conexión.
+                for (const q of estado.queries) {
+                    if (q.state.status === 'error') {
+                        q.state = { ...q.state, status: 'success', error: null, fetchFailureReason: null };
+                    }
+                }
                 void guardarLoDescargado(dueno, estado);
             }, CADA);
         };
@@ -109,7 +142,7 @@ export function MemoriaDelTelefono({ children }: { children: React.ReactNode }) 
             dejarDeEscuchar();
             if (reloj) clearTimeout(reloj);
         };
-    }, [cliente, dueno]);
+    }, [cliente, dueno, devuelto]);
 
     return <>{children}</>;
 }
