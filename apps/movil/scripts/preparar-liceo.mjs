@@ -180,7 +180,16 @@ async function main() {
     // `cleartext` solo se enciende en una APK de pruebas contra la red local:
     // es lo que permite http, y por eso no se enciende en ninguna otra.
     const enClaro = dePruebas && esDeCasa;
-    config.server = { url, cleartext: enClaro, androidScheme: enClaro ? 'http' : 'https' };
+    config.server = {
+        url,
+        cleartext: enClaro,
+        androidScheme: enClaro ? 'http' : 'https',
+        // Sin esto, cuando el servidor del liceo no contesta, Android enseña su
+        // propia pantalla de error («ERR_CONNECTION_REFUSED», en inglés y con
+        // letra pequeña) y `www/index.html` no se ve NUNCA. Con `volver`, esa
+        // pantalla sabe a dónde reintentar.
+        errorPath: `index.html?volver=${encodeURIComponent(url)}`,
+    };
     config.plugins.SplashScreen.backgroundColor = color;
     // La barra de estado NO se pinta del color del liceo: va del color de la
     // cabecera de la app, que es blanca, como hacen Facebook o WhatsApp. Una
