@@ -56,7 +56,8 @@
     "probar:pgbouncer": "tsx src/scripts/probar-pgbouncer.ts",
     "medir:pozo": "tsx src/scripts/medir-pozo-y-repartidor.ts",
     "medir:aguante": "tsx src/scripts/medir-aguante.ts",
-    "medir:estres": "tsx src/scripts/medir-estres-incremental.ts"
+    "medir:estres": "tsx src/scripts/medir-estres-incremental.ts",
+    "seed:muchos-liceos": "tsx src/scripts/seed-muchos-liceos.ts"
   },
   "dependencies": {
     "@fastify/compress": "^9.2.0",

@@ -306,6 +306,14 @@ de datos o por proyecto.** Con una base por liceo, 200 bases dentro de un mismo
 servidor cuestan lo mismo que una; en un servicio que cobra por proyecto, cuestan
 200 veces más.
 
+**La recomendación (septiembre 2026):** un servidor alquilado (VPS), por
+ejemplo Hetzner en su centro de EE. UU. Este, con este `docker-compose`. El
+disco no se borra al reiniciar, es lo más barato por liceo y es lo que ya
+espera todo lo de aquí. Para los primeros 2 o 3 liceos basta una máquina. Al
+crecer: otra para PostgreSQL y más procesos del servidor de datos (§5, «200
+liceos, y más de un proceso»), sin cambiar código. La copia de los respaldos
+fuera del servidor, a Cloudflare R2 (§8), que no cobra por descargar.
+
 ## 7. El modo de la aplicación: comprobarlo, no suponerlo
 
 La aplicación carga los archivos `.env` **pisando** lo que venga del sistema. Es a
@@ -365,6 +373,12 @@ pg_restore --clean --if-exists --no-owner --dbname=gestion_escolar_platform back
 | `BACKUP_DIR` | Dónde quedan los archivos. En un servidor, un disco aparte del de la base. | `backups/` |
 | `BACKUP_RETENTION_DAYS` | Cuántos días se guardan antes de borrar los viejos. | 14 |
 | `PG_BIN_DIR` | Dónde está `pg_dump` si no está en el PATH (en Windows no suele estarlo). | — |
+| `HORA_DE_RESPALDO` | A qué hora del país (`TZ`) corre el respaldo de cada noche (servicio `respaldos`). | `02:00` |
+| `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`, `BACKUP_S3_REGION` | La copia **fuera** del servidor, en R2 o cualquier S3. Vacío = desactivada. | desactivada |
+
+`/health` dice cómo fue el último respaldo (`respaldos`: `al-dia`, `atrasado`
+—más de 26 horas—, `fallo` o `sin-programar`), y un fallo deja una alerta
+crítica en el panel del superadmin.
 
 Para que corra solo, una vez al día, desde el programador de tareas del servidor.
 Si algún liceo falla, el comando termina con error para que la tarea lo avise: un
@@ -499,9 +513,43 @@ opción también salen las herramientas de desarrollo, que no se instalan allí.
 
 ## 9. Lo que todavía falta
 
-- Archivos subidos en el disco del servidor: hay que moverlos a S3 o R2, porque
-  en un servicio de alojamiento el disco es temporal.
-- Subir los respaldos fuera del servidor (S3/R2): hoy quedan en su disco, que es el
-  mismo sitio que se perdería si el servidor se pierde.
+- ~~Archivos subidos en el disco del servidor~~: los logos van a la base de la
+  plataforma desde septiembre 2026 (`LOGO-01…05`). Los subidos antes siguen en
+  el volumen `uploads` y se sirven igual.
+- ~~Subir los respaldos fuera del servidor~~: `BACKUP_S3_*` (§8).
+- La prueba en un servidor de verdad (abajo): **escrita, no ejecutada**.
+
+## 10-bis. La prueba en un servidor (al final, cuando se decida)
+
+Todo lo medido hasta ahora se midió en UN ordenador que hacía de servidor, de
+base de datos y de generador de carga a la vez. Lo último medido ahí (septiembre
+2026): **500 personas repartidas en 50 liceos, un solo proceso, p95 de 132 ms,
+p99 de 298 ms y ningún fallo** (`docs/mediciones/`). Para saber lo que aguanta
+de verdad hace falta separarlo:
+
+1. **Tres máquinas**, alquiladas por horas y borradas al terminar:
+   - la aplicación (este `docker-compose`, con `--scale backend=2` o más);
+   - PostgreSQL con PgBouncer (o PostgreSQL en su máquina y el compose
+     apuntando a ella);
+   - la que genera la carga, que NO puede ser ninguna de las otras dos.
+2. **Los liceos:** `LICEOS=200 npm run seed:muchos-liceos` (una plantilla
+   pequeña copiada 200 veces; `-- --limpiar` los quita).
+3. **La carga**, desde la tercera máquina contra la primera:
+   ```bash
+   API_REMOTA=https://<el-servidor> PLATFORM_DATABASE_URL=<la de ese servidor> \
+   LICEOS='muchos-*' CLAVE='Test123!' ESCALONES=500,1000,2000,5000,10000,15000 \
+     SEGUNDOS=120 npm run medir:estres
+   ```
+   Con `API_REMOTA` el guion no arranca su propio proceso: mide el que ya está
+   en marcha. De la base de la plataforma saca los liceos y las cuentas.
+   **Ojo con el límite de entrada:** todas las personas entran desde la
+   dirección de la máquina de carga, y la pantalla de entrar cuenta por
+   dirección (`RATE_LIMIT_MAX`, 100 por minuto): 15.000 entradas serían dos
+   horas y media de espera. Para la prueba, subirlo en el servidor y volver a
+   dejarlo como estaba al terminar.
+4. **El criterio**, el mismo de siempre: en el servidor, **toda ruta con p95 ≤
+   300 ms y p99 ≤ 1 s**, y menos de 1 % de fallos. Lo que pase de ahí se mira
+   ruta por ruta en el JSON que queda en `docs/mediciones/`.
+5. Se apaga todo.
 
 Ver [AUDITORIA-2026-09-11.md](AUDITORIA-2026-09-11.md).

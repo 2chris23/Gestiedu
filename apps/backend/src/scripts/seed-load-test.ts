@@ -35,23 +35,34 @@ import path from 'path';
 
 // ─── CONFIGURACIÓN ────────────────────────────────────────────────────────────
 
-const INSTITUTE_SLUG = 'test-load-5k';
-const INSTITUTE_CODE = 'LOAD-5K-001';
+/**
+ * Todo se puede cambiar por variables, para sembrar liceos más pequeños (lo
+ * usa `seed-muchos-liceos.ts` para su plantilla). Sin variables, es el liceo
+ * de carga de siempre: `test-load-5k`, 15.250 personas.
+ */
+const INSTITUTE_SLUG = process.env.SEMILLA_LICEO || 'test-load-5k';
+const INSTITUTE_CODE = process.env.SEMILLA_CODIGO || 'LOAD-5K-001';
+const INSTITUTE_NAME = process.env.SEMILLA_NOMBRE || 'Instituto Load Testing 5K';
 const BASE_PASSWORD = 'Test123!';
 const BATCH_SIZE = 500;
 
+const numero = (variable: string, defecto: number) => {
+    const n = Number(process.env[variable]);
+    return Number.isFinite(n) && n > 0 ? n : defecto;
+};
+
 const CONFIG = {
-    grades: 10,
-    sectionsPerGrade: 10,
-    studentsPerClassroom: 50,
-    tutorsPerStudent: 2,
-    teachers: 200,
-    admins: 50,
+    grades: Math.min(10, numero('SEMILLA_GRADOS', 10)),
+    sectionsPerGrade: Math.min(10, numero('SEMILLA_SECCIONES', 10)),
+    studentsPerClassroom: numero('SEMILLA_ALUMNOS_POR_SECCION', 50),
+    tutorsPerStudent: numero('SEMILLA_TUTORES_POR_ALUMNO', 2),
+    teachers: numero('SEMILLA_PROFESORES', 200),
+    admins: numero('SEMILLA_ADMINS', 50),
     subjects: 12,
     lapsos: 3,
-    activitiesPerSubjectPerLapso: 10,
-    schoolDays: 120,
-} as const;
+    activitiesPerSubjectPerLapso: numero('SEMILLA_ACTIVIDADES', 10),
+    schoolDays: numero('SEMILLA_DIAS', 120),
+};
 
 // 10 grados × 10 secciones = 100 aulas × 50 alumnos = 5,000 estudiantes
 const TOTAL_CLASSROOMS = CONFIG.grades * CONFIG.sectionsPerGrade;
@@ -125,7 +136,7 @@ function buildTenantDbUrl(dbName: string): string {
 }
 
 async function provisionInstitute(): Promise<{ databaseName: string; adminId: string }> {
-    const DB_NAME = `tenant_test_load_5k`;
+    const DB_NAME = `tenant_${INSTITUTE_SLUG.replace(/-/g, '_')}`;
     const ADMIN_CI = 'V-A000001';
 
     // ── 1. Verificar si ya existe en platform ────
@@ -144,11 +155,11 @@ async function provisionInstitute(): Promise<{ databaseName: string; adminId: st
     if (!institute) {
         institute = await platformPrisma.institute.create({
             data: {
-                name: 'Instituto Load Testing 5K',
+                name: INSTITUTE_NAME,
                 code: INSTITUTE_CODE,
                 slug: INSTITUTE_SLUG,
                 subdomain: INSTITUTE_SLUG,
-                email: 'test@testload5k.com',
+                email: `test@${INSTITUTE_SLUG}.com`,
                 status: 'PROVISIONING',
                 environment: 'development',
                 // ENTERPRISE a propósito: este liceo tiene 5.000 alumnos y las
@@ -970,7 +981,8 @@ async function main() {
         }
 
         // ── CSV ───
-        const csvPath = path.join(process.cwd(), 'load-tests', 'test-users-5k.csv');
+        // Las pruebas de k6 leen test-users-5k.csv: el del liceo de siempre no cambia de nombre.
+        const csvPath = path.join(process.cwd(), 'load-tests', INSTITUTE_SLUG === 'test-load-5k' ? 'test-users-5k.csv' : `usuarios-${INSTITUTE_SLUG}.csv`);
         fs.mkdirSync(path.dirname(csvPath), { recursive: true });
         fs.writeFileSync(csvPath, csvRows.join('\n'), 'utf-8');
 
@@ -992,7 +1004,7 @@ async function main() {
         console.log(`  ✅ Actividades:     ~48,000`);
         console.log(`  ✅ Calificaciones:  ~2,400,000`);
         console.log(`  ✅ Asistencias:     ~600,000`);
-        console.log(`  ✅ CSV:             load-tests/test-users-5k.csv (${csvRows.length - 1} usuarios)`);
+        console.log(`  ✅ CSV:             ${path.relative(process.cwd(), csvPath)} (${csvRows.length - 1} usuarios)`);
         console.log(`\n  ⏱️  Tiempo total:   ${mins}m ${secs}s`);
         console.log(`\n  🌐 Instituto:      http://${INSTITUTE_SLUG}.localhost:3000`);
         console.log('\n  ▶️  Ejecutar tests:');

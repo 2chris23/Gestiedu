@@ -30,9 +30,16 @@
  * los cuatro, no el sistema. Por eso se vigila el retraso del propio generador:
  * si él se atasca, los tiempos salen inflados y el informe lo dice.
  *
+ * ─── CON MUCHOS LICEOS A LA VEZ ─────────────────────────────────────────────
+ *
+ * Con `LICEOS`, la gente se reparte entre varios liceos (uno por persona, por
+ * turnos). Es lo que ve el servidor de verdad: 200 bases, no una. Una entrada
+ * que acaba en `*` es un prefijo (`muchos-*`, los de `seed-muchos-liceos.ts`).
+ *
  * Uso:
  *   npm run medir:estres
  *   ESCALONES=5,10,20 SEGUNDOS=30 npm run medir:estres
+ *   LICEOS='muchos-*' CLAVE='Test123!' TENANT_CONNECTION_LIMIT=1 npm run medir:estres
  */
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
@@ -40,10 +47,21 @@ import fs from 'fs';
 import { monitorEventLoopDelay } from 'perf_hooks';
 import { Client } from 'pg';
 import { platformPrisma } from '../config/database';
+import { guardarMedicion } from './guardar-medicion';
 
 const PUERTO = Number(process.env.PUERTO_MEDIDA || 3008);
-const API = `http://localhost:${PUERTO}/api`;
+/**
+ * Contra un servidor que ya está en marcha en OTRA máquina (la prueba del
+ * servidor: DESPLIEGUE.md §10-bis). Sin esto, el guion arranca su propio
+ * proceso aquí mismo. La base de la plataforma (PLATFORM_DATABASE_URL) tiene
+ * que ser la de ese servidor: de ahí salen los liceos y la gente.
+ */
+const API_REMOTA = process.env.API_REMOTA?.replace(/\/+$/, '');
+const API = API_REMOTA ? `${API_REMOTA}/api` : `http://localhost:${PUERTO}/api`;
+const SALUD = API_REMOTA ? `${API_REMOTA}/health` : `http://localhost:${PUERTO}/health`;
 const SLUG = process.env.LICEO || 'instituto-testing';
+/** Varios liceos: `a,b,c` o `prefijo-*`. Sin esto, solo `LICEO`. */
+const LICEOS = (process.env.LICEOS || '').split(',').map((x) => x.trim()).filter(Boolean);
 const CLAVE = process.env.CLAVE || '123456';
 const ESCALONES = (process.env.ESCALONES || '5,10,20,30,50,75,100,150,200,300,500').split(',').map(Number);
 const SEGUNDOS = Number(process.env.SEGUNDOS || 60);
@@ -84,6 +102,9 @@ interface Persona {
     email: string;
     id: string;
     rol: 'ADMIN' | 'TEACHER' | 'STUDENT';
+    /** El liceo de esta persona, y una sección suya para la lista de alumnos. */
+    slug: string;
+    seccionId?: string;
     llaves?: Llaves;
     /** Profesor: una clase suya para abrir y guardar. */
     clase?: { classroomId: string; subjectId: string; alumnos: string[] };
@@ -123,7 +144,7 @@ function arrancarElServidor(): ChildProcess {
 async function esperarAlServidor(hastaCuando: number) {
     while (Date.now() < hastaCuando) {
         try {
-            if ((await fetch(`http://localhost:${PUERTO}/health`)).ok) return true;
+            if ((await fetch(SALUD)).ok) return true;
         } catch {
             /* todavía no */
         }
@@ -185,13 +206,13 @@ async function memoriaDelServidor(): Promise<number> {
     });
 }
 
-async function entrar(email: string): Promise<Llaves | null> {
+async function entrar(email: string, slug: string): Promise<Llaves | null> {
     const hastaCuando = Date.now() + 120_000;
     for (;;) {
         try {
             const res = await fetch(`${API}/auth/login`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Institute-Slug': SLUG },
+                headers: { 'Content-Type': 'application/json', 'X-Institute-Slug': slug },
                 body: JSON.stringify({ email, password: CLAVE }),
             });
             if (res.ok) return ((await res.json()) as { tokens: Llaves }).tokens;
@@ -205,12 +226,12 @@ async function entrar(email: string): Promise<Llaves | null> {
 
 let renovacionesEnLaTanda = 0;
 
-async function renovar(llaves: Llaves): Promise<boolean> {
+async function renovar(llaves: Llaves, slug: string): Promise<boolean> {
     renovacionesEnLaTanda++;
     try {
         const res = await fetch(`${API}/auth/refresh-token`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Institute-Slug': SLUG },
+            headers: { 'Content-Type': 'application/json', 'X-Institute-Slug': slug },
             body: JSON.stringify({ refreshToken: llaves.refreshToken }),
         });
         if (!res.ok) return false;
@@ -234,7 +255,7 @@ async function pedir(p: Persona, metodo: 'GET' | 'POST', ruta: string, cuerpo?: 
             method: metodo,
             headers: {
                 Authorization: `Bearer ${p.llaves!.accessToken}`,
-                'X-Institute-Slug': SLUG,
+                'X-Institute-Slug': p.slug,
                 ...(cuerpo ? { 'Content-Type': 'application/json' } : {}),
             },
             body: cuerpo ? JSON.stringify(cuerpo) : undefined,
@@ -242,7 +263,7 @@ async function pedir(p: Persona, metodo: 'GET' | 'POST', ruta: string, cuerpo?: 
     try {
         let res = await hacer();
         await res.arrayBuffer();
-        if (res.status === 401 && (await renovar(p.llaves!))) {
+        if (res.status === 401 && (await renovar(p.llaves!, p.slug))) {
             res = await hacer();
             await res.arrayBuffer();
         }
@@ -252,7 +273,7 @@ async function pedir(p: Persona, metodo: 'GET' | 'POST', ruta: string, cuerpo?: 
     }
 }
 
-async function unClic(p: Persona, contador: { n: number }, extra: { seccionId?: string }): Promise<Medida> {
+async function unClic(p: Persona, contador: { n: number }): Promise<Medida> {
     contador.n++;
     if (p.rol === 'STUDENT') {
         const opciones = ['/dashboard/student', '/students/my-dashboard', '/time'];
@@ -276,29 +297,42 @@ async function unClic(p: Persona, contador: { n: number }, extra: { seccionId?: 
         ];
         return pedir(p, 'GET', opciones[contador.n % opciones.length]);
     }
-    const opciones = ['/dashboard/admin', '/users?page=1&limit=20', `/students?classroomId=${extra.seccionId}&page=1&limit=30`];
+    const opciones = ['/dashboard/admin', '/users?page=1&limit=20', `/students?classroomId=${p.seccionId}&page=1&limit=30`];
     return pedir(p, 'GET', opciones[contador.n % opciones.length]);
 }
 
-async function main() {
-    const liceo = await platformPrisma.institute.findFirst({
-        where: { slug: SLUG },
-        select: { databaseName: true, databaseHost: true, databasePort: true, databaseUser: true, databasePassword: true },
-    });
-    if (!liceo?.databaseName) {
-        console.error(`  No existe el liceo «${SLUG}».`);
-        process.exit(1);
-    }
-    const conexion = {
-        user: liceo.databaseUser!,
-        password: liceo.databasePassword!,
-        host: liceo.databaseHost!,
-        port: liceo.databasePort ?? 5432,
-    };
+interface Liceo {
+    slug: string;
+    base: string;
+    conexion: { user: string; password: string; host: string; port: number };
+}
 
-    // ── La gente: cuentas reales del liceo, en la proporción de un liceo ───────
-    const maximo = Math.max(...ESCALONES);
-    const db = new Client({ ...conexion, database: liceo.databaseName });
+async function losLiceos(): Promise<Liceo[]> {
+    const pedidos = LICEOS.length ? LICEOS : [SLUG];
+    const exactos = pedidos.filter((x) => !x.endsWith('*'));
+    const prefijos = pedidos.filter((x) => x.endsWith('*')).map((x) => x.slice(0, -1));
+    const filas = await platformPrisma.institute.findMany({
+        where: {
+            status: 'ACTIVE',
+            databaseName: { not: null },
+            OR: [{ slug: { in: exactos } }, ...prefijos.map((p) => ({ slug: { startsWith: p } }))],
+        },
+        select: { slug: true, databaseName: true, databaseHost: true, databasePort: true, databaseUser: true, databasePassword: true },
+        orderBy: { slug: 'asc' },
+    });
+    return filas
+        // La plantilla de `seed-muchos-liceos` no se usa: se copia de ella.
+        .filter((f) => !f.slug.endsWith('-plantilla'))
+        .map((f) => ({
+            slug: f.slug,
+            base: f.databaseName!,
+            conexion: { user: f.databaseUser!, password: f.databasePassword!, host: f.databaseHost!, port: f.databasePort ?? 5432 },
+        }));
+}
+
+/** La gente de UN liceo: cuentas reales, en la proporción de un liceo. */
+async function laGenteDe(liceo: Liceo, cuantos: number): Promise<Persona[]> {
+    const db = new Client({ ...liceo.conexion, database: liceo.base });
     await db.connect();
 
     const profesores = (
@@ -324,7 +358,7 @@ async function main() {
     const alumnos = (
         await db.query<{ email: string; id: string }>(
             `SELECT email, id FROM users WHERE "isActive" = true AND role = 'STUDENT' AND email IS NOT NULL ORDER BY id LIMIT $1`,
-            [maximo]
+            [cuantos]
         )
     ).rows;
     const admins = (
@@ -336,20 +370,38 @@ async function main() {
     // Proporción de un liceo: ~1 profesor por cada 8 alumnos y un par de admins.
     const personas: Persona[] = [];
     let ia = 0, ip = 0, iad = 0;
-    for (let i = 0; i < maximo; i++) {
+    for (let i = 0; i < cuantos; i++) {
         if (i % 40 === 3 && admins.length) {
             const a = admins[iad++ % admins.length];
-            personas.push({ email: a.email, id: a.id, rol: 'ADMIN' });
+            personas.push({ email: a.email, id: a.id, rol: 'ADMIN', slug: liceo.slug, seccionId });
         } else if (i % 9 === 1 && ip < profesores.length) {
             const pr = profesores[ip++];
             personas.push({
-                email: pr.email, id: pr.id, rol: 'TEACHER',
+                email: pr.email, id: pr.id, rol: 'TEACHER', slug: liceo.slug,
                 clase: { classroomId: pr.classroom_id, subjectId: pr.subject_id, alumnos: (alumnosPorSeccion.get(pr.classroom_id) ?? []).slice(0, 35) },
             });
         } else if (ia < alumnos.length) {
             const al = alumnos[ia++];
-            personas.push({ email: al.email, id: al.id, rol: 'STUDENT' });
+            personas.push({ email: al.email, id: al.id, rol: 'STUDENT', slug: liceo.slug });
         }
+    }
+    return personas;
+}
+
+async function main() {
+    const liceos = await losLiceos();
+    if (liceos.length === 0) {
+        console.error(`  No hay liceos que medir (${LICEOS.length ? LICEOS.join(',') : SLUG}).`);
+        process.exit(1);
+    }
+
+    // ── La gente, repartida entre los liceos por turnos ────────────────────────
+    const maximo = Math.max(...ESCALONES);
+    const porLiceo = Math.ceil(maximo / liceos.length);
+    const grupos = await Promise.all(liceos.map((l) => laGenteDe(l, porLiceo)));
+    const personas: Persona[] = [];
+    for (let i = 0; personas.length < maximo && i < porLiceo; i++) {
+        for (const g of grupos) if (g[i] && personas.length < maximo) personas.push(g[i]);
     }
     const disponibles = personas.length;
     const escalones = ESCALONES.filter((n) => n <= disponibles);
@@ -357,11 +409,11 @@ async function main() {
         console.log(`  Aviso: el liceo tiene ${disponibles} cuentas usables; se mide hasta ${escalones[escalones.length - 1]}.`);
     }
 
-    if (await quienEscuchaEn(PUERTO)) {
+    if (!API_REMOTA && (await quienEscuchaEn(PUERTO))) {
         console.error(`  El puerto ${PUERTO} ya está ocupado por otro proceso: se mediría a ese y no a este código. Ciérralo o usa PUERTO_MEDIDA.`);
         process.exit(1);
     }
-    const servidor = arrancarElServidor();
+    const servidor = API_REMOTA ? null : arrancarElServidor();
     const retraso = monitorEventLoopDelay({ resolution: 10 });
     retraso.enable();
     const resultados: any[] = [];
@@ -372,7 +424,7 @@ async function main() {
             process.exit(1);
         }
 
-        console.log(`\n  Estrés incremental · ${SEGUNDOS} s por escalón · pausa ${PAUSA_MIN}–${PAUSA_MAX} ms entre clics`);
+        console.log(`\n  Estrés incremental · ${liceos.length} liceo(s) · ${SEGUNDOS} s por escalón · pausa ${PAUSA_MIN}–${PAUSA_MAX} ms entre clics`);
         console.log(`  Se detiene si fallan >${FALLOS_MAXIMOS} % o el p95 pasa de ${P95_MAXIMO} ms\n`);
         console.log(
             '    gente' + 'pet/s'.padStart(8) + 'p50'.padStart(8) + 'p95'.padStart(8) + 'p99'.padStart(8) +
@@ -389,7 +441,7 @@ async function main() {
             const contador = { n: azar(0, 10) };
             await esperar(azar(0, PAUSA_MAX)); // que no arranquen todos en el mismo milisegundo
             while (!parar) {
-                medidas.push(await unClic(p, contador, { seccionId }));
+                medidas.push(await unClic(p, contador));
                 await esperar(azar(PAUSA_MIN, PAUSA_MAX));
             }
         };
@@ -400,7 +452,7 @@ async function main() {
             for (let i = 0; i < nuevos.length; i += 8) {
                 await Promise.all(
                     nuevos.slice(i, i + 8).map(async (p) => {
-                        p.llaves = (await entrar(p.email)) ?? undefined;
+                        p.llaves = (await entrar(p.email, p.slug)) ?? undefined;
                     })
                 );
             }
@@ -423,7 +475,7 @@ async function main() {
             const buenos = tanda.filter((m) => m.ok).map((m) => m.ms);
             const fallos = tanda.filter((m) => !m.ok);
             const porcFallos = tanda.length ? (fallos.length / tanda.length) * 100 : 0;
-            const [memoria, conexiones] = await Promise.all([memoriaDelServidor(), contarConexiones(conexion, liceo.databaseName!)]);
+            const [memoria, conexiones] = await Promise.all([API_REMOTA ? 0 : memoriaDelServidor(), contarConexiones(liceos)]);
             const genP99 = Math.round(retraso.percentile(99) / 1e6);
 
             const porRuta: Record<string, number[]> = {};
@@ -477,41 +529,38 @@ async function main() {
         await Promise.race([Promise.all(trabajando), esperar(15_000)]);
     } finally {
         retraso.disable();
-        servidor.kill();
-        await matarLoQueEscuchaEn(PUERTO);
-        await limpiar(conexion, liceo.databaseName!);
+        if (servidor) {
+            servidor.kill();
+            await matarLoQueEscuchaEn(PUERTO);
+        }
+        for (const l of liceos) await limpiar(l.conexion, l.base);
     }
 
     // ── Lectura ──────────────────────────────────────────────────────────────
     const lectura = leer(resultados);
     console.log('\n  ' + lectura.join('\n  ') + '\n');
 
-    const carpeta = path.join(__dirname, '..', '..', '..', '..', 'docs', 'mediciones');
-    fs.mkdirSync(carpeta, { recursive: true });
-    const archivo = path.join(carpeta, `estres-incremental-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.json`);
-    fs.writeFileSync(
-        archivo,
-        JSON.stringify(
-            {
-                cuando: new Date().toISOString(),
-                liceo: SLUG,
-                parametros: { ESCALONES, SEGUNDOS, ASENTAR_S, PAUSA_MIN, PAUSA_MAX, P95_MAXIMO, FALLOS_MAXIMOS, GUARDA_CADA },
-                resultados,
-                lectura,
-            },
-            null,
-            2
-        )
-    );
-    console.log(`  Guardado en ${path.relative(process.cwd(), archivo)}\n`);
+    guardarMedicion(liceos.length > 1 ? `estres-${liceos.length}-liceos` : 'estres-incremental', {
+        liceo: liceos.length === 1 ? liceos[0].slug : undefined,
+        liceos: liceos.length,
+        slugs: liceos.map((l) => l.slug),
+        parametros: {
+            ESCALONES, SEGUNDOS, ASENTAR_S, PAUSA_MIN, PAUSA_MAX, P95_MAXIMO, FALLOS_MAXIMOS, GUARDA_CADA,
+            TENANT_CONNECTION_LIMIT: process.env.TENANT_CONNECTION_LIMIT ?? null,
+            redis: process.env.REDIS_URL || process.env.REDIS_PORT ? 'sí' : 'el de .env',
+        },
+        resultados,
+        lectura,
+    });
     process.exit(0);
 }
 
-async function contarConexiones(conexion: any, base: string): Promise<number> {
-    const c = new Client({ ...conexion, database: 'postgres' });
+/** Conexiones abiertas en las bases de los liceos que se miden, sumadas. */
+async function contarConexiones(liceos: Liceo[]): Promise<number> {
+    const c = new Client({ ...liceos[0].conexion, database: 'postgres' });
     try {
         await c.connect();
-        const r = await c.query<{ n: string }>('SELECT count(*) AS n FROM pg_stat_activity WHERE datname = $1', [base]);
+        const r = await c.query<{ n: string }>('SELECT count(*) AS n FROM pg_stat_activity WHERE datname = ANY($1)', [liceos.map((l) => l.base)]);
         return Number(r.rows[0].n);
     } catch {
         return 0;
