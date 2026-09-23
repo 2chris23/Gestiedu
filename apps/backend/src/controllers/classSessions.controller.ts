@@ -227,36 +227,60 @@ export async function getLiveClassDetail(
             accion: 'ver las clases',
         });
 
-        // 1. Sesión de clase existente para esta materia y fecha
-        const session = await prisma.classSession.findFirst({
-            where: { classroomId, subjectId: targetSubjectId, date: { gte: startOfDay, lte: endOfDay } },
-        });
-
-        // 2. Materia y docente (vía ClassroomSubject)
-        const classroomSubject = await prisma.classroomSubject.findFirst({
-            where: { classroomId, subjectId: targetSubjectId },
-            include: {
-                subject: { select: { id: true, name: true, color: true, slug: true } },
-                teacher: { select: { id: true, firstName: true, lastName: true } },
-            },
-        });
-
-        // 3. Estudiantes de la sección (vía StudentClassroom oficial)
-        const enrollments = await prisma.studentClassroom.findMany({
-            where: { classroomId, isActive: true },
-            include: {
-                student: {
-                    select: { id: true, firstName: true, lastName: true, avatar: true, studentCode: true, isActive: true }
-                }
-            },
-            orderBy: [{ student: { lastName: 'asc' } }, { student: { firstName: 'asc' } }],
-        });
+        /**
+         * LO QUE NO DEPENDE DE NADA, A LA VEZ
+         *
+         * Eran diez consultas en fila, cada una esperando a la anterior aunque
+         * ninguna necesitara lo de la otra. Con el servidor cargado, cada espera
+         * se sumaba a la siguiente: con 500 personas, esta pantalla —la que el
+         * profesor tiene abierta toda la clase— llegó a un p95 de 7,3 s. Las seis
+         * de abajo salen juntas; lo que sí depende de otra cosa (la semana del
+         * plan, los alumnos de fuera) sigue después.
+         */
+        const [session, classroomSubject, enrollments, attendances, meta, activities] = await Promise.all([
+            // 1. Sesión de clase existente para esta materia y fecha
+            prisma.classSession.findFirst({
+                where: { classroomId, subjectId: targetSubjectId, date: { gte: startOfDay, lte: endOfDay } },
+            }),
+            // 2. Materia y docente (vía ClassroomSubject)
+            prisma.classroomSubject.findFirst({
+                where: { classroomId, subjectId: targetSubjectId },
+                include: {
+                    subject: { select: { id: true, name: true, color: true, slug: true } },
+                    teacher: { select: { id: true, firstName: true, lastName: true } },
+                },
+            }),
+            // 3. Estudiantes de la sección (vía StudentClassroom oficial)
+            prisma.studentClassroom.findMany({
+                where: { classroomId, isActive: true },
+                include: {
+                    student: {
+                        select: { id: true, firstName: true, lastName: true, avatar: true, studentCode: true, isActive: true }
+                    }
+                },
+                orderBy: [{ student: { lastName: 'asc' } }, { student: { firstName: 'asc' } }],
+            }),
+            // 4. Asistencia de ese día para los estudiantes
+            prisma.dailyAttendance.findMany({
+                where: { classroomId, date: { gte: startOfDay, lte: endOfDay } },
+            }),
+            // 5. Metadatos del plan de evaluación
+            prisma.evaluationPlanMetadata.findFirst({
+                where: { classroomId, subjectId: targetSubjectId },
+            }),
+            // 6. Actividades/tareas de la materia
+            prisma.classActivity.findMany({
+                where: { classroomId, subjectId: targetSubjectId },
+                include: {
+                    classSession: {
+                        select: { id: true, date: true },
+                    },
+                },
+                orderBy: [{ isDone: 'asc' }, { createdAt: 'desc' }],
+            }),
+        ]);
         const students = enrollments.map((e: any) => e.student).filter((s: any) => s && s.isActive);
 
-        // 4. Asistencia de ese día para los estudiantes
-        const attendances = await prisma.dailyAttendance.findMany({
-            where: { classroomId, date: { gte: startOfDay, lte: endOfDay } },
-        });
         const attendanceByStudent = new Map(attendances.map(a => [a.studentId, a]));
 
         const studentsWithAttendance = students.map(s => {
@@ -277,10 +301,6 @@ export async function getLiveClassDetail(
         let planLapso: string | null = null;
         let planColumns: any = null;
         let weekRow: any = null;
-
-        const meta = await prisma.evaluationPlanMetadata.findFirst({
-            where: { classroomId, subjectId: targetSubjectId },
-        });
 
         if (meta) {
             planLapso = meta.lapso;
@@ -347,17 +367,6 @@ export async function getLiveClassDetail(
                 }
             }
         }
-
-        // 6. Actividades/tareas de la materia
-        const activities = await prisma.classActivity.findMany({
-            where: { classroomId, subjectId: targetSubjectId },
-            include: {
-                classSession: {
-                    select: { id: true, date: true },
-                },
-            },
-            orderBy: [{ isDone: 'asc' }, { createdAt: 'desc' }],
-        });
 
         // 6.1. Clasificación RELATIVA A ESTA CLASE:
         // - "Clase de Hoy": tareas cuya fecha de entrega sea la fecha de esta clase (dueOnClassDate),
