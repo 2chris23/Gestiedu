@@ -178,6 +178,44 @@ export async function getStudents(
     // OPTIMIZACIÓN: Calcular estadísticas con query agregada en lugar de traer todos los datos
     const studentIds = students.map(s => s.id);
 
+    /**
+     * LA SECCIÓN DE CADA ALUMNO
+     *
+     * Con una sección elegida, es esa. Sin sección (la lista de todo el liceo,
+     * o la de un profesor con todas las suyas), es la sección activa de cada
+     * uno. Todo lo de abajo se calcula POR SECCIÓN y en bloque: sin esto, los
+     * promedios salían 0 para todo el mundo, el de una materia se hacía alumno
+     * por alumno, y las notas de Clase en Vivo se buscaban en el liceo entero.
+     * `lista-de-alumnos-en-bloque.test.ts`.
+     */
+    const seccionDe = new Map<string, string>();
+    for (const st of students as any[]) {
+      const suya = classroomId ?? st.studentClassrooms?.[0]?.classroom?.id;
+      if (suya) seccionDe.set(st.id, suya);
+    }
+    const secciones = [...new Set(seccionDe.values())];
+    const alumnosPorSeccion = new Map<string, string[]>();
+    for (const [sid, aula] of seccionDe) {
+      if (!alumnosPorSeccion.has(aula)) alumnosPorSeccion.set(aula, []);
+      alumnosPorSeccion.get(aula)!.push(sid);
+    }
+
+    /**
+     * El ciclo de esas secciones: sus lapsos (para las notas) y sus fechas
+     * (para la asistencia). Sin esto se miraba toda la vida escolar de cada
+     * alumno: en quinto año, cinco veces más filas para responder lo mismo, y
+     * un porcentaje de asistencia que arrastraba los años anteriores.
+     */
+    const ciclos = secciones.length
+      ? await request.tenantPrisma.academicYear.findMany({
+          where: { classrooms: { some: { id: { in: secciones } } } },
+          select: { startDate: true, endDate: true, periods: { select: { id: true } } },
+        })
+      : [];
+    const lapsosDelCiclo: string[] = ciclos.flatMap((c) => c.periods.map((p) => p.id));
+    const desde = ciclos.length ? new Date(Math.min(...ciclos.map((c) => c.startDate.getTime()))) : null;
+    const hasta = ciclos.length ? new Date(Math.max(...ciclos.map((c) => c.endDate.getTime()))) : null;
+
     // ============================================================
     // ASISTENCIA — query dedicada sobre daily_attendance (sin JOIN a grades).
     // CORRECCIÓN: antes el % se calculaba en la misma query que AVG(score) con el
@@ -195,6 +233,7 @@ export async function getStudents(
         ) AS FLOAT) as "attendancePercentage"
       FROM users u
       LEFT JOIN daily_attendance a ON a."studentId" = u.id
+        ${desde && hasta ? `AND a.date >= $${studentIds.length + 1} AND a.date <= $${studentIds.length + 2}` : ''}
       WHERE u.id IN (${studentIds.map((_, i) => `$${i + 1}`).join(',')})
       GROUP BY u.id
     `;
@@ -203,7 +242,7 @@ export async function getStudents(
       ? await request.tenantPrisma.$queryRawUnsafe<Array<{
         studentId: string;
         attendancePercentage: number;
-      }>>(attendanceQuery, ...studentIds)
+      }>>(attendanceQuery, ...studentIds, ...(desde && hasta ? [desde, hasta] : []))
       : [];
 
     // ============================================================
@@ -229,14 +268,7 @@ export async function getStudents(
      * Los años anteriores siguen enteros en la base; lo que cambia es qué se
      * mira para pintar esta lista.
      */
-    let lapsosDelCiclo: string[] = [];
-    if (classroomId) {
-      const seccion = await request.tenantPrisma.classroom.findUnique({
-        where: { id: classroomId },
-        select: { academicYear: { select: { periods: { select: { id: true } } } } },
-      });
-      lapsosDelCiclo = (seccion?.academicYear?.periods ?? []).map((p) => p.id);
-    }
+    // (Los lapsos del ciclo se sacan arriba, con la sección de cada alumno.)
 
     if (studentIds.length > 0) {
       // Materias con grades por estudiante
@@ -253,8 +285,8 @@ export async function getStudents(
       });
 
       // Materias con ClassActivity scoreadas (JSON scores) por estudiante
-      const classActs = await request.tenantPrisma.classActivity.findMany({
-        where: { classroomId, scores: { not: undefined } },
+      const classActs = secciones.length === 0 ? [] : await request.tenantPrisma.classActivity.findMany({
+        where: { classroomId: { in: secciones }, scores: { not: undefined } },
         select: { subjectId: true, scores: true },
       });
       classActs.forEach(ca => {
@@ -302,20 +334,24 @@ export async function getStudents(
     }
 
     if (targetSubjectId) {
-      // En bloque: 4 consultas para toda la sección en vez de ~20 por estudiante
-      const bulk = classroomId
-        ? await bulkSubjectAverages(request.tenantPrisma, {
-            classroomId,
-            studentIds,
-            subjectIds: [targetSubjectId],
-            periodId: request.query?.periodId,
-          })
-        : null;
+      // En bloque, una vez por sección: 4 consultas por sección en vez de ~20
+      // por estudiante.
+      const bulk = new Map<string, Map<string, number>>();
+      for (const [aula, deEsta] of alumnosPorSeccion) {
+        const r = await bulkSubjectAverages(request.tenantPrisma, {
+          classroomId: aula,
+          studentIds: deEsta,
+          subjectIds: [targetSubjectId],
+          periodId: request.query?.periodId,
+        });
+        r.forEach((v, k) => bulk.set(k, v));
+      }
 
       await Promise.all(
         studentIds.map(async (sid) => {
           try {
-            const stuAvg = bulk
+            // Solo quien no tiene sección se calcula aparte.
+            const stuAvg = bulk.has(sid)
               ? bulk.get(sid)?.get(targetSubjectId!) ?? 0
               : await gradesService.calculateWeightedSubjectAverage(
                   request.tenantPrisma,
@@ -341,14 +377,18 @@ export async function getStudents(
         new Set(Array.from(subjectIdsByStudent.values()).flatMap(set => Array.from(set)))
       );
 
-      const bulk = classroomId && todasLasMaterias.length > 0
-        ? await bulkSubjectAverages(request.tenantPrisma, {
-            classroomId,
-            studentIds,
+      const bulk = new Map<string, Map<string, number>>();
+      if (todasLasMaterias.length > 0) {
+        for (const [aula, deEsta] of alumnosPorSeccion) {
+          const r = await bulkSubjectAverages(request.tenantPrisma, {
+            classroomId: aula,
+            studentIds: deEsta,
             subjectIds: todasLasMaterias,
             periodId: request.query?.periodId,
-          })
-        : null;
+          });
+          r.forEach((v, k) => bulk.set(k, v));
+        }
+      }
 
       studentIds.forEach(sid => {
         const materias = Array.from(subjectIdsByStudent.get(sid) ?? []);
