@@ -43,7 +43,17 @@ services:
       # Es lo que permite que cientos de clientes compartan pocas conexiones.
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 2000
-      DEFAULT_POOL_SIZE: 20
+      # DIMENSIONADO PARA 200 LICEOS, NO PARA 10
+      # El tamaño del grupo es POR BASE, y hay una base por liceo: con 20, 200
+      # liceos podían pedir 4.000 conexiones a un PostgreSQL que da 200. Ahora
+      # 5 por liceo (el mejor valor medido, docs/DESPLIEGUE.md §5), y un tope
+      # para todas juntas por debajo de max_connections, dejando sitio a la
+      # plataforma, las migraciones y los respaldos, que van directos. Las que
+      # llevan un minuto sin usarse se sueltan para los liceos con gente dentro.
+      DEFAULT_POOL_SIZE: 5
+      MAX_DB_CONNECTIONS: 5
+      MAX_USER_CONNECTIONS: 160
+      SERVER_IDLE_TIMEOUT: 60
       # Necesario para que PgBouncer acepte bases que no están listadas una a una
       AUTH_TYPE: scram-sha-256
       IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
@@ -98,7 +108,7 @@ services:
       NODE_ENV: production
       PGBOUNCER_HOST: pgbouncer
       PGBOUNCER_PORT: 6432
-      TENANT_CONNECTION_LIMIT: ${TENANT_CONNECTION_LIMIT:-2}
+      TENANT_CONNECTION_LIMIT: ${TENANT_CONNECTION_LIMIT:-5}
       # El puerto va FIJO aquí, porque nginx y la sonda de salud lo esperan en
       # el 4000. Antes lo decía solo .env.production y nginx apuntaba al 3001:
       # toda la API respondía 502 en cuanto alguien usara el ejemplo tal cual.
