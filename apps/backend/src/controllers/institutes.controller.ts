@@ -2,14 +2,12 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { InstitutesService } from '../services/institutes.service';
 import { SUCCESS_MESSAGES } from '../utils/constants';
-import { deleteOldFile } from '../middleware/upload.middleware';
 import { getAcademicConfig, updateAcademicConfig, esAsistenciaMinimaValida } from '../services/promotion/close-cycle.service';
 import { RedisCache } from '../config/redis';
 import { conLiceo } from '../config/ambito-del-liceo';
 import { platformPrisma } from '../config/database';
-import path from 'path';
-import fs from 'fs';
 import { revisarImagen } from '../utils/archivos-que-se-aceptan';
+import { guardarArchivoDelLiceo } from '../services/archivos-del-liceo.service';
 
 const institutesService = new InstitutesService();
 
@@ -171,15 +169,6 @@ export async function uploadLogos(request: FastifyRequest, reply: FastifyReply) 
         const filename = part.filename;
         const buffer = await part.toBuffer();
 
-        // Determinar la carpeta según el tipo de archivo
-        const folder = fieldname === 'favicon' ? 'favicon' : 'logos';
-        const uploadDir = path.join(process.cwd(), 'uploads', 'institute', folder);
-
-        // Crear directorio si no existe
-        if (!fs.existsSync(uploadDir)) {
-          fs.mkdirSync(uploadDir, { recursive: true });
-        }
-
         // SE MIRA QUÉ ES, NO CÓMO SE LLAMA
         //
         // Antes la extensión salía del nombre que mandaba el usuario y el archivo
@@ -195,28 +184,18 @@ export async function uploadLogos(request: FastifyRequest, reply: FastifyReply) 
             });
         }
 
-        // La extensión es la que le toca por su contenido, no la que traía.
-        const uniqueFilename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${veredicto.extension}`;
-        const filepath = path.join(uploadDir, uniqueFilename);
+        if (fieldname !== 'favicon' && fieldname !== 'logo') continue;
 
-        fs.writeFileSync(filepath, buffer);
+        // En la base de la plataforma, no en el disco de este proceso: así lo
+        // ven todos los procesos y entra en el respaldo. La extensión es la
+        // que le toca por su contenido, no la que traía. El anterior no se
+        // borra: se queda como estaba (nada se borra de verdad).
+        const direccion = await guardarArchivoDelLiceo(instituteId, fieldname, buffer, veredicto.extension!);
 
-        // Ruta relativa para guardar en BD
-        const relativePath = `/uploads/institute/${folder}/${uniqueFilename}`;
-
-        // Actualizar según el tipo
         if (fieldname === 'favicon') {
-          // Eliminar favicon anterior si existe
-          if (currentInstitute?.favicon) {
-            deleteOldFile(currentInstitute.favicon);
-          }
-          results.favicon = await institutesService.uploadFavicon(instituteId, relativePath, userId, request.tenantPrisma);
-        } else if (fieldname === 'logo') {
-          // Eliminar logo anterior si existe
-          if (currentInstitute?.logo) {
-            deleteOldFile(currentInstitute.logo);
-          }
-          results.logo = await institutesService.uploadLogo(instituteId, relativePath, userId, request.tenantPrisma);
+          results.favicon = await institutesService.uploadFavicon(instituteId, direccion, userId, request.tenantPrisma);
+        } else {
+          results.logo = await institutesService.uploadLogo(instituteId, direccion, userId, request.tenantPrisma);
         }
       }
     }

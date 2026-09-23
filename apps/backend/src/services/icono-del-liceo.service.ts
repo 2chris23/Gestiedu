@@ -2,6 +2,7 @@ import sharp from 'sharp';
 import { createHash } from 'crypto';
 import { join, normalize, sep } from 'path';
 import { readFile } from 'fs/promises';
+import { leerArchivoDelLiceo, partesDeLaDireccion } from './archivos-del-liceo.service';
 
 /**
  * EL ICONO DE LA APP DEL LICEO
@@ -39,6 +40,14 @@ export class IconoNoDisponible extends Error {
  * campo leería cualquier archivo del servidor.
  */
 async function elArchivoDelLogo(logo: string): Promise<Buffer> {
+    // Los logos nuevos viven en la base (ver archivos-del-liceo.service.ts).
+    const enLaBase = partesDeLaDireccion(logo);
+    if (enLaBase) {
+        const archivo = await leerArchivoDelLiceo(enLaBase.instituteId, enLaBase.nombre);
+        if (!archivo) throw new IconoNoDisponible('El logo del liceo ya no está');
+        return archivo.datos;
+    }
+
     if (!logo.startsWith('/uploads/')) throw new IconoNoDisponible('El liceo no tiene logo propio');
 
     const dentro = normalize(join(RAIZ_DE_SUBIDAS, logo.slice('/uploads/'.length)));

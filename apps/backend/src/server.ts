@@ -25,6 +25,7 @@ import { smartCacheMiddleware, cacheOnSendHook } from './middleware/smart-cache.
 import { ponerLosGuardiasPrimero } from './middleware/guardias';
 import antiDobleEnvio from './plugins/anti-doble-envio';
 import { CupoCompartido } from './plugins/cupo-compartido';
+import { leerArchivoDelLiceo } from './services/archivos-del-liceo.service';
 import { createHash } from 'crypto';
 import { deQuienNosFiamos, comoSeExplicaLaConfianza } from './config/de-quien-nos-fiamos';
 import avisarCambios from './plugins/avisar-cambios';
@@ -149,6 +150,28 @@ export async function buildServer(): Promise<FastifyInstance> {
       reply.header('Cross-Origin-Resource-Policy', 'cross-origin');
     }
   });
+
+  /**
+   * Los archivos de los liceos que viven en la base (logo, icono de la
+   * pestaña), no en el disco: ver `services/archivos-del-liceo.service.ts`.
+   * El nombre lleva la huella del contenido, así que se guardan en caché
+   * «para siempre»: cada navegador lo pide una vez.
+   */
+  server.get<{ Params: { instituteId: string; nombre: string } }>(
+    '/uploads/liceo/:instituteId/:nombre',
+    async (request, reply) => {
+      const archivo = await leerArchivoDelLiceo(request.params.instituteId, request.params.nombre);
+      if (!archivo) return reply.status(404).send({ error: 'No existe ese archivo', code: 'NOT_FOUND' });
+      return reply
+        .header('Content-Type', archivo.tipo)
+        .header('Cache-Control', 'public, max-age=31536000, immutable')
+        .header('Access-Control-Allow-Origin', '*')
+        .header('Access-Control-Allow-Methods', 'GET')
+        .header('Cross-Origin-Resource-Policy', 'cross-origin')
+        .header('X-Content-Type-Options', 'nosniff')
+        .send(archivo.datos);
+    }
+  );
 
   // Swagger documentation (OpenAPI 3)
   await server.register(swagger, {
