@@ -67,7 +67,14 @@ test.describe.serial('Pagos', () => {
             expect(caso, 'hace falta un alumno inscrito con representante en la base de pruebas').toBeTruthy();
             await loginViaUI(page, 'admin@testing.edu.ve', '123456');
             await page.goto(`${WEB_BASE}/dashboard/configuracion`);
-            await page.getByRole('button', { name: 'Pagos', exact: true }).click();
+            // La pestaña se pulsaba nada más cargar, a veces antes de que la
+            // página estuviera viva (con el servidor de desarrollo compilando):
+            // el clic se perdía y la prueba esperaba 15 s una casilla que no
+            // iba a salir. Se pulsa hasta que la pestaña se abre de verdad.
+            await expect(async () => {
+                await page.getByRole('button', { name: 'Pagos', exact: true }).click();
+                await expect(page.getByRole('checkbox').first()).toBeVisible({ timeout: 2000 });
+            }).toPass({ timeout: 30000 });
 
             /**
              * SE DEJA ACTIVADO, NO SE "CAMBIA"
