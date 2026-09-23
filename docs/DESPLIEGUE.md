@@ -173,6 +173,33 @@ sin repartidor:   20 conexiones reales de PostgreSQL
 con repartidor:    3 conexiones reales de PostgreSQL
 ```
 
+### 200 liceos, y más de un proceso
+
+Lo de arriba se escribió para 50 liceos. Para 200, lo que cambió (septiembre
+2026):
+
+- **El proceso guarda hasta 250 liceos abiertos con PgBouncer** (50 sin él),
+  configurable con `CLIENTES_DE_LICEO`. Antes eran 50 siempre: con 200 liceos,
+  cada petición de uno que no estuviera en la lista tenía que abrir su conexión
+  mientras la persona esperaba. Y veinte peticiones a la vez de un liceo nuevo
+  abrían veinte conexiones (ahora una: `CONN-10`).
+- **PgBouncer**, en `docker-compose.prod.yml`: `DEFAULT_POOL_SIZE=5` y
+  `MAX_DB_CONNECTIONS=5` por base, `MAX_USER_CONNECTIONS=160` en total (por
+  debajo de las 200 de PostgreSQL) y `TENANT_CONNECTION_LIMIT=5`.
+- **Varios procesos del servidor de datos:**
+
+  ```bash
+  docker compose -f docker-compose.prod.yml up -d --scale backend=3
+  docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+  ```
+
+  El segundo comando hace falta porque nginx averigua cuántos procesos hay al
+  arrancar. Lo que antes vivía en la memoria de cada proceso y se rompía con
+  varios ya no está ahí: el cupo de peticiones y el freno del doble clic van a
+  Redis (`CUPO-01…04`, `DOBLE-01…04`), y los logos a la base de la plataforma
+  (`LOGO-01…05`). nginx manda la API al proceso menos ocupado y el tiempo real
+  siempre al mismo proceso por dirección (ver `docker/nginx/nginx.conf`).
+
 ### El puerto, cuando lo asigna el hospedaje
 
 `PORT` se lee del archivo `.env`, **no** del entorno: esta máquina tenía un

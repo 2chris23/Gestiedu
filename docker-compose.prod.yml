@@ -118,9 +118,10 @@ services:
       PUERTO_DEL_HOST: '4000'
       BACKUP_DIR: /app/backups
     volumes:
-      # Lo que sube la gente (logos, fotos, comprobantes). Sin volumen vivía
-      # DENTRO del contenedor, y cada despliegue crea uno nuevo: se perdía
-      # todo lo subido en cada actualización.
+      # Los logos subidos ANTES de que fueran a la base (los nuevos van a la
+      # base de la plataforma: los ven todos los procesos y entran en el
+      # respaldo). Sin volumen vivían DENTRO del contenedor, y cada
+      # despliegue crea uno nuevo: se perdían en cada actualización.
       - uploads:/app/uploads
       # Solo para leer cómo fue el último respaldo (panel del superadmin).
       - respaldos:/app/backups:ro
