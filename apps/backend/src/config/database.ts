@@ -102,6 +102,19 @@ const CONNECTION_TTL = 30 * 60 * 1000; // 30 minutos
 /** Un cliente usado hace menos de esto no se cierra aunque sobre: está trabajando. */
 const EN_USO_MS = 60 * 1000;
 
+/**
+ * CUÁNTAS CONSULTAS HA HECHO EL SERVIDOR A LAS BASES DE LOS LICEOS
+ *
+ * Solo cuenta con `CONTAR_CONSULTAS=1` (las pruebas lo encienden). Sirve para
+ * lo que más se repite aquí: una pantalla que pregunta lo mismo una vez por
+ * alumno o por materia. Lo que importa no es el número, sino que NO crezca con
+ * el número de alumnos o de materias.
+ */
+let consultasContadas = 0;
+export function consultasALaBase(): number {
+  return consultasContadas;
+}
+
 /** Cuántos clientes de liceo hay abiertos ahora mismo (para las pruebas y el panel). */
 export function clientesDeLiceoAbiertos(): number {
   return tenantConnections.size;
@@ -181,13 +194,21 @@ async function abrirClienteDeLiceo(instituteId: string): Promise<PrismaClient> {
      *
      *   LOG_TENANT_QUERIES=1 npm run dev
      */
-    log:
-      process.env.LOG_TENANT_QUERIES === '1'
-        ? ['query', 'error', 'warn']
+    log: [
+      ...(process.env.LOG_TENANT_QUERIES === '1'
+        ? (['query', 'error', 'warn'] as const)
         : process.env.NODE_ENV === 'development'
-          ? ['error', 'warn']
-          : ['error'],
+          ? (['error', 'warn'] as const)
+          : (['error'] as const)),
+      // Para contarlas desde las pruebas (ver `consultasALaBase`).
+      ...(process.env.CONTAR_CONSULTAS === '1' ? [{ emit: 'event' as const, level: 'query' as const }] : []),
+    ],
   });
+  if (process.env.CONTAR_CONSULTAS === '1') {
+    (rawPrisma as any).$on('query', () => {
+      consultasContadas++;
+    });
+  }
 
   // 3.5. Aplicar extensión de aislamiento (safety net que inyecta instituteId automáticamente)
   // SEGURIDAD: Esta extensión es una red de seguridad adicional. Se aplica al cliente
