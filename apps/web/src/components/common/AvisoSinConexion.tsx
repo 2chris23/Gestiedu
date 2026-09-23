@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { CloudOff } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useConexion, cuandoFue } from '@/hooks/useConexion';
 
 /**
@@ -19,7 +20,16 @@ import { useConexion, cuandoFue } from '@/hooks/useConexion';
  */
 export function AvisoSinConexion() {
     const { hayConexion, motivo, ultimaRespuesta } = useConexion();
+    const queryClient = useQueryClient();
     if (hayConexion) return null;
+
+    // Si en este dispositivo no hay nada guardado todavía (la primera vez, o
+    // tras cerrar sesión), decir «estás viendo lo de antes» sería mentir: no
+    // se ve nada. Se dice lo que pasa de verdad.
+    const hayAlgoGuardado = queryClient
+        .getQueryCache()
+        .getAll()
+        .some((q) => q.state.data !== undefined);
 
     const desde = cuandoFue(ultimaRespuesta);
     const titulo = motivo === 'sin-internet' ? 'Sin internet.' : 'Sin conexión con el liceo.';
@@ -33,8 +43,15 @@ export function AvisoSinConexion() {
         >
             <CloudOff className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
             <p className="text-xs leading-snug">
-                <span className="font-semibold">{titulo}</span> Estás viendo lo último que se descargó
-                {desde ? ` (${desde})` : ''}. Para guardar o cambiar algo hace falta conexión.
+                <span className="font-semibold">{titulo}</span>{' '}
+                {hayAlgoGuardado ? (
+                    <>
+                        Estás viendo lo último que se descargó{desde ? ` (${desde})` : ''}. Para guardar o
+                        cambiar algo hace falta conexión.
+                    </>
+                ) : (
+                    <>En este dispositivo no hay nada guardado todavía: se verá en cuanto vuelva la conexión.</>
+                )}
             </p>
         </div>
     );

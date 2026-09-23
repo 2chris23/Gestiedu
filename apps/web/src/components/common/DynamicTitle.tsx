@@ -25,6 +25,13 @@ export function DynamicTitle() {
 
         if (config?.name) {
             document.title = config.name;
+            // El iPhone no lee la ficha (manifest): el nombre con el que se
+            // instala en la pantalla de inicio sale de esta etiqueta, y decía
+            // «GestiEdu» para todos los liceos. Se lee al pulsar «Añadir a
+            // inicio», así que basta con cambiarla aquí.
+            document
+                .querySelector<HTMLMetaElement>("meta[name='apple-mobile-web-app-title']")
+                ?.setAttribute('content', config.name);
         } else {
             document.title = 'GestiEdu | Sistema de Gestión Escolar';
         }

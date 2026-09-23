@@ -441,6 +441,9 @@
   }
   /* Una pantalla entera de teléfono, descontando lo que se come el sistema. */
   .alto-util {
+    /* Primero en vh: un navegador que no conoce dvh (Safari antes de 15.4,
+       Chrome antes de 108) descarta la línea de abajo y se queda con esta. */
+    min-height: calc(100vh - var(--zona-segura-arriba) - var(--zona-segura-abajo));
     min-height: calc(100dvh - var(--zona-segura-arriba) - var(--zona-segura-abajo));
   }
 
@@ -542,4 +545,15 @@
     font-size: 0.75rem;
     line-height: 1.05rem;
   }
+}
+
+/* ── dvh EN NAVEGADORES QUE NO LO CONOCEN ─────────────────────────────────────
+   `dvh` es la altura que de verdad se ve en un teléfono (sin la barra del
+   navegador). Un navegador que no lo conoce ignora la regla entera, y un
+   diálogo con `max-h-[92dvh]` se quedaba SIN tope: más alto que la pantalla y
+   con el botón de guardar fuera de alcance. Ahí vale `vh`. */
+@supports not (height: 1dvh) {
+  .max-h-\[92dvh\] { max-height: 92vh; }
+  .max-h-\[88dvh\] { max-height: 88vh; }
+  .min-h-dvh { min-height: 100vh; }
 }

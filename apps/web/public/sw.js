@@ -80,12 +80,43 @@ function esUnArchivoFijo(url) {
     );
 }
 
+/**
+ * UN TOPE PARA LO GUARDADO
+ *
+ * Cada versión nueva de la app trae sus archivos con otro nombre (el
+ * compilador les pone la huella), así que los de la versión anterior ya no
+ * los pide nadie. Pero se quedaban guardados para siempre: publicación tras
+ * publicación, el teléfono iba llenándose de versiones viejas de la app. Al
+ * pasar del tope se tiran los más antiguos (el orden de guardado es el de
+ * `keys()`), que son los de versiones anteriores.
+ */
+const TOPE_DE_ARCHIVOS = 400;
+let recortando = false;
+
+async function recortar(cache) {
+    if (recortando) return;
+    recortando = true;
+    try {
+        const claves = await cache.keys();
+        const sobran = claves.length - TOPE_DE_ARCHIVOS;
+        const fijos = new Set(DE_ENTRADA.map((d) => new URL(d, self.location.origin).href));
+        for (let i = 0, quitados = 0; i < claves.length && quitados < sobran; i++) {
+            if (fijos.has(claves[i].url)) continue;
+            await cache.delete(claves[i]);
+            quitados++;
+        }
+    } finally {
+        recortando = false;
+    }
+}
+
 async function guardar(peticion, respuesta) {
     // Solo lo que salió bien y viene de aquí. Una respuesta parcial (206) o un
     // error guardado se devolverían luego como si fueran buenos.
     if (!respuesta || !respuesta.ok || respuesta.type === 'opaque') return respuesta;
     const cache = await caches.open(CASCARA);
     await cache.put(peticion, respuesta.clone());
+    recortar(cache).catch(() => {});
     return respuesta;
 }
 
