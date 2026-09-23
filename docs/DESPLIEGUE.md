@@ -30,6 +30,15 @@ El servicio `migrator` crea el esquema de la plataforma. A partir de ahí, los
 liceos se crean **desde el panel de superadmin**: cada alta crea su base de
 datos, le aplica las migraciones y crea su usuario administrador.
 
+**La plataforma tiene sus propias migraciones** (`src/prisma/plataforma/`),
+aparte de las de los liceos, y las aplica `dist/scripts/migrar-plataforma.js`
+(`npm run migrate:plataforma` en desarrollo). Antes su esquema estaba en la
+misma carpeta que el de los liceos, y `prisma migrate deploy` le aplicaba las
+migraciones de los liceos: en un servidor nuevo la base de la plataforma se
+quedaba sin la tabla de liceos y el sistema no arrancaba. Una base de
+plataforma hecha a mano (`db push`) se apunta como migrada solo si es igual al
+esquema; si no, el migrador se para y enseña la diferencia (`PLAT-01…04`).
+
 ## 3. Publicar una versión nueva
 
 Al empujar a la rama `production`, el flujo de GitHub Actions

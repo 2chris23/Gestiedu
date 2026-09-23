@@ -17,13 +17,14 @@ COPY apps/backend/ .
 # Los dos clientes de Prisma: el de los liceos y el de la plataforma.
 # Sin `|| true`: si la generación falla, la imagen no se construye.
 RUN npx prisma generate --schema=src/prisma/schema.prisma \
-    && npx prisma generate --schema=src/prisma/platform-schema.prisma \
+    && npx prisma generate --schema=src/prisma/plataforma/schema.prisma \
     && npm run build \
     # tsc no copia lo que no es TypeScript, y el código compilado los busca
-    # junto a él: el esquema y las migraciones para `migrate deploy`, y el
-    # cliente de la plataforma que se genera en src/generated.
+    # junto a él: los esquemas y las migraciones para `migrate deploy` (los de
+    # los liceos y, en su carpeta, los de la plataforma), y el cliente de la
+    # plataforma que se genera en src/generated.
     && mkdir -p dist/prisma \
-    && cp -r src/prisma/schema.prisma src/prisma/migrations dist/prisma/ \
+    && cp -r src/prisma/schema.prisma src/prisma/migrations src/prisma/plataforma dist/prisma/ \
     && cp -r src/generated dist/generated
 
 # ---------- 2. Imagen final ----------

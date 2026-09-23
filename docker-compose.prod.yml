@@ -90,8 +90,11 @@ services:
     # El guion va COMPILADO: la imagen no lleva ni el código fuente de los
     # guiones ni `tsx` (antes decía `npx tsx src/scripts/...`, que no existía
     # dentro de la imagen, así que el migrador fallaba y el backend no arrancaba).
+    # La plataforma, con SUS migraciones (src/prisma/plataforma/migrations): su
+    # esquema estaba junto al de los liceos y `migrate deploy` le aplicaba las
+    # de los liceos. Ver src/scripts/migrar-plataforma.ts.
     command: >
-      sh -c "npx prisma migrate deploy --schema=src/prisma/platform-schema.prisma &&
+      sh -c "node dist/scripts/migrar-plataforma.js &&
              node dist/scripts/migrate-all-tenants.js"
     depends_on:
       postgres:

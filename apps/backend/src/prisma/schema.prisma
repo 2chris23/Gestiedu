@@ -114,7 +114,7 @@ model Institute {
   name      String
   code      String
   // Opcional por decisión de producto: un instituto puede no tener email de contacto.
-  // Debe seguir al espejo de `Institute.email` en platform-schema.prisma.
+  // Debe seguir al espejo de `Institute.email` en plataforma/schema.prisma.
   email     String?
   phone     String?
   address   String?
