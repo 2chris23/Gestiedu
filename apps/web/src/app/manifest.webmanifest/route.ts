@@ -119,7 +119,10 @@ export async function GET(request: NextRequest) {
         start_url: slug ? `/login?slug=${encodeURIComponent(slug)}` : '/',
         scope: '/',
         display: 'standalone',
-        orientation: 'portrait',
+        // 'any', no 'portrait': con 'portrait' la app instalada NO giraba
+        // nunca, y el horario y el plan de evaluación piden el teléfono
+        // tumbado para ver la rejilla entera (lib/girar-la-pantalla.ts).
+        orientation: 'any',
         // El arranque sí es del liceo: es su momento de identificar, y es lo
         // mismo que enseña la APK (`SplashScreen.backgroundColor`).
         background_color: principal,
