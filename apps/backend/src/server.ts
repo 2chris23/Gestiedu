@@ -27,6 +27,7 @@ import antiDobleEnvio from './plugins/anti-doble-envio';
 import { createHash } from 'crypto';
 import { deQuienNosFiamos, comoSeExplicaLaConfianza } from './config/de-quien-nos-fiamos';
 import avisarCambios from './plugins/avisar-cambios';
+import { apuntarFallo } from './utils/fallos-del-servidor';
 
 export async function buildServer(): Promise<FastifyInstance> {
   /**
@@ -206,6 +207,14 @@ export async function buildServer(): Promise<FastifyInstance> {
   });
 
   // Configurar Redis adapter para Socket.io (multi-server support)
+  //
+  // Solo si Redis respondió al arrancar: montado sobre un Redis caído, sus
+  // suscripciones fallan al montarse (medido: salen como promesas rechazadas). En producción
+  // Redis arranca antes que el backend (depends_on healthy). Si aun así no
+  // estaba, se dice ALTO: con más de un proceso, cada uno vería solo a su gente.
+  if (!redisConnected && process.env.NODE_ENV !== 'test') {
+    logger.warn('Redis no respondió al arrancar: el tiempo real queda dentro de este proceso. Con más de un proceso, reinícialo cuando Redis esté arriba.');
+  }
   if (redisConnected) {
     try {
       /**
@@ -243,6 +252,16 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   // Middleware global para manejo de errores
   server.setErrorHandler(errorHandler);
+
+  // Todo 500, venga de donde venga (del manejador central o de un controlador
+  // que responde el suyo), se apunta para el panel del superadmin: ver
+  // `utils/fallos-del-servidor.ts`.
+  server.addHook('onResponse', async (request, reply) => {
+    if (reply.statusCode >= 500) {
+      const liceo = (request as any).user?.instituteId ?? (request as any).instituteId ?? null;
+      apuntarFallo(liceo, request.method, request.routeOptions?.url || request.url.split('?')[0]);
+    }
+  });
 
   // Peticiones sin cuerpo: un DELETE o un POST vacío llegan con `body`
   // indefinido, y cualquier controlador que lo desestructure revienta con un 500

@@ -2,75 +2,84 @@ import Redis, { RedisOptions } from 'ioredis';
 import { config } from './environment';
 import { liceoActual } from './ambito-del-liceo';
 
-// Configuración de Redis
-const redisConfig: RedisOptions = {
-  host: config.redis.host,
-  port: config.redis.port,
-  password: config.redis.password,
+/**
+ * SI REDIS SE CAE, EL SISTEMA SIGUE, Y RÁPIDO
+ *
+ * Redis es una ayuda (lo guardado para no volver a preguntar, el límite de
+ * peticiones, los avisos entre procesos), no la base de datos: si se cae, todo
+ * tiene que seguir funcionando, con la memoria del proceso mientras tanto.
+ *
+ * Había dos trampas, medidas con un Redis apagado:
+ *
+ *   · En producción (con REDIS_URL) los clientes se creaban SIN estas
+ *     opciones, con las de fábrica: cada consulta a Redis esperaba 20
+ *     reintentos antes de rendirse. Medido: **10,6 segundos por consulta**. Y
+ *     casi cada petición toca Redis, así que un Redis caído dejaba TODO el
+ *     sistema colgado diez segundos por pantalla. Ahora se rinde a la primera
+ *     (60 ms medidos) y la petición sigue con la memoria.
+ *   · En desarrollo, tras cinco reintentos se dejaba de reconectar PARA
+ *     SIEMPRE: una caída de dos segundos dejaba al proceso sin Redis hasta el
+ *     próximo reinicio, y sin decirlo (los errores estaban silenciados).
+ *     Ahora reintenta siempre, cada vez más espaciado, y avisa —una vez por
+ *     minuto, no una por intento— cuando se cae y cuando vuelve.
+ */
+const opcionesComunes: RedisOptions = {
   lazyConnect: true,
   keepAlive: 30000,
   connectTimeout: 1000,
   commandTimeout: 5000,
-  // Configuración específica para desarrollo/producción
-  ...(config.isProduction ? {
-    // Configuración de producción
-    enableReadyCheck: true,
-    maxRetriesPerRequest: 5,
-  } : {
-    // Configuración de desarrollo
-    maxRetriesPerRequest: 3,
-    showFriendlyErrorStack: true,
-  }),
-  retryStrategy: (times) => {
-    // Si falla más de 5 veces, deja de intentar reconectar para no spammear la consola
-    // pero idealmente deberíamos mantener el servidor vivo.
-    // Retornar null detiene la reconexión automática.
-    // Retornar número espera esos ms antes de reintentar.
-    const maxRetries = 5;
-    if (times > maxRetries) {
-      console.warn('Redis reconnection stopped after too many attempts. Running without Redis.');
-      return null;
-    }
-    return Math.min(times * 100, 3000);
-  },
+  enableReadyCheck: true,
+  maxRetriesPerRequest: 1,
+  // Sin cola de espera: con Redis caído, un comando falla en el acto en vez de
+  // esperar al siguiente reintento de conexión (hasta 5 s).
+  enableOfflineQueue: false,
+  showFriendlyErrorStack: !config.isProduction,
+  retryStrategy: (intentos) => Math.min(intentos * 200, 5000),
 };
 
+// Si hay REDIS_URL, manda la dirección (y la contraseña) de la URL.
+export function crearClienteRedis(url: string | undefined = config.redis.url): Redis {
+  return url
+    ? new Redis(url, opcionesComunes)
+    : new Redis({
+        ...opcionesComunes,
+        host: config.redis.host,
+        port: config.redis.port,
+        password: config.redis.password,
+      });
+}
+
 // Cliente Redis principal
-export const redis = config.redis.url
-  ? new Redis(config.redis.url, { lazyConnect: true })
-  : new Redis(redisConfig);
+export const redis = crearClienteRedis();
 
 // Cliente Redis para suscripciones (pub/sub)
-export const redisSub = config.redis.url
-  ? new Redis(config.redis.url, { lazyConnect: true })
-  : new Redis(redisConfig);
+export const redisSub = crearClienteRedis();
 
 // Cliente Redis para publicaciones (pub/sub)
-export const redisPub = config.redis.url
-  ? new Redis(config.redis.url, { lazyConnect: true })
-  : new Redis(redisConfig);
+export const redisPub = crearClienteRedis();
 
-// Eventos de conexión
-// Eventos de conexión
-redis.on('connect', () => {
-  console.log('✅ Redis connected successfully');
-});
-
-redis.on('error', (error) => {
-  // console.error('❌ Redis connection error:', error); // Silent or less verbose
-});
-
-redisSub.on('error', (err) => {
-  // Silent error for sub client
-});
-
-redisPub.on('error', (err) => {
-  // Silent error for pub client
-});
-
-redis.on('reconnecting', () => {
-  console.log('🔄 Redis reconnecting...');
-});
+/** Avisa de que Redis se cayó o volvió: una vez por minuto como mucho, por cliente. */
+function vigilar(cliente: Redis, nombre: string) {
+  let ultimoAviso = 0;
+  let caido = false;
+  cliente.on('error', (error: Error) => {
+    if (process.env.NODE_ENV === 'test') return;
+    const ahora = Date.now();
+    if (!caido || ahora - ultimoAviso > 60_000) {
+      console.warn(`⚠️  Redis (${nombre}) no responde: ${error.message}. Se sigue con la memoria del proceso.`);
+      ultimoAviso = ahora;
+    }
+    caido = true;
+  });
+  cliente.on('ready', () => {
+    if (caido) console.log(`✅ Redis (${nombre}) volvió`);
+    else if (nombre === 'principal') console.log('✅ Redis connected successfully');
+    caido = false;
+  });
+}
+vigilar(redis, 'principal');
+vigilar(redisSub, 'suscripciones');
+vigilar(redisPub, 'publicaciones');
 
 // Función para conectar a Redis
 export async function connectRedis(): Promise<boolean> {
