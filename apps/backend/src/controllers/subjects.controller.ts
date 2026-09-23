@@ -300,7 +300,7 @@ export async function removeSubjectFromGrade(request: FastifyRequest, reply: Fas
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
-    await subjectsService.removeSubjectFromGrade(parseInt(grade), subjectId, prisma, academicYearId);
+    await subjectsService.removeSubjectFromGrade(parseInt(grade), subjectId, prisma, academicYearId, quienBorra(request as any));
 
     await auditLog({
       userId,

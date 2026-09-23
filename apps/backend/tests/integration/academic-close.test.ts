@@ -504,4 +504,46 @@ describe('Fase 3.5-C — Cierre de ciclo, prosecución y comparación', () => {
         expect(retry.closed).toBe(true);
         expect(await prisma.academicRecord.count({ where: { academicYearId: year.id } })).toBe(2);
     });
+    it('9. "Retirar y eliminar" deja al alumno y sus notas en la papelera, no los borra para siempre', async () => {
+        await createStudentWithScores('Pedro X', 'MASCULINO', [12, 14, 9]);
+        await createStudentWithScores('Ana R', 'FEMENINO', [15, 15, 15]);
+        await flushGrades();
+
+        const prepared = await prepareClose(prisma, year.id, 'institute');
+        const pedro = prepared.suggestions.find(s => s.name.startsWith('Pedro'))!;
+        const ana = prepared.suggestions.find(s => s.name.startsWith('Ana'))!;
+        const notasDePedro = await prisma.grade.count({ where: { studentId: pedro.studentId } });
+        expect(notasDePedro).toBeGreaterThan(0);
+
+        await confirmClose(
+            prisma,
+            {
+                academicYearId: year.id,
+                decisions: [
+                    { studentId: pedro.studentId, finalResult: 'NO_PROMOVIDO', action: 'RETIRE_DELETE' } as any,
+                    { studentId: ana.studentId, finalResult: 'PROMOVIDO', assignedClassroomId: nextSectionA.id },
+                ],
+                strategyKey: 'manual',
+            },
+            'institute',
+            { usuarioId: 'admin-del-cierre' }
+        );
+
+        expect(await prisma.user.findUnique({ where: { id: pedro.studentId } })).toBeNull();
+
+        const copiaDelAlumno = await prisma.registroBorrado.findFirst({
+            where: { tabla: 'user', registroId: pedro.studentId },
+        });
+        expect(copiaDelAlumno).not.toBeNull();
+        expect(copiaDelAlumno!.borradoPor).toBe('admin-del-cierre');
+
+        const copiasDeNotas = await prisma.registroBorrado.count({ where: { tabla: 'grade' } });
+        expect(copiasDeNotas).toBeGreaterThanOrEqual(notasDePedro);
+
+        // Y Ana, en el mismo cierre, promovida y matriculada como siempre.
+        const matricula = await prisma.studentClassroom.findFirst({
+            where: { studentId: ana.studentId, academicYearId: nextYear.id },
+        });
+        expect(matricula?.classroomId).toBe(nextSectionA.id);
+    });
 });

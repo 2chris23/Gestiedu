@@ -923,29 +923,6 @@ class GradesService {
   }
 
   /**
-   * Eliminar calificación
-   */
-  async deleteGrade(prisma: PrismaClient, id: string): Promise<void> {
-    // Verificar que la calificación existe
-    const grade = await prisma.grade.findUnique({
-      where: { id },
-      select: { id: true, studentId: true, subjectId: true, periodId: true }
-    });
-
-    if (!grade) {
-      throw new Error('Calificación no encontrada');
-    }
-
-    // Eliminar calificación
-    await prisma.grade.delete({
-      where: { id }
-    });
-
-    // Limpiar cache relacionado
-    await this.clearGradeCache(grade.studentId, grade.subjectId, grade.periodId);
-  }
-
-  /**
    * Calcular promedio por materia de un estudiante usando el PROMEDIO PONDERADO
    * POR CRITERIO del plan de evaluación (escala 01-20).
    *
@@ -1884,53 +1861,6 @@ class GradesService {
       });
       throw new Error('Error al validar elegibilidad para calificación');
     }
-  }
-
-  /**
-   * Eliminar múltiples calificaciones
-   */
-  async deleteBulkGrades(prisma: PrismaClient, gradeIds: string[]): Promise<{
-    deleted: string[];
-    errors: Array<{
-      gradeId: string;
-      error: string;
-    }>;
-    summary: {
-      total: number;
-      success: number;
-      failed: number;
-    };
-  }> {
-    const deleted: string[] = [];
-    const errors: Array<{ gradeId: string; error: string }> = [];
-
-    logger.info('Starting bulk grade deletion', { totalGrades: gradeIds.length });
-
-    for (const gradeId of gradeIds) {
-      try {
-        await this.deleteGrade(prisma, gradeId);
-        deleted.push(gradeId);
-      } catch (error) {
-        errors.push({
-          gradeId,
-          error: error instanceof Error ? error.message : 'Error desconocido'
-        });
-      }
-    }
-
-    const summary = {
-      total: gradeIds.length,
-      success: deleted.length,
-      failed: errors.length
-    };
-
-    logger.info('Bulk grade deletion completed', summary);
-
-    return {
-      deleted,
-      errors,
-      summary
-    };
   }
 
   /**

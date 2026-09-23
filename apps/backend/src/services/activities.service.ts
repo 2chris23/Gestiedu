@@ -470,56 +470,6 @@ class ActivitiesService {
   }
 
   /**
-   * Eliminar actividad
-   */
-  async deleteActivity(prisma: PrismaClient, id: string): Promise<void> {
-    // Verificar que la actividad existe
-    const activity = await prisma.activity.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        instituteId: true,
-        classroomId: true,
-        subjectId: true,
-        _count: {
-          select: {
-            grades: true,
-          },
-        },
-      },
-    });
-
-    if (!activity) {
-      throw new Error('Actividad no encontrada');
-    }
-
-    // Eliminar calificaciones asociadas en cascada para no dejar registros huérfanos
-    if (activity._count.grades > 0) {
-      await prisma.grade.deleteMany({
-        where: { activityId: id },
-      });
-    }
-
-    // Desvincular de plan de evaluación si existiera
-    await prisma.evaluationPlanRow.updateMany({
-      where: { activityId: id },
-      data: { activityId: null },
-    });
-
-    // Eliminar actividad
-    await prisma.activity.delete({
-      where: { id },
-    });
-
-    // Limpiar cache relacionado
-    await this.clearActivityCache(
-      activity.instituteId!,
-      activity.classroomId!,
-      activity.subjectId!
-    );
-  }
-
-  /**
    * Obtener actividades próximas a vencer
    */
   async getUpcomingActivities(
