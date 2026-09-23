@@ -74,7 +74,8 @@ scratch*
 load-tests/reports/
 load-tests/*.csv
 load-tests/*.json
-.github/
+# (.github/ estaba aquí: por eso la integración continua y el despliegue
+# automático no llegaron nunca a GitHub. Los flujos van al repositorio.)
 
 # Respaldos de los liceos: son datos de gente real, nunca al repositorio
 backups/

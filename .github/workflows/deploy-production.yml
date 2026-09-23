@@ -1,0 +1,72 @@
+name: Deploy Production
+
+# Antes este archivo solo imprimía "Desplegando a Producción...". Ahora:
+#   1. pasa las mismas comprobaciones que cada cambio (ci.yml);
+#   2. levanta las imágenes nuevas en el servidor;
+#   3. aplica las migraciones a la plataforma y a la base de CADA liceo;
+#   4. comprueba que el backend responde y que ningún liceo se quedó atrás.
+#
+# Secretos necesarios en GitHub (Settings → Secrets → Actions):
+#   SSH_HOST, SSH_USER, SSH_KEY   acceso al servidor
+#   DEPLOY_PATH                   carpeta del proyecto en el servidor
+#   HEALTH_URL                    p. ej. https://api.gestiedu.com/health
+
+on:
+  push:
+    branches: [production]
+  workflow_dispatch:
+
+jobs:
+  # Las mismas comprobaciones que en cada cambio (`ci.yml`): tipos, las
+  # pruebas del servidor contra PostgreSQL y Redis de verdad, las de la web y
+  # que la web compila. Antes aquí solo se compilaba: las pruebas no corrían
+  # antes de desplegar. Si algo sale en rojo, no se despliega.
+  verificar:
+    uses: ./.github/workflows/ci.yml
+
+  desplegar:
+    needs: verificar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # El servicio `migrator` del compose corre `migrate deploy` en la
+      # plataforma y luego `migrate-all-tenants` en cada liceo. Si un liceo
+      # falla, ese servicio termina con error y el backend no arranca.
+      - name: Levantar la versión nueva y migrar todos los liceos
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH }}
+            git fetch --all
+            git reset --hard origin/production
+            docker compose -f docker-compose.prod.yml build
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker compose -f docker-compose.prod.yml logs --tail=40 migrator
+
+      - name: Comprobar que el backend responde
+        run: |
+          for i in $(seq 1 12); do
+            if curl -fsS "${{ secrets.HEALTH_URL }}" > /dev/null; then
+              echo "Backend respondiendo"; exit 0
+            fi
+            echo "Esperando al backend ($i/12)..."; sleep 10
+          done
+          echo "El backend no respondió tras 2 minutos"; exit 1
+
+      - name: Comprobar que ningún liceo se quedó sin migrar
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            # Compilado: la imagen no lleva tsx ni el código fuente de los
+            # guiones (con `npx tsx` este paso fallaba siempre).
+            docker compose -f docker-compose.prod.yml exec -T backend \
+              node dist/scripts/migrate-all-tenants.js --status

@@ -1,0 +1,136 @@
+name: CI
+
+# LO QUE SE COMPRUEBA SOLO, EN CADA CAMBIO
+#
+# Antes había dos archivos (`ci.yml` y `tests.yml`) que llamaban a `yarn` —el
+# proyecto usa npm— y a guiones que no existen: fallaban siempre, o no
+# corrían, y las ~800 pruebas del servidor solo se pasaban cuando alguien se
+# acordaba. Ahora, en cada empuje y en cada petición de cambios:
+#
+#   · tipos del servidor y de la web;
+#   · las pruebas del servidor, contra un PostgreSQL y un Redis de verdad;
+#   · las pruebas de la web;
+#   · que la web compila.
+#
+# Las de navegador (Playwright) no van aquí: necesitan el liceo de pruebas
+# sembrado y los dos servidores arriba. Ver CLAUDE.md.
+#
+# `deploy-production.yml` llama a este mismo flujo y solo despliega si sale
+# en verde.
+
+on:
+  push:
+    branches: [main, 'trabajo/**']
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  servidor:
+    name: Servidor (tipos y pruebas)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tenant_test-load-5k
+      PLATFORM_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gestion_escolar_platform
+      JWT_SECRET: prueba-de-ci-con-al-menos-32-caracteres-de-largo
+      JWT_REFRESH_SECRET: prueba-de-ci-refresh-con-al-menos-32-caracteres
+      SUPERADMIN_JWT_SECRET: prueba-de-ci-superadmin-con-mas-de-32-caracteres
+      # Lo mismo que dan en local `.env` y `.env.test` (que no van al
+      # repositorio): sin esto, las pruebas verían otros valores por defecto.
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      CORS_ORIGIN: http://localhost:3000
+      RATE_LIMIT_MAX: '100'
+      RATE_LIMIT_TIME_WINDOW: '60000'
+      MAX_FILE_SIZE: '5242880'
+      BASE_DOMAIN: tuapp.com
+      TENANT_DATABASE_TEMPLATE: postgresql://postgres:postgres@localhost:5432/tenant_{slug}
+      # Las pruebas que necesitan un Redis de verdad (CUPO-*, DOBLE-*); las
+      # demás usan uno de mentira (tests/setup.ts).
+      REDIS_PRUEBAS_URL: redis://localhost:6379
+      # pg_dump del sistema: los respaldos se prueban de verdad (RESP-*).
+      PG_BIN_DIR: /usr/lib/postgresql/16/bin
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci --legacy-peer-deps
+
+      # pg_dump tiene que ser de la misma version que el servidor (16). La
+      # imagen ubuntu-24.04 ya la trae; si no, se instala.
+      - name: Las herramientas de PostgreSQL 16
+        run: |
+          if [ ! -x /usr/lib/postgresql/16/bin/pg_dump ]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-16
+          fi
+          /usr/lib/postgresql/16/bin/pg_dump --version
+
+      - name: Generar los clientes de Prisma
+        working-directory: apps/backend
+        run: |
+          npx prisma generate --schema=src/prisma/schema.prisma
+          npx prisma generate --schema=src/prisma/plataforma/schema.prisma
+
+      - name: Tipos del servidor
+        working-directory: apps/backend
+        run: npm run typecheck
+
+      - name: Pruebas del servidor
+        working-directory: apps/backend
+        run: npx jest --ci
+
+  web:
+    name: Web (tipos, pruebas y compilación)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci --legacy-peer-deps
+
+      - name: Tipos de la web
+        working-directory: apps/web
+        run: npm run typecheck
+
+      - name: Pruebas de la web
+        working-directory: apps/web
+        run: npx jest --ci
+
+      - name: Compilar la web
+        working-directory: apps/web
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: https://api.ejemplo.invalid/api
