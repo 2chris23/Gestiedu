@@ -288,6 +288,10 @@ describe('La memoria rápida no mezcla liceos', () => {
         const MIRADAS: Record<string, string> = {
             'src/config/database.ts|tenantConnections':
                 'la clave es el liceo',
+            'src/config/database.ts|abriendo':
+                'la clave es el liceo: la conexión que se está abriendo para ESE liceo',
+            'src/utils/fallos-del-servidor.ts|pendientes':
+                'la clave empieza por el liceo; solo cuenta errores (ruta y veces), no datos de nadie',
             'src/config/redis.ts|memoryStore':
                 'es la memoria rápida misma: la clave ya lleva el liceo (getKey)',
             'src/plugins/anti-doble-envio.ts|enCurso':

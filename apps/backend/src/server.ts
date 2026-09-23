@@ -24,6 +24,7 @@ import { conLiceo } from './config/ambito-del-liceo';
 import { smartCacheMiddleware, cacheOnSendHook } from './middleware/smart-cache.middleware';
 import { ponerLosGuardiasPrimero } from './middleware/guardias';
 import antiDobleEnvio from './plugins/anti-doble-envio';
+import { CupoCompartido } from './plugins/cupo-compartido';
 import { createHash } from 'crypto';
 import { deQuienNosFiamos, comoSeExplicaLaConfianza } from './config/de-quien-nos-fiamos';
 import avisarCambios from './plugins/avisar-cambios';
@@ -117,6 +118,9 @@ export async function buildServer(): Promise<FastifyInstance> {
     max: config.isDevelopment ? 10000 : config.rateLimit.max,
     timeWindow: config.rateLimit.timeWindow,
     keyGenerator: cupoDeLaPeticion,
+    // La cuenta en Redis, compartida por todos los procesos; si Redis no
+    // contesta, en la memoria de este. Ver `plugins/cupo-compartido.ts`.
+    store: CupoCompartido as any,
   });
 
   // Multipart para subida de archivos
