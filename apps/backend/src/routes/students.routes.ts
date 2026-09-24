@@ -13,6 +13,7 @@ import { getStudentGrades } from '../controllers/grades.controller';
 import { getStudentAttendance } from '../controllers/attendance.controller';
 import { getStudentDashboard } from '../controllers/dashboard.controller';
 import { actividadesDelAlumno } from '../controllers/actividades-del-alumno.controller';
+import { obtenerBoleta } from '../controllers/boleta.controller';
 import { authenticate, requireAdmin, requireTeacher, requireStudent, requireSelfOrAdmin } from '../middleware/auth.middleware';
 import { validateParams, validateCUID } from '../middleware/validation.middleware';
 import { FastifyRequest, FastifyReply } from 'fastify';
@@ -261,6 +262,15 @@ const studentsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/:id/actividades', {
     preHandler: [authenticate]
   }, actividadesDelAlumno as any);
+
+  /**
+   * La boleta: notas por lapso, definitiva e inasistencias. Sin guardián de
+   * rol a propósito: la ven el admin, el alumno, su representante y su
+   * profesor guía, y eso lo decide `puedeVerLaBoleta` dentro. Solo lectura.
+   */
+  fastify.get('/:id/boleta', {
+    preHandler: [authenticate]
+  }, obtenerBoleta as any);
 };
 
 export default studentsRoutes;
