@@ -23,7 +23,7 @@ import {
     SearchStudentResult,
     ClassActivity,
 } from '@/hooks/useLiveClass';
-import { useAuthStore } from '@/store/auth.store';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { SuspenderClaseDialogo } from '@/components/schedule/SuspenderClaseDialogo';
 import { toast } from 'sonner';
 
@@ -44,7 +44,12 @@ function LiveClassPageInner() {
     const params = useParams();
     const searchParams = useSearchParams();
     const router = useRouter();
-    const { user } = useAuthStore();
+    // El rol lo dice el servidor (`useQuienSoy`), no el almacén del navegador:
+    // con la sesión viva pero el almacén vacío, el profesor no veía «Pasar
+    // asistencia» ni podía marcar a nadie (ASIS-DOS-01). CLAUDE.md, «Lo que ve
+    // cada rol en las listas».
+    const { yo } = useQuienSoy();
+    const user = yo;
 
     const classroomId = params.classroomId as string;
     const subjectId = params.subjectId as string;
