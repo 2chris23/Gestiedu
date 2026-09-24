@@ -68,7 +68,9 @@ function lapsoNote(criteria: CriterionInput[]): { nota: number; conNotas: boolea
     const gradedPts = criteria
         .filter((c) => c.activities.some((a) => a.score !== null && a.score !== undefined && !Number.isNaN(a.score)))
         .reduce((s, c) => s + (c.puntos || 0), 0);
-    const scaled = gradedPts > 0 && gradedPts < 20 ? result.total * (20 / gradedPts) : result.total;
+    // Igual que `gradesService.promedioDelLapso`: se escala a 20 siempre que lo
+    // calificado no sean justo 20 puntos (dos planes, si se cambió de sección).
+    const scaled = gradedPts > 0 && Math.abs(gradedPts - 20) > 0.009 ? result.total * (20 / gradedPts) : result.total;
     return { nota: Math.round(scaled * 100) / 100, conNotas: result.gradedActivities > 0 };
 }
 
@@ -96,32 +98,93 @@ export async function bulkSubjectAveragesConDatos(
     if (studentIds.length === 0 || subjectIds.length === 0) return empty;
 
     // --- 4 consultas para toda la sección ---
-    const [periods, rows, grades, activities] = await Promise.all([
+    //
+    // Las filas del plan y las actividades se piden del CICLO entero (no solo de
+    // esta sección) para el alumno que se cambió de sección: sus notas de la
+    // anterior siguen contando (SEC-05, mismas reglas que
+    // `gradesService.seccionesDelAlumno`). Siguen siendo 4 consultas: de las
+    // otras secciones solo vienen las actividades con notas de estos alumnos.
+    const delMismoCiclo = { academicYear: { classrooms: { some: { id: classroomId } } } };
+    const [periods, rowsDelCiclo, grades, activities] = await Promise.all([
         periodId
             ? prisma.period.findMany({ where: { id: periodId }, select: { id: true, name: true } })
             : prisma.period.findMany({
-                  where: { academicYear: { classrooms: { some: { id: classroomId } } } },
+                  where: delMismoCiclo,
                   select: { id: true, name: true },
                   orderBy: { startDate: 'asc' },
               }),
         prisma.evaluationPlanRow.findMany({
-            where: { classroomId, subjectId: { in: subjectIds }, rowType: 'EVALUATION' },
-            select: { id: true, puntos: true, activityId: true, subjectId: true, lapso: true },
+            where: { classroom: delMismoCiclo, subjectId: { in: subjectIds }, rowType: 'EVALUATION' },
+            select: { id: true, puntos: true, activityId: true, subjectId: true, lapso: true, classroomId: true },
         }),
         prisma.grade.findMany({
             where: { studentId: { in: studentIds }, subjectId: { in: subjectIds } },
             select: { studentId: true, subjectId: true, score: true, periodId: true, activityId: true },
         }),
-        prisma.classActivity.findMany({
-            where: { classroomId, subjectId: { in: subjectIds } },
-            select: { id: true, subjectId: true, planRowId: true, maxScore: true, scores: true },
-        }),
+        prisma.$queryRaw<Array<{
+            id: string;
+            subjectId: string;
+            planRowId: string | null;
+            maxScore: number | null;
+            scores: unknown;
+            classroomId: string;
+        }>>`
+            SELECT ca.id, ca."subjectId", ca."planRowId", ca."maxScore", ca.scores, ca."classroomId"
+              FROM class_activities ca
+              JOIN classrooms c ON c.id = ca."classroomId"
+              JOIN classrooms mia ON mia.id = ${classroomId}
+             WHERE ca."subjectId" = ANY(${subjectIds}::text[])
+               AND c."academicYearId" = mia."academicYearId"
+               AND (ca."classroomId" = ${classroomId}
+                    OR (jsonb_typeof(ca.scores) = 'object' AND ca.scores ?| ${studentIds}::text[]))`,
     ]);
 
     if (periods.length === 0) return empty;
 
+    const rows = rowsDelCiclo.filter((r) => r.classroomId === classroomId);
+
+    /**
+     * EL ALUMNO QUE SE CAMBIÓ DE SECCIÓN TRAE SUS NOTAS
+     *
+     * Además de esta sección, cuentan las otras del mismo ciclo donde el alumno
+     * tiene notas de la materia: una actividad de clase con su nota, o una fila
+     * del plan cuya actividad tiene su nota. Sin esto, la lista de la sección
+     * nueva enseñaba un promedio sin lo que sacó en la anterior (SEC-05).
+     */
+    const otrasDe = new Map<string, Set<string>>();
+    const apuntar = (studentId: string, subjectId: string, aula: string) => {
+        const k = `${studentId}|${subjectId}`;
+        if (!otrasDe.has(k)) otrasDe.set(k, new Set());
+        otrasDe.get(k)!.add(aula);
+    };
+    const actividadesDeFuera = activities.filter((a) => a.classroomId !== classroomId);
+    for (const a of actividadesDeFuera) {
+        const notas = parseScores(a.scores);
+        for (const sid of studentIds) {
+            if (typeof notas[sid] === 'number') apuntar(sid, a.subjectId, a.classroomId);
+        }
+    }
+    const filaDeLaActividad = new Map<string, string>();
+    for (const r of rowsDelCiclo) {
+        if (r.activityId && r.classroomId !== classroomId) filaDeLaActividad.set(r.activityId, r.classroomId);
+    }
+    if (filaDeLaActividad.size > 0) {
+        for (const g of grades) {
+            const aula = g.activityId ? filaDeLaActividad.get(g.activityId) : undefined;
+            if (aula && g.score !== null) apuntar(g.studentId, g.subjectId, aula);
+        }
+    }
+    const filasDeFuera = rowsDelCiclo.filter((r) => r.classroomId !== classroomId);
+
     // --- Índices en memoria ---
-    const actScores = activities.map((a) => ({
+    const actScores = activities.filter((a) => a.classroomId === classroomId).map((a) => ({
+        subjectId: a.subjectId,
+        planRowId: a.planRowId,
+        maxScore: a.maxScore ?? 20,
+        scores: parseScores(a.scores),
+    }));
+    const actScoresDeFuera = actividadesDeFuera.map((a) => ({
+        classroomId: a.classroomId,
         subjectId: a.subjectId,
         planRowId: a.planRowId,
         maxScore: a.maxScore ?? 20,
@@ -145,10 +208,17 @@ export async function bulkSubjectAveragesConDatos(
         for (const studentId of studentIds) {
             const studentGrades = (gradesByStudent.get(studentId) ?? []).filter((g) => g.subjectId === subjectId);
             const notasPorLapso: number[] = [];
+            const suyasDeFuera = otrasDe.get(`${studentId}|${subjectId}`);
+            const susFilas = suyasDeFuera
+                ? [...rows, ...filasDeFuera.filter((r) => suyasDeFuera.has(r.classroomId))]
+                : rows;
+            const susActs = suyasDeFuera
+                ? [...subjectActs, ...actScoresDeFuera.filter((a) => a.subjectId === subjectId && suyasDeFuera.has(a.classroomId))]
+                : subjectActs;
 
             for (const period of periods) {
                 const lapso = periodNameToLapso(period.name);
-                const criterios = rows.filter(
+                const criterios = susFilas.filter(
                     (r) => r.subjectId === subjectId && r.lapso === lapso && (r.puntos || 0) > 0
                 );
 
@@ -160,7 +230,7 @@ export async function bulkSubjectAveragesConDatos(
                     studentGrades
                         .filter((g) => g.periodId === period.id && g.score !== null)
                         .forEach((g) => acts.push({ score: g.score as number, maxScore: 20 }));
-                    subjectActs.forEach((a) => {
+                    susActs.forEach((a) => {
                         const score = a.scores[studentId];
                         if (score !== undefined && score !== null) acts.push({ score, maxScore: a.maxScore });
                     });
@@ -173,7 +243,7 @@ export async function bulkSubjectAveragesConDatos(
                                 .filter((g) => g.activityId === r.activityId && g.score !== null)
                                 .forEach((g) => acts.push({ score: g.score as number, maxScore: 20 }));
                         }
-                        subjectActs
+                        susActs
                             .filter((a) => a.planRowId === r.id)
                             .forEach((a) => {
                                 const score = a.scores[studentId];
