@@ -78,6 +78,16 @@ async function ventanaDelLapsoYCiclo(db: any, academicYearId: string | null): Pr
     return { lapso: ciclo, ciclo, lapsosDelCiclo };
 }
 
+/** Porcentaje de asistencia en una ventana, y cuántos registros hay (0 = no hay dato que juzgar). */
+async function asistenciaEnLaVentana(db: any, studentId: string, v: Ventana): Promise<{ porcentaje: number; registros: number }> {
+    const donde = { studentId, ...comoFecha('date', v) };
+    const [total, presentes] = await Promise.all([
+        db.dailyAttendance.count({ where: donde }),
+        db.dailyAttendance.count({ where: { ...donde, status: { in: ['PRESENT', 'LATE'] } } }),
+    ]);
+    return { porcentaje: total > 0 ? (presentes * 100.0) / total : 0, registros: total };
+}
+
 /** Porcentaje de asistencia de un alumno dentro de una ventana de fechas. */
 async function porcentajeDeAsistencia(db: any, studentId: string, v: Ventana): Promise<number> {
     const donde = { studentId, ...comoFecha('date', v) };
@@ -88,6 +98,110 @@ async function porcentajeDeAsistencia(db: any, studentId: string, v: Ventana): P
     return total > 0 ? (presentes * 100.0) / total : 0;
 }
 
+
+/**
+ * Las materias del alumno en el ciclo, con su promedio (nivel 2) y si tiene
+ * notas. Es EL cálculo del panel del alumno, y el del representante usa el
+ * mismo: antes el representante veía la media a pelo de la tabla de notas
+ * antigua —sin las de Clase en Vivo ni el plan— y le salía 0 a un hijo que iba
+ * con 8 (REP-01).
+ */
+async function materiasDelAlumnoConPromedio(
+    db: any,
+    userId: string,
+    activeClassroomId: string | null,
+    lapsosDelCiclo: string[]
+): Promise<Array<{ subjectId: string; subjectName: string; subjectColor: string; average: number; conNotas: boolean }>> {
+    // Solo las materias DE ESTE CICLO.
+    //
+    // Antes se sacaban las de todo su historial. Una materia de un año
+    // anterior se colaba en el panel de hoy con promedio 0, y ese 0
+    // parece un aplazado cuando en realidad significa "esta materia no
+    // es de este año". No se pierde nada: los años anteriores siguen
+    // enteros en la base y en el expediente del alumno.
+    const grades = await db.grade.groupBy({
+        by: ['subjectId'],
+        where: {
+            studentId: userId,
+            ...(lapsosDelCiclo.length > 0
+                ? { periodId: { in: lapsosDelCiclo } }
+                : {}),
+        },
+        _avg: { score: true }
+    });
+    const classActs = activeClassroomId
+        ? await db.classActivity.findMany({
+            where: { classroomId: activeClassroomId, scores: { not: undefined } },
+            select: { subjectId: true, scores: true },
+        })
+        : [];
+    const classActSubjectIds = new Set<string>();
+    classActs.forEach((act: any) => {
+        let parsed: Record<string, number | null> = {};
+        try {
+            parsed = typeof act.scores === 'string' ? JSON.parse(act.scores) : (act.scores || {});
+        } catch { /* ignorar */ }
+        if (parsed[userId] !== null && parsed[userId] !== undefined) classActSubjectIds.add(act.subjectId);
+    });
+
+    const subjectIds = [...new Set([...grades.map((g: any) => g.subjectId), ...classActSubjectIds])];
+    const subjects = await db.subject.findMany({ where: { id: { in: subjectIds } }, select: { id: true, name: true, color: true } });
+
+    /**
+     * EN BLOQUE: EL MISMO NÚMERO, CON 4 CONSULTAS EN VEZ DE ~20 POR MATERIA
+     *
+     * Materia por materia, este panel —el que más se abre del
+     * sistema— hacía unas 180 consultas en un alumno normal, y
+     * crecía con cada materia. Con 500 personas a la vez su p99
+     * llegó a 13 s. `bulkSubjectAverages` aplica las mismas reglas
+     * (lo comprueba PANEL-02 contra el cálculo de siempre).
+     */
+    if (activeClassroomId && subjects.length > 0) {
+        const enBloque = await bulkSubjectAveragesConDatos(db, {
+            classroomId: activeClassroomId,
+            studentIds: [userId],
+            subjectIds: subjects.map((s: any) => s.id),
+        });
+        const suyos = enBloque.get(userId);
+        return subjects.map((s: any) => ({
+            subjectId: s.id,
+            subjectName: s.name,
+            subjectColor: s.color || '#666',
+            average: suyos?.get(s.id)?.promedio ?? 0,
+            conNotas: suyos?.get(s.id)?.conNotas ?? false,
+        }));
+    }
+
+    return Promise.all(subjects.map(async (s: any) => {
+        // Se le pasan los lapsos ya sabidos: sin esto, cada materia
+        // repetía la misma consulta para averiguarlos.
+        const level2 = await gradesService.promedioDeLaMateria(
+            db as PrismaClient,
+            userId,
+            s.id,
+            undefined,
+            lapsosDelCiclo
+        );
+        return {
+            subjectId: s.id,
+            subjectName: s.name,
+            subjectColor: s.color || '#666',
+            average: level2.promedio,
+            conNotas: level2.conNotas,
+        };
+    }));
+}
+
+/** Promedio general: la media de las materias CON notas (un 0 es una nota), a un decimal. */
+function promedioGeneral(materias: Array<{ average: number; conNotas: boolean }>): { promedio: number; conNotas: boolean } {
+    const conNotas = materias.filter((m) => m.conNotas);
+    if (conNotas.length === 0) return { promedio: 0, conNotas: false };
+    const redondeadas = conNotas.map((m) => parseFloat(Number(m.average || 0).toFixed(1)));
+    return {
+        promedio: Math.round((redondeadas.reduce((a, b) => a + b, 0) / redondeadas.length) * 10) / 10,
+        conNotas: true,
+    };
+}
 
 export class DashboardService {
     /**
@@ -313,86 +427,7 @@ export class DashboardService {
         const ventana = await ventanaDelLapsoYCiclo(db, anioActivoId);
 
         const [gradesStats, attendanceStats, observationsCount, periodAverages] = await Promise.all([
-            (async () => {
-                // Solo las materias DE ESTE CICLO.
-                //
-                // Antes se sacaban las de todo su historial. Una materia de un año
-                // anterior se colaba en el panel de hoy con promedio 0, y ese 0
-                // parece un aplazado cuando en realidad significa "esta materia no
-                // es de este año". No se pierde nada: los años anteriores siguen
-                // enteros en la base y en el expediente del alumno.
-                const grades = await db.grade.groupBy({
-                    by: ['subjectId'],
-                    where: {
-                        studentId: userId,
-                        ...(ventana.lapsosDelCiclo.length > 0
-                            ? { periodId: { in: ventana.lapsosDelCiclo } }
-                            : {}),
-                    },
-                    _avg: { score: true }
-                });
-                const classActs = activeClassroomId
-                    ? await db.classActivity.findMany({
-                        where: { classroomId: activeClassroomId, scores: { not: undefined } },
-                        select: { subjectId: true, scores: true },
-                    })
-                    : [];
-                const classActSubjectIds = new Set<string>();
-                classActs.forEach(act => {
-                    let parsed: Record<string, number | null> = {};
-                    try {
-                        parsed = typeof act.scores === 'string' ? JSON.parse(act.scores) : (act.scores || {});
-                    } catch { /* ignorar */ }
-                    if (parsed[userId] !== null && parsed[userId] !== undefined) classActSubjectIds.add(act.subjectId);
-                });
-
-                const subjectIds = [...new Set([...grades.map((g: any) => g.subjectId), ...classActSubjectIds])];
-                const subjects = await db.subject.findMany({ where: { id: { in: subjectIds } }, select: { id: true, name: true, color: true } });
-
-                /**
-                 * EN BLOQUE: EL MISMO NÚMERO, CON 4 CONSULTAS EN VEZ DE ~20 POR MATERIA
-                 *
-                 * Materia por materia, este panel —el que más se abre del
-                 * sistema— hacía unas 180 consultas en un alumno normal, y
-                 * crecía con cada materia. Con 500 personas a la vez su p99
-                 * llegó a 13 s. `bulkSubjectAverages` aplica las mismas reglas
-                 * (lo comprueba PANEL-02 contra el cálculo de siempre).
-                 */
-                if (activeClassroomId && subjects.length > 0) {
-                    const enBloque = await bulkSubjectAveragesConDatos(db, {
-                        classroomId: activeClassroomId,
-                        studentIds: [userId],
-                        subjectIds: subjects.map((s: any) => s.id),
-                    });
-                    const suyos = enBloque.get(userId);
-                    return subjects.map((s: any) => ({
-                        subjectId: s.id,
-                        subjectName: s.name,
-                        subjectColor: s.color || '#666',
-                        average: suyos?.get(s.id)?.promedio ?? 0,
-                        conNotas: suyos?.get(s.id)?.conNotas ?? false,
-                    }));
-                }
-
-                return Promise.all(subjects.map(async (s: any) => {
-                    // Se le pasan los lapsos ya sabidos: sin esto, cada materia
-                    // repetía la misma consulta para averiguarlos.
-                    const level2 = await gradesService.promedioDeLaMateria(
-                        db as PrismaClient,
-                        userId,
-                        s.id,
-                        undefined,
-                        ventana.lapsosDelCiclo
-                    );
-                    return {
-                        subjectId: s.id,
-                        subjectName: s.name,
-                        subjectColor: s.color || '#666',
-                        average: level2.promedio,
-                        conNotas: level2.conNotas,
-                    };
-                }));
-            })(),
+            materiasDelAlumnoConPromedio(db, userId, activeClassroomId, ventana.lapsosDelCiclo),
 
             (async () => {
                 const [lapso, ciclo] = await Promise.all([
@@ -514,10 +549,10 @@ export class DashboardService {
 
         // Un 0 es una nota: la materia con todo en 0 cuenta en el promedio y
         // como reprobada. Lo que no cuenta es la materia SIN notas (CERO-*).
-        const validSubjects = subjects.filter((s: any) => s.hasGrades);
-        const globalAverage = validSubjects.length > 0
-            ? Math.round((validSubjects.reduce((acc: number, s: any) => acc + s.average, 0) / validSubjects.length) * 10) / 10
-            : 0;
+        // El mismo número que ve el representante (`promedioGeneral`, REP-01).
+        const globalAverage = promedioGeneral(
+            subjects.map((s: any) => ({ average: s.average, conNotas: s.hasGrades }))
+        ).promedio;
 
         const failedSubjects = subjects.filter(s => s.hasGrades && s.average < minPassing).length;
 
@@ -635,25 +670,21 @@ export class DashboardService {
                 );
 
                 const [stats] = await (async () => {
-                    const [gradeAgg, asistencia] = await Promise.all([
-                        db.grade.aggregate({
-                            where: {
-                                studentId: child.student.id,
-                                ...(ventanaHijo.lapsosDelCiclo.length > 0
-                                    ? { periodId: { in: ventanaHijo.lapsosDelCiclo } }
-                                    : {}),
-                            },
-                            _avg: { score: true },
-                            _count: { score: true },
-                        }),
-                        porcentajeDeAsistencia(db, child.student.id, ventanaHijo.lapso),
+                    // El MISMO cálculo que el panel del alumno (REP-01).
+                    const suAula = child.student.studentClassrooms?.[0]?.classroom?.id ?? null;
+                    const [materias, asistencia] = await Promise.all([
+                        materiasDelAlumnoConPromedio(db, child.student.id, suAula, ventanaHijo.lapsosDelCiclo),
+                        asistenciaEnLaVentana(db, child.student.id, ventanaHijo.lapso),
                     ]);
+                    const general = promedioGeneral(materias);
                     return [{
-                        average: gradeAgg._avg.score ?? 0,
+                        average: general.promedio,
                         // Un 0 es una nota: el aviso de promedio bajo mira si
                         // HAY notas, no si el promedio pasa de 0 (CERO-07).
-                        hasGrades: (gradeAgg._count?.score ?? 0) > 0,
-                        attendancePercentage: asistencia,
+                        hasGrades: general.conNotas,
+                        attendancePercentage: asistencia.porcentaje,
+                        // Sin ningún registro en el lapso no hay dato que juzgar (REP-02).
+                        hasAttendance: asistencia.registros > 0,
                     }];
                 })();
 
@@ -672,13 +703,14 @@ export class DashboardService {
                     average: parseFloat(Number(stats?.average || 0).toFixed(1)),
                     hasGrades: !!stats?.hasGrades,
                     attendancePercentage: Math.round(Number(stats?.attendancePercentage || 0)),
+                    hasAttendance: !!stats?.hasAttendance,
                     relationship: child.relationship
                 };
             })
         );
 
         const alerts = childrenWithStats
-            .filter(c => (c.hasGrades && c.average < minPassing) || c.attendancePercentage < asistenciaMinima)
+            .filter(c => (c.hasGrades && c.average < minPassing) || (c.hasAttendance && c.attendancePercentage < asistenciaMinima))
             .map(c => ({
                 studentId: c.id,
                 studentName: c.fullName,
