@@ -3185,3 +3185,64 @@ el Motorola; en claro y en oscuro): con servidor se entra y se navega; se
 corta el servidor, se cierra y se abre la app, y abre en el panel con lo
 último descargado y la franja «Sin conexión con el liceo»; Académico también.
 APAGADO-01/02 y SIN-01…03 en verde; 48 pruebas de la web en verde.
+
+## 57. Sin luz se sigue viendo todo, y la app se actualiza sola (septiembre 2026)
+
+Probada otra vez en el Motorola: se entró con wifi, se recorrió el sistema,
+se cerró la app, se quitó el wifi y al abrirla salía **«No hay conexión con
+el liceo»**. Lo que se pedía, en palabras del administrador: *se fue la luz;
+sé que no puedo cambiar nada, pero quiero ver el sistema tal como lo dejé*.
+Si a las 10:00 Carlos estaba presente y a las 10:30 el profesor lo marca
+ausente, el administrador sin conexión lo sigue viendo presente —es lo último
+que cargó— y al volver la conexión se pone al día solo.
+
+Qué fallaba, medido en el emulador antes de tocar nada:
+
+- **Las pantallas a las que se llegaba tocando no se guardaban.** Dentro de
+  la app Next no recarga la página: pide un trozo (`?_rsc=`). El ayudante
+  solo guardaba páginas enteras, así que «Académico», un ciclo o un perfil
+  no quedaban nunca guardados. Ahora la app le avisa de cada pantalla y él la
+  guarda entera (como mucho cada 10 min); al cerrar sesión se olvidan.
+- **El ciclo, los usuarios, un perfil y el calendario pedían sus datos a
+  mano**, fuera de la memoria que se guarda en el teléfono: sin conexión,
+  vacíos. Ahora van por la memoria y se ven tal como estaban.
+- **El perfil de un alumno sin notas inventaba un 16,5 de promedio.** Ahora
+  dice «—».
+
+Comprobado en el emulador con la APK, como un administrador: entrar, tocar
+Académico → el ciclo → bajar → Horarios → Usuarios → un alumno → Inicio;
+cortar el servidor, cerrar la app y abrirla. Abre en el panel con sus
+cifras, y el ciclo (tocando y recargando), Horarios, Usuarios y el perfil
+del alumno salen con los datos de antes y el aviso de sin conexión.
+
+**El aviso** ya no es una franja que tapa la cabecera: es un icono pequeño
+que late arriba a la derecha y, al tocarlo, dice de cuándo es lo que se ve.
+
+**La pantalla del ciclo, más corta.** Cinco tarjetas de 110 px, un selector
+de ciclo y tres filas de botones se comían el teléfono entero antes de
+llegar a los años. Ahora las cinco cifras van en un bloque de 119 px, el
+selector de ciclo se fue (se vuelve atrás y se entra en otro), y «Editar» y
+«Finalizar el ciclo escolar» están en el menú de los tres puntos: finalizar
+un ciclo es de una vez al año y no puede estar en rojo a un toque sin querer.
+
+**La barra de abajo**: cinco botones para el personal (el admin: Académico,
+Usuarios, Inicio, Horarios, Pagos), tres para alumno y representante (con
+«Mi cuenta»). Al bajar se esconde entera: la casita de Inicio se quedaba
+asomando.
+
+**La app se actualiza desde dentro.** Lo que cambia en la web se ve sin
+instalar nada, pero lo de dentro de la APK (la franja del reloj, la sesión al
+cerrar) obligaba a bajarla otra vez a mano. Ahora, al abrirse, pregunta al
+servidor si hay una versión nueva y la ofrece: la baja con su barra,
+comprueba su huella y abre el instalador de Android, que exige la misma
+firma. Probado en el emulador de principio a fin (versión 2 instalada, 3
+publicada): ventana, permiso de Android, descarga, instalador; y al cancelar
+el instalador, vuelve a ofrecerla. Dos avisos:
+
+- La app que ya está en los teléfonos **no sabe preguntar**: se cambia una
+  vez a mano y de ahí en adelante llegan solas.
+- **Google Play no lo permite**: la que se publique allí se actualiza por
+  Play, sin el permiso de instalar.
+
+No probado: la instalación en el Motorola (no se usó el teléfono) y el
+aviso de Google Play Protect más allá de verlo aparecer.

@@ -41,8 +41,25 @@ profesor, y nadie se entera.
   que la app ABRA sin internet. Los datos del liceo NO pasan por ahí, y el
   motivo no es técnico: lo que guarda un service worker es del navegador, no de
   la persona.
+- **Las pantallas que se abrieron**, también en `sw.js`, para que la app abra
+  en ellas sin servidor. Dentro de la app se navega sin recargar (Next pide
+  solo un trozo, `?_rsc=`), así que la página entera de «Académico» o de un
+  ciclo no pasaba nunca por el ayudante: se recorría todo tocando botones, se
+  cerraba la app sin señal y salía «esta pantalla no está guardada» (visto en
+  un Motorola). Ahora la app avisa de cada pantalla que abre
+  (`AyudanteDeLaApp` → `lib/paginas-guardadas.ts`) y el ayudante la trae
+  entera, como mucho una vez cada 10 minutos. Llevan el nombre de quien las
+  abrió en la cabecera, así que **se olvidan al cerrar sesión**.
+- Para que una pantalla se vea sin señal, sus datos tienen que pasar por
+  React Query (`useQuery`): es lo único que se guarda. El ciclo escolar, los
+  usuarios, un perfil y el calendario los pedían a mano y salían vacíos; ya
+  no.
 - Sin nada guardado todavía, se ve la pantalla propia («No hay conexión») en
   vez del error del navegador.
+- **El aviso es un icono pequeño que late**, arriba a la derecha (una nube
+  tachada). Los primeros segundos dice «Sin conexión»; al tocarlo explica de
+  cuándo es lo que se ve y que para cambiar algo hace falta conexión. Antes
+  era una franja entera que tapaba la cabecera todo el rato.
 
 **Sin servidor es lo mismo que sin señal.** El caso real es el teléfono con
 datos y el servidor apagado o reiniciándose. La app lo detecta (no solo mira
@@ -235,11 +252,19 @@ este ordenador con `adb reverse`:
 
 5. Entrar, recorrer las pantallas, y **desenchufar el cable**: eso es el
    servidor apagado. Cerrar la app y volver a abrirla: tiene que abrir en el
-   panel con la franja «Sin conexión con el liceo… lo último que se descargó».
+   panel, con el icono de «Sin conexión» latiendo arriba a la derecha, y cada
+   pantalla que se abrió antes, con sus datos.
 
 Sin cable vale la depuración inalámbrica de Android (Opciones de desarrollador
 → «Depuración inalámbrica», `adb pair` y `adb connect`); ahí el «servidor
 apagado» es quitar el wifi.
+
+En el **emulador** no hay cable que desenchufar, y el puente se vuelve a
+tender solo a los 3 s. Para eso: `npm run telefono:usb -- --puente-a-mano`, y
+el puente se pone y se quita a mano (`adb -s emulator-5554 reverse tcp:3000
+tcp:3000`, lo mismo con 3001; `reverse --remove-all` es el servidor apagado).
+Con `--dispositivo=<serie>` el puente va solo a ese aparato y no a cualquier
+teléfono que esté enchufado.
 
 ### La versión firmada
 
@@ -266,6 +291,54 @@ y `npm run apk:firmada`.
 > Si se pierde esa llave, Google Play **no deja publicar más actualizaciones**
 > de esa app: hay que subir una nueva y que todos la instalen otra vez. Se
 > guarda con el mismo cuidado que las contraseñas de la base de datos.
+
+### Una versión nueva, desde la propia app
+
+Casi todo lo que cambia se ve sin instalar nada (la app enseña lo que vive en
+el servidor). Lo de DENTRO de la APK —la franja del reloj, guardar la sesión
+al salir, la huella— solo llega instalando la nueva, y pedirle a cada alumno
+que la busque en una página no funciona.
+
+```bash
+cd apps/movil
+npm run publicar -- --notas="Qué trae de nuevo"          # la de pruebas
+npm run publicar -- --firmada --notas="Qué trae de nuevo" # la del liceo
+```
+
+Sube el número (`version-de-la-app.json`, que lee `build.gradle`), compila y
+deja `<paquete>.apk` y `<paquete>.json` (número, huella SHA-256, tamaño, notas)
+en `APP_MOVIL_DIR` (en este ordenador, `apks/` en la raíz, que no va al
+repositorio). Si la compilación falla, el número vuelve a como estaba.
+
+Al abrir la app (y al volver a ella) se pregunta a
+`GET /api/app-movil/<paquete>/version`; si hay una más nueva que la instalada,
+sale **«Hay una versión nueva de la app»** con las notas, y «Descargar e
+instalar» la baja dentro de la app con su barra (`ActualizarLaApp.tsx` y
+`ActualizarAppPlugin.java`):
+
+1. La primera vez, Android pide permiso para que la app instale: se abre la
+   pantalla de ajustes y, al volver, sigue sola.
+2. Se baja a la caché de la propia app y se comprueba la huella contra la
+   publicada; si no coincide, se tira.
+3. Se abre el instalador de Android («¿Actualizar esta app?»). Android
+   comprueba que venga firmada con **la misma llave** que la instalada: una
+   APK de otro no se instala encima.
+
+«Ahora no» la aparca un día. Probado en el emulador (septiembre 2026):
+ventana, permiso, descarga con la huella buena, instalador de Android. En
+una APK que no viene de Play, **Google Play Protect** puede pedir analizarla
+antes de instalar («App scan recommended»): es de Android, no de la app, y
+analizarla es lo correcto.
+
+> **La primera vez se instala a mano.** Una app instalada antes de esto no
+> sabe preguntar por versiones nuevas: esa se sustituye una vez a mano, y de
+> ahí en adelante ya llegan solas.
+>
+> **Google Play no permite esto.** Una app publicada en Play no puede
+> actualizarse por fuera de la tienda: la de Play se actualiza por Play (sus
+> «actualizaciones dentro de la app»), y en esa hay que quitar el permiso
+> `REQUEST_INSTALL_PACKAGES` del manifiesto. Esto es para la APK que el liceo
+> reparte por su cuenta.
 
 ### Lo que la app añade y la web no puede
 
@@ -294,6 +367,7 @@ y `npm run apk:firmada`.
     nada que apartar.
 - **Entrar con la huella** y **girar la pantalla** en el horario y el plan de
   evaluación (`@capacitor/screen-orientation` desde la web).
+- **Actualizarse sola** (ver «Una versión nueva, desde la propia app»).
 
 ### Lo que queda por hacer
 

@@ -274,10 +274,18 @@ paletas distintas para lo mismo.
 ## En el teléfono
 
 Barra de tareas abajo (`components/layout/BarraInferiorMovil.tsx`), donde está el
-pulgar, con el menú completo en el centro. Se esconde en pantalla grande, respeta
-la barra de gestos del teléfono (`env(safe-area-inset-bottom)`) y cada botón mide
-44 px de alto. El contenido lleva `pb-28` en móvil para que la barra no tape el
-último botón de la pantalla.
+pulgar, con **Inicio en el centro** y a cada lado lo que ese rol abre cada día
+(`losDeLaBarra` en `lib/el-menu.ts`): cinco para el personal (admin: Académico,
+Usuarios, Horarios y Pagos, o Calendario sin pagos; profesor: Académico,
+Materias, Horarios, Calendario), tres para el alumno y el representante
+(Calendario y «Mi cuenta»). Se esconde en pantalla grande, respeta la barra de
+gestos del teléfono (`env(safe-area-inset-bottom)`) y cada botón mide 44 px de
+alto. El contenido lleva `pb-28` en móvil para que la barra no tape el último
+botón de la pantalla.
+
+**Al bajar se esconde entera**, casita incluida: la de Inicio sobresale por
+encima de la barra y se quedaba asomando, un medio círculo morado flotando
+sobre el contenido (visto en un Motorola; MOVIL-02 lo mide).
 
 ## En el teléfono, lo que se comprueba cada vez
 
@@ -362,6 +370,18 @@ no es técnico: lo que guarda un service worker es del NAVEGADOR, no de la
 persona. Ahí solo vive la cáscara —la página, el javascript y los estilos—, que
 es igual para todo el mundo; y es lo que hace que la app ABRA sin internet.
 
+**Guarda también cada pantalla que se abre, aunque se llegue sin recargar.**
+Dentro de la app Next pide solo un trozo (`?_rsc=`), y la página entera no
+pasaba nunca por el ayudante: se recorría todo tocando, se cerraba la app sin
+señal y salía «esta pantalla no está guardada». Ahora `AyudanteDeLaApp` le
+avisa (`lib/paginas-guardadas.ts`) y él la trae entera, como mucho cada 10
+min; al cerrar sesión se olvidan. Y **una pantalla solo se ve sin señal si sus
+datos van por `useQuery`**: lo pedido a mano no se guarda (ciclo, usuarios,
+perfil y calendario salían vacíos).
+
+El aviso sin conexión es **un icono pequeño que late** arriba a la derecha
+(`AvisoSinConexion`), no una franja que tape la cabecera; al tocarlo, explica.
+
 **«Sin internet» y «sin servidor» no son lo mismo, y el caso real es el
 segundo:** el teléfono con datos y el servidor apagado. `navigator.onLine` dice
 que todo va bien. La cuenta de verdad la lleva `lib/estado-del-servidor.ts`
@@ -424,6 +444,15 @@ navegador, en inglés. La llave de firma no se genera ni se guarda
 desde el repositorio: es la identidad del liceo en Google Play. Todo en
 `docs/APP-MOVIL.md`.
 
+**Una versión nueva de la APK se baja desde la propia app.** `npm run
+publicar` (en `apps/movil`) sube el número, compila y deja la APK con su
+huella en `APP_MOVIL_DIR`; al abrirse, la app pregunta a
+`/api/app-movil/<paquete>/version` y ofrece «Descargar e instalar»: la baja
+dentro, comprueba la huella y abre el instalador de Android, que exige la
+misma firma (`ActualizarLaApp.tsx`, `ActualizarAppPlugin.java`). **No vale
+para Google Play**: allí se actualiza por Play y sin el permiso
+`REQUEST_INSTALL_PACKAGES`.
+
 Tres cosas de la APK que el navegador no enseña nunca (medidas en el
 emulador; `MainActivity.java` y `styles.xml`):
 
@@ -450,7 +479,10 @@ app:** el ayudante (`sw.js`) solo existe en `https` o en `localhost`, y
 compila, levanta los dos servidores y hace que el `localhost` del teléfono
 enchufado sea este ordenador (`adb reverse`). La APK, con
 `--url=http://localhost:3000/login?slug=…`; el servidor apagado es
-desenchufar el cable. Pasos en `docs/APP-MOVIL.md`.
+desenchufar el cable. En el emulador, `-- --puente-a-mano` (el puente lo pone
+y lo quita `adb reverse`; si no, se vuelve a tender solo a los 3 s), y
+`--dispositivo=<serie>` para no tocar otro teléfono enchufado. Pasos en
+`docs/APP-MOVIL.md`.
 
 Y `telefono:compilado` no arrancaba nunca las pantallas: el `npm run start`
 que lanzaba se quedaba colgado sin abrir el puerto. Ahora se lanza Next
