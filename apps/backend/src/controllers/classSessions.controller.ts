@@ -689,7 +689,7 @@ export async function saveLiveClassSession(
             involvedStudentIds?: string[];
             startTime?: string;
             endTime?: string;
-            attendances?: Array<{ studentId: string; status: string; comments?: string }>;
+            attendances?: Array<{ studentId: string; status: string; comments?: string; soloSiNoHay?: boolean }>;
         };
     }>,
     reply: FastifyReply
@@ -777,6 +777,11 @@ export async function saveLiveClassSession(
                 const porLoQueSeLesPone = new Map<string, string[]>();
                 for (const a of attendances) {
                     if (!yaTenian.has(a.studentId)) continue;
+                    // «Solo si no hay»: lo que la pantalla NO tocó y manda como
+                    // se ve (presente por defecto). Si ya hay algo guardado —otra
+                    // pantalla lo marcó mientras tanto—, se respeta (ASIS-DOS-01,
+                    // SOLO-01…03). Antes se pisaba y un ausente volvía a presente.
+                    if (a.soloSiNoHay) continue;
                     const clave = `${a.status}\u0000${a.comments ?? ''}`;
                     const grupo = porLoQueSeLesPone.get(clave);
                     if (grupo) grupo.push(a.studentId);

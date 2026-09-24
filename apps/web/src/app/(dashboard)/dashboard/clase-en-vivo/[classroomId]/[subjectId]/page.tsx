@@ -106,14 +106,33 @@ function LiveClassPageInner() {
     const [selectedObsStudentId, setSelectedObsStudentId] = useState<string | null>(null);
     const [selectedStudentForObs, setSelectedStudentForObs] = useState<any | null>(null);
 
+    /**
+     * LO QUE ESTA PANTALLA CAMBIÓ Y AÚN NO SE HA GUARDADO
+     *
+     * Cada guardado mandaba la asistencia de TODOS los alumnos con lo que tenía
+     * esta pantalla, y cada vez que llegaban datos nuevos del servidor se
+     * reemplazaba todo lo marcado. Con dos pantallas en la misma clase (el
+     * profesor en el teléfono y la coordinadora en el ordenador, o el mismo
+     * profesor en dos aparatos), lo de una volvía atrás lo de la otra sin
+     * avisar; y un clic que caía justo antes de un refresco se perdía
+     * (ASIS-DOS-01). Ahora se guarda solo lo tocado aquí, y lo tocado se
+     * respeta al refrescar hasta que llega al servidor.
+     */
+    const asistenciaTocada = React.useRef<Map<string, AttendanceStatusType>>(new Map());
+    const textoSinGuardar = React.useRef(false);
+
     // Initialize data
     useEffect(() => {
         if (data) {
-            setObservationsTitle(data.session?.observationsTitle || '');
-            setObservations(data.session?.observations || '');
+            if (!textoSinGuardar.current) {
+                setObservationsTitle(data.session?.observationsTitle || '');
+                setObservations(data.session?.observations || '');
+            }
             const attMap: Record<string, AttendanceStatusType> = {};
             data.students.forEach((s) => {
-                if (s.status) attMap[s.id] = s.status as AttendanceStatusType;
+                const pendiente = asistenciaTocada.current.get(s.id);
+                if (pendiente) attMap[s.id] = pendiente;
+                else if (s.status) attMap[s.id] = s.status as AttendanceStatusType;
                 else attMap[s.id] = 'PRESENT';
             });
             setAttendance(attMap);
@@ -157,11 +176,15 @@ function LiveClassPageInner() {
     const [guardadoALas, setGuardadoALas] = useState<string | null>(null);
 
     const handleAttendanceChange = (studentId: string, status: AttendanceStatusType) => {
+        asistenciaTocada.current.set(studentId, status);
         setAttendance((prev) => ({ ...prev, [studentId]: status }));
         setCambiosPorGuardar((n) => n + 1);
     };
 
     const marcarTodosPresentes = () => {
+        (data?.students || []).filter((s) => !s.external).forEach((s) => {
+            asistenciaTocada.current.set(s.id, 'PRESENT');
+        });
         setAttendance((prev) => {
             const copia = { ...prev };
             (data?.students || []).filter((s) => !s.external).forEach((s) => {
@@ -249,6 +272,17 @@ function LiveClassPageInner() {
     };
 
     const guardarLaClase = async () => {
+        // Lo tocado aquí va tal cual. El que todavía no tiene asistencia ese
+        // día va como se ve (presente por defecto), pero «solo si no hay»: si
+        // otra pantalla lo marcó mientras tanto, se respeta lo de la otra.
+        const enviadas = new Map(asistenciaTocada.current);
+        const attendances = (data?.students || []).flatMap((s) => {
+            const tocada = enviadas.get(s.id);
+            if (tocada) return [{ studentId: s.id, status: tocada }];
+            if (!s.status) return [{ studentId: s.id, status: attendance[s.id] || 'PRESENT', soloSiNoHay: true }];
+            return [];
+        });
+        textoSinGuardar.current = false;
         try {
             await saveMutation.mutateAsync({
                 classroomId,
@@ -259,14 +293,17 @@ function LiveClassPageInner() {
                 involvedStudentIds: involvedIds,
                 startTime,
                 endTime,
-                attendances: data?.students.map((s) => ({
-                    studentId: s.id,
-                    status: attendance[s.id] || 'PRESENT',
-                })) || [],
+                attendances,
+            });
+            // Ya está en el servidor: deja de ser «pendiente», salvo que se haya
+            // vuelto a cambiar mientras se guardaba.
+            enviadas.forEach((estado, id) => {
+                if (asistenciaTocada.current.get(id) === estado) asistenciaTocada.current.delete(id);
             });
             setGuardadoALas(new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }));
         } catch {
-            // El aviso de error lo da el propio hook.
+            // El aviso de error lo da el propio hook. Lo tocado sigue pendiente.
+            textoSinGuardar.current = true;
         }
     };
 
@@ -484,7 +521,7 @@ function LiveClassPageInner() {
                                 <input
                                     type="text"
                                     value={observationsTitle}
-                                    onChange={(e) => { setObservationsTitle(e.target.value); setCambiosPorGuardar((n) => n + 1); }}
+                                    onChange={(e) => { textoSinGuardar.current = true; setObservationsTitle(e.target.value); setCambiosPorGuardar((n) => n + 1); }}
                                     placeholder="Ej: Comportamiento del grupo / Novedad académica"
                                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
                                 />
@@ -493,7 +530,7 @@ function LiveClassPageInner() {
                                 <label className="block text-xs font-bold uppercase text-gray-600 mb-1.5">Descripción</label>
                                 <textarea
                                     value={observations}
-                                    onChange={(e) => { setObservations(e.target.value); setCambiosPorGuardar((n) => n + 1); }}
+                                    onChange={(e) => { textoSinGuardar.current = true; setObservations(e.target.value); setCambiosPorGuardar((n) => n + 1); }}
                                     rows={5}
                                     placeholder="Describe lo ocurrido en la sesión..."
                                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none resize-none"
