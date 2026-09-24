@@ -580,7 +580,7 @@ class CycleStatisticsService {
                         subjectId: cs.subjectId,
                         subjectName: cs.subject.name,
                         average: Math.round(avg * 100) / 100,
-                        isAtRisk: avg > 0 && avg < minAprobatoria,
+                        isAtRisk: scores.length > 0 && avg < minAprobatoria,
                         attendanceRate: globalAttendanceRate,
                         gradeCount: scores.length
                     });
@@ -868,7 +868,10 @@ class CycleStatisticsService {
                 let subjectStudentsAtRisk = 0;
                 for (const studentId of studentsWithData) {
                     const avg2 = await gradesService.calculateWeightedSubjectAverage(prisma, studentId, cs.subjectId);
-                    if (avg2 !== 0 && avg2 < minAprobatoria) subjectStudentsAtRisk++;
+                    // `studentsWithData` ya son solo los que tienen nota: un 0 es
+                    // una nota y está por debajo de la mínima (CERO-05). Antes
+                    // `avg2 !== 0` lo dejaba fuera del riesgo.
+                    if (avg2 < minAprobatoria) subjectStudentsAtRisk++;
                 }
 
                 ssa.push({

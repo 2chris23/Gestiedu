@@ -3,7 +3,7 @@ import { UserRole } from '../utils/prisma-enums';
 import { gradesService } from './grades.service';
 import { AdminDashboardDto, TeacherDashboardDto, StudentDashboardDto, TutorDashboardDto } from '../dto/dashboard-response.dto';
 import { getAcademicConfig, DEFAULT_ACADEMIC_CONFIG } from './promotion/close-cycle.service';
-import { bulkSubjectAverages } from './bulk-averages.service';
+import { bulkSubjectAveragesConDatos } from './bulk-averages.service';
 
 /**
  * QUÉ PERIODO SE MIRA: EL LAPSO EN CURSO, Y APARTE EL CICLO
@@ -359,7 +359,7 @@ export class DashboardService {
                  * (lo comprueba PANEL-02 contra el cálculo de siempre).
                  */
                 if (activeClassroomId && subjects.length > 0) {
-                    const enBloque = await bulkSubjectAverages(db, {
+                    const enBloque = await bulkSubjectAveragesConDatos(db, {
                         classroomId: activeClassroomId,
                         studentIds: [userId],
                         subjectIds: subjects.map((s: any) => s.id),
@@ -369,21 +369,28 @@ export class DashboardService {
                         subjectId: s.id,
                         subjectName: s.name,
                         subjectColor: s.color || '#666',
-                        average: suyos?.get(s.id) ?? 0,
+                        average: suyos?.get(s.id)?.promedio ?? 0,
+                        conNotas: suyos?.get(s.id)?.conNotas ?? false,
                     }));
                 }
 
                 return Promise.all(subjects.map(async (s: any) => {
                     // Se le pasan los lapsos ya sabidos: sin esto, cada materia
                     // repetía la misma consulta para averiguarlos.
-                    const level2 = await gradesService.calculateWeightedSubjectAverage(
+                    const level2 = await gradesService.promedioDeLaMateria(
                         db as PrismaClient,
                         userId,
                         s.id,
                         undefined,
                         ventana.lapsosDelCiclo
                     );
-                    return { subjectId: s.id, subjectName: s.name, subjectColor: s.color || '#666', average: level2 };
+                    return {
+                        subjectId: s.id,
+                        subjectName: s.name,
+                        subjectColor: s.color || '#666',
+                        average: level2.promedio,
+                        conNotas: level2.conNotas,
+                    };
                 }));
             })(),
 
@@ -441,7 +448,7 @@ export class DashboardService {
                 }
 
                 const avgByPeriod = new Map<string, number[]>();
-                let calculados: Array<{ periodId: string; promedio: number }>;
+                let calculados: Array<{ periodId: string; promedio: number; conNotas: boolean }>;
                 if (activeClassroomId) {
                     // Una pasada en bloque por lapso (tres, no una por materia y lapso).
                     const materiasPorLapso = new Map<string, string[]>();
@@ -451,29 +458,34 @@ export class DashboardService {
                     }
                     const porLapso = await Promise.all(
                         [...materiasPorLapso.entries()].map(async ([periodId, subjectIds]) => {
-                            const r = await bulkSubjectAverages(db, {
+                            const r = await bulkSubjectAveragesConDatos(db, {
                                 classroomId: activeClassroomId,
                                 studentIds: [userId],
                                 subjectIds,
                                 periodId,
                             });
                             const suyos = r.get(userId);
-                            return subjectIds.map((id) => ({ periodId, promedio: suyos?.get(id) ?? 0 }));
+                            return subjectIds.map((id) => ({
+                                periodId,
+                                promedio: suyos?.get(id)?.promedio ?? 0,
+                                conNotas: suyos?.get(id)?.conNotas ?? false,
+                            }));
                         })
                     );
                     calculados = porLapso.flat();
                 } else {
                     calculados = await Promise.all(
-                        [...pares.values()].map(async (par) => ({
-                            periodId: par.periodId,
-                            promedio: await gradesService.calculateWeightedSubjectAverage(
+                        [...pares.values()].map(async (par) => {
+                            const d = await gradesService.promedioDeLaMateria(
                                 db as PrismaClient, userId, par.subjectId, par.periodId
-                            ),
-                        }))
+                            );
+                            return { periodId: par.periodId, promedio: d.promedio, conNotas: d.conNotas };
+                        })
                     );
                 }
                 for (const c of calculados) {
-                    if (c.promedio > 0) {
+                    // Un 0 es una nota: cuenta en el lapso (antes `promedio > 0`).
+                    if (c.conNotas) {
                         if (!avgByPeriod.has(c.periodId)) avgByPeriod.set(c.periodId, []);
                         avgByPeriod.get(c.periodId)!.push(c.promedio);
                     }
@@ -495,16 +507,19 @@ export class DashboardService {
                 name: s.subjectName,
                 average: parseFloat(Number(s.average || 0).toFixed(1)),
                 color: s.subjectColor || '#666',
-                status: (s.average || 0) >= minPassing ? 'Aprobado' : 'Reprobado'
+                status: (s.average || 0) >= minPassing ? 'Aprobado' : 'Reprobado',
+                hasGrades: (s as any).conNotas !== false,
             }))
             : [];
 
-        const validSubjects = subjects.filter((s: any) => s.average > 0);
+        // Un 0 es una nota: la materia con todo en 0 cuenta en el promedio y
+        // como reprobada. Lo que no cuenta es la materia SIN notas (CERO-*).
+        const validSubjects = subjects.filter((s: any) => s.hasGrades);
         const globalAverage = validSubjects.length > 0
             ? Math.round((validSubjects.reduce((acc: number, s: any) => acc + s.average, 0) / validSubjects.length) * 10) / 10
             : 0;
 
-        const failedSubjects = subjects.filter(s => s.average > 0 && s.average < minPassing).length;
+        const failedSubjects = subjects.filter(s => s.hasGrades && s.average < minPassing).length;
 
         const upcomingActivities = activeClassroomId ? await db.activity.findMany({
             where: { dueDate: { gte: new Date() }, isActive: true, classroomId: activeClassroomId },
@@ -629,11 +644,15 @@ export class DashboardService {
                                     : {}),
                             },
                             _avg: { score: true },
+                            _count: { score: true },
                         }),
                         porcentajeDeAsistencia(db, child.student.id, ventanaHijo.lapso),
                     ]);
                     return [{
                         average: gradeAgg._avg.score ?? 0,
+                        // Un 0 es una nota: el aviso de promedio bajo mira si
+                        // HAY notas, no si el promedio pasa de 0 (CERO-07).
+                        hasGrades: (gradeAgg._count?.score ?? 0) > 0,
                         attendancePercentage: asistencia,
                     }];
                 })();
@@ -651,6 +670,7 @@ export class DashboardService {
                     classroomId: childClassroom?.id ?? null,
                     shift: childClassroom?.shift ?? null,
                     average: parseFloat(Number(stats?.average || 0).toFixed(1)),
+                    hasGrades: !!stats?.hasGrades,
                     attendancePercentage: Math.round(Number(stats?.attendancePercentage || 0)),
                     relationship: child.relationship
                 };
@@ -658,12 +678,12 @@ export class DashboardService {
         );
 
         const alerts = childrenWithStats
-            .filter(c => (c.average > 0 && c.average < minPassing) || c.attendancePercentage < asistenciaMinima)
+            .filter(c => (c.hasGrades && c.average < minPassing) || c.attendancePercentage < asistenciaMinima)
             .map(c => ({
                 studentId: c.id,
                 studentName: c.fullName,
-                type: (c.average > 0 && c.average < minPassing) ? 'ACADEMIC' : 'ATTENDANCE',
-                message: (c.average > 0 && c.average < minPassing)
+                type: (c.hasGrades && c.average < minPassing) ? 'ACADEMIC' : 'ATTENDANCE',
+                message: (c.hasGrades && c.average < minPassing)
                     ? `Promedio bajo: ${c.average}`
                     : `Asistencia baja: ${c.attendancePercentage}%`,
                 date: new Date().toISOString()

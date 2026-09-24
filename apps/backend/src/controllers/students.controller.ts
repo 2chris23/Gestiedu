@@ -10,7 +10,7 @@ import { gradesService } from '../services/grades.service'; // promedio ponderad
 import { studentsWithNoteInSubject } from '../services/aggregation.service'; // filtro por lapso (Fase 3.5)
 import { getAcademicConfig } from '../services/promotion/close-cycle.service';
 import { studentsService } from '../services/students.service';
-import { bulkSubjectAverages } from '../services/bulk-averages.service';
+import { bulkSubjectAveragesConDatos, BulkAverageDetail } from '../services/bulk-averages.service';
 
 interface CreateStudentRequest {
   Body: CreateUserInput;
@@ -371,16 +371,20 @@ export async function getStudents(
     // PROMEDIO — si se especifica subjectId, calcular promedio ponderado del estudiante en esa materia;
     // de lo contrario, calcular promedio general sobre todas sus materias.
     const averages = new Map<string, number>();
+    // Quién tiene alguna nota: un 0 es una nota y no es lo mismo que «sin
+    // calificar» (CERO-06). La pantalla lo necesita para no pintar un 0 como
+    // si no hubiera nada.
+    const conNotas = new Set<string>();
 
     const studentFailedSubjectsMap = new Map<string, Array<{ subjectId: string; average: number }>>();
 
     if (targetSubjectId) {
       // En bloque, una vez por sección: 4 consultas por sección en vez de ~20
       // por estudiante.
-      const bulk = new Map<string, Map<string, number>>();
+      const bulk: BulkAverageDetail = new Map();
       const porSeccion = await Promise.all(
         [...alumnosPorSeccion].map(([aula, deEsta]) =>
-          bulkSubjectAverages(request.tenantPrisma, {
+          bulkSubjectAveragesConDatos(request.tenantPrisma, {
             classroomId: aula,
             studentIds: deEsta,
             subjectIds: [targetSubjectId!],
@@ -394,17 +398,18 @@ export async function getStudents(
         studentIds.map(async (sid) => {
           try {
             // Solo quien no tiene sección se calcula aparte.
-            const stuAvg = bulk.has(sid)
-              ? bulk.get(sid)?.get(targetSubjectId!) ?? 0
-              : await gradesService.calculateWeightedSubjectAverage(
+            const detalle = bulk.has(sid)
+              ? bulk.get(sid)?.get(targetSubjectId!) ?? { promedio: 0, conNotas: false }
+              : await gradesService.promedioDeLaMateria(
                   request.tenantPrisma,
                   sid,
                   targetSubjectId!,
                   request.query?.periodId
                 );
-            const roundedAvg = stuAvg > 0 ? Math.round(stuAvg * 10) / 10 : 0;
+            const roundedAvg = detalle.conNotas ? Math.round(detalle.promedio * 10) / 10 : 0;
             averages.set(sid, roundedAvg);
-            if (roundedAvg > 0 && roundedAvg < minPassing) {
+            if (detalle.conNotas) conNotas.add(sid);
+            if (detalle.conNotas && roundedAvg < minPassing) {
               studentFailedSubjectsMap.set(sid, [{ subjectId: targetSubjectId!, average: roundedAvg }]);
             }
           } catch {
@@ -420,11 +425,11 @@ export async function getStudents(
         new Set(Array.from(subjectIdsByStudent.values()).flatMap(set => Array.from(set)))
       );
 
-      const bulk = new Map<string, Map<string, number>>();
+      const bulk: BulkAverageDetail = new Map();
       if (todasLasMaterias.length > 0) {
         const porSeccion = await Promise.all(
           [...alumnosPorSeccion].map(([aula, deEsta]) =>
-            bulkSubjectAverages(request.tenantPrisma, {
+            bulkSubjectAveragesConDatos(request.tenantPrisma, {
               classroomId: aula,
               studentIds: deEsta,
               subjectIds: todasLasMaterias,
@@ -440,8 +445,9 @@ export async function getStudents(
         const notas: number[] = [];
 
         materias.forEach(subjectId => {
-          const nota = bulk?.get(sid)?.get(subjectId) ?? 0;
-          if (nota > 0) {
+          const detalle = bulk?.get(sid)?.get(subjectId);
+          if (detalle?.conNotas) {
+            const nota = detalle.promedio;
             notas.push(nota);
             if (nota < minPassing) {
               if (!studentFailedSubjectsMap.has(sid)) studentFailedSubjectsMap.set(sid, []);
@@ -454,6 +460,7 @@ export async function getStudents(
           sid,
           notas.length > 0 ? Math.round((notas.reduce((a, b) => a + b, 0) / notas.length) * 10) / 10 : 0
         );
+        if (notas.length > 0) conNotas.add(sid);
       });
     }
 
@@ -481,6 +488,7 @@ export async function getStudents(
         isActive: student.isActive,
         classroom: activeClassroom,
         average,
+        hasGrades: conNotas.has(student.id),
         failedSubjectsCount: failedSubjects.length,
         failedSubjects,
         attendancePercentage,
