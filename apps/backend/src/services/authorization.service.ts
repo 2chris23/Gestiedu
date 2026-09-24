@@ -59,6 +59,12 @@ export async function teacherHandlesSubject(
     return n > 0;
 }
 
+/** Lo que el profesor guía puede en las materias de su sección que NO imparte. */
+const LO_DEL_GUIA = /asistencia|observaci|^ver /;
+function loQuePuedeElGuia(accion?: string): boolean {
+    return !!accion && LO_DEL_GUIA.test(accion);
+}
+
 /**
  * Corta la petición si el profesor no tiene nada que ver con esa sección.
  * El administrador pasa siempre; un estudiante o representante, nunca.
@@ -78,8 +84,12 @@ export async function assertClassroomScope(
 
     const permitido = opciones.subjectId
         ? (await teacherHandlesSubject(prisma, teacherId, classroomId, opciones.subjectId)) ||
-          // El profesor guía también puede sobre su sección (asistencia, observaciones)
-          (!opciones.accion?.startsWith('plan') &&
+          // El profesor guía también puede sobre su sección, pero SOLO en lo
+          // que es de guía: asistencia, observaciones y mirar. Notas, clase,
+          // actividades y plan son de quien imparte la materia. Antes se le
+          // dejaba todo menos el plan, y el guía corregía las notas de
+          // Matemática sin darla (`quien-puede-que.test.ts`).
+          (loQuePuedeElGuia(opciones.accion) &&
               (await prisma.classroom.count({ where: { id: classroomId, teacherId } })) > 0)
         : await teacherHandlesClassroom(prisma, teacherId, classroomId);
 

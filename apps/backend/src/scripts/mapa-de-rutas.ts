@@ -37,13 +37,13 @@ const lista = (x: unknown): Function[] => (!x ? [] : Array.isArray(x) ? x : [x a
  * contexto, heredando los del contexto de arriba (Fastify los encapsula así).
  */
 const GANCHOS = Symbol('ganchos');
-const FASES = new Set(['onRequest', 'preParsing', 'preValidation', 'preHandler']);
+const FASES = ['onRequest', 'preParsing', 'preValidation', 'preHandler'];
 
 function fabricaEspia(this: unknown, ...args: unknown[]) {
     const instancia = fabricaOriginal.apply(this, args);
     const addHookOriginal = instancia.addHook;
     instancia.addHook = function (this: any, fase: string, fn: Function) {
-        if (FASES.has(fase)) {
+        if (FASES.includes(fase)) {
             if (!Object.prototype.hasOwnProperty.call(this, GANCHOS)) {
                 this[GANCHOS] = [...(this[GANCHOS] ?? [])];
             }

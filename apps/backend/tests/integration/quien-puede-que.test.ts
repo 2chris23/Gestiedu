@@ -300,7 +300,6 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
         'GET un horario de A',
         'GET cabecera del plan de A',
         'GET buscar alumnos',
-        'PUT nota de alumnaA',
         'POST observación a alumnaA',
         'POST actividad en A',
         'PUT horario de A',
