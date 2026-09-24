@@ -287,8 +287,6 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
      * arreglarlo, se quita de aquí en el mismo commit.
      */
     const HUECOS_ABIERTOS = new Set<string>([
-        'GET sección A',
-        'GET estadísticas (promedios) de A',
         'GET alumnos de la materia',
         'GET avisos de alumnaA',
         'GET todos los avisos',
