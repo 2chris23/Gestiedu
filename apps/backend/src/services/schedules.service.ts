@@ -515,39 +515,6 @@ export class SchedulesService {
     return schedule;
   }
 
-  // Eliminar horario
-  async delete(prisma: PrismaClient, id: string, userId: string): Promise<{ message: string }> {
-    const schedule = await prisma.schedule.findUnique({
-      where: { id },
-      include: {
-        classroom: {
-          select: { name: true, instituteId: true }
-        },
-        subject: {
-          select: { name: true }
-        }
-      }
-    });
-
-    if (!schedule) {
-      throw createError(404, 'Horario no encontrado');
-    }
-
-    // Verificar permisos
-    await this.checkScheduleAccess(prisma, schedule.classroom.instituteId!, userId, true);
-
-    await prisma.schedule.delete({
-      where: { id }
-    });
-
-    // Limpiar caches
-    await this.clearScheduleCaches(schedule.classroom.instituteId!, schedule.classroomId);
-
-    return {
-      message: `Horario de ${schedule.subject.name} en ${schedule.classroom.name} eliminado correctamente`
-    };
-  }
-
   // Verificar disponibilidad de horario
   async checkAvailability(
     prisma: PrismaClient,

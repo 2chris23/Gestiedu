@@ -3,6 +3,7 @@ import { UserRole } from '../utils/prisma-enums';
 import { gradesService } from './grades.service';
 import { AdminDashboardDto, TeacherDashboardDto, StudentDashboardDto, TutorDashboardDto } from '../dto/dashboard-response.dto';
 import { getAcademicConfig, DEFAULT_ACADEMIC_CONFIG } from './promotion/close-cycle.service';
+import { bulkSubjectAverages } from './bulk-averages.service';
 
 /**
  * QUÉ PERIODO SE MIRA: EL LAPSO EN CURSO, Y APARTE EL CICLO
@@ -347,6 +348,31 @@ export class DashboardService {
 
                 const subjectIds = [...new Set([...grades.map((g: any) => g.subjectId), ...classActSubjectIds])];
                 const subjects = await db.subject.findMany({ where: { id: { in: subjectIds } }, select: { id: true, name: true, color: true } });
+
+                /**
+                 * EN BLOQUE: EL MISMO NÚMERO, CON 4 CONSULTAS EN VEZ DE ~20 POR MATERIA
+                 *
+                 * Materia por materia, este panel —el que más se abre del
+                 * sistema— hacía unas 180 consultas en un alumno normal, y
+                 * crecía con cada materia. Con 500 personas a la vez su p99
+                 * llegó a 13 s. `bulkSubjectAverages` aplica las mismas reglas
+                 * (lo comprueba PANEL-02 contra el cálculo de siempre).
+                 */
+                if (activeClassroomId && subjects.length > 0) {
+                    const enBloque = await bulkSubjectAverages(db, {
+                        classroomId: activeClassroomId,
+                        studentIds: [userId],
+                        subjectIds: subjects.map((s: any) => s.id),
+                    });
+                    const suyos = enBloque.get(userId);
+                    return subjects.map((s: any) => ({
+                        subjectId: s.id,
+                        subjectName: s.name,
+                        subjectColor: s.color || '#666',
+                        average: suyos?.get(s.id) ?? 0,
+                    }));
+                }
+
                 return Promise.all(subjects.map(async (s: any) => {
                     // Se le pasan los lapsos ya sabidos: sin esto, cada materia
                     // repetía la misma consulta para averiguarlos.
@@ -415,14 +441,37 @@ export class DashboardService {
                 }
 
                 const avgByPeriod = new Map<string, number[]>();
-                const calculados = await Promise.all(
-                    [...pares.values()].map(async (par) => ({
-                        periodId: par.periodId,
-                        promedio: await gradesService.calculateWeightedSubjectAverage(
-                            db as PrismaClient, userId, par.subjectId, par.periodId
-                        ),
-                    }))
-                );
+                let calculados: Array<{ periodId: string; promedio: number }>;
+                if (activeClassroomId) {
+                    // Una pasada en bloque por lapso (tres, no una por materia y lapso).
+                    const materiasPorLapso = new Map<string, string[]>();
+                    for (const par of pares.values()) {
+                        if (!materiasPorLapso.has(par.periodId)) materiasPorLapso.set(par.periodId, []);
+                        materiasPorLapso.get(par.periodId)!.push(par.subjectId);
+                    }
+                    const porLapso = await Promise.all(
+                        [...materiasPorLapso.entries()].map(async ([periodId, subjectIds]) => {
+                            const r = await bulkSubjectAverages(db, {
+                                classroomId: activeClassroomId,
+                                studentIds: [userId],
+                                subjectIds,
+                                periodId,
+                            });
+                            const suyos = r.get(userId);
+                            return subjectIds.map((id) => ({ periodId, promedio: suyos?.get(id) ?? 0 }));
+                        })
+                    );
+                    calculados = porLapso.flat();
+                } else {
+                    calculados = await Promise.all(
+                        [...pares.values()].map(async (par) => ({
+                            periodId: par.periodId,
+                            promedio: await gradesService.calculateWeightedSubjectAverage(
+                                db as PrismaClient, userId, par.subjectId, par.periodId
+                            ),
+                        }))
+                    );
+                }
                 for (const c of calculados) {
                     if (c.promedio > 0) {
                         if (!avgByPeriod.has(c.periodId)) avgByPeriod.set(c.periodId, []);
@@ -547,7 +596,7 @@ export class DashboardService {
                                         // Sin este campo, el filtro de más abajo se queda vacío
                                         // y se vuelve a contar toda la vida escolar — en silencio.
                                         academicYearId: true,
-                                        classroom: { select: { grade: true, section: true } }
+                                        classroom: { select: { id: true, grade: true, section: true, shift: true } }
                                     }
                                 }
                             }
@@ -598,6 +647,9 @@ export class DashboardService {
                     classroom: childClassroom
                         ? `${childClassroom.grade}° ${childClassroom.section}`
                         : null,
+                    // La sección, para poder abrir SU horario y su calendario.
+                    classroomId: childClassroom?.id ?? null,
+                    shift: childClassroom?.shift ?? null,
                     average: parseFloat(Number(stats?.average || 0).toFixed(1)),
                     attendancePercentage: Math.round(Number(stats?.attendancePercentage || 0)),
                     relationship: child.relationship

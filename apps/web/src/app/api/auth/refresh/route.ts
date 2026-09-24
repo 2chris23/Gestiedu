@@ -48,9 +48,14 @@ export async function POST(_request: NextRequest) {
         });
 
         if (!backendResponse.ok) {
+            // Solo un «no» del servidor es «la sesión no vale». Si el servidor
+            // falla o no está (5xx), eso es otra cosa, y responder 401 aquí
+            // hacía que la app cerrara la sesión de alguien que no había hecho
+            // nada: ver `lib/axios.ts`.
+            const esUnNo = [400, 401, 403].includes(backendResponse.status);
             return NextResponse.json(
-                { message: 'Token refresh failed' },
-                { status: 401 }
+                { message: esUnNo ? 'Token refresh failed' : 'El servidor no contesta' },
+                { status: esUnNo ? 401 : 503 }
             );
         }
 
@@ -76,12 +81,24 @@ export async function POST(_request: NextRequest) {
             maxAge: 15 * 60,
         });
 
+        // ROTACIÓN DE REFRESH TOKENS: Guardar el nuevo refresh token emitido
+        if (data.refreshToken) {
+            responseNext.cookies.set('refresh_token', data.refreshToken, {
+                httpOnly: true,
+                secure: SOLO_POR_CONEXION_CIFRADA,
+                sameSite: 'lax',
+                path: '/',
+                maxAge: 7 * 24 * 60 * 60,
+            });
+        }
+
         return responseNext;
     } catch (error) {
+        // Casi siempre: el servidor de datos no contesta. No es culpa de la sesión.
         console.error('Refresh token error:', error);
         return NextResponse.json(
-            { message: 'Error al refrescar token' },
-            { status: 500 }
+            { message: 'El servidor no contesta' },
+            { status: 503 }
         );
     }
 }

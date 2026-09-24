@@ -1,4 +1,7 @@
+'use client';
+
 import React from 'react';
+import { esFotoDelSistema, useFotoDePerfil } from '@/hooks/useFotoDePerfil';
 
 interface UserAvatarProps {
     name: string;
@@ -44,15 +47,19 @@ function hashCode(str: string): number {
  */
 export default function UserAvatar({ name, src, className = '', initialsClassName = '', sizes }: UserAvatarProps) {
     const color = COLORS[hashCode(name) % COLORS.length];
+    // Las fotos subidas al sistema piden sesión: se traen con la credencial y
+    // mientras llegan se ven las iniciales, nunca un cuadro roto.
+    const { data: fotoEnMemoria } = useFotoDePerfil(src);
+    const imagen = esFotoDelSistema(src) ? fotoEnMemoria : src;
 
     return (
         <div
             className={`relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full ${color} ${className}`}
         >
-            {src ? (
+            {imagen ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                    src={src}
+                    src={imagen}
                     alt={name}
                     sizes={sizes}
                     className="h-full w-full object-cover"

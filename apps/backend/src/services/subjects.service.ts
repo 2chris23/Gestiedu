@@ -662,7 +662,7 @@ export class SubjectsService {
         return results;
     }
 
-    async removeSubjectFromGrade(grade: number, subjectId: string, prisma: any, academicYearId?: string) {
+    async removeSubjectFromGrade(grade: number, subjectId: string, prisma: any, academicYearId?: string, quien: QuienBorra = {}) {
         let yearId = academicYearId;
 
         if (!yearId) {
@@ -673,15 +673,16 @@ export class SubjectsService {
             yearId = activeYear.id;
         }
 
-        return prisma.classroomSubject.deleteMany({
-            where: {
-                subjectId: subjectId,
-                classroom: {
-                    grade: grade,
-                    academicYearId: yearId
-                }
-            }
-        });
+        // Con copia en la papelera: quitar la materia de un año se lleva la
+        // asignación de cada sección con su profesor y su historial. Esto era
+        // un `deleteMany` a pelo, uno de los dos borrados que se saltaban la regla.
+        const count = await borrarGuardandoCopia(
+            prisma,
+            'classroomSubject',
+            { subjectId, classroom: { grade, academicYearId: yearId } },
+            quien
+        );
+        return { count };
     }
 
     async getSubjectStudents(subjectId: string, prisma: any) {

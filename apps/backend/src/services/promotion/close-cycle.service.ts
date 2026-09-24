@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { gradesService } from '../grades.service';
 import { getStrategy, Assignment, StudentForPlacement, SectionOption } from './strategies';
 import { platformPrisma } from '../../config/database';
+import { borrarGuardandoCopia, QuienBorra } from '../../utils/papelera';
 
 export interface AcademicConfig {
     notaMinimaAprobatoria: number;
@@ -9,16 +10,11 @@ export interface AcademicConfig {
     permitePendientesEnUltimoAno: boolean;
     /**
      * A partir de qué porcentaje de asistencia se deja de avisar al representante.
-     *
-     * Solo decide **cuándo se enciende el aviso** "Asistencia baja" en el panel
-     * del representante. No toca notas, ni promedios, ni la promoción: un alumno
-     * por debajo de este número no queda reprobado por eso.
-     *
-     * Estaba escrito a mano en el código (80) y no se podía cambiar. Cada liceo
-     * tiene su criterio, así que ahora se configura; 80 sigue siendo el valor de
-     * partida para que nadie note el cambio.
      */
     asistenciaMinima: number;
+    modalidad?: 'MEDIA_GENERAL' | 'MEDIA_TECNICA';
+    maxGradeLevel?: number;
+    turnosHabilitados?: ('MANANA' | 'TARDE' | 'INTEGRAL')[];
 }
 
 export const DEFAULT_ACADEMIC_CONFIG: AcademicConfig = {
@@ -26,6 +22,9 @@ export const DEFAULT_ACADEMIC_CONFIG: AcademicConfig = {
     maxMateriasPendientesParaPromover: 2,
     permitePendientesEnUltimoAno: false,
     asistenciaMinima: 80,
+    modalidad: 'MEDIA_GENERAL',
+    maxGradeLevel: 5,
+    turnosHabilitados: ['MANANA', 'TARDE'],
 };
 
 /** El porcentaje de asistencia va de 0 a 100 y no admite otra cosa. */
@@ -37,25 +36,41 @@ export async function getAcademicConfig(instituteId: string): Promise<AcademicCo
     const inst = await platformPrisma.institute.findUnique({ where: { id: instituteId }, select: { academicConfig: true } });
     if (!inst) return { ...DEFAULT_ACADEMIC_CONFIG };
     const raw = (inst.academicConfig || {}) as Partial<AcademicConfig>;
+    const modalidad = raw.modalidad === 'MEDIA_TECNICA' ? 'MEDIA_TECNICA' : 'MEDIA_GENERAL';
+    const defaultMax = modalidad === 'MEDIA_TECNICA' ? 6 : 5;
     return {
         notaMinimaAprobatoria: typeof raw.notaMinimaAprobatoria === 'number' ? raw.notaMinimaAprobatoria : DEFAULT_ACADEMIC_CONFIG.notaMinimaAprobatoria,
         maxMateriasPendientesParaPromover: typeof raw.maxMateriasPendientesParaPromover === 'number' ? raw.maxMateriasPendientesParaPromover : DEFAULT_ACADEMIC_CONFIG.maxMateriasPendientesParaPromover,
         permitePendientesEnUltimoAno: typeof raw.permitePendientesEnUltimoAno === 'boolean' ? raw.permitePendientesEnUltimoAno : DEFAULT_ACADEMIC_CONFIG.permitePendientesEnUltimoAno,
         asistenciaMinima: esAsistenciaMinimaValida(raw.asistenciaMinima) ? raw.asistenciaMinima : DEFAULT_ACADEMIC_CONFIG.asistenciaMinima,
+        modalidad,
+        maxGradeLevel: typeof raw.maxGradeLevel === 'number' ? raw.maxGradeLevel : defaultMax,
+        turnosHabilitados: Array.isArray(raw.turnosHabilitados) ? raw.turnosHabilitados : DEFAULT_ACADEMIC_CONFIG.turnosHabilitados,
     };
 }
 
 export async function updateAcademicConfig(instituteId: string, patch: Partial<AcademicConfig>): Promise<AcademicConfig> {
     const current = await getAcademicConfig(instituteId);
+    // La configuración académica guarda MÁS cosas que estas reglas (la escala
+    // de notas, el horario, la asistencia por QR…). Se escribían solo estas y
+    // lo demás se perdía: guardar las reglas de promoción borraba la escala.
+    const entera =
+        ((await platformPrisma.institute.findUnique({ where: { id: instituteId }, select: { academicConfig: true } }))
+            ?.academicConfig as Record<string, unknown> | null) || {};
+    const modalidad = patch.modalidad ?? current.modalidad;
+    const defaultMax = modalidad === 'MEDIA_TECNICA' ? 6 : 5;
     const next: AcademicConfig = {
         notaMinimaAprobatoria: patch.notaMinimaAprobatoria ?? current.notaMinimaAprobatoria,
         maxMateriasPendientesParaPromover: patch.maxMateriasPendientesParaPromover ?? current.maxMateriasPendientesParaPromover,
         permitePendientesEnUltimoAno: patch.permitePendientesEnUltimoAno ?? current.permitePendientesEnUltimoAno,
         asistenciaMinima: esAsistenciaMinimaValida(patch.asistenciaMinima) ? patch.asistenciaMinima : current.asistenciaMinima,
+        modalidad,
+        maxGradeLevel: patch.maxGradeLevel ?? current.maxGradeLevel ?? defaultMax,
+        turnosHabilitados: patch.turnosHabilitados ?? current.turnosHabilitados,
     };
     await platformPrisma.institute.update({
         where: { id: instituteId },
-        data: { academicConfig: next as any },
+        data: { academicConfig: { ...entera, ...next } as any },
     });
     return next;
 }
@@ -67,10 +82,12 @@ export interface StudentSuggestion {
     name: string;
     gender: string | null;
     currentSection: string | null;
+    currentShift?: string | null;
     gradeLevel: number;
     isLastGrade: boolean;
     defaultTargetGrade: number | null;
     defaultTargetSection: string | null;
+    defaultTargetShift?: string | null;
     subjectGrades: Array<{ subjectId: string; subjectName: string; average: number; approved: boolean }>;
     failedSubjects: Array<{ name: string; average: number }>;
     pendingCount: number;
@@ -104,6 +121,7 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                     id: true,
                     section: true,
                     grade: true,
+                    shift: true,
                     subjects: {
                         include: { subject: { select: { id: true, name: true } } },
                     },
@@ -138,7 +156,8 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                     ? Math.round((graded.reduce((a, b) => a + b.average, 0) / graded.length) * 100) / 100
                     : 0;
 
-                const isLastGrade = classroom.grade >= 5;
+                const ultimoAno = config.maxGradeLevel ?? (config.modalidad === 'MEDIA_TECNICA' ? 6 : 5);
+                const isLastGrade = classroom.grade >= ultimoAno;
 
                 let suggestedStatus: SuggestionStatus;
                 if (pendingCount === 0) {
@@ -165,10 +184,12 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                     name: `${enr.student.firstName} ${enr.student.lastName}`.trim(),
                     gender: enr.student.gender,
                     currentSection: classroom.section,
+                    currentShift: classroom.shift || 'MANANA',
                     gradeLevel: classroom.grade,
                     isLastGrade,
                     defaultTargetGrade,
                     defaultTargetSection: classroom.section,
+                    defaultTargetShift: classroom.shift || 'MANANA',
                     subjectGrades,
                     failedSubjects: failed.map(f => ({ name: f.subjectName, average: f.average })),
                     pendingCount,
@@ -190,6 +211,7 @@ export interface CloseDecision {
     targetGrade?: number | null;
     assignedClassroomId?: string | null;
     targetSectionLetter?: string | null;
+    targetShift?: string | null;
 }
 
 export interface CloseConfirmInput {
@@ -211,7 +233,8 @@ export interface CloseConfirmResult {
 export async function confirmClose(
     prisma: any,
     input: CloseConfirmInput,
-    instituteId: string
+    instituteId: string,
+    quien: QuienBorra = {}
 ): Promise<CloseConfirmResult> {
     // 1. Preparar sugerencias y cálculos fuera de la transacción para no bloquear el pool
     const prepared = await prepareClose(prisma, input.academicYearId, instituteId);
@@ -314,6 +337,24 @@ export async function confirmClose(
         const records: CloseConfirmResult['records'] = [];
         const placements: Assignment[] = [];
 
+        /**
+         * UNA CONSULTA POR ALUMNO NO CABE EN UNA TRANSACCIÓN
+         *
+         * Cada alumno hacía cuatro viajes a la base (buscar su aula destino,
+         * crear su expediente, averiguar el año de esa aula, matricularlo), uno
+         * detrás de otro y dentro de la transacción. Con un liceo de 1.500
+         * alumnos son 6.000 viajes; con el servidor cargado se pasaba del tiempo
+         * de la transacción, se deshacía entero y el ciclo NO se podía cerrar.
+         *
+         * Ahora las aulas se buscan una vez por destino (todas las de «2do A»
+         * son la misma), y expedientes y matrículas se escriben juntos al
+         * final: un puñado de consultas, tenga el liceo los alumnos que tenga.
+         */
+        const aulaPorDestino = new Map<string, any>();
+        const anioDelAula = new Map<string, string | null>();
+        const expedientes: any[] = [];
+        const matriculas: Array<{ studentId: string; classroomId: string; academicYearId: string }> = [];
+
         for (const s of prepared.suggestions) {
             const decision = decisionById.get(s.studentId) || {
                 studentId: s.studentId,
@@ -322,28 +363,29 @@ export async function confirmClose(
                 assignedClassroomId: null,
             };
 
-            // Caso A: Eliminar definitivamente al estudiante
+            // Caso A: Eliminar al estudiante. Con copia en la papelera, como
+            // todo borrado: esto se saltaba la regla y el alumno se iba con
+            // todas sus notas para siempre, sin nada de dónde recuperarlo.
             if (decision.action === 'RETIRE_DELETE') {
-                await tx.studentClassroom.deleteMany({ where: { studentId: s.studentId } });
-                await tx.grade.deleteMany({ where: { studentId: s.studentId } });
-                await tx.user.delete({ where: { id: s.studentId } });
+                const motivo = { ...quien, motivo: `cierre del ciclo ${input.academicYearId}: retirar y eliminar` };
+                await borrarGuardandoCopia(tx, 'studentClassroom', { studentId: s.studentId }, motivo);
+                await borrarGuardandoCopia(tx, 'grade', { studentId: s.studentId }, motivo);
+                await borrarGuardandoCopia(tx, 'user', { id: s.studentId }, motivo);
                 continue;
             }
 
             // Caso B: Retirado con conservación de historial
             if (decision.action === 'RETIRE_KEEP_HISTORY') {
-                await tx.academicRecord.create({
-                    data: {
-                        studentId: s.studentId,
-                        academicYearId: input.academicYearId,
-                        sectionSnapshot: s.currentSection || '',
-                        finalAverage: s.finalAverage,
-                        status: 'RETIRADO',
-                        finalResult: 'NO_PROMOVIDO',
-                        pendingSubjects: s.failedSubjects.map(f => f.name),
-                        subjectGrades: s.subjectGrades.map(sg => ({ subjectId: sg.subjectId, subjectName: sg.subjectName, average: sg.average })),
-                        assignedClassroomId: null,
-                    },
+                expedientes.push({
+                    studentId: s.studentId,
+                    academicYearId: input.academicYearId,
+                    sectionSnapshot: s.currentSection || '',
+                    finalAverage: s.finalAverage,
+                    status: 'RETIRADO',
+                    finalResult: 'NO_PROMOVIDO',
+                    pendingSubjects: s.failedSubjects.map(f => f.name),
+                    subjectGrades: s.subjectGrades.map(sg => ({ subjectId: sg.subjectId, subjectName: sg.subjectName, average: sg.average })),
+                    assignedClassroomId: null,
                 });
                 records.push({ studentId: s.studentId, finalResult: 'RETIRADO', assignedClassroomId: null });
                 placements.push({ studentId: s.studentId, sectionId: null });
@@ -352,18 +394,16 @@ export async function confirmClose(
 
             // Caso C: Estudiante de 5to año (Egresado / Graduado)
             if (s.isLastGrade || decision.action === 'GRADUATE') {
-                await tx.academicRecord.create({
-                    data: {
-                        studentId: s.studentId,
-                        academicYearId: input.academicYearId,
-                        sectionSnapshot: s.currentSection || '',
-                        finalAverage: s.finalAverage,
-                        status: 'COMPLETED',
-                        finalResult: decision.finalResult === 'NO_PROMOVIDO' ? 'NO_PROMOVIDO' : 'PROMOVIDO',
-                        pendingSubjects: s.failedSubjects.map(f => f.name),
-                        subjectGrades: s.subjectGrades.map(sg => ({ subjectId: sg.subjectId, subjectName: sg.subjectName, average: sg.average })),
-                        assignedClassroomId: null,
-                    },
+                expedientes.push({
+                    studentId: s.studentId,
+                    academicYearId: input.academicYearId,
+                    sectionSnapshot: s.currentSection || '',
+                    finalAverage: s.finalAverage,
+                    status: 'COMPLETED',
+                    finalResult: decision.finalResult === 'NO_PROMOVIDO' ? 'NO_PROMOVIDO' : 'PROMOVIDO',
+                    pendingSubjects: s.failedSubjects.map(f => f.name),
+                    subjectGrades: s.subjectGrades.map(sg => ({ subjectId: sg.subjectId, subjectName: sg.subjectName, average: sg.average })),
+                    assignedClassroomId: null,
                 });
                 records.push({ studentId: s.studentId, finalResult: 'GRADUATED', assignedClassroomId: null });
                 placements.push({ studentId: s.studentId, sectionId: null });
@@ -378,58 +418,83 @@ export async function confirmClose(
                 const targetGrade = decision.targetGrade ?? s.defaultTargetGrade ?? s.gradeLevel + 1;
                 const targetSection = (decision.targetSectionLetter || s.currentSection || 'A').toUpperCase();
 
-                // Buscar aula en el año destino
-                let targetClassroom = await tx.classroom.findFirst({
-                    where: {
-                        academicYearId: nextAcademicYear.id,
-                        grade: targetGrade,
-                        section: targetSection,
-                    },
-                });
+                const targetShift = decision.targetShift ?? s.defaultTargetShift ?? (s as any).currentShift ?? 'MANANA';
+
+                // Buscar aula en el año destino (una vez por destino)
+                const destino = `${targetGrade}|${targetSection}|${targetShift}`;
+                let targetClassroom = aulaPorDestino.get(destino);
+                if (targetClassroom === undefined) {
+                    targetClassroom = await tx.classroom.findFirst({
+                        where: {
+                            academicYearId: nextAcademicYear.id,
+                            grade: targetGrade,
+                            section: targetSection,
+                            shift: targetShift,
+                        },
+                    });
+                }
 
                 // Auto-crear aula si no existe en el año nuevo
                 if (!targetClassroom) {
-                    const gradeName = `${targetGrade}º Año ${targetSection}`;
+                    const gradeNames: Record<number, string> = {
+                        1: '1er Año',
+                        2: '2do Año',
+                        3: '3er Año',
+                        4: '4to Año',
+                        5: '5to Año',
+                        6: '6to Año',
+                    };
+                    const gradeName = gradeNames[targetGrade] || `${targetGrade}º Año`;
+                    const shiftSuffix = targetShift === 'TARDE' ? ' (Tarde)' : targetShift === 'INTEGRAL' ? ' (Integral)' : '';
+                    const fullName = `${gradeName} ${targetSection}${shiftSuffix}`;
+                    const slugShift = targetShift === 'TARDE' ? '-tarde' : targetShift === 'INTEGRAL' ? '-integral' : '';
                     targetClassroom = await tx.classroom.create({
                         data: {
-                            name: gradeName,
-                            slug: `${targetGrade}er-ano-${targetSection.toLowerCase()}-${nextAcademicYear.id}`,
+                            name: fullName,
+                            slug: `${targetGrade}er-ano-${targetSection.toLowerCase()}${slugShift}-${nextAcademicYear.id}`,
                             grade: targetGrade,
                             section: targetSection,
+                            shift: targetShift,
                             capacity: 35,
                             academicYearId: nextAcademicYear.id,
                         },
                     });
 
-                    // Copiar materias de referencia para este grado
+                    // Copiar materias de referencia para este grado. De una vez,
+                    // y saltando las repetidas: antes era una por materia con
+                    // `.catch(() => {})`, y eso NO sirve dentro de una
+                    // transacción — un fallo de PostgreSQL deja la transacción
+                    // anulada aunque el error se trague, y todo lo que venía
+                    // detrás reventaba con un mensaje que no decía por qué.
                     const refSubjects = subjectsByGrade.get(targetGrade) || subjectsByGrade.get(1) || [];
-                    for (const subId of refSubjects) {
-                        await tx.classroomSubject.create({
-                            data: {
+                    if (refSubjects.length > 0) {
+                        await tx.classroomSubject.createMany({
+                            data: refSubjects.map((subId: string) => ({
                                 classroomId: targetClassroom.id,
                                 subjectId: subId,
                                 weeklyBlocks: 4,
-                            },
-                        }).catch(() => {});
+                            })),
+                            skipDuplicates: true,
+                        });
                     }
                 }
+                aulaPorDestino.set(destino, targetClassroom);
+                anioDelAula.set(targetClassroom.id, targetClassroom.academicYearId ?? nextAcademicYear.id);
 
                 targetClassroomId = targetClassroom.id;
             }
 
             // Guardar registro académico histórico en el ciclo que se cierra
-            await tx.academicRecord.create({
-                data: {
-                    studentId: s.studentId,
-                    academicYearId: input.academicYearId,
-                    sectionSnapshot: s.currentSection || '',
-                    finalAverage: s.finalAverage,
-                    status: 'COMPLETED',
-                    finalResult: decision.finalResult,
-                    pendingSubjects: s.failedSubjects.map(f => f.name),
-                    subjectGrades: s.subjectGrades.map(sg => ({ subjectId: sg.subjectId, subjectName: sg.subjectName, average: sg.average })),
-                    assignedClassroomId: targetClassroomId,
-                },
+            expedientes.push({
+                studentId: s.studentId,
+                academicYearId: input.academicYearId,
+                sectionSnapshot: s.currentSection || '',
+                finalAverage: s.finalAverage,
+                status: 'COMPLETED',
+                finalResult: decision.finalResult,
+                pendingSubjects: s.failedSubjects.map(f => f.name),
+                subjectGrades: s.subjectGrades.map(sg => ({ subjectId: sg.subjectId, subjectName: sg.subjectName, average: sg.average })),
+                assignedClassroomId: targetClassroomId,
             });
 
             // Matricular en el aula destino, EN EL AÑO DE ESA AULA.
@@ -437,33 +502,53 @@ export async function confirmClose(
             // inmediato siguiente; antes la matrícula se creaba siempre en el año
             // siguiente, así que apuntaba a un aula de otro año.
             if (targetClassroomId) {
-                const targetClassroomYear = await tx.classroom.findUnique({
-                    where: { id: targetClassroomId },
-                    select: { academicYearId: true },
-                });
-                const targetYearId = targetClassroomYear?.academicYearId ?? nextAcademicYear?.id ?? null;
+                if (!anioDelAula.has(targetClassroomId)) {
+                    const targetClassroomYear = await tx.classroom.findUnique({
+                        where: { id: targetClassroomId },
+                        select: { academicYearId: true },
+                    });
+                    anioDelAula.set(targetClassroomId, targetClassroomYear?.academicYearId ?? null);
+                }
+                const targetYearId = anioDelAula.get(targetClassroomId) ?? nextAcademicYear?.id ?? null;
 
                 if (targetYearId) {
-                    await tx.studentClassroom.upsert({
-                        where: {
-                            studentId_academicYearId: {
-                                studentId: s.studentId,
-                                academicYearId: targetYearId,
-                            },
-                        },
-                        update: { classroomId: targetClassroomId, isActive: true },
-                        create: {
-                            studentId: s.studentId,
-                            classroomId: targetClassroomId,
-                            academicYearId: targetYearId,
-                            isActive: true,
-                        },
-                    });
+                    matriculas.push({ studentId: s.studentId, classroomId: targetClassroomId, academicYearId: targetYearId });
                 }
             }
 
             records.push({ studentId: s.studentId, finalResult: decision.finalResult, assignedClassroomId: targetClassroomId ?? null });
             placements.push({ studentId: s.studentId, sectionId: targetClassroomId ?? null });
+        }
+
+        // Expedientes y matrículas, juntos.
+        if (expedientes.length > 0) {
+            await tx.academicRecord.createMany({ data: expedientes });
+        }
+        if (matriculas.length > 0) {
+            // Quien ya estaba matriculado en ese año se cambia de aula (lo que
+            // hacía el `upsert`); los demás se matriculan de una vez.
+            const yaEstaban = await tx.studentClassroom.findMany({
+                where: {
+                    studentId: { in: matriculas.map(m => m.studentId) },
+                    academicYearId: { in: [...new Set(matriculas.map(m => m.academicYearId))] },
+                },
+                select: { id: true, studentId: true, academicYearId: true },
+            });
+            const existente = new Map<string, string>(
+                yaEstaban.map((m: any) => [`${m.studentId}|${m.academicYearId}`, m.id])
+            );
+            for (const m of matriculas) {
+                const id = existente.get(`${m.studentId}|${m.academicYearId}`);
+                if (id) {
+                    await tx.studentClassroom.update({ where: { id }, data: { classroomId: m.classroomId, isActive: true } });
+                }
+            }
+            const nuevas = matriculas.filter(m => !existente.has(`${m.studentId}|${m.academicYearId}`));
+            if (nuevas.length > 0) {
+                await tx.studentClassroom.createMany({
+                    data: nuevas.map(m => ({ ...m, isActive: true })),
+                });
+            }
         }
 
         // 4. Cerrar el año escolar actual

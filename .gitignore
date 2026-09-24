@@ -74,7 +74,8 @@ scratch*
 load-tests/reports/
 load-tests/*.csv
 load-tests/*.json
-.github/
+# (.github/ estaba aquí: por eso la integración continua y el despliegue
+# automático no llegaron nunca a GitHub. Los flujos van al repositorio.)
 
 # Respaldos de los liceos: son datos de gente real, nunca al repositorio
 backups/
@@ -90,3 +91,16 @@ apps/backend/.playwright-cli/
 # Restos de compilación y de Redis: se regeneran solos, no van al repositorio.
 *.tsbuildinfo
 dump.rdb
+
+# Lo que sueltan las mediciones: son resultados de una máquina y una tarde.
+docs/mediciones/
+docs/capturas-movil/
+
+# Las llaves guardadas de las pruebas de navegador. Son de la máquina de quien
+# las corre y son CREDENCIALES de sesión del liceo de pruebas: versionarlas es
+# meter llaves en el repositorio. `tests/e2e/helpers.ts` lo rehace solo.
+tests/e2e/.auth-tokens.json
+
+
+# Las APK compiladas: pesan y se rehacen con un comando.
+apks/

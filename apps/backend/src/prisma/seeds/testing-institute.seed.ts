@@ -3,12 +3,26 @@ import { PrismaClient as PlatformPrismaClient } from '../../generated/platform-c
 import * as bcrypt from 'bcrypt';
 import { Client } from 'pg';
 import { execSync } from 'child_process';
+import 'dotenv/config';
+import { migrarPlataforma } from '../../scripts/migrar-plataforma';
+
+/**
+ * Las direcciones salen de PLATFORM_DATABASE_URL (el .env), no escritas aquí:
+ * este archivo llevaba la contraseña de la base local en cinco sitios.
+ */
+const PLATAFORMA = process.env.PLATFORM_DATABASE_URL;
+if (!PLATAFORMA) throw new Error('Falta PLATFORM_DATABASE_URL en el .env');
+const conBase = (nombre: string) => PLATAFORMA.replace(/\/[^/?]+(\?|$)/, `/${nombre}$1`);
+const credenciales = new URL(PLATAFORMA);
+const URL_POSTGRES = conBase('postgres');
+const URL_PLATAFORMA = conBase('gestion_escolar_platform');
+const URL_LICEO = conBase('tenant_instituto_testing');
 
 async function seedTestingInstitute() {
     console.log('🧹 1. Limpiando todas las bases de datos de prueba anteriores y platform DB...');
 
     const pgClient = new Client({
-        connectionString: 'postgresql://postgres:82nQKb95S7wNDmuxyvIG6dOYkZUo@localhost:5432/postgres'
+        connectionString: URL_POSTGRES
     });
     await pgClient.connect();
 
@@ -30,19 +44,13 @@ async function seedTestingInstitute() {
     await pgClient.query(`CREATE DATABASE "tenant_instituto_testing";`);
     await pgClient.end();
 
-    // Sincronizar platform DB con el esquema de platform-schema.prisma
-    console.log('⚡ 3. Sincronizando Platform DB schema...');
-    execSync('npx prisma db push --schema=src/prisma/platform-schema.prisma --accept-data-loss --skip-generate', {
-        env: {
-            ...process.env,
-            PLATFORM_DATABASE_URL: 'postgresql://postgres:82nQKb95S7wNDmuxyvIG6dOYkZUo@localhost:5432/gestion_escolar_platform'
-        },
-        stdio: 'inherit'
-    });
+    // La plataforma con SUS migraciones, como en el despliegue.
+    console.log('⚡ 3. Migrando la base de la plataforma...');
+    if (!(await migrarPlataforma(URL_PLATAFORMA))) throw new Error('No se pudo migrar la plataforma');
 
     console.log('🏛️  4. Creando SuperAdmin e Instituto Testing en Platform DB...');
     const platformPrisma = new PlatformPrismaClient({
-        datasources: { db: { url: 'postgresql://postgres:82nQKb95S7wNDmuxyvIG6dOYkZUo@localhost:5432/gestion_escolar_platform' } }
+        datasources: { db: { url: URL_PLATAFORMA } }
     });
 
     const superAdminPassword = await bcrypt.hash('SuperAdmin2026!', 10);
@@ -74,8 +82,8 @@ async function seedTestingInstitute() {
             databaseName: 'tenant_instituto_testing',
             databaseHost: 'localhost',
             databasePort: 5432,
-            databaseUser: 'postgres',
-            databasePassword: '82nQKb95S7wNDmuxyvIG6dOYkZUo',
+            databaseUser: decodeURIComponent(credenciales.username),
+            databasePassword: decodeURIComponent(credenciales.password),
             maxStudents: 1000,
             maxTeachers: 100,
         }
@@ -85,16 +93,18 @@ async function seedTestingInstitute() {
 
     // Inicializar el esquema de Prisma en tenant_instituto_testing
     console.log('⚡ 5. Inicializando tablas en tenant_instituto_testing...');
-    execSync('npx prisma db push --schema=src/prisma/schema.prisma --accept-data-loss --skip-generate', {
+    // `migrate deploy`, no `db push --accept-data-loss`: así la base queda con
+    // su registro de migraciones y `npm run migrate:tenants` la puede seguir.
+    execSync('npx prisma migrate deploy --schema=src/prisma/schema.prisma', {
         env: {
             ...process.env,
-            DATABASE_URL: 'postgresql://postgres:82nQKb95S7wNDmuxyvIG6dOYkZUo@localhost:5432/tenant_instituto_testing'
+            DATABASE_URL: URL_LICEO
         },
         stdio: 'inherit'
     });
 
     const tenantPrisma = new PrismaClient({
-        datasources: { db: { url: 'postgresql://postgres:82nQKb95S7wNDmuxyvIG6dOYkZUo@localhost:5432/tenant_instituto_testing' } }
+        datasources: { db: { url: URL_LICEO } }
     });
 
     console.log('👥 6. Creando usuarios (Admin, Profesores, Estudiantes)...');

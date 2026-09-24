@@ -12,6 +12,7 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
+    "migrate:plataforma": "tsx src/scripts/migrar-plataforma.ts",
     "migrate:tenants": "tsx src/scripts/migrate-all-tenants.ts",
     "migrate:tenants:status": "tsx src/scripts/migrate-all-tenants.ts --status",
     "db:migrate:reset": "prisma migrate reset",
@@ -47,13 +48,16 @@
     "papelera:limpiar": "tsx src/scripts/limpiar-papelera.ts",
     "backup:tenants": "tsx src/scripts/respaldar-liceos.ts",
     "restore:tenant": "tsx src/scripts/restaurar-liceo.ts",
+    "backup:cada-noche": "tsx src/scripts/respaldos-cada-noche.ts",
     "medir:pantallas": "tsx src/scripts/medir-pantallas.ts",
     "medir:concurrencia": "tsx src/scripts/medir-concurrencia.ts",
     "medir:guardado": "tsx src/scripts/medir-guardado.ts",
     "contar:consultas": "tsx src/scripts/contar-consultas.ts",
     "probar:pgbouncer": "tsx src/scripts/probar-pgbouncer.ts",
     "medir:pozo": "tsx src/scripts/medir-pozo-y-repartidor.ts",
-    "medir:aguante": "tsx src/scripts/medir-aguante.ts"
+    "medir:aguante": "tsx src/scripts/medir-aguante.ts",
+    "medir:estres": "tsx src/scripts/medir-estres-incremental.ts",
+    "seed:muchos-liceos": "tsx src/scripts/seed-muchos-liceos.ts"
   },
   "dependencies": {
     "@fastify/compress": "^9.2.0",
@@ -84,6 +88,7 @@
     "nodemailer": "^9.0.5",
     "pdfkit": "^0.17.1",
     "pg": "^8.18.0",
+    "sharp": "^0.35.4",
     "socket.io": "^4.7.4",
     "winston": "^3.11.0",
     "zod": "^3.22.4"

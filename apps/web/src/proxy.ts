@@ -1,51 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
 
 // Routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/register', '/forgot-password'];
+/**
+ * `/diseno` es el muestrario del lenguaje visual: no enseña ni un dato del
+ * liceo, solo tarjetas de ejemplo. Va aquí para poder abrirlo sin entrar.
+ */
+const PUBLIC_ROUTES = ['/login', '/register', '/forgot-password', '/diseno'];
+
+/**
+ * EL PORTAL DE CADA LICEO SE ABRE SIN HABER ENTRADO
+ *
+ * `/instituto/<liceo>/login` es la puerta propia del liceo: la dirección que se
+ * le da a su gente. No estaba entre las públicas, así que a quien llegaba sin
+ * sesión —es decir, a todo el que va a entrar— se le mandaba a `/login`, y esa
+ * pantalla, sin liceo en la dirección, responde "no existe". Resultado: el
+ * portal del liceo daba 404 justamente a quien venía a usarlo (ABRE-07).
+ *
+ * Solo la puerta: el resto de `/instituto/<liceo>/...` sigue pidiendo sesión.
+ */
+const PORTAL_DEL_LICEO = /^\/instituto\/[^/]+(\/login)?\/?$/;
 const API_ROUTES_PREFIX = '/api/';
 const SUPERADMIN_LOGIN = '/superadmin/login';
 
-const TUNNEL_HOSTS = ['lhr.life', 'localhost.run', 'localtunnel.me', 'ngrok-free.app', 'trycloudflare.com', 'pinggy.link', 'pinggy.io'];
-
 /**
- * Extrae el subdomain del hostname.
- *
- * Soporta:
- *   - sanmiguel.localhost:3000  → "sanmiguel"  (desarrollo)
- *   - sanmiguel.tuapp.com       → "sanmiguel"  (producción)
- *   - localhost:3000            → null
- *   - tuapp.com                 → null
+ * Qué liceo nombra la dirección. La cuenta está en un solo sitio
+ * (`lib/el-liceo-de-la-direccion.ts`) porque estaba copiada en tres y solo una
+ * copia sabía que una dirección de red no nombra a ningún liceo.
  */
-function extractSubdomain(hostname: string): string | null {
-    // Remove port
-    const host = hostname.split(':')[0];
-
-    // Check if host is a known tunnel service
-    for (const tunnel of TUNNEL_HOSTS) {
-        if (host === tunnel || host.endsWith('.' + tunnel)) {
-            return null;
-        }
-    }
-
-    // *.localhost  (desarrollo: sanmiguel.localhost)
-    if (host.endsWith('.localhost')) {
-        const sub = host.slice(0, host.length - '.localhost'.length);
-        return sub || null;
-    }
-
-    // Raw localhost or IP — no subdomain
-    if (host === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(host)) {
-        return null;
-    }
-
-    // Normal domain with >=3 parts  (sanmiguel.tuapp.com)
-    const parts = host.split('.');
-    if (parts.length >= 3) {
-        return parts[0];
-    }
-
-    return null;
-}
+const extractSubdomain = (hostname: string): string | null => elLiceoDelHost(hostname);
 
 // Helper function to check if request is for SuperAdmin
 function isSuperAdminRequest(hostname: string, pathname: string): boolean {
@@ -80,6 +63,7 @@ const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[] }> = [
     { prefijo: '/dashboard/usuarios', roles: ['ADMIN'] },
     { prefijo: '/dashboard/configuracion', roles: ['ADMIN'] },
     { prefijo: '/dashboard/eventos', roles: ['ADMIN'] },
+    { prefijo: '/dashboard/pagos', roles: ['ADMIN'] },
     { prefijo: '/dashboard/academico', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/materias', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/horarios', roles: ['ADMIN', 'TEACHER'] },
@@ -154,7 +138,22 @@ export async function proxy(request: NextRequest) {
         pathname.startsWith(API_ROUTES_PREFIX) ||
         pathname.startsWith('/_next/') ||
         pathname.startsWith('/static/') ||
-        pathname === '/favicon.ico'
+        pathname.startsWith('/screenshots/') ||
+        pathname.startsWith('/images/') ||
+        pathname.startsWith('/icons/') ||
+        pathname === '/favicon.ico' ||
+        // La ficha de la app: el teléfono la pide ANTES de que nadie entre, y
+        // sin sesión. Si se le manda a entrar, no hay app que instalar.
+        pathname === '/manifest.webmanifest' ||
+        // El ayudante de la app y la pantalla de «sin conexión»: los pide el
+        // navegador por su cuenta, sin sesión.
+        pathname === '/sw.js' ||
+        pathname === '/sin-conexion.html' ||
+        pathname === '/favicon.svg' ||
+        pathname.endsWith('.png') ||
+        pathname.endsWith('.jpg') ||
+        pathname.endsWith('.svg') ||
+        pathname.endsWith('.ico')
     ) {
         return NextResponse.next();
     }
@@ -265,8 +264,18 @@ export async function proxy(request: NextRequest) {
     // FALLBACK: Regular routes (no subdomain)
     // ========================================
 
+    // La Landing Page en la raíz (localhost:3000/) es siempre pública
+    if (pathname === '/') {
+        return NextResponse.next();
+    }
+
+    // El portal propio del liceo: se abre sin sesión, como la pantalla de entrar.
+    if (PORTAL_DEL_LICEO.test(pathname)) {
+        return NextResponse.next();
+    }
+
     // Skip public routes
-    if (PUBLIC_ROUTES.some(route => pathname.startsWith(route))) {
+    if (PUBLIC_ROUTES.some(route => pathname === route || pathname.startsWith(route + '/'))) {
         const accessToken = request.cookies.get('access_token')?.value;
         // If already logged in and visiting login, redirect to dashboard
         if (pathname === '/login' && accessToken) {
@@ -289,6 +298,13 @@ export async function proxy(request: NextRequest) {
             // No tokens at all — redirect to login
             const loginUrl = new URL('/login', request.url);
             loginUrl.searchParams.set('redirect', pathname);
+            /**
+             * Y con el liceo a cuestas: la pantalla de entrar necesita saber de
+             * qué liceo es. Sin eso responde "no existe", y quien solo había
+             * dejado pasar el tiempo se encontraba un 404 en vez del formulario.
+             */
+            const liceo = request.cookies.get('institute_slug')?.value;
+            if (liceo) loginUrl.searchParams.set('slug', liceo);
             return NextResponse.redirect(loginUrl);
         }
 
@@ -308,8 +324,8 @@ export const config = {
          * - _next/static (static files)
          * - _next/image (image optimization files)
          * - favicon.ico (favicon file)
-         * - public folder
+         * - screenshots, public folder
          */
-        '/((?!_next/static|_next/image|favicon.ico|public/).*)',
+        '/((?!_next/static|_next/image|favicon.ico|screenshots/|images/|icons/|public/).*)',
     ],
 };

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { olvidarLasPaginasGuardadas } from '@/lib/paginas-guardadas';
 import { persist } from 'zustand/middleware';
 
 import { User as BaseUser } from '@/types/user';
@@ -28,7 +29,12 @@ export const useAuthStore = create<AuthState>()(
             isHydrated: false,
             // Token param kept for backward compatibility but not stored
             login: (user, _token, _keepSession) => set({ user, isAuthenticated: true }),
-            logout: () => set({ user: null, isAuthenticated: false }),
+            // Con la sesión se van las pantallas guardadas enteras: llevan el
+            // nombre de quien las abrió (ver `lib/paginas-guardadas.ts`).
+            logout: () => {
+                olvidarLasPaginasGuardadas();
+                set({ user: null, isAuthenticated: false });
+            },
             setHydrated: () => set({ isHydrated: true }),
         }),
         {

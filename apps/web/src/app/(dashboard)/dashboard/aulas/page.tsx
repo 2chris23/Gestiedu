@@ -9,6 +9,8 @@ import { Toaster, toast } from 'sonner';
 import ClassroomModal from '@/components/classrooms/ClassroomModal';
 import { classroomService, Classroom } from '@/services/classroom.service';
 import { academicYearService, AcademicYear } from '@/services/academic-year.service';
+import TurnoBadge from '@/components/common/TurnoBadge';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export default function ClassroomsPage() {
     const confirmDialog = useConfirm();
@@ -44,7 +46,7 @@ export default function ClassroomsPage() {
             }
         } catch (error) {
             console.error(error);
-            toast.error('Error al cargar datos');
+            if (!esQueNoContesta(error)) toast.error('Error al cargar datos');
         } finally {
             setLoading(false);
         }
@@ -95,9 +97,11 @@ export default function ClassroomsPage() {
                     <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Aulas y Secciones</h1>
                     <p className="text-sm text-gray-500 mt-1">Administra los espacios académicos por año escolar</p>
                 </div>
-                <div className="flex gap-4 items-center">
+                {/* Apilado en el teléfono: el selector de año y «Nueva Aula»
+                    en una sola fila se salían de la pantalla. */}
+                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:gap-4">
                     <Select value={selectedYearId || undefined} onValueChange={setSelectedYearId}>
-                        <SelectTrigger className="w-48">
+                        <SelectTrigger className="w-full sm:w-48">
                             <SelectValue placeholder="Seleccionar Año..." />
                         </SelectTrigger>
                         <SelectContent>
@@ -142,7 +146,10 @@ export default function ClassroomsPage() {
                                         <BookOpen className="h-6 w-6" />
                                     </div>
                                     <div>
-                                        <h3 className="text-lg font-semibold text-gray-900">{classroom.name}</h3>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-lg font-semibold text-gray-900">{classroom.name}</h3>
+                                            <TurnoBadge turno={classroom.shift} />
+                                        </div>
                                         <p className="text-xs text-gray-500">
                                             Profesor: {classroom.teacher ? `${classroom.teacher.firstName} ${classroom.teacher.lastName}` : 'Sin asignar'}
                                         </p>

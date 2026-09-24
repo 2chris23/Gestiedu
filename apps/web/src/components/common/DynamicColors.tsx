@@ -4,12 +4,8 @@ import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useInstituteConfig } from '@/hooks/useInstitute';
 
-// Función para convertir hex a HSL
 function hexToHSL(hex: string): string {
-    // Remover el # si existe
     hex = hex.replace('#', '');
-
-    // Convertir hex a RGB
     const r = parseInt(hex.substring(0, 2), 16) / 255;
     const g = parseInt(hex.substring(2, 4), 16) / 255;
     const b = parseInt(hex.substring(4, 6), 16) / 255;
@@ -38,26 +34,32 @@ function hexToHSL(hex: string): string {
 
 export function DynamicColors() {
     const pathname = usePathname();
+    const isRoot = pathname === '/';
     const isSuperAdmin = pathname?.startsWith('/superadmin');
 
-    // No cargar config si estamos en SuperAdmin
-    const { data: config } = useInstituteConfig({ enabled: !isSuperAdmin });
+    const { data: config } = useInstituteConfig({ enabled: !isSuperAdmin && !isRoot });
 
     useEffect(() => {
-        if (config?.primaryColor || config?.secondaryColor) {
-            const root = document.documentElement;
+        const root = document.documentElement;
 
-            if (config.primaryColor) {
-                const hsl = hexToHSL(config.primaryColor);
-                root.style.setProperty('--primary', hsl);
-            }
-
-            if (config.secondaryColor) {
-                const hsl = hexToHSL(config.secondaryColor);
-                root.style.setProperty('--secondary', hsl);
-            }
+        if (isRoot || isSuperAdmin || (!config?.primaryColor && !config?.secondaryColor)) {
+            root.style.removeProperty('--primary');
+            root.style.removeProperty('--secondary');
+            return;
         }
-    }, [config?.primaryColor, config?.secondaryColor]);
+
+        if (config?.primaryColor) {
+            root.style.setProperty('--primary', hexToHSL(config.primaryColor));
+        }
+        if (config?.secondaryColor) {
+            root.style.setProperty('--secondary', hexToHSL(config.secondaryColor));
+        }
+
+        return () => {
+            root.style.removeProperty('--primary');
+            root.style.removeProperty('--secondary');
+        };
+    }, [config?.primaryColor, config?.secondaryColor, isRoot, isSuperAdmin]);
 
     return null;
 }

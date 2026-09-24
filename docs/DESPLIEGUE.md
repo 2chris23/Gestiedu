@@ -30,6 +30,15 @@ El servicio `migrator` crea el esquema de la plataforma. A partir de ahí, los
 liceos se crean **desde el panel de superadmin**: cada alta crea su base de
 datos, le aplica las migraciones y crea su usuario administrador.
 
+**La plataforma tiene sus propias migraciones** (`src/prisma/plataforma/`),
+aparte de las de los liceos, y las aplica `dist/scripts/migrar-plataforma.js`
+(`npm run migrate:plataforma` en desarrollo). Antes su esquema estaba en la
+misma carpeta que el de los liceos, y `prisma migrate deploy` le aplicaba las
+migraciones de los liceos: en un servidor nuevo la base de la plataforma se
+quedaba sin la tabla de liceos y el sistema no arrancaba. Una base de
+plataforma hecha a mano (`db push`) se apunta como migrada solo si es igual al
+esquema; si no, el migrador se para y enseña la diferencia (`PLAT-01…04`).
+
 ## 3. Publicar una versión nueva
 
 Al empujar a la rama `production`, el flujo de GitHub Actions
@@ -42,6 +51,13 @@ Al empujar a la rama `production`, el flujo de GitHub Actions
 
 Si un liceo falla al migrar, el despliegue se detiene: es preferible a dejar
 liceos con una base vieja frente a un código nuevo.
+
+**Una versión nueva de la APK** no va por aquí: se compila con
+`npm run publicar -- --firmada` en `apps/movil` y sus dos archivos
+(`<paquete>.apk` y `<paquete>.json`) se copian a la carpeta `apks/` del
+servidor, junto a `docker-compose.prod.yml` (montada en `/app/apks`,
+`APP_MOVIL_DIR`). No hace falta reiniciar nada: la próxima vez que alguien
+abra la app, le sale «Hay una versión nueva». Ver `docs/APP-MOVIL.md`.
 
 ## 4. Cuando un liceo se queda atrás
 
@@ -164,6 +180,33 @@ sin repartidor:   20 conexiones reales de PostgreSQL
 con repartidor:    3 conexiones reales de PostgreSQL
 ```
 
+### 200 liceos, y más de un proceso
+
+Lo de arriba se escribió para 50 liceos. Para 200, lo que cambió (septiembre
+2026):
+
+- **El proceso guarda hasta 250 liceos abiertos con PgBouncer** (50 sin él),
+  configurable con `CLIENTES_DE_LICEO`. Antes eran 50 siempre: con 200 liceos,
+  cada petición de uno que no estuviera en la lista tenía que abrir su conexión
+  mientras la persona esperaba. Y veinte peticiones a la vez de un liceo nuevo
+  abrían veinte conexiones (ahora una: `CONN-10`).
+- **PgBouncer**, en `docker-compose.prod.yml`: `DEFAULT_POOL_SIZE=5` y
+  `MAX_DB_CONNECTIONS=5` por base, `MAX_USER_CONNECTIONS=160` en total (por
+  debajo de las 200 de PostgreSQL) y `TENANT_CONNECTION_LIMIT=5`.
+- **Varios procesos del servidor de datos:**
+
+  ```bash
+  docker compose -f docker-compose.prod.yml up -d --scale backend=3
+  docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+  ```
+
+  El segundo comando hace falta porque nginx averigua cuántos procesos hay al
+  arrancar. Lo que antes vivía en la memoria de cada proceso y se rompía con
+  varios ya no está ahí: el cupo de peticiones y el freno del doble clic van a
+  Redis (`CUPO-01…04`, `DOBLE-01…04`), y los logos a la base de la plataforma
+  (`LOGO-01…05`). nginx manda la API al proceso menos ocupado y el tiempo real
+  siempre al mismo proceso por dirección (ver `docker/nginx/nginx.conf`).
+
 ### El puerto, cuando lo asigna el hospedaje
 
 `PORT` se lee del archivo `.env`, **no** del entorno: esta máquina tenía un
@@ -270,6 +313,14 @@ de datos o por proyecto.** Con una base por liceo, 200 bases dentro de un mismo
 servidor cuestan lo mismo que una; en un servicio que cobra por proyecto, cuestan
 200 veces más.
 
+**La recomendación (septiembre 2026):** un servidor alquilado (VPS), por
+ejemplo Hetzner en su centro de EE. UU. Este, con este `docker-compose`. El
+disco no se borra al reiniciar, es lo más barato por liceo y es lo que ya
+espera todo lo de aquí. Para los primeros 2 o 3 liceos basta una máquina. Al
+crecer: otra para PostgreSQL y más procesos del servidor de datos (§5, «200
+liceos, y más de un proceso»), sin cambiar código. La copia de los respaldos
+fuera del servidor, a Cloudflare R2 (§8), que no cobra por descargar.
+
 ## 7. El modo de la aplicación: comprobarlo, no suponerlo
 
 La aplicación carga los archivos `.env` **pisando** lo que venga del sistema. Es a
@@ -311,6 +362,17 @@ npm run restore:tenant -- --slug=liceo-bolivar --confirmar
 Restaurar **borra lo que el liceo tenga ahora**: todo lo trabajado desde ese
 respaldo se pierde. Por eso, sin `--confirmar`, el comando solo explica qué haría.
 
+**La base de la plataforma también se guarda**, cada noche y la primera, en
+`_plataforma__<fecha>.dump` (ningún liceo puede llamarse así). Es la que dice
+qué base es de qué liceo y con qué llave se entra: sin ella, los archivos de los
+liceos no se pueden volver a enganchar. Antes no se guardaba (`RESP-07` la
+guarda y la devuelve). Si se pierde el servidor entero, se restaura primero la
+plataforma y luego cada liceo:
+
+```bash
+pg_restore --clean --if-exists --no-owner --dbname=gestion_escolar_platform backups/_plataforma__<fecha>.dump
+```
+
 ### Configuración
 
 | Variable | Para qué | Por defecto |
@@ -318,6 +380,12 @@ respaldo se pierde. Por eso, sin `--confirmar`, el comando solo explica qué har
 | `BACKUP_DIR` | Dónde quedan los archivos. En un servidor, un disco aparte del de la base. | `backups/` |
 | `BACKUP_RETENTION_DAYS` | Cuántos días se guardan antes de borrar los viejos. | 14 |
 | `PG_BIN_DIR` | Dónde está `pg_dump` si no está en el PATH (en Windows no suele estarlo). | — |
+| `HORA_DE_RESPALDO` | A qué hora del país (`TZ`) corre el respaldo de cada noche (servicio `respaldos`). | `02:00` |
+| `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`, `BACKUP_S3_REGION` | La copia **fuera** del servidor, en R2 o cualquier S3. Vacío = desactivada. | desactivada |
+
+`/health` dice cómo fue el último respaldo (`respaldos`: `al-dia`, `atrasado`
+—más de 26 horas—, `fallo` o `sin-programar`), y un fallo deja una alerta
+crítica en el panel del superadmin.
 
 Para que corra solo, una vez al día, desde el programador de tareas del servidor.
 Si algún liceo falla, el comando termina con error para que la tarea lo avise: un
@@ -452,9 +520,43 @@ opción también salen las herramientas de desarrollo, que no se instalan allí.
 
 ## 9. Lo que todavía falta
 
-- Archivos subidos en el disco del servidor: hay que moverlos a S3 o R2, porque
-  en un servicio de alojamiento el disco es temporal.
-- Subir los respaldos fuera del servidor (S3/R2): hoy quedan en su disco, que es el
-  mismo sitio que se perdería si el servidor se pierde.
+- ~~Archivos subidos en el disco del servidor~~: los logos van a la base de la
+  plataforma desde septiembre 2026 (`LOGO-01…05`). Los subidos antes siguen en
+  el volumen `uploads` y se sirven igual.
+- ~~Subir los respaldos fuera del servidor~~: `BACKUP_S3_*` (§8).
+- La prueba en un servidor de verdad (abajo): **escrita, no ejecutada**.
+
+## 10-bis. La prueba en un servidor (al final, cuando se decida)
+
+Todo lo medido hasta ahora se midió en UN ordenador que hacía de servidor, de
+base de datos y de generador de carga a la vez. Lo último medido ahí (septiembre
+2026): **500 personas repartidas en 50 liceos, un solo proceso, p95 de 132 ms,
+p99 de 298 ms y ningún fallo** (`docs/mediciones/`). Para saber lo que aguanta
+de verdad hace falta separarlo:
+
+1. **Tres máquinas**, alquiladas por horas y borradas al terminar:
+   - la aplicación (este `docker-compose`, con `--scale backend=2` o más);
+   - PostgreSQL con PgBouncer (o PostgreSQL en su máquina y el compose
+     apuntando a ella);
+   - la que genera la carga, que NO puede ser ninguna de las otras dos.
+2. **Los liceos:** `LICEOS=200 npm run seed:muchos-liceos` (una plantilla
+   pequeña copiada 200 veces; `-- --limpiar` los quita).
+3. **La carga**, desde la tercera máquina contra la primera:
+   ```bash
+   API_REMOTA=https://<el-servidor> PLATFORM_DATABASE_URL=<la de ese servidor> \
+   LICEOS='muchos-*' CLAVE='Test123!' ESCALONES=500,1000,2000,5000,10000,15000 \
+     SEGUNDOS=120 npm run medir:estres
+   ```
+   Con `API_REMOTA` el guion no arranca su propio proceso: mide el que ya está
+   en marcha. De la base de la plataforma saca los liceos y las cuentas.
+   **Ojo con el límite de entrada:** todas las personas entran desde la
+   dirección de la máquina de carga, y la pantalla de entrar cuenta por
+   dirección (`RATE_LIMIT_MAX`, 100 por minuto): 15.000 entradas serían dos
+   horas y media de espera. Para la prueba, subirlo en el servidor y volver a
+   dejarlo como estaba al terminar.
+4. **El criterio**, el mismo de siempre: en el servidor, **toda ruta con p95 ≤
+   300 ms y p99 ≤ 1 s**, y menos de 1 % de fallos. Lo que pase de ahí se mira
+   ruta por ruta en el JSON que queda en `docs/mediciones/`.
+5. Se apaga todo.
 
 Ver [AUDITORIA-2026-09-11.md](AUDITORIA-2026-09-11.md).

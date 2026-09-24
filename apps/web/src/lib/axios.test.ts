@@ -132,12 +132,12 @@ describe('lib/axios — refresh queue (race condition 401)', () => {
         expect(logoutMock).not.toHaveBeenCalled();
     });
 
-    it('si el refresh falla → logout UNA vez y las requests en cola se rechazan', async () => {
+    it('si el servidor dice que la sesión no vale (401) → logout UNA vez y las requests en cola se rechazan', async () => {
         // jsdom no implementa navegación (window.location.href = ...):
         // solo emite un "Not implemented" al console que silenciamos.
         const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
-        (global as any).fetch = jest.fn().mockResolvedValue({ ok: false });
+        (global as any).fetch = jest.fn().mockResolvedValue({ ok: false, status: 401 });
         const errA = makeError(401, '/api/a');
         const errB = makeError(401, '/api/b');
 
@@ -155,15 +155,29 @@ describe('lib/axios — refresh queue (race condition 401)', () => {
         consoleSpy.mockRestore();
     });
 
-    it('si el fetch del refresh lanza (red caída) → logout y rechazo, sin reintento', async () => {
+    /**
+     * Esto antes cerraba la sesión. Con el servidor apagado, la app mandaba al
+     * login —que sin servidor tampoco abre— a alguien con la sesión en regla, y
+     * se perdía de vista todo lo guardado en el teléfono. Sin servidor no se
+     * sabe si la sesión vale: no se toca.
+     */
+    it('si el refresh no llega (servidor caído) → rechazo, SIN cerrar la sesión y sin reintento', async () => {
         const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
         (global as any).fetch = jest.fn().mockRejectedValue(new TypeError('NetworkError'));
         const err = makeError(401, '/api/x');
 
         await expect(onRejected(err)).rejects.toThrow('NetworkError');
-        expect(logoutMock).toHaveBeenCalledTimes(1);
+        expect(logoutMock).not.toHaveBeenCalled();
 
         consoleSpy.mockRestore();
+    });
+
+    it('si el refresh responde que el servidor no contesta (503) → rechazo, SIN cerrar la sesión', async () => {
+        (global as any).fetch = jest.fn().mockResolvedValue({ ok: false, status: 503 });
+        const err = makeError(401, '/api/x');
+
+        await expect(onRejected(err)).rejects.toBe(err);
+        expect(logoutMock).not.toHaveBeenCalled();
     });
 });

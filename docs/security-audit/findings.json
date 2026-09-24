@@ -1,0 +1,1009 @@
+[
+  {
+    "verdict": "confirmed",
+    "fingerprint": "auth-bypass-logout-access-token",
+    "title": "Active JWT Access Tokens Not Invalidated on User Logout",
+    "description": "When a tenant user logs out via POST /api/auth/logout, the server removes the refresh token and purges the Redis session cache. However, the active JWT access token (15m to 1h lifetime) is not added to a blocklist. Subsequent requests using the access token trigger a Redis cache miss in authenticate, causing loadUserSession to re-query the database and re-cache the active user, allowing the access token to remain usable until natural expiration.",
+    "root_cause": "authenticate in auth.middleware.ts treats Redis as an ephemeral performance cache rather than a mandatory session presence gate, re-querying and re-caching users from PostgreSQL on cache misses.",
+    "intended_behavior": "Logging out must immediately revoke all associated access tokens and reject subsequent API requests presenting those tokens.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "apps/backend/src/routes/auth.routes.ts",
+        "line": 113,
+        "scope": "POST /api/auth/logout",
+        "description": "Client initiates logout with Bearer access token."
+      },
+      {
+        "kind": "propagation",
+        "file": "apps/backend/src/controllers/auth.controller.ts",
+        "line": 134,
+        "scope": "logout",
+        "description": "Controller deletes refresh token and purges Redis key auth:user:instituteId:userId."
+      },
+      {
+        "kind": "propagation",
+        "file": "apps/backend/src/middleware/auth.middleware.ts",
+        "line": 67,
+        "scope": "loadUserSession",
+        "description": "Next request misses Redis and queries database user.findUnique."
+      },
+      {
+        "kind": "sink",
+        "file": "apps/backend/src/middleware/auth.middleware.ts",
+        "line": 125,
+        "scope": "authenticate",
+        "description": "Request is accepted and user session is re-cached in Redis."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "apps/backend/src/controllers/auth.controller.ts",
+        "line": 134,
+        "description": "invalidateUserSession only removes Redis cache key without blocklisting access token."
+      },
+      {
+        "file": "apps/backend/src/middleware/auth.middleware.ts",
+        "line": 70,
+        "description": "loadUserSession re-populates cache from DB on miss for active users."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "An access token is captured prior to user logout."
+      },
+      {
+        "kind": "timing_dependency",
+        "description": "The token is replayed before its exp timestamp expires."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "An attacker who intercepted or retrieved an access token from a public or shared workstation after a user logged out.",
+      "payloads": [
+        "Authorization: Bearer <valid_token_from_logged_out_session>"
+      ],
+      "instructions": [
+        "Submit requests to authenticated endpoints using the token after the user called /api/auth/logout."
+      ],
+      "observed_result": "The server accepts the request with 200 OK and executes the action on behalf of the logged-out user."
+    },
+    "remediation": {
+      "strategy": "Embed a unique session identifier or token ID (jti) in the access token payload. On logout, record the jti in Redis with a TTL matching the token remaining validity, or verify that the active session exists in Redis before granting access."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "medium",
+        "reason": "Requires access token interception or shared workstation usage before logout."
+      },
+      "impact": {
+        "score": "medium",
+        "reason": "Grants temporary unauthorized access to the victim account until token expiration."
+      },
+      "overall_severity": "medium"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Confirmed by source analysis of logout controller and authenticate middleware."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "auth-refresh-token-rotation-missing",
+    "title": "Missing Refresh Token Rotation for Tenant Users",
+    "description": "The refresh token endpoint POST /api/auth/refresh-token verifies the token and updates the existing database record in place (lastUsedAt and expiresAt) instead of deleting it and issuing a new one. This allows a compromised refresh token to be reused continuously for up to 60 days without detection or invalidation.",
+    "root_cause": "auth.service.ts updates existing refresh token records rather than implementing single-use token rotation with reuse detection.",
+    "intended_behavior": "Every refresh token must be single-use. Presenting a valid refresh token must revoke it and issue a new token pair.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "apps/backend/src/routes/auth.routes.ts",
+        "line": 110,
+        "scope": "POST /api/auth/refresh-token",
+        "description": "Client submits refresh token."
+      },
+      {
+        "kind": "propagation",
+        "file": "apps/backend/src/services/auth.service.ts",
+        "line": 241,
+        "scope": "refreshToken",
+        "description": "Service updates lastUsedAt and expiresAt on existing database record."
+      },
+      {
+        "kind": "sink",
+        "file": "apps/backend/src/services/auth.service.ts",
+        "line": 268,
+        "scope": "refreshToken",
+        "description": "Service returns new accessToken but does not rotate or invalidate refreshToken."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "apps/backend/src/services/auth.service.ts",
+        "line": 245,
+        "description": "prisma.refreshToken.update mutates the existing token rather than creating a new one."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "A refresh token is compromised via web storage or network interception."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "An attacker with access to a compromised refresh token.",
+      "payloads": [
+        "POST /api/auth/refresh-token with body { refreshToken }"
+      ],
+      "instructions": [
+        "Repeatedly submit the same refresh token over days or weeks to obtain fresh access tokens."
+      ],
+      "observed_result": "The server accepts the same refresh token indefinitely and issues fresh access tokens."
+    },
+    "remediation": {
+      "strategy": "Implement refresh token rotation following RFC 6819. Invalidate the submitted refresh token, create a new one, and revoke all sessions if an already-used token is re-submitted."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "medium",
+        "reason": "Requires compromising the refresh token cookie or storage."
+      },
+      "impact": {
+        "score": "medium",
+        "reason": "Allows persistent stealth access to user accounts without credential re-entry."
+      },
+      "overall_severity": "medium"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Source code in auth.service.ts clearly demonstrates in-place record updates."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "auth-superadmin-cookie-httponly-missing",
+    "title": "SuperAdmin Access Token Cookie Stored Without HttpOnly Flag",
+    "description": "The Next.js route handlers for SuperAdmin authentication (/api/superadmin/auth/login and /refresh) set the superadmin_access_token cookie with httpOnly: false. Additionally, the Zustand store persists the token in window.localStorage under superadmin-auth.",
+    "root_cause": "Next.js proxy route handlers explicitly specify httpOnly: false for superadmin_access_token and client store persists bearer token in localStorage.",
+    "intended_behavior": "Platform administrative credentials must be stored exclusively in HttpOnly, Secure cookies and never exposed to client-side DOM scripts.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "apps/web/src/app/api/superadmin/auth/login/route.ts",
+        "line": 16,
+        "scope": "POST /api/superadmin/auth/login",
+        "description": "Superadmin logs in through Next.js proxy."
+      },
+      {
+        "kind": "propagation",
+        "file": "apps/web/src/app/api/superadmin/auth/login/route.ts",
+        "line": 53,
+        "scope": "responseNext.cookies.set",
+        "description": "Cookie superadmin_access_token is set with httpOnly: false."
+      },
+      {
+        "kind": "sink",
+        "file": "apps/web/src/store/superadmin-auth.store.ts",
+        "line": 20,
+        "scope": "useSuperAdminAuthStore",
+        "description": "Access token is written to window.localStorage[superadmin-auth]."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "apps/web/src/app/api/superadmin/auth/login/route.ts",
+        "line": 55,
+        "description": "httpOnly: false explicitly declared on superadmin_access_token."
+      },
+      {
+        "file": "apps/web/src/store/superadmin-auth.store.ts",
+        "line": 35,
+        "description": "createJSONStorage(() => localStorage) persists full auth state."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "user_interaction",
+        "description": "Any Cross-Site Scripting (XSS) vulnerability exists or malicious third-party script executes in the web application."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "An attacker able to execute client-side JavaScript in the application.",
+      "payloads": [
+        "document.cookie or window.localStorage.getItem(\"superadmin-auth\")"
+      ],
+      "instructions": [
+        "Read localStorage or document.cookie to extract the superadmin JWT."
+      ],
+      "observed_result": "The attacker extracts the raw platform SuperAdmin JWT and can access all tenant databases."
+    },
+    "remediation": {
+      "strategy": "Set httpOnly: true on superadmin_access_token cookies and remove bearer token persistence from client-side Zustand/localStorage."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "medium",
+        "reason": "Requires an XSS vector in the web application."
+      },
+      "impact": {
+        "score": "critical",
+        "reason": "Full compromise of the SuperAdmin platform role, exposing all tenant schools and databases."
+      },
+      "overall_severity": "high"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Directly verified in route handler and Zustand store definitions."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "auth-superadmin-logout-revocation-broken",
+    "title": "SuperAdmin Logout Fails to Revoke Backend Refresh Token",
+    "description": "When a SuperAdmin logs out, the Next.js API route /api/superadmin/auth/logout sends a POST request to the Fastify backend without an Authorization Bearer header. The backend route requires superAdminAuthMiddleware, which immediately rejects the unauthenticated request with 401 SUPERADMIN_AUTH_REQUIRED. As a result, the backend database record in super_admin_refresh_tokens is never deleted, leaving the refresh token permanently valid on the platform.",
+    "root_cause": "The Next.js logout proxy does not forward the SuperAdmin bearer token in the Authorization header to the Fastify backend.",
+    "intended_behavior": "SuperAdmin logout must successfully authenticate against the backend and delete all active refresh tokens for the administrator.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "apps/web/src/app/api/superadmin/auth/logout/route.ts",
+        "line": 4,
+        "scope": "POST /api/superadmin/auth/logout",
+        "description": "SuperAdmin clicks logout in web console."
+      },
+      {
+        "kind": "propagation",
+        "file": "apps/web/src/app/api/superadmin/auth/logout/route.ts",
+        "line": 18,
+        "scope": "fetch",
+        "description": "Next.js fetches backend logout endpoint with body { refreshToken } but no Authorization header."
+      },
+      {
+        "kind": "sink",
+        "file": "apps/backend/src/middleware/superadmin-auth.middleware.ts",
+        "line": 41,
+        "scope": "superAdminAuthMiddleware",
+        "description": "Backend rejects request with 401 and superAdminAuthService.logout is never executed."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "apps/web/src/app/api/superadmin/auth/logout/route.ts",
+        "line": 20,
+        "description": "Headers object omits Authorization: Bearer <superadmin_access_token>."
+      },
+      {
+        "file": "apps/backend/src/routes/superadmin-auth.routes.ts",
+        "line": 16,
+        "description": "Route /logout is registered with preHandler: [superAdminAuthMiddleware]."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authorization_role",
+        "description": "A SuperAdmin logs out of the web interface."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "An attacker who obtained a SuperAdmin refresh token.",
+      "payloads": [
+        "POST /api/superadmin/auth/refresh with compromised refreshToken"
+      ],
+      "instructions": [
+        "Wait for superadmin to log out, then submit refresh request."
+      ],
+      "observed_result": "Backend returns 200 OK with fresh SuperAdmin access token because database token was never revoked."
+    },
+    "remediation": {
+      "strategy": "Update Next.js logout handler to pass Authorization: Bearer <token>, or configure backend /api/superadmin/auth/logout to authenticate directly by the supplied refresh token."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "medium",
+        "reason": "Requires interception of a SuperAdmin refresh token."
+      },
+      "impact": {
+        "score": "high",
+        "reason": "Allows token replay and persistent platform administration after user assumes session ended."
+      },
+      "overall_severity": "high"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Verified by inspecting header construction in Next.js route and backend route middleware."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "dos-health-check-db-pool-exhaustion",
+    "title": "Database Connection Pool Starvation via Load-Shed-Exempt Health Route",
+    "description": "The /health endpoint executes a database query (prisma.$queryRaw\"SELECT 1\") and redis.ping(). In no-aceptar-mas-de-lo-que-aguanta.ts, /health is explicitly exempted from load shedding (RUTAS_SIEMPRE_ATENDIDAS). When combined with global rate limit bypass, an unauthenticated attacker can flood /health with concurrent requests to exhaust PostgreSQL and Prisma connection pools, causing denial of service across the entire platform.",
+    "root_cause": "/health is treated as an exempt liveness probe but executes synchronous I/O against database and cache connections without rate limiting.",
+    "intended_behavior": "Liveness probes exempt from load shedding must return static responses without database or network I/O.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "apps/backend/src/server.ts",
+        "line": 293,
+        "scope": "GET /health",
+        "description": "Client sends requests to /health."
+      },
+      {
+        "kind": "propagation",
+        "file": "apps/backend/src/plugins/no-aceptar-mas-de-lo-que-aguanta.ts",
+        "line": 49,
+        "scope": "RUTAS_SIEMPRE_ATENDIDAS",
+        "description": "Route /health bypasses load shedder checks."
+      },
+      {
+        "kind": "sink",
+        "file": "apps/backend/src/server.ts",
+        "line": 301,
+        "scope": "server.prisma.$queryRaw",
+        "description": "Query executes on PostgreSQL connection pool."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "apps/backend/src/plugins/no-aceptar-mas-de-lo-que-aguanta.ts",
+        "line": 49,
+        "description": "/health is included in RUTAS_SIEMPRE_ATENDIDAS."
+      },
+      {
+        "file": "apps/backend/src/server.ts",
+        "line": 301,
+        "description": "prisma.$queryRaw SELECT 1 executes on every health check."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "network_routing",
+        "description": "Unauthenticated HTTP flood directed at /health."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "An unauthenticated remote attacker.",
+      "payloads": [
+        "Concurrent GET /health requests"
+      ],
+      "instructions": [
+        "Send 500-1000 concurrent HTTP requests to /health."
+      ],
+      "observed_result": "Prisma connection pool runs out of available connections, throwing P2024 timeouts for legitimate users."
+    },
+    "remediation": {
+      "strategy": "Split /health into /health/live (returns 200 OK with no I/O, exempt from shedding) and /health/ready (performs DB ping, subject to load shedding and IP rate limits)."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "high",
+        "reason": "Route is completely public and requires no credentials."
+      },
+      "impact": {
+        "score": "medium",
+        "reason": "Causes temporary denial of service and query timeouts across all tenant users."
+      },
+      "overall_severity": "medium"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Confirmed by inspecting server.ts health handler and load shedding plugin exemptions."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "filesystem-path-traversal-delete-old-file",
+    "title": "Arbitrary File Deletion via Path Traversal in deleteOldFile Handler",
+    "description": "The deleteOldFile function in upload.middleware.ts cleanses input using filePath.replace(/^\\/+/, '') before calling path.join(process.cwd(), cleanPath) and fs.unlinkSync. This regex only removes leading forward slashes and fails to neutralize directory traversal tokens (../). Because logo and favicon paths in the Institute table can be modified via updateInstituteConfig without format validation, an administrator can set a path with traversal sequences, causing deleteOldFile to delete arbitrary host files upon subsequent logo replacement.",
+    "root_cause": "deleteOldFile uses an ineffective regex to sanitize relative file paths and does not verify path containment within the uploads directory.",
+    "intended_behavior": "File deletion must be strictly confined to the designated uploads directory using path containment assertions.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "apps/backend/src/routes/institutes.routes.ts",
+        "line": 382,
+        "scope": "PUT /api/institutes/current/config",
+        "description": "Admin supplies logo path with directory traversal tokens."
+      },
+      {
+        "kind": "propagation",
+        "file": "apps/backend/src/controllers/institutes.controller.ts",
+        "line": 198,
+        "scope": "deleteOldFile",
+        "description": "Controller passes stored logo path to deleteOldFile."
+      },
+      {
+        "kind": "sink",
+        "file": "apps/backend/src/middleware/upload.middleware.ts",
+        "line": 73,
+        "scope": "fs.unlinkSync",
+        "description": "File is deleted relative to process.cwd() outside uploads."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "apps/backend/src/middleware/upload.middleware.ts",
+        "line": 63,
+        "description": "filePath.replace(/^\\/+/, '') fails to neutralize ../ tokens."
+      },
+      {
+        "file": "apps/backend/src/middleware/upload.middleware.ts",
+        "line": 73,
+        "description": "fs.unlinkSync executes without verifying path containment."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authorization_role",
+        "description": "User with tenant Admin privileges or ability to update institute config."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "A tenant administrator or attacker with stolen admin credentials.",
+      "payloads": [
+        "logo: \"../../package.json\" in config update, followed by POST /api/institutes/logos"
+      ],
+      "instructions": [
+        "Update institute config with traversed path, then upload a new logo to trigger deletion."
+      ],
+      "observed_result": "The target file outside the uploads directory is unlinked from disk."
+    },
+    "remediation": {
+      "strategy": "Verify that path.resolve(destination).startsWith(path.resolve(process.cwd(), \"uploads\")) before executing fs.unlinkSync, and validate that stored logo/favicon paths match expected URI formats."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "medium",
+        "reason": "Requires tenant administrator privileges."
+      },
+      "impact": {
+        "score": "high",
+        "reason": "Can delete application source files, configuration manifests, or credentials from disk."
+      },
+      "overall_severity": "high"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Source code in upload.middleware.ts clearly shows unsafe path.join with traversal vulnerability."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "grades-null-classroom-scope-bypass",
+    "title": "Teacher Scope Bypass for Activities with Null Classroom ID",
+    "description": "In activities.service.ts, activities created with scope !== CLASSROOM or GRADE can have a null classroomId. In grades.service.ts (lines 180-210) and grades.controller.ts (soloSiEsDeSuClase, lines 30-43), classroom enrollment and teacher subject assignment checks are wrapped in if (activity.classroomId) or return early when null. Consequently, any teacher can view, create, edit, or delete grades for any student in the institution for activities lacking an explicit classroomId.",
+    "root_cause": "Authorization guards check teaching assignments only when activity.classroomId is truthy and fail open on null values.",
+    "intended_behavior": "Teachers must only be permitted to grade students in subjects and classrooms to which they are actively assigned.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "apps/backend/src/routes/grades.routes.ts",
+        "line": 192,
+        "scope": "POST /api/grades",
+        "description": "Teacher submits grade for an activity with null classroomId."
+      },
+      {
+        "kind": "propagation",
+        "file": "apps/backend/src/services/grades.service.ts",
+        "line": 180,
+        "scope": "createGrade",
+        "description": "Code checks if (activity.classroomId) and skips enrollment and subject assignment validation."
+      },
+      {
+        "kind": "sink",
+        "file": "apps/backend/src/services/grades.service.ts",
+        "line": 215,
+        "scope": "prisma.grade.create",
+        "description": "Grade is created without teaching assignment verification."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "apps/backend/src/services/grades.service.ts",
+        "line": 180,
+        "description": "if (activity.classroomId) skips authorization logic when null."
+      },
+      {
+        "file": "apps/backend/src/controllers/grades.controller.ts",
+        "line": 35,
+        "description": "if (!nota?.activity?.classroomId) return; skips assertClassroomScope on PUT/DELETE."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "data_state",
+        "description": "An activity exists with null classroomId."
+      },
+      {
+        "kind": "authorization_role",
+        "description": "Caller is authenticated with role TEACHER."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "An authenticated teacher in the school.",
+      "payloads": [
+        "POST /api/grades with activityId referencing a cross-classroom activity and an arbitrary studentId"
+      ],
+      "instructions": [
+        "Submit grade creation request for an unassigned class or subject."
+      ],
+      "observed_result": "The grade is registered or modified successfully without 403 Forbidden."
+    },
+    "remediation": {
+      "strategy": "Resolve the student enrolled classroom and verify that the teacher is assigned to teach that subject in that classroom, regardless of whether activity.classroomId is defined."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "high",
+        "reason": "Any teacher can reach the endpoint with ordinary teacher permissions."
+      },
+      "impact": {
+        "score": "high",
+        "reason": "Enables teachers to tamper with or alter grades across unauthorized subjects and sections."
+      },
+      "overall_severity": "high"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Directly verified in grades.service.ts and grades.controller.ts."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "idor-single-grade-lookup",
+    "title": "Insecure Direct Object Reference (IDOR) on Single Grade Lookup",
+    "description": "The endpoint GET /api/grades/:id registers preHandler: [authenticate, validateCUID(\"id\")] with no role restriction and no ownership verification. Any authenticated user (including students or tutors) can view any other student grades, scores, teacher feedback, and personal academic details across the institution by guessing or enumerating grade IDs.",
+    "root_cause": "getGrade in grades.controller.ts fetches the grade record by ID without checking whether the caller is an administrator, the assigned teacher, or the owning student/tutor.",
+    "intended_behavior": "Grade lookup must verify that students can only view their own grades, tutors can only view their children grades, and teachers can only view grades in their assigned classes.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "apps/backend/src/routes/grades.routes.ts",
+        "line": 112,
+        "scope": "GET /api/grades/:id",
+        "description": "Student sends request with grade ID belonging to another student."
+      },
+      {
+        "kind": "propagation",
+        "file": "apps/backend/src/controllers/grades.controller.ts",
+        "line": 215,
+        "scope": "getGrade",
+        "description": "Controller queries database for grade with relations without authorization checks."
+      },
+      {
+        "kind": "sink",
+        "file": "apps/backend/src/controllers/grades.controller.ts",
+        "line": 284,
+        "scope": "reply.send",
+        "description": "Controller returns complete grade details to unauthorized caller."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "apps/backend/src/routes/grades.routes.ts",
+        "line": 115,
+        "description": "Route preHandler omits role checks or ownership guards."
+      },
+      {
+        "file": "apps/backend/src/controllers/grades.controller.ts",
+        "line": 215,
+        "description": "getGrade queries grade by ID with no assertCanSeeStudent or role checks."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "Caller is authenticated with any valid user role (e.g. STUDENT)."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "An authenticated student or tutor.",
+      "payloads": [
+        "GET /api/grades/<cuid_of_other_student_grade>"
+      ],
+      "instructions": [
+        "Request another student grade using its ID."
+      ],
+      "observed_result": "The server returns 200 OK with full score, feedback, student details, and teacher notes."
+    },
+    "remediation": {
+      "strategy": "In getGrade, apply assertCanSeeStudent for student and tutor roles, and apply assertClassroomScope for teachers, allowing unconstrained access only to administrators."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "high",
+        "reason": "Endpoint is accessible to all authenticated users with standard GET requests."
+      },
+      "impact": {
+        "score": "high",
+        "reason": "Exposes private academic transcripts, performance notes, and student records institution-wide."
+      },
+      "overall_severity": "high"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Confirmed by inspecting route registration and controller logic in grades.controller.ts."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "needs-val-cloud-tls-and-reverse-proxy",
+    "title": "Production TLS Termination and Origin Header Protection",
+    "description": "The Nginx configuration defines TLS 1.2/1.3 parameters, HSTS headers, and proxy headers. However, production TLS certificates and Cloudflare WAF / Authenticated Origin Pull configurations are external deployment assets not present in the repository checkout.",
+    "claimed_root_cause": "Origin server may be reachable directly over plaintext HTTP if external firewalls or Cloudflare Authenticated Origin Pulls are misconfigured.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "docker/nginx/nginx.conf",
+        "line": 89,
+        "scope": "ssl_certificate",
+        "description": "Nginx references external SSL certificates."
+      },
+      {
+        "kind": "sink",
+        "file": "docker-compose.prod.yml",
+        "line": 124,
+        "scope": "volumes",
+        "description": "Mounts ./docker/nginx/certs into container."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "docker/nginx/nginx.conf",
+        "line": 90,
+        "description": "Certificates are mounted at runtime and cannot be verified from repository source alone."
+      }
+    ],
+    "blockers": [
+      "Production certificates and cloud firewall rules reside outside the repository."
+    ],
+    "validation_plan": {
+      "local": "Inspect docker-compose.prod.yml volume mounts and verify that cert files are present and valid before running containers.",
+      "deployment": "Verify that origin server rejects direct public connections not originating from Cloudflare edge IP ranges."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "needs-val-database-per-tenant-isolation-permissions",
+    "title": "PostgreSQL Role Privilege Scoping per Tenant Database",
+    "description": "The platform provisions isolated PostgreSQL databases per tenant. However, whether the PostgreSQL user account configured in DATABASE_URL has restricted permissions confined to its assigned database or possesses global superuser privileges across all databases cannot be verified from static code.",
+    "claimed_root_cause": "DATABASE_URL connection user may have superuser or cross-database read permissions in production.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "apps/backend/src/config/database.ts",
+        "line": 60,
+        "scope": "getTenantPrisma",
+        "description": "Backend establishes dynamic tenant Prisma connection."
+      },
+      {
+        "kind": "sink",
+        "file": "apps/backend/src/prisma/schema.prisma",
+        "line": 8,
+        "scope": "datasource db",
+        "description": "Tenant queries execute using credentials from DATABASE_URL."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "apps/backend/src/config/tenant-db-url.ts",
+        "line": 25,
+        "description": "Tenant DB URL is derived from base environment configuration."
+      }
+    ],
+    "blockers": [
+      "PostgreSQL role permissions and pg_hba.conf are managed in live database infrastructure."
+    ],
+    "validation_plan": {
+      "local": "Check local PostgreSQL role grants using \\du in psql.",
+      "deployment": "Audit production PostgreSQL roles to ensure tenant connection users cannot query pg_database or read other tenant databases."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "parser-docx-memory-exhaustion-eval-plan",
+    "title": "Memory Exhaustion via Unbounded Word Document Ingestion",
+    "description": "The endpoint POST /api/evaluation-plan/parse-word accepts multipart uploads up to 10MB without verifying file extensions, MIME types, or ZIP magic bytes. Mammoth decompresses the archive in memory using JSZip without decompression limits, and Cheerio synchronously parses the resulting HTML string on the main event loop thread. A crafted or highly compressed DOCX payload can trigger V8 heap exhaustion or long event loop delays, terminating the backend process.",
+    "root_cause": "Document upload lacks file format validation and memory bounds during archive decompression and DOM parsing.",
+    "intended_behavior": "Document ingestion must validate PKZip magic headers, enforce archive decompression size caps, and limit synchronous table parsing.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "apps/backend/src/routes/evaluation-plan.routes.ts",
+        "line": 44,
+        "scope": "POST /api/evaluation-plan/parse-word",
+        "description": "Teacher uploads document file."
+      },
+      {
+        "kind": "propagation",
+        "file": "apps/backend/src/controllers/evaluation-plan.controller.ts",
+        "line": 811,
+        "scope": "mammoth.convertToHtml",
+        "description": "Mammoth expands DOCX archive in memory."
+      },
+      {
+        "kind": "sink",
+        "file": "apps/backend/src/controllers/evaluation-plan.controller.ts",
+        "line": 815,
+        "scope": "cheerio.load",
+        "description": "Cheerio parses large HTML tree synchronously on main thread."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "apps/backend/src/controllers/evaluation-plan.controller.ts",
+        "line": 806,
+        "description": "request.file() called with no MIME or extension validation."
+      },
+      {
+        "file": "apps/backend/src/controllers/evaluation-plan.controller.ts",
+        "line": 811,
+        "description": "mammoth.convertToHtml receives unvalidated buffer."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authorization_role",
+        "description": "Caller is authenticated with role TEACHER or ADMIN."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "An authenticated teacher or administrator.",
+      "payloads": [
+        "A compressed DOCX file containing repetitive XML nodes."
+      ],
+      "instructions": [
+        "Upload file to /api/evaluation-plan/parse-word."
+      ],
+      "observed_result": "Node.js memory usage spikes, leading to event loop starvation or out-of-memory process crash."
+    },
+    "remediation": {
+      "strategy": "Validate PKZip magic bytes (0x50 0x4B 0x03 0x04) and file extension, reduce multipart file size limit for evaluation plans to 2MB, and limit table row processing in Cheerio."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "medium",
+        "reason": "Requires authenticated teacher credentials."
+      },
+      "impact": {
+        "score": "medium",
+        "reason": "Causes backend process crash affecting all tenant schools on the instance."
+      },
+      "overall_severity": "medium"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Confirmed by inspecting evaluation-plan.controller.ts parseWordFile implementation."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "payments-missing-idempotency-race-condition",
+    "title": "Duplicate Payments on Partial Installments via Missing Idempotency Key",
+    "description": "In registerPayment, the double payment check only blocks requests if an installment has been completely settled (pendingCents === 0). For partial payments (abonos), concurrent or repeated requests acquire the advisory lock sequentially, read the updated remaining balance, and create duplicate payment transactions. Additionally, the Payment table has no uniqueness constraint on the payment reference string, and no Idempotency-Key header is enforced.",
+    "root_cause": "Financial registration lacks idempotency keys and reference uniqueness, allowing duplicate partial payments to be recorded.",
+    "intended_behavior": "Payment submissions must be idempotent; identical payments submitted concurrently or retried must not double-charge or create duplicate ledger entries.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "apps/backend/src/routes/pagos.routes.ts",
+        "line": 70,
+        "scope": "POST /api/payments/students/:studentId/payments",
+        "description": "Client submits payment."
+      },
+      {
+        "kind": "propagation",
+        "file": "apps/backend/src/controllers/pagos.controller.ts",
+        "line": 489,
+        "scope": "pg_advisory_xact_lock",
+        "description": "Transaction acquires lock and reads partial debt."
+      },
+      {
+        "kind": "sink",
+        "file": "apps/backend/src/controllers/pagos.controller.ts",
+        "line": 514,
+        "scope": "tx.payment.create",
+        "description": "Payment and payment items are duplicated in database."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "apps/backend/src/controllers/pagos.controller.ts",
+        "line": 504,
+        "description": "Only checks if pendingCents === 0, allowing repeated partial payments."
+      },
+      {
+        "file": "apps/backend/src/prisma/schema.prisma",
+        "line": 1228,
+        "description": "Payment model reference field lacks unique index."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authorization_role",
+        "description": "Caller is authenticated with role ADMIN."
+      },
+      {
+        "kind": "data_state",
+        "description": "Payment is for an installment with partial balance remaining."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "A network glitch or double-click from administrative billing staff.",
+      "payloads": [
+        "Two concurrent POST requests with identical payment reference and amount."
+      ],
+      "instructions": [
+        "Send requests within milliseconds or upon network retry."
+      ],
+      "observed_result": "Two payment receipts are generated and student ledger records double the intended payment."
+    },
+    "remediation": {
+      "strategy": "Enforce an Idempotency-Key header stored in Redis, add a unique index on payment references per tenant/cycle, and reject duplicate transactions for the same student, amount, and reference within a short time window."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "high",
+        "reason": "Commonly triggered by network retries or billing client double submissions."
+      },
+      "impact": {
+        "score": "high",
+        "reason": "Creates inaccurate accounting records, over-collection of student fees, and financial ledger corruption."
+      },
+      "overall_severity": "high"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Confirmed by inspecting registerPayment in pagos.controller.ts and schema.prisma."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "process-plaintext-db-credentials-in-cli-args",
+    "title": "Plaintext Database Password Exposed in Process Command-Line Arguments",
+    "description": "In respaldos.service.ts, the functions respaldarLiceo and restaurarLiceo invoke pg_dump and pg_restore using child_process.spawn. The database connection URL, including username and plaintext password, is passed as a positional command-line argument. On multi-user systems or container hosts, any local process inspecting OS process tables (/proc or Get-Process) can read the database password in plaintext.",
+    "root_cause": "CLI tool execution passes sensitive credentials via command-line arguments instead of process environment variables.",
+    "intended_behavior": "Database credentials must be passed via secure environment variables (PGPASSWORD) or protected configuration files.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "apps/backend/src/routes/superadmin-institutes.routes.ts",
+        "line": 48,
+        "scope": "DELETE /api/superadmin/institutes/:id",
+        "description": "SuperAdmin triggers institute deletion with backup."
+      },
+      {
+        "kind": "propagation",
+        "file": "apps/backend/src/services/respaldos.service.ts",
+        "line": 150,
+        "scope": "respaldarLiceo",
+        "description": "Service generates database URL with plaintext password."
+      },
+      {
+        "kind": "sink",
+        "file": "apps/backend/src/services/respaldos.service.ts",
+        "line": 84,
+        "scope": "spawn(pg_dump, [..., url])",
+        "description": "Plaintext password is exposed in process argument list."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "apps/backend/src/services/respaldos.service.ts",
+        "line": 84,
+        "description": "spawn(comando, args, ...) executes with url in args array."
+      },
+      {
+        "file": "apps/backend/src/services/respaldos.service.ts",
+        "line": 153,
+        "description": "urlParaHerramientas returns full postgresql:// URI with password."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "environmental_dependency",
+        "description": "A backup is triggered, and an unprivileged process or monitoring agent inspects the OS process list."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "A local user, APM agent, or low-privilege container process.",
+      "payloads": [
+        "ps -ef | grep pg_dump or Get-Process"
+      ],
+      "instructions": [
+        "Monitor process table during database backup execution."
+      ],
+      "observed_result": "The complete PostgreSQL connection string including password is visible in the process arguments."
+    },
+    "remediation": {
+      "strategy": "Pass credentials via the env option of spawn (PGUSER, PGPASSWORD, PGHOST, PGPORT, PGDATABASE) and omit the connection URL from command-line arguments."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "medium",
+        "reason": "Requires local access to the host or container process list."
+      },
+      "impact": {
+        "score": "medium",
+        "reason": "Discloses PostgreSQL database credentials for the affected tenant."
+      },
+      "overall_severity": "medium"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Directly verified in respaldos.service.ts spawn argument construction."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "ratelimit-bypass-unauthenticated-header",
+    "title": "Global IP Rate Limit Bypass via Untrusted Authorization Header",
+    "description": "The global rate limiter in apps/backend/src/server.ts registers a key generator cupoDeLaPeticion that inspects request.headers.authorization. If present, it keys the bucket by s:sha256(authorization). Because @fastify/rate-limit runs on onRequest before authentication or route validation, an unauthenticated client can supply arbitrary Authorization headers (e.g. Authorization: Bearer <random>) when requesting public endpoints (/api/instituto/:slug/info, /health, /api/auth/login), completely bypassing the fallback IP-based rate limit.",
+    "root_cause": "cupoDeLaPeticion uses unverified client-supplied headers to define rate-limiting buckets on unauthenticated routes.",
+    "intended_behavior": "Unauthenticated requests must be rate-limited strictly by verified client IP address.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "apps/backend/src/server.ts",
+        "line": 87,
+        "scope": "cupoDeLaPeticion",
+        "description": "Incoming request arrives with arbitrary Authorization header."
+      },
+      {
+        "kind": "propagation",
+        "file": "apps/backend/src/server.ts",
+        "line": 93,
+        "scope": "cupoDeLaPeticion",
+        "description": "Function creates unique rate limit bucket s:sha256(random)."
+      },
+      {
+        "kind": "sink",
+        "file": "apps/backend/src/server.ts",
+        "line": 95,
+        "scope": "rateLimit",
+        "description": "Rate limit counter increments on newly generated key, bypassing IP bucket."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "apps/backend/src/server.ts",
+        "line": 93,
+        "description": "if (credencial) return `s:${sha256(credencial).slice(0, 32)}`; executed before auth."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "Unauthenticated client supplies rotating Authorization header values."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "An unauthenticated remote attacker.",
+      "payloads": [
+        "Authorization: Bearer <uuid_1>, Authorization: Bearer <uuid_2>, ..."
+      ],
+      "instructions": [
+        "Send rapid requests to public or login endpoints with rotating Authorization headers."
+      ],
+      "observed_result": "None of the requests trigger 429 Too Many Requests, bypassing global rate limits from a single IP."
+    },
+    "remediation": {
+      "strategy": "Only use session-based keys for routes guarded by authenticate where request.user is established. Key all unauthenticated requests strictly by client IP (ip:request.ip)."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "high",
+        "reason": "Trivially executable with curl or automated scripts."
+      },
+      "impact": {
+        "score": "high",
+        "reason": "Enables credential stuffing on login endpoints and scraping/DoS on public endpoints."
+      },
+      "overall_severity": "high"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Confirmed by inspecting cupoDeLaPeticion key generator in server.ts."
+    }
+  }
+]

@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Save, GraduationCap, Globe, Calendar, Clock } from 'lucide-react';
 import { instituteService, type InstituteConfig } from '@/services/institute.service';
 import { toast } from 'sonner';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export function AcademicSettings() {
     const [loading, setLoading] = useState(false);
@@ -62,7 +63,7 @@ export function AcademicSettings() {
             }
         } catch (error) {
             console.error(error);
-            toast.error('Error al cargar la configuración');
+            if (!esQueNoContesta(error)) toast.error('Error al cargar la configuración');
         } finally {
             setLoading(false);
         }

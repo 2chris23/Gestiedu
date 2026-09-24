@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaClient as PlatformPrismaClient } from '../generated/platform-client';
 import { applyTenantIsolation } from './tenant-isolation.ext';
-import { buildTenantDatabaseUrl, cabenLasConexiones } from './tenant-db-url';
+import { buildTenantDatabaseUrl, cabenLasConexiones, pgBouncer } from './tenant-db-url';
 
 // =====================================================
 // PLATFORM DATABASE (Metadata única)
@@ -66,16 +66,59 @@ interface TenantConnection {
   instituteId: string;
 }
 
-// Cache de conexiones de tenants (máximo 50 conexiones activas)
 const tenantConnections = new Map<string, TenantConnection>();
-const MAX_CONNECTIONS = 50;
+
+/**
+ * Los que se están abriendo ahora mismo. Veinte peticiones a la vez de un liceo
+ * sin abrir esperan a UNA apertura, en vez de abrir veinte clientes (medido:
+ * abría 20 y se quedaba con uno; los otros 19 seguían conectados para siempre).
+ */
+const abriendo = new Map<string, Promise<PrismaClient>>();
+
+/**
+ * CUÁNTOS LICEOS ABIERTOS A LA VEZ
+ *
+ * Eran 50 fijos. Con 200 liceos en marcha, cada petición de uno que no estaba
+ * en la lista abría el suyo y cerraba otro, y el usuario esperaba las dos
+ * cosas. Sin PgBouncer el tope lo pone PostgreSQL (la cuenta la hace
+ * `cabenLasConexiones` al arrancar), así que se queda en 50; con PgBouncer las
+ * conexiones de los clientes no son conexiones reales, y caben 250.
+ * `CLIENTES_DE_LICEO` manda si se pone.
+ */
+function clientesDeLiceo(): number {
+  const pedido = Number(process.env.CLIENTES_DE_LICEO);
+  if (Number.isInteger(pedido) && pedido > 0) return pedido;
+  return pgBouncer() ? 250 : 50;
+}
 
 /**
  * Cuántos clientes de liceo se guardan a la vez. Lo usa el aviso de arranque
- * para hacer la cuenta con PostgreSQL: ver `cabenLasConexiones`.
+ * para hacer la cuenta con PostgreSQL: ver `cabenLasConexiones`. Se calcula al
+ * usarse, no al cargar el archivo: a esa hora las variables del `.env` pueden
+ * no estar leídas todavía.
  */
-export const CLIENTES_DE_LICEO_GUARDADOS = MAX_CONNECTIONS;
+export const clientesDeLiceoGuardados = clientesDeLiceo;
 const CONNECTION_TTL = 30 * 60 * 1000; // 30 minutos
+/** Un cliente usado hace menos de esto no se cierra aunque sobre: está trabajando. */
+const EN_USO_MS = 60 * 1000;
+
+/**
+ * CUÁNTAS CONSULTAS HA HECHO EL SERVIDOR A LAS BASES DE LOS LICEOS
+ *
+ * Solo cuenta con `CONTAR_CONSULTAS=1` (las pruebas lo encienden). Sirve para
+ * lo que más se repite aquí: una pantalla que pregunta lo mismo una vez por
+ * alumno o por materia. Lo que importa no es el número, sino que NO crezca con
+ * el número de alumnos o de materias.
+ */
+let consultasContadas = 0;
+export function consultasALaBase(): number {
+  return consultasContadas;
+}
+
+/** Cuántos clientes de liceo hay abiertos ahora mismo (para las pruebas y el panel). */
+export function clientesDeLiceoAbiertos(): number {
+  return tenantConnections.size;
+}
 
 /**
  * Obtener o crear conexión Prisma para un tenant específico
@@ -88,6 +131,16 @@ export async function getTenantPrisma(instituteId: string): Promise<PrismaClient
     return cached.prisma;
   }
 
+  // 1.5. ¿Ya lo está abriendo otra petición? Entonces se espera a esa.
+  const enCurso = abriendo.get(instituteId);
+  if (enCurso) return enCurso;
+
+  const apertura = abrirClienteDeLiceo(instituteId).finally(() => abriendo.delete(instituteId));
+  abriendo.set(instituteId, apertura);
+  return apertura;
+}
+
+async function abrirClienteDeLiceo(instituteId: string): Promise<PrismaClient> {
   // 2. Obtener credenciales del tenant desde platform DB
   const institute = await platformPrisma.institute.findUnique({
     where: { id: instituteId },
@@ -141,13 +194,21 @@ export async function getTenantPrisma(instituteId: string): Promise<PrismaClient
      *
      *   LOG_TENANT_QUERIES=1 npm run dev
      */
-    log:
-      process.env.LOG_TENANT_QUERIES === '1'
-        ? ['query', 'error', 'warn']
+    log: [
+      ...(process.env.LOG_TENANT_QUERIES === '1'
+        ? (['query', 'error', 'warn'] as const)
         : process.env.NODE_ENV === 'development'
-          ? ['error', 'warn']
-          : ['error'],
+          ? (['error', 'warn'] as const)
+          : (['error'] as const)),
+      // Para contarlas desde las pruebas (ver `consultasALaBase`).
+      ...(process.env.CONTAR_CONSULTAS === '1' ? [{ emit: 'event' as const, level: 'query' as const }] : []),
+    ],
   });
+  if (process.env.CONTAR_CONSULTAS === '1') {
+    (rawPrisma as any).$on('query', () => {
+      consultasContadas++;
+    });
+  }
 
   // 3.5. Aplicar extensión de aislamiento (safety net que inyecta instituteId automáticamente)
   // SEGURIDAD: Esta extensión es una red de seguridad adicional. Se aplica al cliente
@@ -182,9 +243,12 @@ export async function getTenantPrisma(instituteId: string): Promise<PrismaClient
     instituteId,
   });
 
-  // 6. Limpiar conexiones antiguas si excedemos el límite
-  if (tenantConnections.size > MAX_CONNECTIONS) {
-    await cleanupOldConnections();
+  // 6. Limpiar conexiones antiguas si excedemos el límite. SIN esperar: cerrar
+  // el cliente de otro liceo no es asunto de quien acaba de llegar.
+  if (tenantConnections.size > clientesDeLiceo()) {
+    void cleanupOldConnections().catch((error) =>
+      console.warn('No se pudieron cerrar clientes de liceo viejos:', error instanceof Error ? error.message : error)
+    );
   }
 
   return tenantPrisma;
@@ -204,26 +268,32 @@ async function cleanupOldConnections(): Promise<void> {
     }
   }
 
-  // Ordenar por antigüedad y eliminar las más antiguas si aún excedemos el límite
-  if (toRemove.length === 0 && tenantConnections.size > MAX_CONNECTIONS) {
+  // Ordenar por antigüedad y eliminar las más antiguas si aún excedemos el límite.
+  // Pero nunca uno que se usó en el último minuto: cerrarle el cliente a un
+  // liceo con gente dentro hacía fallar sus consultas a medias. Si todos están
+  // trabajando, el tope se pasa un rato; es mejor que tirar peticiones.
+  if (toRemove.length === 0 && tenantConnections.size > clientesDeLiceo()) {
     const sorted = Array.from(tenantConnections.entries())
       .sort((a, b) => a[1].lastUsed.getTime() - b[1].lastUsed.getTime());
 
-    const excess = tenantConnections.size - MAX_CONNECTIONS;
-    for (let i = 0; i < excess; i++) {
+    const excess = tenantConnections.size - clientesDeLiceo();
+    for (let i = 0; i < excess && i < sorted.length; i++) {
+      if (now.getTime() - sorted[i][1].lastUsed.getTime() < EN_USO_MS) break;
       toRemove.push(sorted[i][0]);
     }
   }
 
-  // Desconectar y eliminar
+  // Se sacan de la lista en el acto y se desconectan en segundo plano.
+  const cerrar: Promise<void>[] = [];
   for (const instituteId of toRemove) {
     const connection = tenantConnections.get(instituteId);
     if (connection) {
-      await connection.prisma.$disconnect();
       tenantConnections.delete(instituteId);
+      cerrar.push(connection.prisma.$disconnect().catch(() => undefined));
       console.log(`Cleaned up tenant connection: ${instituteId}`);
     }
   }
+  await Promise.all(cerrar);
 }
 
 /**
@@ -242,7 +312,7 @@ export async function avisarSiNoCabenLasConexiones(): Promise<void> {
     const cuenta = cabenLasConexiones(
       Number(max?.max_connections) || 100,
       Number(res?.superuser_reserved_connections) || 0,
-      CLIENTES_DE_LICEO_GUARDADOS
+      clientesDeLiceo()
     );
 
     if (cuenta.cabe) console.log(cuenta.mensaje);

@@ -40,6 +40,8 @@ export const useSuperAdminAuthStore = create<SuperAdminAuthState>()(
         {
             name: 'superadmin-auth', // clave en localStorage
             storage: createJSONStorage(() => localStorage),
+            // SEGURIDAD: Solo persistir datos de usuario en localStorage, nunca el access token
+            partialize: (state) => ({ superAdmin: state.superAdmin }),
         }
     )
 );

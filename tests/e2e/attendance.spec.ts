@@ -23,19 +23,32 @@ test.describe('Módulo 7: Asistencia Escolar', () => {
   test('ASIS-01: Marcar los 4 estados de asistencia (PRESENT, LATE, ABSENT, EXCUSED)', async ({}, testInfo) => {
     // La asistencia necesita sección y profesor: se toma un estudiante que YA
     // esté inscrito en una sección, como en la vida real.
+    //
+    // Y uno que HOY no tenga asistencia puesta todavía. Un alumno solo tiene una
+    // asistencia por día (`daily_attendance_studentId_date_key`), que es
+    // justamente lo que el producto hace bien; al coger siempre al primero de la
+    // lista, esta prueba chocaba contra esa regla y se ponía roja por algo que
+    // no es un fallo. El `ON CONFLICT (id)` de abajo no la cubre: la llave que
+    // manda aquí no es el id, es alumno+fecha.
+    const today = new Date().toISOString().split('T')[0];
+
     const student = await queryTenantDb(
       `SELECT sc."studentId" AS id, sc."classroomId", c."teacherId"
          FROM student_classrooms sc
          JOIN classrooms c ON c.id = sc."classroomId"
         WHERE sc."isActive" = true AND c."teacherId" IS NOT NULL
-        LIMIT 1`
+          AND NOT EXISTS (
+            SELECT 1 FROM daily_attendance da
+             WHERE da."studentId" = sc."studentId" AND da.date::date = $1::date
+          )
+        LIMIT 1`,
+      [today]
     );
     if (student.length === 0) return;
 
     const studentId = student[0].id;
     const classroomId = student[0].classroomId;
     const teacherId = student[0].teacherId;
-    const today = new Date().toISOString().split('T')[0];
     const testRecordId = `att-test-${Date.now()}`;
 
     try {

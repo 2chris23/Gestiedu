@@ -1411,61 +1411,47 @@ export async function deleteUser(
         // 3. Actividades creadas por el docente:
         // Reasignar creador al fallback y conservar el nombre completo del profesor en la descripción
         if (fallbackUserId) {
-          const teacherActivities = await tx.activity.findMany({
-            where: { createdBy: id },
-            select: { id: true, description: true },
-          });
-          for (const act of teacherActivities) {
-            const desc = act.description || '';
-            const tag = `[Profesor histórico: ${teacherFullName}]`;
-            const newDesc = desc.includes(tag) ? desc : (desc ? `${desc} ${tag}` : tag);
-            await tx.activity.update({
-              where: { id: act.id },
-              data: {
-                createdBy: fallbackUserId,
-                description: newDesc,
-              },
-            });
-          }
+          // TODO EN TRES ESCRITURAS, NO UNA POR FILA
+          // Esto iba nota a nota y asistencia a asistencia dentro de la
+          // transacción. Un profesor con tres años en el liceo son decenas de
+          // miles de filas: la transacción se pasaba de sus 30 s, se deshacía,
+          // y el profesor no se podía dar de baja. Ahora lo hace PostgreSQL de
+          // una vez, con el mismo resultado fila por fila.
+          const tagActividad = `[Profesor histórico: ${teacherFullName}]`;
+          await tx.$executeRaw`
+            UPDATE activities
+               SET "createdBy" = ${fallbackUserId},
+                   description = CASE
+                     WHEN COALESCE(description, '') = '' THEN ${tagActividad}
+                     WHEN strpos(description, ${tagActividad}) > 0 THEN description
+                     ELSE description || ' ' || ${tagActividad}
+                   END,
+                   "updatedAt" = NOW()
+             WHERE "createdBy" = ${id}`;
 
-          // 4. Calificaciones dadas por el docente:
-          // Reasignar teacherId al fallback y almacenar en metadata el nombre del profesor histórico
-          const teacherGrades = await tx.grade.findMany({
-            where: { teacherId: id },
-            select: { id: true, metadata: true },
-          });
-          for (const g of teacherGrades) {
-            const meta = (typeof g.metadata === 'object' && g.metadata !== null) ? g.metadata : {};
-            await tx.grade.update({
-              where: { id: g.id },
-              data: {
-                teacherId: fallbackUserId,
-                metadata: {
-                  ...meta,
-                  historicalTeacherName: teacherFullName,
-                  historicalTeacherId: id,
-                },
-              },
-            });
-          }
+          // 4. Calificaciones dadas por el docente: pasan al de reemplazo, y
+          // en su metadata queda quién las puso.
+          await tx.$executeRaw`
+            UPDATE grades
+               SET "teacherId" = ${fallbackUserId},
+                   metadata = (CASE WHEN jsonb_typeof(metadata) = 'object' THEN metadata ELSE '{}'::jsonb END)
+                              || jsonb_build_object('historicalTeacherName', ${teacherFullName}::text,
+                                                    'historicalTeacherId', ${id}::text),
+                   "updatedAt" = NOW()
+             WHERE "teacherId" = ${id}`;
 
           // 5. Asistencias tomadas por el docente:
-          const attendances = await tx.dailyAttendance.findMany({
-            where: { teacherId: id },
-            select: { id: true, comments: true },
-          });
-          for (const att of attendances) {
-            const comm = att.comments || '';
-            const tag = `[Tomada por: ${teacherFullName}]`;
-            const newComments = comm.includes(tag) ? comm : (comm ? `${comm} ${tag}` : tag);
-            await tx.dailyAttendance.update({
-              where: { id: att.id },
-              data: {
-                teacherId: fallbackUserId,
-                comments: newComments,
-              },
-            });
-          }
+          const tagAsistencia = `[Tomada por: ${teacherFullName}]`;
+          await tx.$executeRaw`
+            UPDATE daily_attendance
+               SET "teacherId" = ${fallbackUserId},
+                   comments = CASE
+                     WHEN COALESCE(comments, '') = '' THEN ${tagAsistencia}
+                     WHEN strpos(comments, ${tagAsistencia}) > 0 THEN comments
+                     ELSE comments || ' ' || ${tagAsistencia}
+                   END,
+                   "updatedAt" = NOW()
+             WHERE "teacherId" = ${id}`;
 
           // 6. Horarios asignados al docente
           await borrarGuardandoCopia(tx, 'schedule', { teacherId: id }, quien);
