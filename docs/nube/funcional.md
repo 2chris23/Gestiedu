@@ -17,6 +17,7 @@ Informe para el dueño del liceo. Se actualiza y se sube en cada arreglo que que
 | `f82d14a` | El alumno archivado (retirado) deja su sección: no cuenta, no ocupa cupo y no se le reinscribe solo al cerrar el ciclo. |
 | `d5bb535` | El representante ve el mismo promedio que su hijo y no recibe «Asistencia baja: 0%» sin registros. |
 | `4ce88a5` | Las definitivas se redondean como manda el MPPE (0,50 o más sube al entero), configurable por liceo: un 9,5 ya no queda pendiente. |
+| `3c5c769` | Una nota suelta de Clase en Vivo cuenta solo en el lapso en que se puso (antes se sumaba a los tres). |
 
 - **Cómo probarlo:**
   ```bash
@@ -132,6 +133,17 @@ Durante el año (riesgo, promedios de la sección) no cambia nada. RED-01…05, 
 **Para `docs/MAPA_DE_CALCULOS.md`**, sección 6 o una nueva «Definitivas»: «Al cerrar el ciclo, con
 `redondeoDeDefinitivas = 'MPPE'` (por defecto) la nota de cada lapso se redondea al entero (≥ 0,50 sube) y la
 definitiva de la materia es la media de esas, redondeada igual. Con 'NINGUNO', a dos decimales. RED-01…05.»
+
+### 6. Las notas sueltas de Clase en Vivo se sumaban a los tres lapsos — **arreglado** (`3c5c769`)
+
+Sin plan de evaluación, las notas de Clase en Vivo que no cuelgan de un criterio («sueltas») entraban en
+**todos** los lapsos: un 20 del primero aparecía también en el segundo y el tercero. Un alumno con 16 en el
+segundo lapso salía con 18. Ahora la nota de un criterio es del lapso del criterio, y la suelta, del lapso de su
+fecha (la de la clase; si no, la de entrega; si no, la de creación). LAP-01…03, las tres en rojo antes.
+
+**Para `docs/MAPA_DE_CALCULOS.md`**, nivel 0: «Una actividad de Clase en Vivo es del lapso de su criterio; sin
+criterio, del lapso de la fecha de su clase (o de entrega, o de creación). Una fecha entre lapsos va al que
+acaba de terminar. `utils/lapso-de-la-actividad.ts`, LAP-01…03.»
 
 ## Qué se probó y qué no
 
