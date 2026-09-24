@@ -13,6 +13,7 @@ Informe para el dueño del liceo. Se actualiza y se sube en cada arreglo que que
 | Commit | Qué cambia |
 |---|---|
 | `b428171` | Un 0 es una nota: el alumno con todo en 0 ya no sale promovido sin pendientes, ni «sin calificar», ni fuera del riesgo; un lapso en 0 cuenta en el ciclo. |
+| `afb6c7f` | Cambiar de sección: ya no da error 500, respeta el cupo, y las notas de la sección anterior siguen contando en el promedio. |
 
 - **Cómo probarlo:**
   ```bash
@@ -72,6 +73,26 @@ mapa de cálculos. La lista enseña el 0 como 0 y el aviso de riesgo dice la not
 **Para `docs/MAPA_DE_CALCULOS.md`** (no lo edito, otra sesión trabaja ahí): en la sección 1, nivel 2, donde
 dice «Lapsos sin notas no se dividen», añadir: «Un lapso con notas en 0 SÍ cuenta: sin notas no es lo mismo
 que 0. Lo vigilan CERO-01…07 (`funcional-notas-en-cero.test.ts`)».
+
+### 2. Cambiar a un alumno de sección daba error y le borraba las notas — **arreglado** (`afb6c7f`)
+
+Medido con SEC-01…05 (las cinco en rojo):
+
+- **Inscribir en otra sección** a un alumno que ya estaba en una respondía **error 500**. La puerta
+  desactivaba la inscripción y creaba otra, pero la base admite una sola por alumno y ciclo. Igual al volver a
+  inscribir en otra sección a quien quedó con la inscripción inactiva. Y el cambio **no miraba el cupo**.
+- **Las notas de la sección anterior dejaban de contar**: con 18 en la A y 10 en la B su promedio salía 10 (en
+  su perfil, en la lista, en su panel y al cerrar el ciclo). Es de las quejas más repetidas de PowerSchool y
+  Schoology (ver la lista de casos).
+- Con **dos inscripciones activas** (la de este año y la del próximo, hecha por adelantado) el cálculo cogía
+  una cualquiera para buscar el plan de evaluación.
+
+Ahora la inscripción se cambia de sitio (con cupo), un doble clic responde «ya inscrito» (409) y no 500, y las
+notas del lapso salen de su sección de ese ciclo y de las otras del mismo ciclo donde tiene notas.
+
+**Para `docs/MAPA_DE_CALCULOS.md`**, nivel 2: «Si el alumno se cambió de sección, sus criterios salen de su
+sección y de las otras del mismo ciclo donde tiene notas; el promedio se escala a los puntos calificados
+(`seccionesDelAlumno`). SEC-04/05.»
 
 ## Qué se probó y qué no
 
