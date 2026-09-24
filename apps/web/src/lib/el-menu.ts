@@ -109,19 +109,40 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean): DestinoDel
     return todos.filter((d) => !rol || d.roles.includes(rol));
 }
 
+/** En la barra, en vez de una pantalla: abre «Mi cuenta» (la ficha de la foto). */
+export const MI_CUENTA = '@mi-cuenta';
+
 /**
- * LOS DOS DE LA BARRA DE ABAJO
+ * LOS DE LA BARRA DE ABAJO
  *
- * Solo caben dos, uno a cada lado de Inicio. Se eligen a mano y no por orden
- * de lista: lo que se abre todos los días, no lo que salga primero. Lo demás
- * está en el panel de inicio, a un toque de la casita del centro.
+ * Se eligen a mano y no por orden de lista: lo que se abre todos los días, no
+ * lo que salga primero. Lo demás está en el panel de inicio, a un toque de la
+ * casita del centro.
+ *
+ *  · El personal lleva cuatro, dos a cada lado de Inicio.
+ *  · El alumno y el representante no tienen más pantallas que el inicio y el
+ *    calendario: al otro lado va «Mi cuenta» (cambiar la contraseña, la
+ *    huella, cerrar sesión), que si no solo se encuentra tocando la foto.
+ *  · El administrador ve Pagos solo si el liceo los usa; si no, Calendario.
  */
-export const LOS_DE_LA_BARRA: Record<string, string[]> = {
-    ADMIN: ['/dashboard/academico', '/dashboard/horarios'],
-    TEACHER: ['/dashboard/academico', '/dashboard/horarios'],
-    STUDENT: ['/dashboard/calendario'],
-    TUTOR: ['/dashboard/calendario'],
-};
+export function losDeLaBarra(rol: string | undefined, conPagos: boolean): string[] {
+    switch (rol) {
+        case 'ADMIN':
+            return [
+                '/dashboard/academico',
+                '/dashboard/usuarios',
+                '/dashboard/horarios',
+                conPagos ? '/dashboard/pagos' : '/dashboard/calendario',
+            ];
+        case 'TEACHER':
+            return ['/dashboard/academico', '/dashboard/materias', '/dashboard/horarios', '/dashboard/calendario'];
+        case 'STUDENT':
+        case 'TUTOR':
+            return ['/dashboard/calendario', MI_CUENTA];
+        default:
+            return [];
+    }
+}
 
 /** Lo que se ofrece como acceso en el panel: todo el menú menos Inicio. */
 export function losAccesosDe(rol: string | undefined, conPagos: boolean): DestinoDelMenu[] {

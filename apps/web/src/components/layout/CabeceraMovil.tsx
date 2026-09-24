@@ -29,6 +29,13 @@ import FichaDeMiCuenta from '@/components/layout/FichaDeMiCuenta';
  * trozo de la pantalla anterior. Lo comprueba `npm run movil`.
  */
 
+const ABRIR_MI_CUENTA = 'gestiedu:abrir-mi-cuenta';
+
+/** Abre «Mi cuenta» desde fuera de la cabecera (el botón de la barra de abajo). */
+export function abrirMiCuenta(): void {
+    window.dispatchEvent(new Event(ABRIR_MI_CUENTA));
+}
+
 export interface CabeceraMovilProps {
     nombre: string;
     apellido?: string;
@@ -50,6 +57,12 @@ export function CabeceraMovil({
     alCerrarSesion,
 }: CabeceraMovilProps) {
     const [fichaAbierta, setFichaAbierta] = React.useState(false);
+
+    React.useEffect(() => {
+        const abrir = () => setFichaAbierta(true);
+        window.addEventListener(ABRIR_MI_CUENTA, abrir);
+        return () => window.removeEventListener(ABRIR_MI_CUENTA, abrir);
+    }, []);
     const nombreCompleto = `${nombre ?? ''} ${apellido ?? ''}`.trim() || 'Usuario';
     // En una pantalla de 390 px cabe el nombre de pila y un apellido; un
     // «María de los Ángeles Rodríguez Betancourt» entero empuja la cabecera.

@@ -132,6 +132,26 @@ test.describe('En el teléfono', () => {
             expect(dondeEstaba).not.toBeNull();
             expect(escondida).not.toBeNull();
             expect(escondida!.y).toBeGreaterThan(dondeEstaba!.y);
+
+            // Y la casita de Inicio, que sobresale por encima de la barra, no
+            // se queda asomando: un medio círculo morado flotando sobre el
+            // contenido (visto en un Motorola).
+            const loQueAsoma = await barra.evaluate((nav) => {
+                const alto = window.visualViewport?.height ?? window.innerHeight;
+                let arriba = Infinity;
+                for (const el of [nav, ...Array.from(nav.querySelectorAll('*'))]) {
+                    let opacidad = 1;
+                    for (let p: Element | null = el; p && p !== document.body; p = p.parentElement) {
+                        opacidad *= parseFloat(getComputedStyle(p).opacity);
+                    }
+                    const caja = el.getBoundingClientRect();
+                    if (opacidad < 0.05 || caja.height === 0) continue;
+                    arriba = Math.min(arriba, caja.top);
+                }
+                const franja = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--zona-segura-abajo')) || 0;
+                return alto - arriba - franja;
+            });
+            expect(loQueAsoma).toBeLessThanOrEqual(1);
         } catch (error) {
             await captureEvidence(testInfo, page, 'MOVIL-02', 'La barra de abajo', error);
             throw error;

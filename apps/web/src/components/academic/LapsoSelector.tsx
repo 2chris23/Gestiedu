@@ -24,11 +24,21 @@ export default function LapsoSelector({ periods, value, onChange, compact = fals
     const options = periods || [];
     return (
         <div className={compact ? 'inline-flex items-center gap-1.5' : 'relative'}>
-            <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-2xs">
-                <CalendarRange className="w-4 h-4 text-indigo-600" />
+            {/* En el teléfono el `select` ya mide 44 px de alto (globals.css):
+                con el relleno de arriba y abajo, el recuadro llegaba a 56. */}
+            <div
+                className={`flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl shadow-2xs ${
+                    compact ? 'px-2.5 py-0 sm:px-3 sm:py-1.5' : 'px-3 py-1.5'
+                }`}
+            >
+                {/* Compacto, en el teléfono el icono sobra: le quitaba al nombre del
+                    ciclo los 20 px que le faltaban para leerse entero. */}
+                <CalendarRange className={`w-4 h-4 shrink-0 text-indigo-600 ${compact ? 'hidden sm:block' : ''}`} aria-hidden />
+                {/* Sin borde ni relleno propios: el recuadro es el de fuera. Con
+                    los de `globals.css` salía un recuadro dentro de otro. */}
                 <select
                     aria-label="Selector de lapso / momento"
-                    className="bg-transparent text-xs font-bold text-gray-700 outline-none cursor-pointer appearance-none pr-5"
+                    className="min-w-0 rounded-none border-0 bg-transparent py-0 pl-0 pr-5 text-xs font-bold text-gray-700 outline-none cursor-pointer appearance-none"
                     value={value || ''}
                     onChange={(e) => onChange(e.target.value || undefined)}
                 >

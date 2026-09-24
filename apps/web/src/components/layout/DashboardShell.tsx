@@ -8,13 +8,15 @@ import { olvidarLoDescargado } from '@/lib/lo-guardado-en-el-telefono';
 import { laPuertaDelLiceo, elLiceoDeLaCookie } from '@/lib/la-puerta-del-liceo';
 import { laLlaveGuardada, olvidarLaLlave } from '@/lib/la-huella';
 import AvisoSinConexion from '@/components/common/AvisoSinConexion';
-import { LogOut, GraduationCap } from 'lucide-react';
+import ActualizarLaApp from '@/components/common/ActualizarLaApp';
+import { LogOut, GraduationCap, UserCircle } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useInstituteConfig } from '@/hooks/useInstitute';
 import { useSessionKeepAlive } from '@/hooks/useSessionKeepAlive';
 import { usePagosActivos } from '@/hooks/usePagos';
 import { BACKEND_URL } from '@/config/env';
-import { elMenuDe, LOS_DE_LA_BARRA, type DestinoDelMenu } from '@/lib/el-menu';
+import { elMenuDe, losDeLaBarra, MI_CUENTA } from '@/lib/el-menu';
+import { abrirMiCuenta } from '@/components/layout/CabeceraMovil';
 import BarraInferiorMovil from '@/components/layout/BarraInferiorMovil';
 import CabeceraMovil from '@/components/layout/CabeceraMovil';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -94,10 +96,11 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
 
     const menu = elMenuDe(user?.role, Boolean(pagos?.enabled));
 
-    const destinosDeLaBarra = (LOS_DE_LA_BARRA[user?.role] ?? [])
-        .map((href) => menu.find((d) => d.href === href))
-        .filter((d): d is DestinoDelMenu => Boolean(d))
-        .map(({ name, href, icon }) => ({ name, href, icon }));
+    const destinosDeLaBarra = losDeLaBarra(user?.role, Boolean(pagos?.enabled)).flatMap((href) => {
+        if (href === MI_CUENTA) return [{ name: 'Mi cuenta', href, icon: UserCircle, alPulsar: abrirMiCuenta }];
+        const destino = menu.find((d) => d.href === href);
+        return destino ? [{ name: destino.name, href: destino.href, icon: destino.icon }] : [];
+    });
 
     const nombre = user.firstName?.split(' ')[0] || '';
     const apellido = user.lastName?.split(' ')[0] || '';
@@ -117,6 +120,9 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
 
             {/* Sin señal se sigue viendo lo de antes, y hay que decirlo. */}
             <AvisoSinConexion />
+
+            {/* En la APK: si hay una versión nueva publicada, se ofrece aquí. */}
+            <ActualizarLaApp />
 
             {/*
                 LA BARRA LATERAL ES DEL ORDENADOR
