@@ -60,3 +60,26 @@ export function useALaVista<T extends Element>(ref: React.RefObject<T | null>) {
     }, [ref]);
     return aLaVista;
 }
+
+/**
+ * ¿Pidió «menos movimiento»? Con `matchMedia` y `useSyncExternalStore`: en el
+ * servidor (y al hidratar) dice que no, así el primer pintado coincide con el
+ * HTML del servidor, y justo después dice la verdad y la sigue si cambia.
+ *
+ * No se usa `useReducedMotion` de framer-motion: en la prueba PORTADA-05 se
+ * quedaba en `false` con el sistema pidiendo menos movimiento, y los
+ * aparatos seguían moviéndose.
+ */
+const CONSULTA = '(prefers-reduced-motion: reduce)';
+const suscribir = (avisar: () => void) => {
+    const mq = window.matchMedia(CONSULTA);
+    mq.addEventListener('change', avisar);
+    return () => mq.removeEventListener('change', avisar);
+};
+export function useMenosMovimiento() {
+    return React.useSyncExternalStore(
+        suscribir,
+        () => window.matchMedia(CONSULTA).matches,
+        () => false
+    );
+}

@@ -78,7 +78,13 @@ function Avatar({ nombre, color, className }: { nombre: string; color: string; c
     );
 }
 
-/** Una barra que crece con `scaleX`, nunca con `width`. */
+/**
+ * Una barra que crece con `scaleX`, nunca con `width`, y en CSS: el borde de
+ * fuera se estira hasta el valor (y lo sigue si cambia) y el de dentro nace
+ * de cero con `barra-crece` (globals.css). Con cincuenta barras y cifras en
+ * pantalla, un componente animado por cada una costaba tareas largas al
+ * montar en un teléfono lento; así no cuestan nada.
+ */
 function Barra({
     lleno,
     color,
@@ -95,12 +101,12 @@ function Barra({
     return (
         <div className={cn('relative w-full rounded-full bg-gray-100', alto)}>
             <div className="h-full overflow-hidden rounded-full">
-                <m.div
-                    className={cn('h-full w-full origin-left rounded-full', color)}
-                    initial={{ scaleX: 0 }}
-                    animate={{ scaleX: Math.max(0, Math.min(1, lleno / 100)) }}
-                    transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1], delay: retraso }}
-                />
+                <div
+                    className="h-full w-full origin-left transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                    style={{ transform: `scaleX(${Math.max(0, Math.min(1, lleno / 100))})` }}
+                >
+                    <div className={cn('barra-crece h-full w-full rounded-full', color)} style={{ animationDelay: `${retraso}s` }} />
+                </div>
             </div>
             {marca !== undefined && (
                 <span className="absolute -top-0.5 h-2.5 w-0.5 -translate-x-1/2 rounded-full bg-gray-500" style={{ left: `${marca}%` }} />
@@ -109,21 +115,13 @@ function Barra({
     );
 }
 
-/** Un número que cambia: el viejo sube y se va, el nuevo entra desde abajo. */
+/** Un número que cambia: el nuevo entra desde abajo (`cifra-entra`, en `Escaparate`). */
 function Cifra({ valor, className }: { valor: string | number; className?: string }) {
     return (
         <span className={cn('relative inline-flex overflow-hidden tabular-nums', className)}>
-            <AnimatePresence mode="popLayout" initial={false}>
-                <m.span
-                    key={String(valor)}
-                    initial={{ y: '60%', opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    exit={{ y: '-60%', opacity: 0 }}
-                    transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-                >
-                    {valor}
-                </m.span>
-            </AnimatePresence>
+            <span key={String(valor)} className="cifra-entra">
+                {valor}
+            </span>
         </span>
     );
 }
@@ -154,7 +152,7 @@ function CabeceraDelTelefono() {
         <div className="border-b border-gray-200 bg-white">
             <BarraDeEstado />
             <div className="flex h-12 items-center gap-2 px-4">
-                <Avatar nombre="Andrés Salazar" color="bg-orange-500" className="h-8 w-8" />
+                <Avatar nombre="Andrés Salazar" color="bg-orange-700" className="h-8 w-8" />
                 <span className="text-sm font-bold text-gray-900">Andrés Salazar</span>
                 <ChevronDown className="h-4 w-4 text-gray-400" />
             </div>
@@ -579,7 +577,13 @@ export function TabNotas({ puestas, foco, guardado }: { puestas: number; foco: n
                                             n !== null && (n < NOTA_QUE_APRUEBA ? 'text-red-600' : 'text-gray-900')
                                         )}
                                     >
-                                        {n === null ? (j === 2 && foco === i ? <span className="h-4 w-0.5 bg-indigo-600" /> : '–') : <Cifra valor={n} />}
+                                        {n === null ? (
+                                            j === 2 && foco === i ? <span className="h-4 w-0.5 bg-indigo-600" /> : '–'
+                                        ) : j === 2 ? (
+                                            <Cifra valor={n} />
+                                        ) : (
+                                            n
+                                        )}
                                     </span>
                                 </span>
                             ))}
@@ -689,7 +693,7 @@ export function TabQr({ entrados, version }: { entrados: number; version: number
                             transition={suave}
                             className="flex items-center gap-3 px-2 py-2"
                         >
-                            <Avatar nombre={r.nombre} color="bg-indigo-500" />
+                            <Avatar nombre={r.nombre} color="bg-indigo-600" />
                             <div className="min-w-0 flex-1">
                                 <p className="truncate text-sm font-semibold text-gray-900">{r.nombre}</p>
                                 <p className="flex items-center gap-2 text-xs text-gray-600">
@@ -736,7 +740,7 @@ function Lateral({ activo }: { activo: Seccion }) {
                     <GraduationCap className="h-8 w-8" />
                 </span>
                 <div className="mt-3 flex items-center gap-2 self-start px-4">
-                    <Avatar nombre="Andrés Salazar" color="bg-orange-500" className="h-9 w-9" />
+                    <Avatar nombre="Andrés Salazar" color="bg-orange-700" className="h-9 w-9" />
                     <div>
                         <p className="text-sm font-semibold text-gray-900">Andrés Salazar</p>
                         <p className="text-xs text-gray-500">Profesor</p>
