@@ -107,6 +107,25 @@ async function seedTestingInstitute() {
         datasources: { db: { url: URL_LICEO } }
     });
 
+    // El liceo también se registra en SU base, como hace el aprovisionamiento
+    // de verdad (`tenant-provisioning.service`). Sin esta fila, crear un
+    // usuario desde la pantalla o la API respondía 500 (`users_instituteId_fkey`)
+    // y las pruebas de navegador que crean usuarios salían en rojo.
+    await tenantPrisma.institute.upsert({
+        where: { id: institute.id },
+        update: {},
+        create: {
+            id: institute.id,
+            name: institute.name,
+            code: institute.code,
+            email: institute.email,
+            slug: institute.slug,
+            subdomain: institute.subdomain,
+            status: 'ACTIVE',
+            plan: 'PREMIUM',
+        } as any,
+    });
+
     console.log('👥 6. Creando usuarios (Admin, Profesores, Estudiantes)...');
     const passwordHash = await bcrypt.hash('123456', 10);
 
