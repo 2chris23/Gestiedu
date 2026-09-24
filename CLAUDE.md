@@ -200,6 +200,29 @@ responden 403. Dinero **en céntimos enteros**; reglas en `MAPA_DE_CALCULOS.md` 
 Un pago **no se borra**: se anula con motivo. Solo el admin cobra; el representante
 ve lo de sus representados. Cambiar la frecuencia con pagos en el ciclo: 409.
 
+## Asistencia por QR
+
+Tres formas de pasar lista y **la de a mano no se quita nunca**. El profesor abre
+un QR en su clase (cambia cada 10 s) y los alumnos lo escanean desde su app; o
+él escanea el QR del alumno. El QR solo **identifica**: escribe la misma fila
+de `daily_attendance` que el botón de a mano. Lo nuevo es el rastro
+(`registros_asistencia_qr`: teléfono, hora, dónde, por qué) y las trabas contra
+firmar por otro: un teléfono por alumno (lo desbloquea el admin desde el
+perfil, queda anotado), un teléfono registra a UN alumno por clase, y el
+**faro**: el alumno tiene que estar cerca del teléfono del profesor; sin GPS
+entra «por confirmar» y el profesor lo aprueba (escudo, no muro). Todo
+configurable por liceo (`AcademicConfig.asistenciaQr`). Diseño en
+`docs/PROXIMAS-FUNCIONES.md` §1; código en `services/asistencia-qr.service.ts`;
+pruebas QR-01…14 y QRE-01/02 (con una cámara de mentira que enseña el QR).
+
+**Mientras el QR está abierto, la clase en vivo no guarda la asistencia sola**:
+guardaría a todos como «presente» (lo que se ve por defecto) antes de que
+escaneen. La escribe el servidor alumno a alumno.
+
+**Guardar las reglas académicas borraba el resto de la configuración** (la
+escala de notas, el horario…): `updateAcademicConfig` escribía solo sus campos.
+Ahora mezcla con lo que había.
+
 ## Suspender y reemplazar clases
 
 **Solo el admin suspende.** Puede poner otra materia de la sección en ese hueco
@@ -278,7 +301,9 @@ pulgar, con **Inicio en el centro** y a cada lado lo que ese rol abre cada día
 (`losDeLaBarra` en `lib/el-menu.ts`): cinco para el personal (admin: Académico,
 Usuarios, Horarios y Pagos, o Calendario sin pagos; profesor: Académico,
 Materias, Horarios, Calendario), tres para el alumno y el representante
-(Calendario y «Mi cuenta»). Se esconde en pantalla grande, respeta la barra de
+(Calendario y «Mi cuenta»). Se esconde donde hay barra lateral —tableta u
+ordenador, `lateral:` en `tailwind.config.js`; **un teléfono tumbado NO**, aunque
+pase de 1024 px de ancho—, respeta la barra de
 gestos del teléfono (`env(safe-area-inset-bottom)`) y cada botón mide 44 px de
 alto. El contenido lleva `pb-28` en móvil para que la barra no tape el último
 botón de la pantalla.
@@ -313,6 +338,11 @@ tocar una línea.
 
 Las reglas viven en `scripts/reglas-del-telefono.mjs` y las usan dos: la
 auditoría con sus fotos y `tests/e2e/movil.spec.ts`, que se pone en rojo.
+
+**Un carril que se arrastra de lado lleva `relative`.** Dentro, un `sr-only`
+(que es `absolute`) se sale del carril y ensancha la PÁGINA: el Inicio del
+alumno medía 1188 px en un teléfono de 412, salía alejado y no se podía pulsar
+nada de la ventana de su clase (auditoría §58).
 
 **No solo un teléfono de pie.** `MOVIL-03` mide también el teléfono tumbado
 (844×390), la tableta (768×1024), el portátil (1366×768) y el escritorio

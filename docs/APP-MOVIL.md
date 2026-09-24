@@ -368,6 +368,24 @@ analizarla es lo correcto.
 - **Entrar con la huella** y **girar la pantalla** en el horario y el plan de
   evaluación (`@capacitor/screen-orientation` desde la web).
 - **Actualizarse sola** (ver «Una versión nueva, desde la propia app»).
+- **La asistencia por QR** (`AsistenciaQrPlugin.java`): el identificador del
+  teléfono que sobrevive a cerrar sesión y a reinstalar (`ANDROID_ID`, en el
+  servidor solo su resumen), la ubicación **con la marca de si es falsa**
+  (Android la da; el navegador nunca) y que la pantalla no se apague mientras
+  el profesor deja el QR sobre la mesa. La cámara la pide Capacitor al primer
+  uso; los permisos (`CAMERA`, ubicación) están en el manifiesto y Android los
+  pregunta cuando hacen falta, no al instalar. **Uno cada vez**: pedir cámara y
+  ubicación a la vez hacía que el segundo aviso se perdiera y la cámara no
+  abría (medido en el emulador); la ubicación se pide cuando la cámara ya ve.
+- **Tumbado, sin barra lateral.** La barra lateral es de tableta y ordenador
+  (`lateral:` en `tailwind.config.js`: ancho de 1024 con ratón, o con 600 px de
+  alto). El Motorola G13 de lado mide 1075 × 484 px y enseñaba la barra
+  lateral, que se comía un cuarto de la pantalla.
+- **El editor de horario, de lado y a pantalla completa**
+  (`EditorDeHorarioTumbado.tsx`): se pone horizontal al entrar, la columna de
+  lo que falta a la izquierda y la semana entera a la derecha (solo baja, no se
+  arrastra de lado). Se coloca arrastrando (mantener pulsado) o tocando la
+  materia y luego el hueco.
 
 ### Lo que queda por hacer
 

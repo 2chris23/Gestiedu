@@ -3246,3 +3246,78 @@ el instalador, vuelve a ofrecerla. Dos avisos:
 
 No probado: la instalación en el Motorola (no se usó el teléfono) y el
 aviso de Google Play Protect más allá de verlo aparecer.
+
+## 58. La asistencia por QR, y cinco cosas del teléfono (septiembre 2026)
+
+**Asistencia por QR, entera.** El profesor abre el QR en su clase y lo deja
+sobre la mesa; cada alumno, desde su clase en la app, pulsa «Escanear
+asistencia» y queda presente. O al revés: el alumno enseña «Mi QR» y lo
+escanea el profesor. Todo lo que se decidió con el dueño
+(`docs/PROXIMAS-FUNCIONES.md` §1):
+
+- El QR **cambia cada 10 s**: la foto por WhatsApp no sirve.
+- **Un teléfono por alumno** (el primero desde el que escanea) y **un teléfono,
+  un alumno por clase**: cerrar sesión y entrar con la cuenta del amigo ya no
+  cuela, y el intento le sale al profesor en la lista. El admin desbloquea el
+  teléfono desde el perfil del alumno, y queda anotado.
+- **El faro**: el alumno tiene que estar cerca del teléfono del profesor
+  (150 m por defecto). Sin GPS, entra «por confirmar» y el profesor lo aprueba
+  de un toque. Una ubicación falsa (Android lo dice) se rechaza.
+- Debajo del QR van entrando los nombres en vivo, con su foto y su hora; el
+  profesor quita a quien no está de un toque. Arriba, «18 de 32». Al terminar
+  ve quién queda ausente antes de cerrar, y puede marcar «estaba».
+- Pasado el tiempo (2 min por defecto, desde el primer pase de esa clase),
+  entra como **tarde**.
+- **Corregir un día pasado** con el mismo QR («Corregir con QR»), hasta los días
+  que diga el liceo y nunca pasado el cierre del lapso.
+- Todo configurable en Configuración → Asistencia por QR.
+
+Probado: 14 pruebas del servidor, una por trampa (QR-01…14); y en el
+navegador, un alumno con una **cámara de mentira** que enseña el QR del
+profesor (Chrome le pasa un vídeo con el QR dibujado) queda presente, y su
+nombre aparece en la pantalla del profesor sin recargar (QRE-01/02). En el
+emulador, dentro de la APK: el aviso de permiso de ubicación, el QR, que
+cambia a los 10 s y que la pantalla no se apaga.
+
+Cuatro fallos que salieron probando, antes de que llegaran a nadie:
+- **La cámara no abría** si a la vez se pedía la ubicación: Android enseñaba
+  un aviso de permiso y el otro se perdía. Ahora se pide uno y luego el otro.
+- **Guardar las reglas de promoción borraba la escala de notas y el horario**
+  del liceo (`updateAcademicConfig` escribía solo sus campos). Ya no.
+- **El Inicio del alumno medía 1188 px de ancho** en un teléfono de 412: la
+  etiqueta escondida del tema (`sr-only`, que va `absolute`) se salía del
+  carril de «Hoy» y ensanchaba la página entera. El teléfono la enseñaba
+  alejada y el botón «Escanear asistencia» no se podía pulsar (QRE-01 en
+  rojo). El carril lleva ahora `relative`; medido: 412 px.
+- **Abrir un pase avisaba a todo el liceo** de que algo había cambiado, y las
+  pantallas de todos los alumnos se recargaban. Abrir no cambia la asistencia
+  de nadie: ahora solo se entera el personal de esa sección.
+
+**Cinco cosas del teléfono que pidió el dueño:**
+
+1. **Tumbado, la barra de abajo, no la lateral.** El Motorola de lado mide
+   1075 px de ancho y el corte era solo por ancho. Ahora la barra lateral es de
+   tableta u ordenador (ancho y además alto, o ratón).
+2. **Las cifras con barra**, como la ocupación: el promedio en la escala del
+   liceo con una rayita donde se aprueba, el riesgo como parte de los alumnos,
+   la asistencia con la rayita del mínimo. Crecen al aparecer.
+3. **La sección, sin caja gris propia** (se veía un rectángulo de otro gris), y
+   el horario de hoy **de lado otra vez**, como antes, pero más apretado: dos
+   fichas y media a la vista.
+4. **Los alumnos de la sección, una fila cada uno** (56 px en vez de 330): nombre,
+   cédula, riesgo (solo el número), promedio y asistencia.
+5. **El editor de horario**: al entrar se pone de lado y a pantalla completa,
+   con lo que falta a la izquierda y la semana entera a la derecha. Arrastrar
+   con el dedo no funcionaba nunca (el dedo movía la página); ahora se mantiene
+   pulsado y se arrastra, o se toca la materia y luego el hueco.
+
+Medido al cerrar: 14 pruebas del servidor del QR, QRE-01/02, MOVIL-01…04,
+APAGADO-01/02 y `npm run movil -- --exigir` (31 pantallas, 4 roles, 0 con algo
+que arreglar). En el emulador, la APK entera: permisos, QR que cambia, pantalla
+encendida, la cámara del alumno (720×1280, en marcha) y «Mi QR».
+
+No probado: nada en el Motorola del dueño —estaba bloqueado con su clave, y no
+se toca—. La versión 1.5 de la app quedó instalada en él. Tampoco dos teléfonos
+de verdad uno frente al otro: la cámara se probó con una de mentira (Chrome) y
+la del emulador; y el GPS del emulador no se deja mover, así que el faro del
+profesor se probó en el servidor (QR-06, QR-14).
