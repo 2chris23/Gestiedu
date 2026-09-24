@@ -7,6 +7,39 @@ import { CACHE_TTL } from '../utils/constants';
 import { AppErrors } from '../middleware/error.middleware';
 import { RequestUser } from '../types/fastify';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
+import { assertClassroomScope, canSeeClassroom, teacherClassroomIds } from '../services/authorization.service';
+
+/**
+ * LAS SECCIONES CUYAS ACTIVIDADES PUEDE VER QUIEN PIDE (null = todas)
+ *
+ * El representante no tenía filtro ninguno: veía las actividades de todo el
+ * liceo y, al abrir una, las notas de todos los alumnos que la hicieron. Y al
+ * profesor se le medía con `teacherClassroom`, una tabla vieja que no dice qué
+ * materias imparte (`quien-puede-que.test.ts`).
+ */
+async function seccionesQuePuedeVer(db: any, user: RequestUser): Promise<string[] | null> {
+  const id = user?.userId;
+  if (user?.role === UserRole.ADMIN) return null;
+  if (user?.role === UserRole.TEACHER) {
+    const [nuevas, viejas] = await Promise.all([
+      teacherClassroomIds(db, id),
+      db.teacherClassroom.findMany({ where: { teacherId: id }, select: { classroomId: true } }),
+    ]);
+    return Array.from(new Set([...nuevas, ...viejas.map((t: any) => t.classroomId)]));
+  }
+  if (user?.role === UserRole.STUDENT) {
+    const suyas = await db.studentClassroom.findMany({ where: { studentId: id, isActive: true }, select: { classroomId: true } });
+    return suyas.map((x: any) => x.classroomId);
+  }
+  if (user?.role === UserRole.TUTOR) {
+    const deSusHijos = await db.studentClassroom.findMany({
+      where: { isActive: true, student: { studentTutorings: { some: { tutorId: id } } } },
+      select: { classroomId: true },
+    });
+    return Array.from(new Set(deSusHijos.map((x: any) => x.classroomId as string)));
+  }
+  return [];
+}
 
 // Helper para obtener el cliente DB del tenant.
 // SEGURIDAD: No hay fallback al platform DB. Si tenantPrisma no está resuelto,
@@ -106,16 +139,10 @@ export async function createActivity(
 
     // Si es profesor, verificar que tenga acceso al aula
     if (user?.role === UserRole.TEACHER && activityData.classroomId) {
-      const teacherClassroom = await db.teacherClassroom.findFirst({
-        where: {
-          teacherId,
-          classroomId: activityData.classroomId
-        }
+      await assertClassroomScope(db, user as any, activityData.classroomId, {
+        subjectId: activityData.subjectId,
+        accion: 'dejar actividades',
       });
-
-      if (!teacherClassroom) {
-        throw AppErrors.Forbidden('No tienes acceso a esta aula');
-      }
     }
 
     // Crear la actividad
@@ -271,19 +298,22 @@ export async function getActivity(
 
     // Verificar permisos según el rol
     if (userRole === UserRole.TEACHER) {
-      // El profesor debe tener acceso al aula o ser el creador
+      // El profesor debe llevar esa sección o ser el creador
       if (activity.createdBy !== userId && activity.classroomId) {
-        const teacherClassroom = await db.teacherClassroom.findFirst({
-          where: {
-            teacherId: userId,
-            classroomId: activity.classroomId
-          }
-        });
-
-        if (!teacherClassroom) {
+        const suyas = (await seccionesQuePuedeVer(db, user)) ?? [];
+        if (!suyas.includes(activity.classroomId)) {
           throw AppErrors.Forbidden('No tienes acceso a esta actividad');
         }
       }
+    } else if (userRole === UserRole.TUTOR) {
+      // El representante: solo si uno de los suyos estudia en esa sección, y
+      // de las notas, solo las de los suyos.
+      if (activity.classroomId && !(await canSeeClassroom(db, user as any, activity.classroomId))) {
+        throw AppErrors.Forbidden('No tienes acceso a esta actividad');
+      }
+      const suyos = await db.studentTutor.findMany({ where: { tutorId: userId }, select: { studentId: true } });
+      const ids = new Set(suyos.map((x: any) => x.studentId));
+      (activity as any).grades = ((activity as any).grades || []).filter((g: any) => ids.has(g.studentId));
     } else if (userRole === UserRole.STUDENT) {
       // El estudiante debe estar en el aula de la actividad
       if (activity.classroomId) {
@@ -400,34 +430,22 @@ export async function getActivities(
     }
 
     // Filtros según el rol
+    const visibles = await seccionesQuePuedeVer(db, user);
+    if (visibles !== null && classroomId && !visibles.includes(classroomId)) {
+      throw AppErrors.Forbidden('Esa sección no es tuya');
+    }
     if (userRole === UserRole.TEACHER) {
-      const teacherClassrooms = await db.teacherClassroom.findMany({
-        where: { teacherId: userId },
-        select: { classroomId: true }
-      });
-
-      const classroomIds = teacherClassrooms.map((tc: any) => tc.classroomId);
-
       where.OR = [
         { createdBy: userId },
-        { classroomId: { in: classroomIds } },
+        { classroomId: { in: visibles ?? [] } },
         { scope: ActivityScope.GLOBAL }
       ];
-    } else if (userRole === UserRole.STUDENT) {
-      const studentClassrooms = await db.studentClassroom.findMany({
-        where: {
-          studentId: userId,
-          isActive: true
-        },
-        select: { classroomId: true }
-      });
-
-      const classroomIds = studentClassrooms.map((sc: any) => sc.classroomId);
-
+    } else if (visibles !== null) {
+      // Alumno y representante: lo visible de sus secciones y lo general.
       where.isVisible = true;
       where.OR = [
         { scope: ActivityScope.GLOBAL },
-        { classroomId: { in: classroomIds } }
+        { classroomId: { in: visibles } }
       ];
     }
 
@@ -537,16 +555,10 @@ export async function updateActivity(
     // Verificar permisos
     if (userRole === UserRole.TEACHER && existingActivity.createdBy !== userId) {
       if (existingActivity.classroomId) {
-        const teacherClassroom = await db.teacherClassroom.findFirst({
-          where: {
-            teacherId: userId,
-            classroomId: existingActivity.classroomId
-          }
+        await assertClassroomScope(db, user as any, existingActivity.classroomId, {
+          subjectId: existingActivity.subjectId ?? undefined,
+          accion: 'cambiar actividades',
         });
-
-        if (!teacherClassroom) {
-          throw AppErrors.Forbidden('No tienes permisos para editar esta actividad');
-        }
       } else {
         throw AppErrors.Forbidden('No tienes permisos para editar esta actividad');
       }
