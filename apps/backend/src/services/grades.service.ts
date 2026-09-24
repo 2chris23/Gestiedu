@@ -2,6 +2,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { UserRole, ActivityType } from '../utils/prisma-enums';
 import { AppErrors } from '../middleware/error.middleware';
 import { RedisCache } from '../config/redis';
+import { fechaDeLaActividad, lapsoDeLaFecha, LapsoConFechas } from '../utils/lapso-de-la-actividad';
 import { logger } from '../utils/logger';
 import { CACHE_TTL, PAGINATION, GRADE_SYSTEM } from '../utils/constants';
 import { invalidateStudentGradesCache, invalidateStudentsGradesCache } from '../utils/cache-invalidation';
@@ -1140,15 +1141,41 @@ class GradesService {
         scores.map(score => ({ score, maxScore: 20 }));
 
       if (aulas.length > 0) {
-        const adHoc = await prisma.classActivity.findMany({
-          where: {
-            classroomId: { in: aulas },
-            subjectId,
-            scores: { not: undefined },
-          },
-          select: { maxScore: true, scores: true },
-        });
+        const [adHoc, lapsosDelCiclo] = await Promise.all([
+          prisma.classActivity.findMany({
+            where: {
+              classroomId: { in: aulas },
+              subjectId,
+              scores: { not: undefined },
+            },
+            select: {
+              maxScore: true,
+              scores: true,
+              dueDate: true,
+              createdAt: true,
+              classSession: { select: { date: true } },
+              planRow: { select: { lapso: true, rowType: true } },
+            },
+          }),
+          period?.academicYearId
+            ? prisma.period.findMany({
+                where: { academicYearId: period.academicYearId },
+                select: { id: true, startDate: true, endDate: true },
+              })
+            : Promise.resolve([] as LapsoConFechas[]),
+        ]);
         adHoc.forEach(ca => {
+          // Solo las de ESTE lapso: la del criterio, por el lapso del
+          // criterio; la suelta, por su fecha (LAP-01…03). Antes entraban
+          // todas en todos los lapsos.
+          const esDeEsteLapso = ca.planRow && ca.planRow.rowType === 'EVALUATION'
+            ? ca.planRow.lapso === lapso
+            : lapsosDelCiclo.length === 0 ||
+              lapsoDeLaFecha(
+                fechaDeLaActividad({ fechaDeLaClase: ca.classSession?.date, dueDate: ca.dueDate, createdAt: ca.createdAt }),
+                lapsosDelCiclo
+              ) === periodId;
+          if (!esDeEsteLapso) return;
           let parsed: Record<string, number | null> = {};
           try {
             parsed = typeof ca.scores === 'string' ? JSON.parse(ca.scores) : (ca.scores || {});
