@@ -4,7 +4,34 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { CreateAttendanceInput, UpdateAttendanceInput, PaginationInput } from '../utils/validators';
 import { logger } from '../utils/logger';
 import { RequestUser } from '../types/fastify';
-import { assertClassroomScope, canSeeStudent } from '../services/authorization.service';
+import { assertClassroomScope, canSeeStudent, teacherClassroomIds } from '../services/authorization.service';
+import { AppErrors } from '../middleware/error.middleware';
+
+/**
+ * LA ASISTENCIA ES DE LA SECCIÓN, Y LA SECCIÓN DE QUIEN LA LLEVA
+ *
+ * Leer por id, corregir, borrar o pasar la lista de golpe solo pedían «ser
+ * profesor»: el profesor de 1.º B corregía o borraba la asistencia de 1.º A, y
+ * cualquiera con sesión —alumnos y representantes incluidos— leía la de una
+ * sección entera por su fecha (`quien-puede-que.test.ts`).
+ */
+async function puedeTocarLaAsistencia(request: FastifyRequest, classroomId: string) {
+  await assertClassroomScope(request.tenantPrisma, request.user as any, classroomId, {
+    accion: 'pasar asistencia',
+  });
+}
+
+/** Los alumnos tienen que estar inscritos en ESA sección: no se pasa lista a los de otra. */
+async function soloAlumnosDeLaSeccion(request: FastifyRequest, classroomId: string, studentIds: string[]) {
+  const unicos = Array.from(new Set(studentIds.filter(Boolean)));
+  if (unicos.length === 0) return;
+  const inscritos = await request.tenantPrisma.studentClassroom.count({
+    where: { classroomId, isActive: true, studentId: { in: unicos } },
+  });
+  if (inscritos !== unicos.length) {
+    throw AppErrors.Forbidden('Solo se pasa asistencia a los alumnos de esa sección');
+  }
+}
 import { instituteTimezone, isFutureDate, todayInTimezone } from '../utils/school-time';
 import { fueModificadoPorOtro, versionVista, AVISO_MODIFICADO_POR_OTRO } from '../utils/concurrencia';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
@@ -111,9 +138,7 @@ export async function createAttendance(
 
     // Un profesor solo pasa asistencia en las clases que imparte (o en su
     // sección guía). Antes cualquier profesor podía hacerlo en cualquier sección.
-    await assertClassroomScope(request.tenantPrisma, request.user as any, attendanceData.classroomId, {
-      accion: 'pasar asistencia',
-    });
+    await puedeTocarLaAsistencia(request, attendanceData.classroomId);
 
     // Verificar que el estudiante existe
     const student = await request.tenantPrisma.user.findFirst({
@@ -129,6 +154,8 @@ export async function createAttendance(
         code: 'STUDENT_NOT_FOUND',
       });
     }
+
+    await soloAlumnosDeLaSeccion(request, attendanceData.classroomId, [attendanceData.studentId]);
 
     // Verificar que la materia existe
     const subject = await request.tenantPrisma.subject.findFirst({
@@ -281,7 +308,32 @@ export async function getAttendances(
     // Construir filtros (instituto único)
     const where: any = {};
 
+    // Quién pide decide qué se ve. El administrador, todo; el profesor, las
+    // secciones que lleva; el alumno y el representante, solo lo suyo.
+    const actor = request.user as any;
+    const actorId = actor?.userId ?? actor?.id;
+    if (actor?.role !== UserRole.ADMIN) {
+      if (classroomId) {
+        await puedeTocarLaAsistencia(request, classroomId);
+      } else if (actor?.role === UserRole.TEACHER) {
+        where.classroomId = { in: await teacherClassroomIds(request.tenantPrisma, actorId) };
+      }
+      if (actor?.role === UserRole.STUDENT) {
+        where.studentId = actorId;
+      } else if (actor?.role === UserRole.TUTOR) {
+        const suyos = await request.tenantPrisma.studentTutor.findMany({
+          where: { tutorId: actorId },
+          select: { studentId: true },
+        });
+        where.studentId = { in: suyos.map((x) => x.studentId) };
+      }
+      if (studentId && !(await canSeeStudent(request.tenantPrisma, actor, studentId))) {
+        throw AppErrors.Forbidden('Solo puedes consultar a tus estudiantes');
+      }
+    }
+
     if (studentId) {
+      // Ya comprobado arriba con `canSeeStudent` para quien no es administrador.
       where.studentId = studentId;
     }
 
@@ -365,6 +417,12 @@ export async function getAttendances(
       },
     });
   } catch (error) {
+    if ((error as any)?.statusCode) {
+      return reply.status((error as any).statusCode).send({
+        error: (error as any).message || 'No autorizado',
+        code: (error as any).code || 'FORBIDDEN',
+      });
+    }
     logger.error('Error al obtener registros de asistencia', {
       error: error instanceof Error ? error.message : String(error)
     });
@@ -424,9 +482,15 @@ export async function getAttendance(
       });
     }
 
-    // Verificar permisos según el rol
+    // Verificar permisos según el rol: el profesor, si lleva esa sección; el
+    // alumno y su representante, si es suyo. Antes solo se miraba al alumno.
     const user = request.user as RequestUser;
-    if (user?.role === UserRole.STUDENT && attendance.studentId !== user.userId) {
+    const puedeVerlo =
+      user?.role === UserRole.ADMIN ||
+      (user?.role === UserRole.TEACHER
+        ? await puedeTocarLaAsistencia(request, attendance.classroomId).then(() => true, () => false)
+        : await canSeeStudent(request.tenantPrisma, user as any, attendance.studentId));
+    if (!puedeVerlo) {
       return reply.status(403).send({
         error: 'No tienes permiso para ver este registro de asistencia',
         code: 'INSUFFICIENT_PERMISSIONS',
@@ -472,6 +536,8 @@ export async function updateAttendance(
         code: 'ATTENDANCE_NOT_FOUND',
       });
     }
+
+    await puedeTocarLaAsistencia(request, existingAttendance.classroomId);
 
     // DOS PERSONAS, LA MISMA ASISTENCIA
     //
@@ -599,6 +665,8 @@ export async function deleteAttendance(
       });
     }
 
+    await puedeTocarLaAsistencia(request, existingAttendance.classroomId);
+
     // Eliminar el registro de asistencia (con copia en la papelera)
     await borrarGuardandoCopia(
       request.tenantPrisma,
@@ -633,6 +701,12 @@ export async function deleteAttendance(
       message: 'Registro de asistencia eliminado correctamente',
     });
   } catch (error) {
+    if ((error as any)?.statusCode) {
+      return reply.status((error as any).statusCode).send({
+        error: (error as any).message || 'No autorizado',
+        code: (error as any).code || 'FORBIDDEN',
+      });
+    }
     logger.error('Error al eliminar asistencia', {
       error: error instanceof Error ? error.message : String(error),
       attendanceId: request.params.id
@@ -790,6 +864,9 @@ export async function markClassAttendance(
 ) {
   try {
     const { classroomId, subjectId, date, attendances } = request.body;
+
+    await puedeTocarLaAsistencia(request, classroomId);
+    await soloAlumnosDeLaSeccion(request, classroomId, (attendances || []).map((a: any) => a.studentId));
 
     // Verificar que el aula existe
     const classroom = await request.tenantPrisma.classroom.findFirst({
