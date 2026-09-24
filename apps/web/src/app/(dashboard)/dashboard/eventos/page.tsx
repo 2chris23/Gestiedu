@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, CalendarDays, Coffee, Loader2, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useSchoolToday } from '@/hooks/useSchoolTime';
 import { useSchedulePeriods } from '@/hooks/useSchedulePeriods';
 import {
     toYMD,
@@ -47,10 +48,11 @@ function monthGrid(month: Date): Date[] {
 }
 
 export default function EventosPage() {
-    const today = toYMD(new Date());
+    // El día del liceo, no el del aparato (RELOJ-01).
+    const today = useSchoolToday();
     const [month, setMonth] = useState(() => {
-        const d = new Date();
-        return new Date(d.getFullYear(), d.getMonth(), 1);
+        const [y, m] = today.split('-').map(Number);
+        return new Date(y, m - 1, 1);
     });
     const [selectedDate, setSelectedDate] = useState<string>(today);
     const [modalPeriod, setModalPeriod] = useState<Period | null>(null);

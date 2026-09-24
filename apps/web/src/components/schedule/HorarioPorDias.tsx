@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Coffee, RotateCw, Smartphone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { aHorizontal, sePuedeGirar } from '@/lib/girar-la-pantalla';
+import { useRelojDelLiceo } from '@/hooks/useSchoolTime';
 
 /**
  * EL HORARIO DE PIE: UN DÍA CADA VEZ
@@ -56,9 +57,12 @@ interface Props {
     className?: string;
 }
 
-/** Lunes = 1 … Viernes = 5. Si hoy es sábado o domingo, se abre el lunes. */
-function elDiaDeHoy(dias: DiaDelHorario[]): string | number | undefined {
-    const n = new Date().getDay();
+/**
+ * Lunes = 1 … Viernes = 5. Si hoy es sábado o domingo, se abre el lunes. El
+ * «hoy» es el del liceo (`useRelojDelLiceo`), no el del reloj del aparato
+ * (RELOJ-01).
+ */
+function elDiaDeHoy(dias: DiaDelHorario[], n: number): string | number | undefined {
     const indice = n >= 1 && n <= 5 ? n - 1 : 0;
     return dias[indice]?.id ?? dias[0]?.id;
 }
@@ -75,9 +79,20 @@ export function HorarioPorDias({
     const [dia, setDia] = React.useState<string | number | undefined>(diaInicial ?? undefined);
     const [avisoDeGiro, setAvisoDeGiro] = React.useState(false);
 
+    const reloj = useRelojDelLiceo();
+    // Se abre en el día del liceo; mientras el servidor no contesta, en el del
+    // aparato, y en cuanto contesta se corrige (si nadie ha elegido otro día).
+    const [elegidoAMano, setElegidoAMano] = React.useState(false);
     React.useEffect(() => {
-        if (dia === undefined) setDia(diaInicial ?? elDiaDeHoy(dias));
-    }, [dia, diaInicial, dias]);
+        if (diaInicial !== undefined) {
+            if (dia === undefined) setDia(diaInicial);
+            return;
+        }
+        if (dia === undefined || (!elegidoAMano && reloj.delServidor)) {
+            const deHoy = elDiaDeHoy(dias, reloj.diaDeLaSemana);
+            if (deHoy !== dia) setDia(deHoy);
+        }
+    }, [dia, diaInicial, dias, reloj.delServidor, reloj.diaDeLaSemana, elegidoAMano]);
 
     const elegido = dias.find((d) => d.id === dia) ?? dias[0];
 
@@ -100,7 +115,7 @@ export function HorarioPorDias({
                             type="button"
                             role="tab"
                             aria-selected={activo}
-                            onClick={() => setDia(d.id)}
+                            onClick={() => { setElegidoAMano(true); setDia(d.id); }}
                             className={cn(
                                 'min-h-[44px] flex-1 rounded-lg border px-2 text-xs font-semibold transition-colors',
                                 activo

@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useCalendarData, CalendarClassData } from '@/hooks/useEvaluationPlan';
+import { useSchoolToday } from '@/hooks/useSchoolTime';
 import { format, addDays, startOfWeek, endOfWeek, isSameDay, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -23,7 +24,13 @@ interface CalendarDayViewProps {
 }
 
 export default function CalendarDayView({ classroomId }: CalendarDayViewProps) {
-    const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+    // «Hoy» es el día del liceo, no el del aparato (RELOJ-01).
+    const hoyDelLiceo = useSchoolToday();
+    const hoyComoFecha = useMemo(() => {
+        const [y, m, d] = hoyDelLiceo.split('-').map(Number);
+        return new Date(y, m - 1, d);
+    }, [hoyDelLiceo]);
+    const [selectedDate, setSelectedDate] = useState<Date>(() => hoyComoFecha);
     const [selectedClass, setSelectedClass] = useState<CalendarClassData | null>(null);
 
     // Calculate the start and end of the week for the selected date
@@ -67,7 +74,7 @@ export default function CalendarDayView({ classroomId }: CalendarDayViewProps) {
     const handlePrevDay = () => setSelectedDate(prev => addDays(prev, -1));
     const handleNextDay = () => setSelectedDate(prev => addDays(prev, 1));
     const handleSelectDay = (date: Date) => setSelectedDate(date);
-    const handleGoToToday = () => setSelectedDate(new Date());
+    const handleGoToToday = () => setSelectedDate(hoyComoFecha);
 
     // Generate week days for the horizontal calendar selector
     const weekDays = useMemo(() => {
@@ -123,7 +130,7 @@ export default function CalendarDayView({ classroomId }: CalendarDayViewProps) {
             <div className="grid grid-cols-7 gap-2 mb-8 bg-slate-900/50 p-2 rounded-2xl border border-slate-900">
                 {weekDays.map((day, idx) => {
                     const isSelected = isSameDay(day, selectedDate);
-                    const isToday = isSameDay(day, new Date());
+                    const isToday = isSameDay(day, hoyComoFecha);
                     const dayStr = format(day, 'yyyy-MM-dd');
                     const hasDayClasses = (classesByDate[dayStr] || []).length > 0;
                     const hasDayEvaluations = (classesByDate[dayStr] || []).some(c => c.hasEvaluation);
