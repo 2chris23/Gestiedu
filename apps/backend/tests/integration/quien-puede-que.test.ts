@@ -260,9 +260,10 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
         { que: 'POST asistencia a alumnaA', metodo: 'post', url: () => `/api/attendance`, cuerpo: () => ({ studentId: alumnaA(), classroomId: A(), date: HOY, status: 'LATE' }), si: ['profeA'], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
         { que: 'PUT registro de asistencia', metodo: 'put', url: () => `/api/attendance/${d.asistencia.id}`, cuerpo: () => ({ status: 'ABSENT' }), si: ['profeA'], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
         { que: 'POST asistencia en bloque', metodo: 'post', url: () => `/api/attendance/bulk`, cuerpo: () => ({ classroomId: A(), subjectId: d.mate.id, date: HOY, attendances: [{ studentId: alumnaA(), status: 'ABSENT' }] }), si: [], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
-        { que: 'POST observación a alumnaA', metodo: 'post', url: () => `/api/observations`, cuerpo: () => ({ title: 'x', description: 'y', studentId: alumnaA(), classroomId: A(), subjectId: d.mate.id }), si: ['profeA'], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
+        { que: 'POST observación a alumnaA', metodo: 'post', url: () => `/api/observations`, cuerpo: () => ({ title: 'x', description: 'y', studentIds: [alumnaA()], classroomId: A(), subjectId: d.mate.id }), si: ['profeA'], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
+        { que: 'POST observación a alumnoB en la sección A', metodo: 'post', url: () => `/api/observations`, cuerpo: () => ({ title: 'x', description: 'y', studentIds: [u.alumnoB.id], classroomId: A(), subjectId: d.mate.id }), si: [], no: [...AJENOS, 'profeA', 'guiaA', 'profeB', ...NO_PERSONAL] },
         { que: 'PUT actividad de A', metodo: 'put', url: () => `/api/activities/${d.actividad2.id}`, cuerpo: () => ({ title: 'Taller A (editado)' }), si: ['profeA'], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
-        { que: 'POST actividad en A', metodo: 'post', url: () => `/api/activities`, cuerpo: () => ({ title: 'Nueva', type: 'SUMATIVA', scope: 'CLASSROOM', startDate: '2026-09-20', maxGrade: 20, weight: 1, classroomId: A(), subjectId: d.mate.id, periodId: d.period.id, lapso: '1' }), si: ['profeA'], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
+        { que: 'POST actividad en A', metodo: 'post', url: () => `/api/activities`, cuerpo: () => ({ title: 'Nueva', description: 'Actividad nueva', type: 'TAREA', scope: 'CLASSROOM', startDate: '2026-09-20T12:00:00.000Z', dueDate: '2026-09-27T12:00:00.000Z', maxGrade: 20, maxScore: 20, weight: 1, classroomId: A(), subjectId: d.mate.id, periodId: d.period.id, lapso: '1' }), si: ['profeA'], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
         { que: 'POST inscribir un alumno en A', metodo: 'post', url: () => `/api/classrooms/${A()}/students`, cuerpo: () => ({ studentId: u.alumnoNuevo.id }), si: [], no: [...AJENOS, 'profeA', 'guiaA', 'profeB', ...NO_PERSONAL] },
         { que: 'POST asignarse una materia en A', metodo: 'post', url: () => `/api/classrooms/${A()}/subjects`, cuerpo: () => ({ subjectId: d.otraMateria.id, teacherId: u.profeSuelto.id, weeklyBlocks: 2 }), si: [], no: [...AJENOS, 'profeA', 'guiaA', 'profeB', ...NO_PERSONAL] },
         { que: 'PUT horario de A', metodo: 'put', url: () => `/api/schedules/${d.horario.id}`, cuerpo: () => ({ room: 'Aula 9' }), si: [], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
@@ -286,9 +287,6 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
      * arreglarlo, se quita de aquí en el mismo commit.
      */
     const HUECOS_ABIERTOS = new Set<string>([
-        'GET una actividad de A',
-        'GET actividades de la sección A',
-        'GET actividades de la materia',
         'GET sección A',
         'GET estadísticas (promedios) de A',
         'GET alumnos de la materia',
@@ -297,8 +295,6 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
         'GET un horario de A',
         'GET cabecera del plan de A',
         'GET buscar alumnos',
-        'POST observación a alumnaA',
-        'POST actividad en A',
         'PUT horario de A',
         'POST abrir clase en A',
     ]);
