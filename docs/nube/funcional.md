@@ -14,6 +14,8 @@ Informe para el dueño del liceo. Se actualiza y se sube en cada arreglo que que
 |---|---|
 | `b428171` | Un 0 es una nota: el alumno con todo en 0 ya no sale promovido sin pendientes, ni «sin calificar», ni fuera del riesgo; un lapso en 0 cuenta en el ciclo. |
 | `afb6c7f` | Cambiar de sección: ya no da error 500, respeta el cupo, y las notas de la sección anterior siguen contando en el promedio. |
+| `f82d14a` | El alumno archivado (retirado) deja su sección: no cuenta, no ocupa cupo y no se le reinscribe solo al cerrar el ciclo. |
+| `d5bb535` | El representante ve el mismo promedio que su hijo y no recibe «Asistencia baja: 0%» sin registros. |
 
 - **Cómo probarlo:**
   ```bash
@@ -93,6 +95,26 @@ notas del lapso salen de su sección de ese ciclo y de las otras del mismo ciclo
 **Para `docs/MAPA_DE_CALCULOS.md`**, nivel 2: «Si el alumno se cambió de sección, sus criterios salen de su
 sección y de las otras del mismo ciclo donde tiene notas; el promedio se escala a los puntos calificados
 (`seccionesDelAlumno`). SEC-04/05.»
+
+### 3. El alumno retirado seguía ocupando su puesto — **arreglado** (`f82d14a`)
+
+Retirar a un alumno a mitad de año es «Archivar usuario», y eso apagaba solo la cuenta: la inscripción seguía
+activa. El retirado **contaba en el total de la sección, ocupaba cupo** (no se podía inscribir a otro en su
+puesto) y **al cerrar el ciclo se le proponía para el año siguiente**. Ahora archivarlo deja su inscripción
+inactiva (no se borra, conserva notas e historial) y desarchivarlo lo devuelve a su sección si hay cupo.
+RET-01…04, tres en rojo antes.
+
+### 4. El representante veía otro promedio y avisos falsos — **arreglado** (`d5bb535`)
+
+- Su panel calculaba el promedio del hijo con la media a pelo de la tabla de notas antigua, **sin las notas de
+  Clase en Vivo** (donde se ponen casi todas) ni el plan de evaluación. A un hijo que iba con **8** le salía
+  **0**, y la familia no recibía el aviso de promedio bajo. Ahora usa el mismo cálculo que el panel del alumno.
+- Al **empezar cada lapso**, antes de pasar lista, todas las familias recibían **«Asistencia baja: 0%»**. Ahora
+  hace falta al menos un registro en el lapso. REP-01…02, las dos en rojo antes.
+
+**Para `docs/MAPA_DE_CALCULOS.md`**, sección 4, fila «Panel del representante»: «Sin ningún registro de
+asistencia en el lapso no hay aviso (REP-02)». Y en la sección 1: «El promedio que ve el representante es el
+mismo que el del panel del alumno: media de las materias con notas (nivel 2), a un decimal (REP-01)».
 
 ## Qué se probó y qué no
 
