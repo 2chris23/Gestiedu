@@ -34,7 +34,7 @@ for (const [nombre, width, height, movil] of TAMANOS) {
     await p.screenshot({ path: `${carpeta}/portada-${nombre}.png` });
     if (nombre === '390' || nombre === 'portatil') {
         await p.evaluate(() => window.scrollTo(0, 0));
-        await p.screenshot({ path: `${carpeta}/portada-${nombre}-entera.png`, fullPage: true });
+        await p.screenshot({ path: `${carpeta}/portada-${nombre}-entera.jpg`, fullPage: true, type: 'jpeg', quality: 70 });
     }
     await ctx.close();
 }
