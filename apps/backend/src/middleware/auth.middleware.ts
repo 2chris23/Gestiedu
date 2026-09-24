@@ -126,6 +126,23 @@ export async function authenticate(
     // Verificar y decodificar el token
     const payload = verifyAccessToken(token);
 
+    /**
+     * EL LICEO DEL TOKEN MANDA, Y UN TOKEN SIN LICEO NO ENTRA
+     *
+     * `identifyTenant` compara el liceo del token con el que nombre la
+     * petición; pero si el token no trae liceo no hay con qué comparar, y la
+     * base la elegía la cabecera de quien llama. Así entraba en el liceo B,
+     * con la cédula que tuviera allí, una sesión abierta en el A
+     * (`la-llave-de-renovar-no-abre-puertas.test.ts`). Falla cerrado.
+     */
+    const liceoDeLaPeticion = (request as any).institute?.id;
+    if (!payload.instituteId || !liceoDeLaPeticion || payload.instituteId !== liceoDeLaPeticion) {
+      return reply.status(401).send({
+        error: 'El instituto solicitado no coincide con las credenciales del usuario',
+        code: 'TENANT_MISMATCH',
+      });
+    }
+
     // SEGURIDAD: Verificar si el token fue revocado explícitamente en logout (auth-bypass-logout-access-token)
     const revocado = await isTokenRevoked((request as any).institute?.id, token);
     if (revocado) {
@@ -214,6 +231,8 @@ export async function optionalAuthenticate(
 
     if (token) {
       const payload = verifyAccessToken(token);
+      // Lo mismo que en `authenticate`: sin liceo en el token, o con otro, no.
+      if (!payload.instituteId || payload.instituteId !== (request as any).institute?.id) return;
       // SEGURIDAD: No hay fallback al server.prisma. Si tenantPrisma no está
       // resuelto, se omite la autenticación opcional (fail-closed).
       const db = (request as any).tenantPrisma;

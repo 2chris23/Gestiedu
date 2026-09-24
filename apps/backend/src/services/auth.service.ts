@@ -222,7 +222,11 @@ class AuthService {
    * Renovar token de acceso
    * SEGURIDAD: tenantDb es requerido — no hay fallback al singleton.
    */
-  async refreshToken(data: RefreshTokenData, tenantDb: PrismaClient): Promise<{ accessToken: string; refreshToken: string; expiresIn: string }> {
+  async refreshToken(
+    data: RefreshTokenData,
+    tenantDb: PrismaClient,
+    instituteContextId?: string
+  ): Promise<{ accessToken: string; refreshToken: string; expiresIn: string }> {
     const { refreshToken } = data;
 
     // Verificar refresh token
@@ -322,7 +326,10 @@ class AuthService {
         userId: refreshTokenRecord.user.id,
         email: refreshTokenRecord.user.email,
         role: refreshTokenRecord.user.role as UserRole,
-        instituteId: refreshTokenRecord.user.instituteId
+        // Igual que al entrar: en la base del liceo la columna suele ir vacía,
+        // y una llave sin liceo dejaba que la cabecera eligiera la base
+        // (`la-llave-de-renovar-no-abre-puertas.test.ts`, LLAVE-R-04/05).
+        instituteId: refreshTokenRecord.user.instituteId ?? instituteContextId ?? null
       },
       newTokenRecordId
     );
