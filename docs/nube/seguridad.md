@@ -13,13 +13,88 @@ Prisma generado, liceo `instituto-testing` sembrado y migrado.
 
 | Qué | Resultado |
 |---|---|
-| `npx jest` (servidor, con Redis de verdad) | *en curso* |
-| `npm run typecheck` (servidor / web) | *pendiente* |
-| `npx jest` (web) | *pendiente* |
+| `npx jest` (servidor, con Redis de verdad) | 859 de 867 en verde. Los 8 rojos, del entorno: 7 de `tenant-mismatch` (a la base `template1` le faltaba `pg_trgm`; con la extensión, 7/7) y LOGO-03, que falla a ratos (pasa sola; ver §4) |
+| `npm run typecheck` servidor | limpio |
+| `npm run typecheck` web | 2 errores en `GuideHistoryModal.test.tsx` (`screen`/`fireEvent` de `@testing-library/react`: falta `@testing-library/dom`, que `--legacy-peer-deps` no instala). Del entorno, no del producto |
+| `npx jest` web | 45/45 pruebas; 1 archivo (el mismo) no carga |
 
-## 2. Hallazgos
+## 2. Hallazgos, por gravedad
 
-*(se rellena según se mide)*
+Todos medidos con peticiones de verdad (servidor en marcha o `supertest` contra
+el servidor completo). Cada uno: prueba que falla → arreglo en el servidor →
+prueba en verde → commit.
+
+### S-01 (CRÍTICO) · La llave de renovar abría la puerta, y renovar borraba el liceo del token — `5894c60`
+
+- **Qué le pasaba al liceo.** La llave de «volver a entrar» (7 días; 60 con
+  «recordarme») se aceptaba como llave de acceso. Seguía abriendo **después de
+  «Cerrar sesión»** (medido: `/api/auth/profile` → 200 con la llave de renovar
+  tras el cierre). Y cada llave de acceso que salía de una renovación iba con
+  `instituteId: null`, porque en la base de cada liceo esa columna está vacía;
+  sin liceo en el token, el guardián `TENANT_MISMATCH` no tenía con qué
+  comparar y la cabecera `X-Institute-Slug` elegía la base.
+- **Consecuencia medida:** un profesor con la misma cédula en dos liceos (lo
+  normal en Venezuela: muchos dan clase en dos planteles) entraba en el liceo B
+  con la contraseña del liceo A, 15 minutos después de entrar (o en el acto con
+  la llave de renovar). Probado en vivo copiando el liceo de pruebas como
+  «liceo-b»: `200` con los datos de B.
+- **Arreglo.** Cada llave lleva su tipo (`typ`) y cada comprobación rechaza la
+  otra (la de renovar se reconoce también por su `tokenId`, así las ya
+  repartidas no se confunden); la renovación pone el liceo de la petición; y
+  `authenticate` rechaza con `401 TENANT_MISMATCH` todo token sin liceo o con
+  otro. Pruebas `LLAVE-R-01…07` (`la-llave-de-renovar-no-abre-puertas.test.ts`).
+
+### S-02 (ALTO) · Un profesor se hacía dueño de cualquier sección — `93bedf7`
+
+Cualquier profesor podía asignarse una materia en cualquier sección
+(`POST /classrooms/:id/subjects`), y meter o sacar alumnos de secciones
+(`POST/DELETE /classrooms/:id/students`, sacar con su propia contraseña).
+Asignándose una materia pasaba a «impartir» allí: notas, asistencia y datos de
+esos alumnos. Ahora es del administrador (control de estudios). La pantalla de
+la sección ya no enseña esos botones al profesor.
+
+### S-03 (ALTO) · Asistencia de secciones ajenas — `2674a0c`
+
+El profesor de 1.º B **corregía y borraba** la asistencia de 1.º A y pasaba
+lista en bloque en una sección ajena (medido: `DELETE /attendance/:id` → 200).
+Alumnos y representantes leían la asistencia completa de cualquier sección por
+fecha y el resumen de la sección; un representante leía registros sueltos de
+otros alumnos por su id. Un profesor podía apuntar en su sección a un alumno
+inscrito en otra. Ahora todo pasa por la sección y por la inscripción.
+
+### S-04 (ALTO) · El guía ponía notas en materias que no da — `81e5c47`
+
+`assertClassroomScope` dejaba al profesor guía todo menos el plan en cualquier
+materia de su sección: corregía la nota de Matemática sin darla, daba la clase
+en vivo y tocaba actividades de otro profesor. Ahora el guía, en lo que no
+imparte, solo pasa asistencia, deja observaciones y mira.
+
+### S-05 (ALTO) · Las notas de todo el liceo, para cualquier profesor — `d385ba1`
+
+`GET /grades`, `/grades/subject/:id`, `/grades/export/:formato` y
+`/grades/activity/:id` devolvían notas de cualquier sección a cualquier
+profesor. Ahora se filtran por lo que imparte y por sus secciones guía (y la
+memoria rápida guarda la lista con su cédula, para no servírsela a otro).
+
+### S-06 (MEDIO) · Actividades y observaciones — `4cd9ced`
+
+El representante veía las actividades de todo el liceo y, al abrir una, las
+notas de **todos** los alumnos que la hicieron. Alumnos y representantes de
+otra sección pedían las actividades de 1.º A. Un profesor dejaba
+observaciones en el expediente de cualquier alumno del liceo. Arreglado; y el
+profesor se mide ya por lo que imparte y no por la tabla vieja
+`teacherClassroom` (que dejaba fuera al profesor de la clase: 403 al crear).
+
+### La matriz ruta × rol
+
+- **Mapa de rutas** sacado del servidor, no a mano: `docs/nube/mapa-de-rutas.md`
+  (286 rutas bajo `/api`), generado por `src/scripts/mapa-de-rutas.ts`.
+- **Matriz medida**: `docs/nube/matriz-de-permisos.md`, generada por
+  `tests/integration/quien-puede-que.test.ts` (68 casos × 10 llamantes: sin
+  sesión, admin, profesor de esa clase, guía que no la da, profesor de otra,
+  alumna de la sección, alumno de otra, representante de ella, de otro, y un
+  token de otro liceo). Los huecos medidos que siguen abiertos van con
+  `it.failing` y se quitan de la lista al cerrarlos.
 
 ## 3. Qué se probó y qué no
 
