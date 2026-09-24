@@ -4,9 +4,16 @@ import android.app.DownloadManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.URLUtil;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import android.webkit.WebView;
 import android.widget.Toast;
 
 import androidx.core.graphics.Insets;
@@ -15,7 +22,9 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
+import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebViewClient;
 
 /**
  * LA APP DEL LICEO
@@ -56,14 +65,48 @@ import com.getcapacitor.BridgeActivity;
  * cabecera blanca. Facebook y WhatsApp pintan ahí el blanco de su cabecera y
  * ponen el reloj en oscuro encima, y por eso parecen una sola pieza. Lo segundo
  * es tan importante como lo primero: un reloj blanco sobre blanco desaparece.
+ * El color y los iconos los fija el TEMA (`styles.xml`): al irse la pantalla
+ * de arranque, Android vuelve a pintar la franja con lo que diga el tema, y
+ * lo que se pinte aquí se pierde (así salía negra en el Motorola).
+ *
+ * LA SESIÓN, AL DISCO ANTES DE SALIR
+ *
+ * La sesión vive en cookies, y Android no las escribe en el disco al
+ * momento: lo hace cada 30 segundos. Quien entraba y cerraba la app antes de
+ * eso —o la cerraba justo después de que la llave de volver a entrar se
+ * renovara— volvía a encontrarse el formulario, o una llave vieja que el
+ * servidor ya no acepta. Se escriben al salir de la app (`onPause`). Medido en
+ * el emulador, entrando y cerrando a los pocos segundos: sin pasar por aquí,
+ * ni una cookie en el disco y otra vez al login; pasando, las cuatro, y la
+ * app abre en el panel.
+ *
+ * LA PANTALLA DE «NO SE LLEGA AL LICEO», SOLO SI NO HAY NADA QUE ENSEÑAR
+ *
+ * Sin servidor, la app abre igual: el ayudante del navegador (`sw.js`) sirve
+ * la app guardada y la app enseña lo último descargado. Pero Android avisa de
+ * un error de red en la página principal aunque el ayudante sí la haya
+ * servido, y Capacitor, al oírlo, tiraba de su pantalla de error
+ * (`server.errorPath`) y tapaba la app que ya estaba en camino. Medido en el
+ * emulador: sin servidor, «No se llega al liceo»; quitando la pantalla de
+ * error, el panel con lo guardado.
+ *
+ * Ahora se mira QUÉ quedó en pantalla (`mirarSiLlegoLaApp`): si es la app,
+ * se deja; si es la página de error de Android, se cambia por la nuestra. Y un
+ * 404 o un 500 del liceo tampoco es «no se llega»: eso lo cuenta el propio
+ * servidor con su página.
  */
 public class MainActivity extends BridgeActivity {
+
+    private static final String ETIQUETA = "GestiEdu";
+
+    private final Handler hiloPrincipal = new Handler(Looper.getMainLooper());
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         dejarSitioParaElReloj();
+        getBridge().setWebViewClient(new ClienteQueNoTapaLaApp(getBridge()));
 
         getBridge().getWebView().setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
             try {
@@ -104,10 +147,23 @@ public class MainActivity extends BridgeActivity {
         });
     }
 
+    @Override
+    public void onPause() {
+        super.onPause();
+        // Ver «LA SESIÓN, AL DISCO ANTES DE SALIR», arriba.
+        CookieManager.getInstance().flush();
+    }
+
     /**
      * Le pide al sistema cuánto ocupan el reloj y la muesca, y aparta esa
      * altura para que la web empiece por debajo. Solo arriba: el hueco de la
-     * barra de gestos de abajo ya lo aparta Capacitor.
+     * barra de gestos de abajo lo aparta la web (`--zona-segura-abajo`).
+     *
+     * Y a la web se le dice que arriba ya no hay nada que apartar. Las
+     * versiones nuevas de Android System WebView sí miden la barra de estado en
+     * `env(safe-area-inset-top)`, así que la web la apartaba OTRA vez: una
+     * franja blanca del doble de alto encima de la cabecera. Medido en el
+     * emulador (Android 17, WebView 149).
      */
     private void dejarSitioParaElReloj() {
         final View contenido = findViewById(android.R.id.content);
@@ -126,7 +182,82 @@ public class MainActivity extends BridgeActivity {
                 WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.displayCutout()
             );
             vista.setPadding(vista.getPaddingLeft(), sistema.top, vista.getPaddingRight(), vista.getPaddingBottom());
-            return insets;
+
+            Insets reloj = insets.getInsets(WindowInsetsCompat.Type.statusBars());
+            Insets muesca = insets.getInsets(WindowInsetsCompat.Type.displayCutout());
+            return new WindowInsetsCompat.Builder(insets)
+                .setInsets(WindowInsetsCompat.Type.statusBars(), Insets.of(reloj.left, 0, reloj.right, reloj.bottom))
+                .setInsets(WindowInsetsCompat.Type.displayCutout(), Insets.of(muesca.left, 0, muesca.right, muesca.bottom))
+                .build();
         });
+    }
+
+    /**
+     * ¿Llegó la app a la pantalla, o se quedó la página de error de Android?
+     *
+     * Se pregunta a la propia página: si es de la dirección del liceo, llegó
+     * (del servidor o de lo guardado por el ayudante). Si es la página de error
+     * de Android (`chrome-error:`), o a los cuatro segundos sigue sin haber
+     * nada, se pone la nuestra, que dice qué pasa y vuelve a intentarlo sola.
+     */
+    private void mirarSiLlegoLaApp(WebView vista, String urlDeError, int intento) {
+        final String servidor = elOrigen(getBridge().getServerUrl());
+        vista.evaluateJavascript(
+            "(function(){try{return location.protocol+'|'+location.origin+'|'+document.readyState}catch(e){return 'x'}})()",
+            (respuesta) -> {
+                String r = respuesta == null ? "" : respuesta.replace("\"", "");
+                Log.d(ETIQUETA, "¿Llegó la app? intento " + intento + ": " + r);
+                if (servidor != null && r.contains("|" + servidor + "|") && !r.endsWith("|loading")) return;
+                if (r.startsWith("chrome-error:") || intento >= 16) {
+                    vista.loadUrl(urlDeError);
+                    return;
+                }
+                hiloPrincipal.postDelayed(() -> mirarSiLlegoLaApp(vista, urlDeError, intento + 1), 250);
+            }
+        );
+    }
+
+    private static String elOrigen(String url) {
+        if (url == null) return null;
+        Uri u = Uri.parse(url);
+        if (u.getScheme() == null || u.getEncodedAuthority() == null) return null;
+        return u.getScheme() + "://" + u.getEncodedAuthority();
+    }
+
+    private class ClienteQueNoTapaLaApp extends BridgeWebViewClient {
+
+        private final Bridge puente;
+
+        ClienteQueNoTapaLaApp(Bridge puente) {
+            super(puente);
+            this.puente = puente;
+        }
+
+        @Override
+        public void onReceivedError(WebView vista, WebResourceRequest peticion, WebResourceError error) {
+            String urlDeError = puente.getErrorUrl();
+            if (urlDeError == null || !peticion.isForMainFrame()) {
+                super.onReceivedError(vista, peticion, error);
+                return;
+            }
+            // Sin la dirección: puede llevar la cédula de alguien.
+            Log.d(ETIQUETA, "Error de red en la página principal: " + error.getErrorCode() + " " + error.getDescription());
+            hiloPrincipal.postDelayed(() -> mirarSiLlegoLaApp(vista, urlDeError, 0), 250);
+        }
+
+        @Override
+        public void onReceivedHttpError(WebView vista, WebResourceRequest peticion, WebResourceResponse respuesta) {
+            String urlDeError = puente.getErrorUrl();
+            if (urlDeError == null || !peticion.isForMainFrame()) {
+                super.onReceivedHttpError(vista, peticion, respuesta);
+                return;
+            }
+            // 502, 503 y 504: el liceo no contesta detrás de su puerta. El
+            // resto (un 404, un 500) lo explica el propio servidor.
+            int codigo = respuesta.getStatusCode();
+            if (codigo >= 502 && codigo <= 504) {
+                hiloPrincipal.postDelayed(() -> mirarSiLlegoLaApp(vista, urlDeError, 0), 250);
+            }
+        }
     }
 }
