@@ -3,6 +3,26 @@ import { z } from 'zod';
 import { generateSlug } from '../utils/slug';
 import * as closeCycleService from '../services/promotion/close-cycle.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
+import { canSeeClassroom } from '../services/authorization.service';
+
+/**
+ * MIRAR UNA SECCIÓN ES DE QUIEN TIENE QUE VER CON ELLA
+ *
+ * La ficha de una sección y sus números los pedía cualquiera con sesión: el
+ * alumno de 1.º B la de 1.º A, y alumnos y representantes, el PROMEDIO de la
+ * sección, que es lo que el liceo había dicho que no ven
+ * (`quien-puede-que.test.ts`). La ficha, quien la mira (`canSeeClassroom`);
+ * los números, el administrador y el guía de esa sección.
+ */
+async function puedeMirarLaSeccion(request: FastifyRequest, classroomId: string): Promise<boolean> {
+  return canSeeClassroom(request.tenantPrisma, request.user as any, classroomId);
+}
+
+function puedeVerLosNumeros(request: FastifyRequest, classroom: { teacherId: string | null }): boolean {
+  const u = request.user as any;
+  if (u?.role === 'ADMIN') return true;
+  return u?.role === 'TEACHER' && !!classroom.teacherId && classroom.teacherId === (u.userId ?? u.id);
+}
 
 const classroomSchema = z.object({
   academicYearId: z.string().min(1, 'El Año Escolar es requerido'),
@@ -216,6 +236,9 @@ export const getClassroom = async (request: FastifyRequest, reply: FastifyReply)
     });
 
     if (!classroom) return reply.status(404).send({ error: 'Aula no encontrada' });
+    if (!(await puedeMirarLaSeccion(request, classroom.id))) {
+      return reply.status(403).send({ error: 'Esa sección no es tuya', code: 'FORBIDDEN' });
+    }
 
     return reply.send({
       ...classroom,
@@ -282,6 +305,9 @@ export const getClassroomBySlug = async (request: FastifyRequest, reply: Fastify
 
     if (!classroom) {
       return reply.status(404).send({ error: 'Aula no encontrada' });
+    }
+    if (!(await puedeMirarLaSeccion(request, classroom.id))) {
+      return reply.status(403).send({ error: 'Esa sección no es tuya', code: 'FORBIDDEN' });
     }
 
     return reply.send({
@@ -925,6 +951,9 @@ export const getClassroomStats = async (request: FastifyRequest, reply: FastifyR
 
     if (!classroom) {
       return reply.status(404).send({ error: 'Aula/Sección no encontrada' });
+    }
+    if (!puedeVerLosNumeros(request, classroom)) {
+      return reply.status(403).send({ error: 'Los promedios de la sección son de su guía y del administrador', code: 'FORBIDDEN' });
     }
 
     const classroomId = classroom.id;
