@@ -12,7 +12,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLiveOverview } from '@/hooks/useLiveClass';
 import { toLocalYMD } from '@/utils/date.utils';
-import { useSchoolToday } from '@/hooks/useSchoolTime';
+import { useRelojDelLiceo } from '@/hooks/useSchoolTime';
 
 interface Props {
     schedule: ScheduleBlock[];
@@ -58,10 +58,10 @@ export default function SubjectScheduleSection({
     const carouselRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
 
-    const now = new Date();
-    const currentTime = now.toTimeString().slice(0, 5);
-    // 'Hoy' según el liceo, no según el reloj del dispositivo
-    const todayDateStr = useSchoolToday();
+    // Día y hora del LICEO, no los del aparato (RELOJ-01).
+    const reloj = useRelojDelLiceo();
+    const currentTime = reloj.hora;
+    const todayDateStr = reloj.fecha;
 
     // Live Overview (temas generadores y actividades de la materia)
     const activeDate = selectedHistoryDate || todayDateStr;
@@ -79,15 +79,16 @@ export default function SubjectScheduleSection({
             return a.startTime.localeCompare(b.startTime);
         });
 
-        const baseDate = selectedHistoryDate ? new Date(`${selectedHistoryDate}T12:00:00`) : new Date(now);
-        baseDate.setHours(12, 0, 0, 0);
+        // Todo en UTC a mediodía, a partir del día del LICEO: con getDate/getDay
+        // (hora del aparato) un teléfono en otra zona corría las fechas un día.
+        const baseDate = new Date(`${selectedHistoryDate || todayDateStr}T12:00:00Z`);
 
         const pastClasses: SubjectClassSession[] = [];
         // 1. Buscar hacia atrás hasta 35 días para obtener 2 clases anteriores
         for (let offset = 1; offset <= 35 && pastClasses.length < 2; offset++) {
             const d = new Date(baseDate);
-            d.setDate(baseDate.getDate() - offset);
-            const dow = d.getDay(); // 0=dom..6=sáb
+            d.setUTCDate(baseDate.getUTCDate() - offset);
+            const dow = d.getUTCDay(); // 0=dom..6=sáb
             if (dow >= 1 && dow <= 5) {
                 const dayKey = WORKING_DAYS[dow - 1].key;
                 const blocksForDay = sortedBlocks.filter((b) => b.day === dayKey);
@@ -99,7 +100,7 @@ export default function SubjectScheduleSection({
                         dateStr: dStr,
                         dayKey,
                         dayLabel: WORKING_DAYS[dow - 1].label,
-                        formattedDate: `${WORKING_DAYS[dow - 1].key} ${d.getDate()}/${d.getMonth() + 1}`,
+                        formattedDate: `${WORKING_DAYS[dow - 1].key} ${d.getUTCDate()}/${d.getUTCMonth() + 1}`,
                         block: b,
                         status: 'past',
                         statusLabel: 'REALIZADA',
@@ -109,7 +110,7 @@ export default function SubjectScheduleSection({
         }
 
         // 2. Clases del día base (hoy o día seleccionado)
-        const baseDow = baseDate.getDay();
+        const baseDow = baseDate.getUTCDay();
         const currentClasses: SubjectClassSession[] = [];
         if (baseDow >= 1 && baseDow <= 5) {
             const dayKey = WORKING_DAYS[baseDow - 1].key;
@@ -144,7 +145,7 @@ export default function SubjectScheduleSection({
                     dateStr: baseDate.toISOString().split('T')[0],
                     dayKey,
                     dayLabel: WORKING_DAYS[baseDow - 1].label,
-                    formattedDate: `HOY ${baseDate.getDate()}/${baseDate.getMonth() + 1}`,
+                    formattedDate: `HOY ${baseDate.getUTCDate()}/${baseDate.getUTCMonth() + 1}`,
                     block: b,
                     status,
                     statusLabel,
@@ -158,8 +159,8 @@ export default function SubjectScheduleSection({
 
         for (let offset = 1; offset <= 45 && futureClasses.length < totalNeededFuture; offset++) {
             const d = new Date(baseDate);
-            d.setDate(baseDate.getDate() + offset);
-            const dow = d.getDay();
+            d.setUTCDate(baseDate.getUTCDate() + offset);
+            const dow = d.getUTCDay();
             if (dow >= 1 && dow <= 5) {
                 const dayKey = WORKING_DAYS[dow - 1].key;
                 const blocksForDay = sortedBlocks.filter((b) => b.day === dayKey);
@@ -171,7 +172,7 @@ export default function SubjectScheduleSection({
                             dateStr: d.toISOString().split('T')[0],
                             dayKey,
                             dayLabel: WORKING_DAYS[dow - 1].label,
-                            formattedDate: `${WORKING_DAYS[dow - 1].key} ${d.getDate()}/${d.getMonth() + 1}`,
+                            formattedDate: `${WORKING_DAYS[dow - 1].key} ${d.getUTCDate()}/${d.getUTCMonth() + 1}`,
                             block: b,
                             status: 'upcoming',
                             statusLabel: isNext ? 'PRÓXIMA CLASE' : 'SIGUIENTE',
@@ -230,7 +231,7 @@ export default function SubjectScheduleSection({
     const headerDateText = selectedHistoryDate
         ? `Clase seleccionada: ${selectedHistoryDate.split('-').reverse().join('/')}`
         : currentActiveSession
-        ? `${currentActiveSession.status === 'today' || currentActiveSession.status === 'current' ? 'Hoy' : 'Próxima'}, ${currentActiveSession.dayLabel} (${currentActiveSession.date.toLocaleDateString('es-VE', { day: 'numeric', month: 'long' })})`
+        ? `${currentActiveSession.status === 'today' || currentActiveSession.status === 'current' ? 'Hoy' : 'Próxima'}, ${currentActiveSession.dayLabel} (${currentActiveSession.date.toLocaleDateString('es-VE', { day: 'numeric', month: 'long', timeZone: 'UTC' })})`
         : 'Horario semanal';
 
     return (

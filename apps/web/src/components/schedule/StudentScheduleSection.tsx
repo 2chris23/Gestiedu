@@ -19,7 +19,7 @@ import { useArrastrarParaDesplazar } from '@/hooks/useArrastrarParaDesplazar';
 import TurnoBadge from '@/components/common/TurnoBadge';
 import { turnoDeLaHora } from '@/lib/turnos';
 import { toLocalYMD } from '@/utils/date.utils';
-import { useSchoolToday } from '@/hooks/useSchoolTime';
+import { useRelojDelLiceo } from '@/hooks/useSchoolTime';
 
 interface Props {
     schedule: ScheduleBlock[];
@@ -118,12 +118,13 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
     // El carril de bloques: se arrastra con el ratón, además de las flechas.
     const { ref: carouselRef, arrastrando } = useArrastrarParaDesplazar<HTMLDivElement>();
 
-    // Get current day and time
-    const now = new Date();
-    const currentDayIndex = now.getDay();
-    const currentTime = now.toTimeString().slice(0, 5);
-    // 'Hoy' según el liceo, no según el reloj del dispositivo
-    const todayDateStr = useSchoolToday();
+    // El día y la hora del LICEO, no los del aparato: con el reloj del
+    // teléfono adelantado o en otra zona, «Hoy» enseñaba las clases de otro
+    // día y la clase «en curso» era otra (RELOJ-01).
+    const reloj = useRelojDelLiceo();
+    const currentDayIndex = reloj.diaDeLaSemana;
+    const currentTime = reloj.hora;
+    const todayDateStr = reloj.fecha;
 
     // ============================================================
     // FASE 3.5 PARTE B — HISTORIAL: la vista "Hoy" queda PARAMETRIZADA por
@@ -136,6 +137,12 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
         : WORKING_DAYS[currentDayIndex - 1]?.key || 'Lun';
     const [dayViewKey, setDayViewKey] = React.useState<string>(initialDayKey);
     const [histDate, setHistDate] = React.useState<string | null>(null);
+    // Hasta que contesta el servidor, el día es el del aparato. Cuando llega el
+    // del liceo, el horario se pone en él (si nadie ha elegido otro día).
+    const [diaElegido, setDiaElegido] = React.useState(false);
+    React.useEffect(() => {
+        if (reloj.delServidor && !diaElegido && !histDate) setDayViewKey(initialDayKey);
+    }, [reloj.delServidor, initialDayKey, diaElegido, histDate]);
     const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
 
     // ============================================================
@@ -150,13 +157,11 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
     const getDateForDayKey = (dayKey: string): string => {
         const dayIndex = WORKING_DAYS.findIndex(d => d.key === dayKey);
         if (dayIndex < 0) return todayDateStr;
-        // Lunes de la semana actual a mediodía local (evita drift UTC/DST)
-        const monday = new Date(now);
-        monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-        monday.setHours(12, 0, 0, 0);
-        const target = new Date(monday);
-        target.setDate(monday.getDate() + dayIndex);
-        return target.toISOString().split('T')[0];
+        // Lunes de la semana del LICEO, contado en UTC a mediodía: ni el reloj
+        // ni la zona del aparato mueven la fecha de un bloque (RELOJ-01).
+        const hoy = new Date(`${todayDateStr}T12:00:00Z`);
+        const lunes = hoy.getTime() - ((hoy.getUTCDay() + 6) % 7) * 864e5;
+        return new Date(lunes + dayIndex * 864e5).toISOString().slice(0, 10);
     };
 
     // Tema generador y actividades por materia para el horario en vivo.
@@ -957,6 +962,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                     onSelectDay={(dateStr, key) => {
                         setHistDate(dateStr);
                         setDayViewKey(key);
+                        setDiaElegido(true);
                         setViewMode('day');
                         setIsHistoryOpen(false);
                     }}

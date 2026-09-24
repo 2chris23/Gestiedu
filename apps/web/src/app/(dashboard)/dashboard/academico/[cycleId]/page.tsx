@@ -24,6 +24,7 @@ import AcademicStats from '@/components/academic/AcademicStats';
 import LapsoSelector from '@/components/academic/LapsoSelector';
 import { useAuthStore } from '@/store/auth.store';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
+import { useSchoolToday } from '@/hooks/useSchoolTime';
 
 export default function AcademicYearDashboard() {
     const confirmDialog = useConfirm();
@@ -51,6 +52,8 @@ export default function AcademicYearDashboard() {
      * ciclo tal como estaba la última vez que se cargó.
      */
     const ciclos = useAcademicYears();
+    // El día del liceo decide si el ciclo está «en curso», no el del aparato.
+    const hoyDelLiceo = useSchoolToday();
     const allCycles = ciclos.data ?? [];
     const year = allCycles.find((y) => y.id === cycleIdParam || y.name === cycleIdParam) ?? null;
 
@@ -233,12 +236,10 @@ export default function AcademicYearDashboard() {
     }
 
     const estado: 'UPCOMING' | 'ACTIVE' | 'COMPLETED' = (() => {
-        const now = new Date();
-        const start = new Date(year.startDate);
-        const end = new Date(year.endDate);
-        end.setHours(23, 59, 59, 999);
-        if (now > end) return 'COMPLETED';
-        if (now >= start && now <= end) return 'ACTIVE';
+        const inicio = String(year.startDate).slice(0, 10);
+        const fin = String(year.endDate).slice(0, 10);
+        if (hoyDelLiceo > fin) return 'COMPLETED';
+        if (hoyDelLiceo >= inicio) return 'ACTIVE';
         return 'UPCOMING';
     })();
     const ESTADOS = {

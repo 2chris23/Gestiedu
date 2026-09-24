@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, X, Info, ListTodo } from 'lucide-react';
 import { ScheduleBlock } from '@/components/schedule/UniversalScheduleViewer';
 import { useClassActivities } from '@/hooks/useLiveClass';
+import { useSchoolToday } from '@/hooks/useSchoolTime';
 
 interface Props {
     classroomId?: string;
@@ -38,9 +39,11 @@ function toDateStr(d: Date): string {
  * Días sin clase (fin de semana o sin bloques) están deshabilitados.
  */
 export default function ScheduleHistoryModal({ classroomId, schedule, onSelectDay, onClose, title, subtitle }: Props) {
+    // El mes y el «hoy» del liceo, no los del aparato (RELOJ-01).
+    const hoyDelLiceo = useSchoolToday();
     const [month, setMonth] = useState(() => {
-        const n = new Date();
-        return new Date(n.getFullYear(), n.getMonth(), 1);
+        const [y, m] = hoyDelLiceo.split('-').map(Number);
+        return new Date(y, m - 1, 1);
     });
     const [sinClases, setSinClases] = useState<string | null>(null);
 
@@ -153,7 +156,7 @@ export default function ScheduleHistoryModal({ classroomId, schedule, onSelectDa
                             const inMonth = day.getMonth() === month.getMonth();
                             const withClass = hasClassOn(day);
                             const isClickable = inMonth && withClass;
-                            const isToday = toDateStr(day) === toDateStr(new Date());
+                            const isToday = toDateStr(day) === hoyDelLiceo;
                             const dayActCount = activitiesByDate.get(toDateStr(day)) || 0;
 
                             return (
