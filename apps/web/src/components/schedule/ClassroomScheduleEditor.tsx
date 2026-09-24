@@ -2,7 +2,19 @@
 
 import React, { useState, useEffect } from 'react';
 import { useConfirm } from '@/hooks/useConfirm';
-import { DndContext, useDraggable, useDroppable, DragEndEvent, DragOverlay } from '@dnd-kit/core';
+import {
+    DndContext,
+    useDraggable,
+    useDroppable,
+    DragEndEvent,
+    DragOverlay,
+    KeyboardSensor,
+    MouseSensor,
+    TouchSensor,
+    useSensor,
+    useSensors,
+} from '@dnd-kit/core';
+import { useRouter } from 'next/navigation';
 import { useBulkUpdateSchedule, useAutoGenerateSchedule } from '@/hooks/useSchedules';
 import { useSchedulePeriods } from '@/hooks/useSchedulePeriods';
 import { toast } from 'sonner';
@@ -13,9 +25,29 @@ interface ClassroomScheduleEditorProps {
     initialBlocks: any[];
     subjects: any[]; // The subjects assigned to this classroom (ClassroomSubjects)
     shift?: 'MANANA' | 'TARDE' | 'INTEGRAL';
+    /** El nombre de la sección, para la cabecera del editor en el teléfono. */
+    titulo?: string;
 }
 
 import HorarioPorDias from '@/components/schedule/HorarioPorDias';
+import EditorDeHorarioTumbado from '@/components/schedule/EditorDeHorarioTumbado';
+
+/**
+ * ¿Es un teléfono? El dedo, y el lado corto de la pantalla por debajo de 600
+ * px (de pie o tumbado). Una tableta tiene 700 o más: allí sirve el editor de
+ * siempre, que cabe.
+ */
+function useEsTelefono(): boolean {
+    const [es, setEs] = useState(false);
+    useEffect(() => {
+        const consulta = window.matchMedia('(pointer: coarse) and (max-width: 599px), (pointer: coarse) and (max-height: 599px)');
+        const mirar = () => setEs(consulta.matches);
+        mirar();
+        consulta.addEventListener('change', mirar);
+        return () => consulta.removeEventListener('change', mirar);
+    }, []);
+    return es;
+}
 
 const DAYS = [
     { id: 1, label: 'Lunes' },
@@ -64,8 +96,8 @@ function DraggableGridBlock({ block, onRemove }: { block: any, onRemove: () => v
         >
             <div className="font-bold text-gray-800 line-clamp-1 pointer-events-none">{block.subjectName}</div>
             <div className="text-gray-500 line-clamp-1 pointer-events-none">{block.teacherName}</div>
-            
-            <button 
+
+            <button
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => { e.stopPropagation(); onRemove(); }}
                 className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-100 p-0.5 rounded transition-opacity z-20 cursor-pointer"
@@ -94,14 +126,31 @@ function DroppableCell({ id, block, onRemove }: { id: string, block?: any, onRem
     );
 }
 
-export default function ClassroomScheduleEditor({ classroomId, initialBlocks, subjects, shift }: ClassroomScheduleEditorProps) {
+export default function ClassroomScheduleEditor({ classroomId, initialBlocks, subjects, shift, titulo }: ClassroomScheduleEditorProps) {
+    const router = useRouter();
+    const esTelefono = useEsTelefono();
+
+    /**
+     * ARRASTRAR CON EL DEDO
+     *
+     * Con los sensores por defecto (`PointerSensor`), en un teléfono el dedo
+     * movía la página en vez de la materia: el navegador se queda el gesto
+     * para desplazar y el arrastre se cancela. Ratón y dedo van aparte: con el
+     * ratón basta moverlo 6 px; con el dedo hay que mantenerlo pulsado un
+     * momento, y así deslizar la lista sigue siendo deslizar la lista.
+     */
+    const sensores = useSensors(
+        useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+        useSensor(KeyboardSensor)
+    );
     const [blocks, setBlocks] = useState<any[]>([]);
     const [deletedIds, setDeletedIds] = useState<string[]>([]);
     const [isDirty, setIsDirty] = useState(false);
     const [activeDragData, setActiveDragData] = useState<any>(null);
     const [isRandomizeModalOpen, setIsRandomizeModalOpen] = useState(false);
     const confirmDialog = useConfirm();
-    
+
     const autoShift = initialBlocks?.some(b => b.startTime >= '12:45') ? 'TARDE' : 'MANANA';
     const [currentShift, setCurrentShift] = useState<'MANANA' | 'TARDE'>(
         shift === 'TARDE' ? 'TARDE' : autoShift
@@ -134,29 +183,17 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
         setActiveDragData(event.active.data.current);
     };
 
-    const handleDragEnd = (event: DragEndEvent) => {
-        setActiveDragData(null);
-        const { over, active } = event;
-        if (!over) return;
-
-        const cellId = over.id as string; // Format: "dayOfWeek-startTime"
-        const [dayStr, startTimeStr] = cellId.split('-');
+    /** Poner una materia en un hueco (arrastrándola o tocándola y tocando el hueco). */
+    const colocarMateria = (subjectData: any, cellId: string) => {
+        const [dayStr, startTime] = cellId.split('-');
         const dayOfWeek = parseInt(dayStr);
-        const startTime = startTimeStr;
-        
-        // Find end time for this start time
         const period = dynamicPeriods.find(p => p.startTime === startTime);
-        if (!period || period.type === 'break') return;
-
-        const dragType = active.data.current?.type;
-
-        if (dragType === 'sidebar-subject') {
-            const subjectData = active.data.current?.subject;
-            if (!subjectData) return;
+        if (!subjectData || !period || period.type === 'break') return;
+        {
 
             // Check if cell is already occupied
             const existingBlockIndex = blocks.findIndex(b => b.cellId === cellId);
-            
+
             const newBlock = {
                 id: `temp-${Date.now()}`, // Temporary ID for new blocks
                 cellId,
@@ -184,15 +221,21 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
                 return next;
             });
             setIsDirty(true);
-        } else if (dragType === 'grid-block') {
-            const sourceBlock = active.data.current?.block;
-            if (!sourceBlock) return;
-            
+        }
+    };
+
+    /** Mover una clase ya puesta a otro hueco. */
+    const moverBloque = (sourceBlock: any, cellId: string) => {
+        const [dayStr, startTime] = cellId.split('-');
+        const dayOfWeek = parseInt(dayStr);
+        const period = dynamicPeriods.find(p => p.startTime === startTime);
+        if (!sourceBlock || !period || period.type === 'break') return;
+        {
             if (sourceBlock.cellId === cellId) return;
 
             setBlocks(prev => {
                 const next = [...prev];
-                
+
                 const targetBlockIndex = next.findIndex(b => b.cellId === cellId);
                 if (targetBlockIndex >= 0) {
                     const oldId = next[targetBlockIndex].id;
@@ -217,6 +260,23 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
             });
             setIsDirty(true);
         }
+    };
+
+    const handleDragEnd = (event: DragEndEvent) => {
+        setActiveDragData(null);
+        const { over, active } = event;
+        if (!over) return;
+        const dragType = active.data.current?.type;
+
+        // Una clase soltada en la columna de las materias se quita del horario.
+        if (over.id === 'restantes') {
+            if (dragType === 'grid-block') handleRemoveBlock(active.data.current?.block?.cellId);
+            return;
+        }
+
+        const cellId = over.id as string; // "diaDeLaSemana-horaDeInicio"
+        if (dragType === 'sidebar-subject') colocarMateria(active.data.current?.subject, cellId);
+        else if (dragType === 'grid-block') moverBloque(active.data.current?.block, cellId);
     };
 
     const handleRemoveBlock = (cellId: string) => {
@@ -311,8 +371,122 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
         return { ...s, remaining: total - used };
     });
 
+    const modalDeAzar = (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+                    <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                                <Shuffle size={24} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-base text-gray-900">
+                                    ¿Ordenar horario al azar?
+                                </h3>
+                                <p className="text-xs text-gray-500">
+                                    Reorganización automática y continua
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1.5 leading-relaxed">
+                            <p className="font-semibold flex items-center gap-1.5 text-amber-800">
+                                <AlertCircle size={14} className="shrink-0" />
+                                <span>Atención: Cambio en la distribución semanal</span>
+                            </p>
+                            <p>
+                                Esta opción reorganizará todas las clases de la sección de forma aleatoria.
+                                Las materias quedarán <strong>estrictamente apiladas de forma continua</strong> desde la primera hora escolar (sin horas libres intermedias ni huecos), respetando los horarios de los profesores sin colisiones.
+                            </p>
+                            <p className="text-amber-700 font-medium">
+                                El horario actual de esta sección será reemplazado.
+                            </p>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => setIsRandomizeModalOpen(false)}
+                                disabled={autoGenerate.isPending}
+                                className="px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmRandomize}
+                                disabled={autoGenerate.isPending}
+                                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+                            >
+                                {autoGenerate.isPending ? <Loader2 size={15} className="animate-spin" /> : <Shuffle size={15} />}
+                                Sí, ordenar al azar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+    );
+
+    const salirDelEditor = async () => {
+        if (isDirty && !(await confirmDialog({ title: '¿Salir sin guardar?', description: 'Los cambios del horario se perderán.' }))) return;
+        if (window.history.length > 1) router.back();
+        else router.push('/dashboard/horarios');
+    };
+
+    const superposicion = (
+        <DragOverlay>
+            {activeDragData?.type === 'sidebar-subject' ? (
+                <div
+                    className="p-2 rounded-md shadow-lg text-xs font-bold border opacity-90 cursor-grabbing"
+                    style={{ backgroundColor: activeDragData.subject?.subject?.color ? `${activeDragData.subject.subject.color}20` : '#f3f4f6', borderColor: activeDragData.subject?.subject?.color || '#e5e7eb', color: '#1f2937' }}
+                >
+                    {activeDragData.subject?.subject?.name || 'Materia'}
+                </div>
+            ) : activeDragData?.type === 'grid-block' ? (
+                <div
+                    className="rounded-md p-1.5 shadow-xl text-[10px] flex flex-col justify-between overflow-hidden border opacity-90 cursor-grabbing w-[116px] h-[58px]"
+                    style={{ backgroundColor: activeDragData.block.color ? `${activeDragData.block.color}20` : '#f3f4f6', borderLeft: `3px solid ${activeDragData.block.color || '#6366f1'}` }}
+                >
+                    <div className="font-bold text-gray-800 line-clamp-1 pointer-events-none">{activeDragData.block.subjectName}</div>
+                    <div className="text-gray-500 line-clamp-1 pointer-events-none">{activeDragData.block.teacherName}</div>
+                </div>
+            ) : null}
+        </DragOverlay>
+    );
+
+    if (esTelefono) {
+        return (
+            <DndContext sensors={sensores} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+                <EditorDeHorarioTumbado
+                    titulo={titulo || 'Horario'}
+                    dias={DAYS}
+                    periodos={dynamicPeriods}
+                    cargando={isLoading}
+                    materias={subjectsWithRemaining.map((s) => ({
+                        id: s.id,
+                        nombre: s.subject?.name || 'Materia',
+                        color: s.subject?.color,
+                        quedan: s.remaining,
+                        total: s.weeklyBlocks || 0,
+                        datos: s,
+                    }))}
+                    bloques={blocks}
+                    turno={currentShift}
+                    alCambiarTurno={setCurrentShift}
+                    alColocar={colocarMateria}
+                    alQuitar={handleRemoveBlock}
+                    alGuardar={handleSave}
+                    alAzar={() => setIsRandomizeModalOpen(true)}
+                    guardando={bulkUpdate.isPending}
+                    hayCambios={isDirty}
+                    alSalir={salirDelEditor}
+                />
+                {superposicion}
+                {isRandomizeModalOpen && modalDeAzar}
+            </DndContext>
+        );
+    }
+
     return (
-        <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensores} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <div className="flex flex-col lg:flex-row gap-6">
                 {/* Sidebar - Materias Disponibles */}
                 <div className="w-full lg:w-64 flex-shrink-0">
@@ -321,7 +495,7 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
                             <span>Materias</span>
                             <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">{subjects.length}</span>
                         </h3>
-                        
+
                         <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
                             {subjectsWithRemaining.filter(s => s.remaining > 0).length > 0 ? (
                                 subjectsWithRemaining.filter(s => s.remaining > 0).map(subject => (
@@ -332,9 +506,9 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
                                                 {subject.remaining} / {subject.weeklyBlocks || 0}
                                             </span>
                                         </div>
-                                        <DraggableSubject 
-                                            id={`subject-${subject.id}`} 
-                                            subject={subject} 
+                                        <DraggableSubject
+                                            id={`subject-${subject.id}`}
+                                            subject={subject}
                                         />
                                     </div>
                                 ))
@@ -359,8 +533,8 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
                                 onClick={handleSave}
                                 disabled={!isDirty || bulkUpdate.isPending}
                                 className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                                    isDirty 
-                                    ? 'bg-emerald-600 text-white hover:bg-emerald-700' 
+                                    isDirty
+                                    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
                                     : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                 }`}
                             >
@@ -475,12 +649,12 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
                                     {DAYS.map(day => {
                                         const cellId = `${day.id}-${period.startTime}`;
                                         const block = blocks.find(b => b.cellId === cellId);
-                                        
+
                                         return (
                                             <div key={cellId} className="border-l border-gray-100">
-                                                <DroppableCell 
-                                                    id={cellId} 
-                                                    block={block} 
+                                                <DroppableCell
+                                                    id={cellId}
+                                                    block={block}
                                                     onRemove={() => handleRemoveBlock(cellId)}
                                                 />
                                             </div>
@@ -493,79 +667,10 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
                 </div>
             </div>
 
-            <DragOverlay>
-                {activeDragData?.type === 'sidebar-subject' ? (
-                    <div
-                        className="p-2 rounded-md shadow-lg text-xs font-bold border opacity-90 cursor-grabbing"
-                        style={{ backgroundColor: activeDragData.subject?.subject?.color ? `${activeDragData.subject.subject.color}20` : '#f3f4f6', borderColor: activeDragData.subject?.subject?.color || '#e5e7eb', color: '#1f2937' }}
-                    >
-                        {activeDragData.subject?.subject?.name || 'Materia'}
-                    </div>
-                ) : activeDragData?.type === 'grid-block' ? (
-                    <div
-                        className="rounded-md p-1.5 shadow-xl text-[10px] flex flex-col justify-between overflow-hidden border opacity-90 cursor-grabbing w-[116px] h-[58px]"
-                        style={{ backgroundColor: activeDragData.block.color ? `${activeDragData.block.color}20` : '#f3f4f6', borderLeft: `3px solid ${activeDragData.block.color || '#6366f1'}` }}
-                    >
-                        <div className="font-bold text-gray-800 line-clamp-1 pointer-events-none">{activeDragData.block.subjectName}</div>
-                        <div className="text-gray-500 line-clamp-1 pointer-events-none">{activeDragData.block.teacherName}</div>
-                    </div>
-                ) : null}
-            </DragOverlay>
+            {superposicion}
 
             {/* Modal de confirmación para Ordenar al Azar */}
-            {isRandomizeModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-                    <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-200">
-                        <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
-                                <Shuffle size={24} />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-base text-gray-900">
-                                    ¿Ordenar horario al azar?
-                                </h3>
-                                <p className="text-xs text-gray-500">
-                                    Reorganización automática y continua
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1.5 leading-relaxed">
-                            <p className="font-semibold flex items-center gap-1.5 text-amber-800">
-                                <AlertCircle size={14} className="shrink-0" />
-                                <span>Atención: Cambio en la distribución semanal</span>
-                            </p>
-                            <p>
-                                Esta opción reorganizará todas las clases de la sección de forma aleatoria.
-                                Las materias quedarán <strong>estrictamente apiladas de forma continua</strong> desde la primera hora escolar (sin horas libres intermedias ni huecos), respetando los horarios de los profesores sin colisiones.
-                            </p>
-                            <p className="text-amber-700 font-medium">
-                                El horario actual de esta sección será reemplazado.
-                            </p>
-                        </div>
-
-                        <div className="flex items-center justify-end gap-2 pt-2">
-                            <button
-                                type="button"
-                                onClick={() => setIsRandomizeModalOpen(false)}
-                                disabled={autoGenerate.isPending}
-                                className="px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleConfirmRandomize}
-                                disabled={autoGenerate.isPending}
-                                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all disabled:opacity-50 cursor-pointer"
-                            >
-                                {autoGenerate.isPending ? <Loader2 size={15} className="animate-spin" /> : <Shuffle size={15} />}
-                                Sí, ordenar al azar
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {isRandomizeModalOpen && modalDeAzar}
         </DndContext>
     );
 }

@@ -69,6 +69,7 @@ export default function ScheduleEditorPage({ params }: { params: Promise<{ yearS
                     classroomId={classroomId}
                     initialBlocks={blocks}
                     subjects={subjects}
+                    titulo={classroom?.name}
                 />
             )}
         </div>
