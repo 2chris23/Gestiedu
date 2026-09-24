@@ -142,6 +142,16 @@ const ADB = dondeEstaAdb();
 const conPuente = new Set();
 
 /**
+ * Solo ESE aparato (`--dispositivo=emulator-5554`, o `ANDROID_SERIAL`, como
+ * `adb`). Sin nombrarlo, todos los enchufados: el teléfono de quien prueba
+ * no se toca si solo se quiere el emulador.
+ */
+const SOLO_ESTE = process.argv.find((a) => a.startsWith('--dispositivo='))?.slice(14) || process.env.ANDROID_SERIAL || null;
+
+/** `--puente-a-mano`: no se tiende ningún puente (ver abajo). */
+const PUENTE_A_MANO = process.argv.includes('--puente-a-mano');
+
+/**
  * El puente: `localhost:3000` y `:3001` del teléfono llevan a este ordenador.
  * Se mira cada pocos segundos porque el teléfono se desenchufa y se vuelve a
  * enchufar —así se prueba la app sin servidor— y al volver el puente ya no
@@ -154,7 +164,7 @@ async function tenderPuentes() {
         .split(/\r?\n/)
         .slice(1)
         .map((l) => l.trim().split(/\s+/))
-        .filter(([serie, estado]) => serie && estado === 'device')
+        .filter(([serie, estado]) => serie && estado === 'device' && (!SOLO_ESTE || serie === SOLO_ESTE))
         .map(([serie]) => serie);
 
     for (const serie of [...conPuente]) {
@@ -197,13 +207,23 @@ if (POR_EL_CABLE) {
         ' por la inalámbrica) y vuelve a abrir la app.\n' +
         '════════════════════════════════════════════════════════\n'
     );
-    tenderPuentes().then((hay) => {
-        if (!hay) {
-            console.error(`No encuentro adb (${ADB}). Hace falta el SDK de Android (Android Studio).`);
-            parar();
-        }
-    });
-    setInterval(() => tenderPuentes().catch(() => {}), 3000).unref();
+    if (PUENTE_A_MANO) {
+        // Para el emulador, que no se desenchufa: el puente lo pone y lo
+        // quita quien prueba, y aquí nadie lo vuelve a tender a los 3 s.
+        console.log(
+            ' Puente a mano:  adb -s <serie> reverse tcp:3000 tcp:3000\n' +
+            '                 adb -s <serie> reverse tcp:3001 tcp:3001\n' +
+            ' Sin servidor:   adb -s <serie> reverse --remove-all\n'
+        );
+    } else {
+        tenderPuentes().then((hay) => {
+            if (!hay) {
+                console.error(`No encuentro adb (${ADB}). Hace falta el SDK de Android (Android Studio).`);
+                parar();
+            }
+        });
+        setInterval(() => tenderPuentes().catch(() => {}), 3000).unref();
+    }
 } else {
     console.log(
         '\n════════════════════════════════════════════════════════\n' +

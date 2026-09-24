@@ -24,6 +24,35 @@
       "port": 3000
     },
     {
+      "name": "telefono",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "telefono"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "telefono-usb",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "telefono:usb"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "emulador-usb",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "telefono:usb",
+        "--",
+        "--puente-a-mano"
+      ],
+      "port": 3000
+    },
+    {
       "name": "web-produccion",
       "runtimeExecutable": "npx",
       "runtimeArgs": [
