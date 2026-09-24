@@ -1196,6 +1196,20 @@ export async function archiveUser(
       },
     });
 
+    // UN ALUMNO ARCHIVADO ES UN ALUMNO RETIRADO: deja su sección.
+    //
+    // Archivar apagaba solo la cuenta y la inscripción seguía activa: el alumno
+    // que ya no viene contaba en el total de la sección, ocupaba cupo, y al
+    // cerrar el ciclo se le proponía para el año siguiente (RET-01…03). La
+    // inscripción NO se borra: queda inactiva, con sus notas y su historial,
+    // y vuelve si se le desarchiva (RET-04). Los ciclos ya cerrados no se tocan.
+    if (existingUser.role === 'STUDENT') {
+      await request.tenantPrisma.studentClassroom.updateMany({
+        where: { studentId: id, isActive: true, academicYear: { status: { not: 'COMPLETED' } } },
+        data: { isActive: false },
+      });
+    }
+
     // Revocar tokens de refresco y sesiones
     await request.tenantPrisma.refreshToken.deleteMany({
       where: { userId: id },
@@ -1286,6 +1300,28 @@ export async function unarchiveUser(
 
     await invalidateUserSession(instituteId, id);
 
+    // Vuelve a la sección que dejó al archivarlo, si sigue habiendo sitio.
+    // Si está llena, se queda fuera y se dice: el admin lo inscribe donde toque.
+    let volvioASuSeccion: boolean | null = null;
+    if (existingUser.role === 'STUDENT') {
+      const dejadas = await request.tenantPrisma.studentClassroom.findMany({
+        where: { studentId: id, isActive: false, academicYear: { status: { not: 'COMPLETED' } } },
+        include: {
+          classroom: {
+            select: { capacity: true, isActive: true, _count: { select: { studentClassrooms: { where: { isActive: true } } } } },
+          },
+        },
+      });
+      for (const insc of dejadas) {
+        const c = insc.classroom as any;
+        const hayCupo = c?.isActive !== false && (!c?.capacity || (c._count?.studentClassrooms ?? 0) < c.capacity);
+        if (hayCupo) {
+          await request.tenantPrisma.studentClassroom.update({ where: { id: insc.id }, data: { isActive: true } });
+        }
+        volvioASuSeccion = (volvioASuSeccion ?? true) && hayCupo;
+      }
+    }
+
     try {
       await request.tenantPrisma.auditLog.create({
         data: {
@@ -1310,8 +1346,11 @@ export async function unarchiveUser(
     logger.info('Usuario desarchivado / restaurado exitosamente', { userId: id });
 
     return reply.status(200).send({
-      message: 'Usuario restaurado correctamente',
+      message: volvioASuSeccion === false
+        ? 'Usuario restaurado. Su sección está llena: inscríbalo desde la sección que corresponda.'
+        : 'Usuario restaurado correctamente',
       user: updatedUser,
+      volvioASuSeccion,
     });
   } catch (error) {
     logger.error('Error al desarchivar usuario', {
