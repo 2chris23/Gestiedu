@@ -61,7 +61,24 @@ Comprobado apagando el servidor de verdad: `tests/e2e/servidor-apagado.spec.ts`.
 >   servidor del liceo (https) funciona (APAGADO-01). En una APK de pruebas
 >   que apunta a la IP del ordenador por `http`, no: sale «No hay conexión».
 >   Y contra el servidor de **desarrollo** tampoco, porque Next en desarrollo
->   no arranca sin su servidor: para probarlo, `npm run telefono:compilado`.
+>   no arranca sin su servidor. Para probarlo en un teléfono de verdad:
+>   `npm run telefono:usb` (ver «Sin servidor, en un teléfono de verdad»).
+>   `npm run telefono:compilado` no vale para esto: sigue siendo `http` por
+>   la red de casa.
+
+**En la APK había dos cosas más que lo rompían**, y ninguna se veía probando
+en el navegador (medido en el emulador, septiembre 2026):
+
+- **La pantalla de error de Capacitor tapaba la app guardada.** Sin servidor,
+  Android avisa de un error de red en la página principal aunque el ayudante
+  sí la haya servido, y Capacitor, al oírlo, cargaba `server.errorPath`. La
+  app abría en «No se llega al liceo» teniendo todo guardado. Ahora
+  `MainActivity` mira qué quedó en pantalla: si es la app, se queda; si es la
+  página de error de Android, pone la nuestra.
+- **La sesión se perdía al cerrar la app.** Android escribe las cookies en el
+  disco cada 30 segundos; entrando y cerrando antes, al volver no había
+  sesión, y sin sesión no hay nada guardado que enseñar. Ahora se escriben al
+  salir de la app (`onPause`).
 
 ---
 
@@ -194,6 +211,36 @@ node scripts/preparar-liceo.mjs --liceo=sanmiguel --pruebas --url="http://192.16
 local. Esa APK **no se reparte**: por ahí van la contraseña y la sesión sin
 cifrar, y en el wifi de un liceo eso lo lee cualquiera.
 
+#### Sin servidor, en un teléfono de verdad
+
+Por la red de casa (`http://192.168.x.x`) la app **no puede** abrir sin
+servidor: Android solo deja funcionar al ayudante (`sw.js`) en `https` o en
+`localhost`. Así que el teléfono va por el cable y su `localhost` se lleva a
+este ordenador con `adb reverse`:
+
+1. En el teléfono: Ajustes → Información → pulsar siete veces «Número de
+   compilación»; luego Opciones de desarrollador → «Depuración por USB».
+2. Enchufarlo al ordenador y aceptar el aviso de «¿Permitir depuración?».
+3. Desde la raíz: `npm run telefono:usb`. Compila la web, levanta los dos
+   servidores y tiende el puente a cada teléfono que vea (y otra vez si se
+   desenchufa y se vuelve a enchufar).
+4. La APK apunta a `localhost`:
+
+   ```bash
+   cd apps/movil
+   node scripts/preparar-liceo.mjs --liceo=sanmiguel --pruebas --url="http://localhost:3000/login?slug=sanmiguel"
+   npx cap sync android && npm run apk:pruebas
+   adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+   ```
+
+5. Entrar, recorrer las pantallas, y **desenchufar el cable**: eso es el
+   servidor apagado. Cerrar la app y volver a abrirla: tiene que abrir en el
+   panel con la franja «Sin conexión con el liceo… lo último que se descargó».
+
+Sin cable vale la depuración inalámbrica de Android (Opciones de desarrollador
+→ «Depuración inalámbrica», `adb pair` y `adb connect`); ahí el «servidor
+apagado» es quitar el wifi.
+
 ### La versión firmada
 
 La llave de firma es **la identidad del liceo en Google Play**: quien la tenga
@@ -235,6 +282,16 @@ y `npm run apk:firmada`.
   MUESCA, no la barra de estado, así que en un teléfono sin muesca vale cero
   aunque el reloj tape media cabecera. El hueco lo reserva
   `dejarSitioParaElReloj` en `MainActivity.java`.
+  - **El color lo decide el tema** (`res/values/styles.xml`), no el código:
+    al irse la pantalla de arranque, Android vuelve a pintar la franja con lo
+    que diga el tema, y pisa lo que se hubiera puesto antes. El tema no decía
+    nada y salía gris con el teléfono en claro y **negra en oscuro** (así se
+    vio en un Motorola G13). Por eso el tema es `Light`, no `DayNight`, y
+    lleva `statusBarColor` y `windowLightStatusBar`.
+  - Las versiones nuevas de Android System WebView **sí** miden ya la barra en
+    `env(safe-area-inset-top)`, y la web la apartaba otra vez: franja blanca
+    del doble. `dejarSitioParaElReloj` le dice a la web que arriba ya no hay
+    nada que apartar.
 - **Entrar con la huella** y **girar la pantalla** en el horario y el plan de
   evaluación (`@capacitor/screen-orientation` desde la web).
 

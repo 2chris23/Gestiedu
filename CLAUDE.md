@@ -384,7 +384,8 @@ vuelve. Cuatro cosas que fallaban con el servidor apagado, todas medidas:
 **Con el servidor de DESARROLLO esto no se puede probar**, y no es un fallo: el
 cliente de desarrollo de Next no arranca la app sin su servidor (medido: la
 página sale pintada pero muerta). Para probarlo en el teléfono:
-`npm run telefono:compilado`. En el navegador: `npm run build` en `apps/web`,
+`npm run telefono:usb` (no `telefono:compilado`: por `http` a la IP de casa el
+ayudante no existe, ver abajo). En el navegador: `npm run build` en `apps/web`,
 `npx next start -p 3108` y `WEB_DESTINO=3108 npx playwright test servidor-apagado`
 (APAGADO-01 apaga el servidor de verdad: una puerta TCP propia que se cierra).
 
@@ -423,12 +424,37 @@ navegador, en inglés. La llave de firma no se genera ni se guarda
 desde el repositorio: es la identidad del liceo en Google Play. Todo en
 `docs/APP-MOVIL.md`.
 
+Tres cosas de la APK que el navegador no enseña nunca (medidas en el
+emulador; `MainActivity.java` y `styles.xml`):
+
+- **La franja del reloj la pinta el TEMA.** Al irse la pantalla de arranque,
+  Android la repinta con lo que diga el tema y pisa lo que hiciera el código.
+  El tema no decía nada: gris en claro, **negra en modo oscuro** (Motorola
+  G13). Tema `Light` con `statusBarColor` y `windowLightStatusBar`.
+- **`errorPath` tapaba la app guardada.** Sin servidor, Android avisa de error
+  en la página principal aunque el ayudante la haya servido, y Capacitor
+  cargaba su pantalla de error encima. Ahora se mira qué quedó en pantalla.
+- **Las cookies se escriben al disco cada 30 s.** Cerrando antes, se perdía
+  la sesión. Se fuerzan al salir de la app (`onPause`).
+
 ## Probar en un teléfono de verdad
 
 `npm run telefono` levanta los dos servidores para que los vea un móvil del
 mismo wifi. No es `npm run dev` con otro nombre: `localhost` en un teléfono ES
 el teléfono, y los dos servidores solo le abren la puerta a `localhost` (CORS y
 `allowedDevOrigins`). Sin eso, la app sale **en blanco** y nada lo avisa.
+
+**Por la red de casa la app no abre sin servidor, y no es un fallo de la
+app:** el ayudante (`sw.js`) solo existe en `https` o en `localhost`, y
+`http://192.168.1.156` no es ninguna. Para probar eso, `npm run telefono:usb`:
+compila, levanta los dos servidores y hace que el `localhost` del teléfono
+enchufado sea este ordenador (`adb reverse`). La APK, con
+`--url=http://localhost:3000/login?slug=…`; el servidor apagado es
+desenchufar el cable. Pasos en `docs/APP-MOVIL.md`.
+
+Y `telefono:compilado` no arrancaba nunca las pantallas: el `npm run start`
+que lanzaba se quedaba colgado sin abrir el puerto. Ahora se lanza Next
+directamente.
 
 **El servidor de datos también tiene que dejar pasar al teléfono.** En
 desarrollo se aceptan los orígenes de las tres redes privadas (192.168.x.x,

@@ -3147,3 +3147,41 @@ y el escritorio (MOVIL-03).
 integración continua y el despliegue automático no llegaron nunca a GitHub.
 Ahora `ci.yml` pasa tipos y pruebas en cada cambio, y el despliegue solo sale si
 eso está en verde.
+
+## 56. La APK en un teléfono de verdad: la franja negra y «sin conexión» (septiembre 2026)
+
+Probada en un Motorola G13, la app salía con **la franja del reloj negra** y,
+al quitar el wifi, **no enseñaba nada**. Reproducido en el emulador antes de
+tocar una línea, y eran cinco cosas:
+
+- **La franja negra.** Al irse la pantalla de arranque, Android repinta la
+  franja con lo que diga el tema de la app, y pisa lo que hubiera hecho el
+  código. El tema no decía nada: gris con el teléfono en claro, negra en modo
+  oscuro, con el reloj en blanco. Ahora lo dice el tema (blanco, reloj oscuro).
+- **La pantalla de error tapaba lo guardado.** Sin servidor, el ayudante sí
+  servía la app, pero Android avisaba de un error de red y Capacitor ponía
+  encima su pantalla de «No se llega al liceo». Ahora solo sale si de verdad
+  no hay nada que enseñar (y sale en 0,3 s, no el error de Android).
+- **La sesión se perdía al cerrar la app** si se cerraba en los 30 segundos
+  siguientes a entrar: Android no había escrito las cookies en el disco. Sin
+  sesión no hay nada guardado que enseñar. Ahora se escriben al salir.
+- **Una franja blanca del doble de alto** en Android 15 o más: la app y la web
+  apartaban las dos el hueco del reloj.
+- **«Error al cargar años escolares» en rojo** encima de los años que sí se
+  veían, guardados: el servicio envolvía el error y se perdía que era la
+  conexión. Lo mismo en otras diez pantallas.
+
+Y dos de la forma de probar, que explican por qué esto no se vio antes:
+
+- **Por la red de casa (`http://192.168.x.x`) la app no puede abrir sin
+  servidor**, haga lo que haga: Android solo deja funcionar al ayudante en
+  `https` o en `localhost`. En el liceo va por https. Para probarlo aquí,
+  `npm run telefono:usb` (el teléfono por el cable, `adb reverse`).
+- **`npm run telefono:compilado` no arrancaba nunca las pantallas**: el
+  `npm run start` que lanzaba se quedaba colgado sin abrir el puerto.
+
+Comprobado en el emulador (Android 17 y, con el tema de Android 14, lo que ve
+el Motorola; en claro y en oscuro): con servidor se entra y se navega; se
+corta el servidor, se cierra y se abre la app, y abre en el panel con lo
+último descargado y la franja «Sin conexión con el liceo»; Académico también.
+APAGADO-01/02 y SIN-01…03 en verde; 48 pruebas de la web en verde.
