@@ -54,6 +54,12 @@ export interface GetGradesQuery {
   dateTo?: Date;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  /**
+   * Cédula del profesor que pide: solo salen las notas de sus clases (materia
+   * que imparte en esa sección) y de sus secciones guía. Sin esto, cualquier
+   * profesor listaba las notas de todo el liceo.
+   */
+  soloDelProfesor?: string;
 }
 
 export interface BulkGradeData {
@@ -637,7 +643,8 @@ class GradesService {
         dateFrom,
         dateTo,
         sortBy = 'createdAt',
-        sortOrder = 'desc' } = query;
+        sortOrder = 'desc',
+        soloDelProfesor } = query;
 
       const offset = (page - 1) * limit;
       const appliedFilters: string[] = [];
@@ -685,6 +692,26 @@ class GradesService {
           }
         } as Prisma.UserWhereInput;
         appliedFilters.push('classroom');
+      }
+
+      if (soloDelProfesor) {
+        const [materias, guia] = await Promise.all([
+          prisma.classroomSubject.findMany({
+            where: { teacherId: soloDelProfesor },
+            select: { classroomId: true, subjectId: true },
+          }),
+          prisma.classroom.findMany({ where: { teacherId: soloDelProfesor }, select: { id: true } }),
+        ]);
+        const suyas: Prisma.GradeWhereInput[] = [
+          ...materias.map((m) => ({ subjectId: m.subjectId, activity: { classroomId: m.classroomId } })),
+          // Actividades sin sección: las de las materias que imparte.
+          ...(materias.length > 0
+            ? [{ subjectId: { in: materias.map((m) => m.subjectId) }, activity: { classroomId: null } }]
+            : []),
+          ...(guia.length > 0 ? [{ activity: { classroomId: { in: guia.map((g) => g.id) } } }] : []),
+        ];
+        where.AND = [{ OR: suyas.length > 0 ? suyas : [{ id: '__ninguna__' }] }];
+        appliedFilters.push('teacherScope');
       }
 
       // Filtro por rango de calificación
@@ -785,7 +812,8 @@ class GradesService {
         `pg:${page}`,
         `lm:${limit}`,
         `sb:${finalSortBy}`,
-        `so:${sortOrder}`
+        `so:${sortOrder}`,
+        `prof:${soloDelProfesor || '-'}`
       ];
       const cacheKey = keyParts.join('|');
       let cachedResult = await RedisCache.get<any>(cacheKey);

@@ -1,3 +1,4 @@
+import { assertClassroomScope } from '../services/authorization.service';
 import { FastifyPluginAsync } from 'fastify';
 import {
   createGrade,
@@ -151,6 +152,21 @@ const gradesRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [authenticate, requireTeacher, validateCUID('activityId')]
   }, async (request, reply) => {
     const { activityId } = (request as any).params as { activityId: string };
+    // Las notas de una actividad son de quien da esa clase (o del guía de la sección).
+    const actividad = await (request as any).tenantPrisma.activity.findUnique({
+      where: { id: activityId },
+      select: { classroomId: true, subjectId: true },
+    });
+    if (actividad?.classroomId) {
+      try {
+        await assertClassroomScope((request as any).tenantPrisma, request.user as any, actividad.classroomId, {
+          subjectId: actividad.subjectId ?? undefined,
+          accion: 'ver notas',
+        });
+      } catch (e: any) {
+        return reply.status(e?.statusCode ?? 403).send({ error: e?.message, code: e?.code ?? 'FORBIDDEN' });
+      }
+    }
     const q = (request as any).query || {};
     (request as any).query = { ...q, activityId, page: 1, limit: 50 };
     return getGrades(request as any, reply);

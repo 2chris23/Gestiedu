@@ -209,6 +209,11 @@ export async function getGrades(
       maxScore,
       dateFrom: dateFrom ? new Date(dateFrom) : undefined,
       dateTo: dateTo ? new Date(dateTo) : undefined,
+      // El administrador ve todas; el profesor, solo las de sus clases.
+      soloDelProfesor:
+        (request.user as any)?.role === UserRole.ADMIN
+          ? undefined
+          : ((request.user as any)?.userId ?? (request.user as any)?.id ?? '__nadie__'),
     });
 
     return reply.status(200).send({
