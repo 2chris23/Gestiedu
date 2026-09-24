@@ -8,6 +8,7 @@ import {
     CalendarDays,
     CalendarRange,
     Wallet,
+    FileText,
     type LucideIcon,
 } from 'lucide-react';
 
@@ -97,6 +98,15 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean): DestinoDel
             icon: CalendarRange,
             roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'],
             pista: 'Qué pasa este mes',
+        },
+        // La boleta del alumno: notas por lapso, definitiva e inasistencias.
+        // El representante la abre desde cada representado, en el inicio.
+        {
+            name: 'Mi boleta',
+            href: '/dashboard/boleta/mia',
+            icon: FileText,
+            roles: ['STUDENT'],
+            pista: 'Notas por lapso e inasistencias',
         },
         {
             name: 'Configuración',

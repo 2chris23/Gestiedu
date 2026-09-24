@@ -446,6 +446,14 @@ export default function UserProfilePage({ params }: PageProps) {
                                     <span className="text-gray-400 italic text-sm">Sin dirección registrada</span>
                                 )}
                             </div>
+                            {user.role === 'student' && (
+                                <Link
+                                    href={`/dashboard/boleta/${encodeURIComponent(user.cedula)}`}
+                                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                >
+                                    <FileText className="h-4 w-4" /> Ver la boleta
+                                </Link>
+                            )}
                             {user.role === 'student' && <RepresentantesDelAlumno studentId={user.cedula} />}
                             {user.role === 'student' && <TelefonoDeAsistencia studentId={user.cedula} />}
                             {user.role === 'tutor' && (

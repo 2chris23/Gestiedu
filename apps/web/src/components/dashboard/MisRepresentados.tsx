@@ -2,7 +2,8 @@
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown } from 'lucide-react';
+import Link from 'next/link';
+import { ChevronDown, FileText } from 'lucide-react';
 import api from '@/lib/axios';
 import UserAvatar from '@/components/ui/UserAvatar';
 import ActividadesDelAlumno from '@/components/profile/ActividadesDelAlumno';
@@ -65,7 +66,13 @@ export function MisRepresentados() {
                             <ChevronDown size={20} className={cn('shrink-0 text-gray-600 transition-transform', desplegado && 'rotate-180')} />
                         </button>
                         {desplegado && (
-                            <div className="px-4 pb-4">
+                            <div className="space-y-3 px-4 pb-4">
+                                <Link
+                                    href={`/dashboard/boleta/${encodeURIComponent(hijo.id)}`}
+                                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                >
+                                    <FileText size={16} /> Ver la boleta
+                                </Link>
                                 <ActividadesDelAlumno studentId={hijo.id} titulo={`Actividades de ${hijo.fullName.split(' ')[0]}`} />
                             </div>
                         )}
