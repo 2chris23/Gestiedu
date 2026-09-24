@@ -97,7 +97,7 @@ function DraggableGridBlock({ block, onRemove }: { block: any, onRemove: () => v
             <div className="font-bold text-gray-800 line-clamp-1 pointer-events-none">{block.subjectName}</div>
             <div className="text-gray-500 line-clamp-1 pointer-events-none">{block.teacherName}</div>
 
-            <button
+            <button aria-label={`Quitar ${block.subjectName} de esta hora`}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => { e.stopPropagation(); onRemove(); }}
                 className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-100 p-0.5 rounded transition-opacity z-20 cursor-pointer"
@@ -372,7 +372,7 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
     });
 
     const modalDeAzar = (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="¿Ordenar horario al azar?">
                     <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-200">
                         <div className="flex items-center gap-3">
                             <div className="w-12 h-12 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">

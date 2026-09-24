@@ -159,11 +159,12 @@ export default function ClassroomModal({
                             leaveFrom="opacity-100 scale-100"
                             leaveTo="opacity-0 scale-95"
                         >
-                            <Dialog.Panel className="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:w-full sm:max-w-md border border-gray-100">
-                                <div className="absolute right-4 top-4">
+                            <Dialog.Panel className="relative w-full max-w-md transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all border border-gray-100">
+                                <div className="absolute right-2 top-2">
                                     <button
                                         type="button"
-                                        className="rounded-full p-1 bg-gray-50 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors focus:outline-none"
+                                        aria-label="Cerrar"
+                                        className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                                         onClick={onClose}
                                     >
                                         <X className="h-5 w-5" aria-hidden="true" />

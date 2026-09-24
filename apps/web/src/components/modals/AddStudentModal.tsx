@@ -107,7 +107,7 @@ export function AddStudentModal({
 
     return (
         <AnimatePresence>
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Agregar Estudiantes">
                 <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
                     {/* Header */}
                     <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-blue-50 to-white">
@@ -119,7 +119,7 @@ export function AddStudentModal({
                                 Selecciona uno o varios estudiantes para agregarlos a esta sección.
                             </p>
                         </div>
-                        <button
+                        <button aria-label="Cerrar"
                             onClick={handleClose}
                             className="text-gray-400 hover:text-gray-600 transition-colors"
                         >
@@ -156,7 +156,7 @@ export function AddStudentModal({
                                         <p className="text-sm font-semibold text-red-800">Error al inscribir</p>
                                         <p className="text-sm text-red-700 mt-1">{error}</p>
                                     </div>
-                                    <button
+                                    <button aria-label="Cerrar el aviso"
                                         onClick={() => setError(null)}
                                         className="text-red-400 hover:text-red-600"
                                     >

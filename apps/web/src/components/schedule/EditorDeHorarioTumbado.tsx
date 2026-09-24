@@ -265,7 +265,7 @@ export default function EditorDeHorarioTumbado({
     };
 
     return (
-        <div className="fixed inset-0 !m-0 z-[60] flex flex-col bg-white" style={{ paddingBottom: 'var(--zona-segura-abajo)' }}>
+        <div className="fixed inset-0 !m-0 z-[60] flex flex-col bg-white" role="dialog" aria-modal="true" aria-label="Editar el horario" style={{ paddingBottom: 'var(--zona-segura-abajo)' }}>
             {!tumbado ? (
                 /* De pie todavía: la app lo gira sola; en un navegador, se pide. */
                 <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">

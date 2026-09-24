@@ -57,7 +57,7 @@ export default function PersonalBlockModal({
     const canSave = title.trim().length > 0 && !isSaving && !isDeleting;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={isEditing ? 'Editar hora personal' : 'Nueva hora personal'}>
             <div
                 className="absolute inset-0 bg-black/40"
                 onClick={() => (!isSaving && !isDeleting ? onClose() : undefined)}
@@ -73,7 +73,7 @@ export default function PersonalBlockModal({
                             {dayLabel} · {draft.startTime} – {draft.endTime}
                         </p>
                     </div>
-                    <button
+                    <button aria-label="Cerrar"
                         type="button"
                         onClick={onClose}
                         disabled={isSaving || isDeleting}

@@ -530,6 +530,9 @@ export default function StudentCycleAccordion({
             {obsModalState.isOpen && (
                 <div 
                     className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-200"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={`Observaciones de ${studentName}`}
                     onClick={(e) => { if (e.target === e.currentTarget) setObsModalState(prev => ({ ...prev, isOpen: false })); }}
                 >
                     <div className="w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
@@ -548,7 +551,7 @@ export default function StudentCycleAccordion({
                                     </p>
                                 </div>
                             </div>
-                            <button
+                            <button aria-label="Cerrar"
                                 type="button"
                                 onClick={() => setObsModalState(prev => ({ ...prev, isOpen: false }))}
                                 className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"

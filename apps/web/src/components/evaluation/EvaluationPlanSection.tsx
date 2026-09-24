@@ -1026,7 +1026,7 @@ export default function EvaluationPlanSection({
   // ────────────────────────────────────────────────
   if (isEditing) {
     return (
-      <div className="fixed inset-0 z-[100] bg-[#f3f4f6] flex flex-col overflow-hidden">
+      <div className="fixed inset-0 z-[100] bg-[#f3f4f6] flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="Editor Inmersivo — Plan de Evaluación">
         {/* TOP BAR */}
         <div className="bg-white border-b border-gray-200 shadow-sm h-16 flex items-center justify-between px-6 shrink-0">
           <div className="flex items-center gap-4">
@@ -1175,7 +1175,7 @@ export default function EvaluationPlanSection({
 
       {/* ── Copiar el plan a otras secciones ───────────────────────── */}
       {copiandoAbierto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 print:hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 print:hidden" role="dialog" aria-modal="true" aria-label="Copiar plan a otra sección">
           <div className="w-full max-w-md bg-white rounded-xl shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
