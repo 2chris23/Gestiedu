@@ -81,10 +81,14 @@ export function UsersTable({
                     ordenable: true,
                     celda: (u) => (
                         <div className="min-w-0">
-                            <p className="truncate font-bold text-gray-900">
+                            {/* Se parte en dos líneas, no se corta: con `truncate`, un
+                                nombre largo («Kleiver Josué Castellanos Echenique»)
+                                no dejaba encoger la columna y la tabla se salía de la
+                                pantalla en la tableta (862 px en 768). */}
+                            <p className="break-words font-bold text-gray-900">
                                 {u.firstName} {u.lastName}
                             </p>
-                            <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs font-normal text-gray-500">
+                            <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs font-normal text-gray-600">
                                 <span className="font-mono">{u.studentCode || u.id}</span>
                                 {u.classroom && (
                                     <span className="inline-flex items-center gap-1 rounded border border-indigo-100 bg-indigo-50 px-1.5 py-0.5 text-xs font-semibold text-indigo-700">
@@ -104,7 +108,7 @@ export function UsersTable({
                     id: 'email',
                     titulo: 'Email',
                     ordenable: true,
-                    celda: (u) => <span className="break-all text-sm text-gray-500">{u.email}</span>,
+                    celda: (u) => <span className="break-all text-sm text-gray-600">{u.email}</span>,
                 },
                 {
                     id: 'role',
