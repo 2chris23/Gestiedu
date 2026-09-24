@@ -5,9 +5,11 @@ Informe para el dueño del liceo. Se actualiza y se sube en cada arreglo que que
 ## Para revisar
 
 - **Rama:** `claude/busy-bohr-000kvi` (sale de `nube/base`, 8b4219f). No toca `main`, `trabajo/*` ni `nube/*`.
-- **En qué punto quedé:** entorno montado, línea base medida en servidor y web; la del navegador está corriendo.
-  Primer arreglo hecho (un 0 es una nota). Siguen: cambios de sección y retiros, turnos y horarios, escala de
-  notas configurable, representante, fechas cerca de medianoche, recorrido por rol en el navegador.
+- **En qué punto quedé:** siete arreglos hechos y en verde (tabla). La tanda completa del servidor con todos
+  ellos: 893 pruebas, 886 pasan; solo fallan las 7 de `tenant-mismatch` que ya fallaban antes. La línea base del
+  navegador está corriendo otra vez: la primera falló casi entera porque usa cuentas que ningún sembrado crea
+  (ver «Línea base»). Siguen: recorrido por rol en el navegador, fechas cerca de medianoche en la web, normas del
+  MPPE (boleta, constancias, asistencia mínima del 75 %).
 - **Commits** (uno por arreglo):
 
 | Commit | Qué cambia |
@@ -18,6 +20,7 @@ Informe para el dueño del liceo. Se actualiza y se sube en cada arreglo que que
 | `d5bb535` | El representante ve el mismo promedio que su hijo y no recibe «Asistencia baja: 0%» sin registros. |
 | `4ce88a5` | Las definitivas se redondean como manda el MPPE (0,50 o más sube al entero), configurable por liceo: un 9,5 ya no queda pendiente. |
 | `3c5c769` | Una nota suelta de Clase en Vivo cuenta solo en el lapso en que se puso (antes se sumaba a los tres). |
+| `dbdcca9` | Dos pantallas pasando lista en la misma clase ya no se deshacen la una a la otra; un refresco no pisa lo marcado sin guardar. |
 
 - **Cómo probarlo:**
   ```bash
@@ -144,6 +147,16 @@ fecha (la de la clase; si no, la de entrega; si no, la de creación). LAP-01…0
 **Para `docs/MAPA_DE_CALCULOS.md`**, nivel 0: «Una actividad de Clase en Vivo es del lapso de su criterio; sin
 criterio, del lapso de la fecha de su clase (o de entrega, o de creación). Una fecha entre lapsos va al que
 acaba de terminar. `utils/lapso-de-la-actividad.ts`, LAP-01…03.»
+
+### 7. Dos pantallas en la misma clase se deshacían lo marcado — **arreglado** (`dbdcca9`)
+
+La clase en vivo se guarda sola, y cada guardado mandaba la asistencia de **todos** los alumnos con lo que
+tenía esa pantalla. Con dos pantallas abiertas (el profesor en el teléfono y la coordinadora en el ordenador, o
+el mismo profesor en dos aparatos), si una no se había enterado de lo que marcó la otra, al guardar lo suyo
+**devolvía el ausente a «presente»**. Además, cada refresco reemplazaba lo marcado y aún no enviado, y el texto
+de la observación que se estaba escribiendo. Ahora se manda solo lo tocado; los alumnos sin asistencia ese día
+van «solo si no hay»; y lo pendiente se respeta al refrescar. SOLO-01 en rojo antes; ASIS-DOS-01 lo recorre con
+dos navegadores.
 
 ## Qué se probó y qué no
 
