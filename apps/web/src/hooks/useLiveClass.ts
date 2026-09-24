@@ -91,7 +91,12 @@ export interface SaveLiveClassPayload {
     involvedStudentIds?: string[];
     startTime?: string;
     endTime?: string;
-    attendances?: Array<{ studentId: string; status: string; comments?: string }>;
+    /**
+     * Solo lo que esta pantalla cambió, y los alumnos que aún no tienen
+     * asistencia ese día con `soloSiNoHay` (se crean como están, pero no pisan
+     * lo que otra pantalla haya guardado mientras tanto). Ver ASIS-DOS-01.
+     */
+    attendances?: Array<{ studentId: string; status: string; comments?: string; soloSiNoHay?: boolean }>;
 }
 
 export function useLiveClassDetail(classroomId: string, subjectId: string, date: string) {
