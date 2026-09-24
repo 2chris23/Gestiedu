@@ -290,14 +290,16 @@ export default function SectionSubjectDashboard() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50/50 pb-12">
-            {/* Header */}
-            <header className="bg-white border-b border-gray-200">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="space-y-6">
+            {/* La franja blanca, de borde a borde y con el contenido en la columna
+                de la pantalla: con su propio `px-4` dentro del margen del marco
+                quedaba 16 px más adentro que todo lo demás (ver Promoción). */}
+            <header className="-mx-4 -mt-6 border-b border-gray-200 bg-white px-4 py-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+                <div>
                     {/* Breadcrumbs */}
-                    <nav className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
-                        <Link href="/dashboard" className="hover:text-indigo-600">
-                            <Home className="w-4 h-4" />
+                    <nav aria-label="Ruta" className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
+                        <Link href="/dashboard" className="hover:text-indigo-600" aria-label="Inicio">
+                            <Home className="w-4 h-4" aria-hidden />
                         </Link>
                         <ChevronRight className="w-4 h-4" />
                         <Link href="/dashboard/academico" className="hover:text-indigo-600">Académico</Link>
@@ -320,15 +322,16 @@ export default function SectionSubjectDashboard() {
                         estudiantes y el selector de lapso en una sola línea sacaban
                         la pantalla 440 px de ancho. */}
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                        <div className="flex min-w-0 items-start gap-2 sm:gap-3">
                             <Link
                                 href={`/dashboard/academico/${cycleId}/${sectionId}`}
-                                className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
+                                aria-label={`Volver a ${sectionName}`}
+                                className="-ml-2.5 flex h-11 w-11 shrink-0 items-center justify-center hover:bg-gray-100 rounded-full transition-colors text-gray-500"
                             >
-                                <ArrowLeft className="w-5 h-5" />
+                                <ArrowLeft className="w-5 h-5" aria-hidden />
                             </Link>
                             <div>
-                                <h1 className="flex flex-wrap items-center gap-x-2 text-xl font-bold text-gray-900 sm:text-2xl">
+                                <h1 className="flex flex-wrap items-center gap-x-2 text-seccion font-bold text-gray-900 sm:text-pantalla">
                                     {subject.name}{' '}
                                     <span className="text-indigo-600">{sectionName}</span>
                                 </h1>
@@ -371,7 +374,7 @@ export default function SectionSubjectDashboard() {
                                     </div>
                                 )}
                                 <div>
-                                    <p className="text-[10px] text-gray-400 uppercase tracking-wide">Profesor</p>
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide">Profesor</p>
                                     <p className="font-semibold text-gray-900 text-sm">{teacherName}</p>
                                 </div>
                             </div>
@@ -387,7 +390,7 @@ export default function SectionSubjectDashboard() {
                             <div className="flex items-center gap-2">
                                 <Clock className="w-4 h-4 text-gray-400" />
                                 <div>
-                                    <p className="text-[10px] text-gray-400 uppercase tracking-wide">Horario</p>
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide">Horario</p>
                                     <p className="font-semibold text-gray-900 text-sm">{hoursPerWeek}h Semanales</p>
                                 </div>
                             </div>
@@ -396,7 +399,7 @@ export default function SectionSubjectDashboard() {
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div>
                 {/* Estadísticas de la Materia (Ancho Completo como en Secciones) */}
                 <div className="mb-6">
                     <AcademicStats
@@ -652,7 +655,7 @@ export default function SectionSubjectDashboard() {
                         periods={periods}
                     />
                 )}
-            </main>
+            </div>
 
             {/* Modal de Detalle de Observaciones del Estudiante */}
             <StudentObservationsModal

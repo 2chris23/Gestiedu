@@ -357,18 +357,19 @@ function LiveClassPageInner() {
                         <button
                             type="button"
                             onClick={() => router.back()}
-                            className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors flex-shrink-0"
+                            className="-ml-2 flex h-11 w-11 items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors flex-shrink-0"
                             title="Volver"
+                            aria-label="Volver"
                         >
-                            <ChevronLeft className="w-5 h-5" />
+                            <ChevronLeft className="w-5 h-5" aria-hidden />
                         </button>
                         <div className="min-w-0">
                             <div className="flex items-center gap-2 text-xs text-gray-400 font-medium mb-0.5">
-                                <Link href="/dashboard" className="hover:text-indigo-600 transition-colors">Dashboard</Link>
+                                <Link href="/dashboard" className="hover:text-indigo-600 transition-colors">Inicio</Link>
                                 <span>/</span>
                                 <span className="font-semibold text-gray-700">Clase en Vivo</span>
                             </div>
-                            <h1 className="text-xl sm:text-2xl font-black text-gray-900 truncate flex items-center gap-2.5">
+                            <h1 className="text-seccion sm:text-pantalla font-bold text-gray-900 truncate flex items-center gap-2.5">
                                 {data?.subject?.name || 'Materia'}
                                 {data?.weekNumber && (
                                     <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100/80 px-2.5 py-0.5 rounded-full shadow-2xs">
@@ -912,7 +913,7 @@ function LiveClassPageInner() {
 
             {/* ===== MODAL BUSCADOR DE ESTUDIANTES EXTERNOS ===== */}
             {showStudentSearch && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-label="Agregar Estudiante de Otra Sección">
                     <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
                             <h3 className="text-sm font-bold text-gray-900">Agregar Estudiante de Otra Sección</h3>

@@ -248,7 +248,11 @@ export default function AcademicYearDashboard() {
     } as const;
 
     return (
-        <div className="min-h-screen bg-gray-50/50 pb-20">
+        // Sin fondo ni márgenes propios (ver «SIN CAJA GRIS PROPIA» en la
+        // sección): con la franja blanca y su `px-4` encima del margen del marco,
+        // todo empezaba 16 px más adentro que en las demás pantallas, y había un
+        // segundo `<main>` dentro del primero.
+        <div className="space-y-6">
             {/*
                 EL ENCABEZADO, EN UNA LÍNEA
 
@@ -264,8 +268,8 @@ export default function AcademicYearDashboard() {
                   querer, en rojo, al lado del lapso.
                 · Ya no se queda pegado al bajar.
             */}
-            <header className="border-b border-gray-200 bg-white">
-                <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
+            <header>
+                <div>
                     <div className="flex items-center gap-2">
                         <button
                             type="button"
@@ -279,7 +283,7 @@ export default function AcademicYearDashboard() {
                             comía entero y la cabecera no decía qué ciclo era.
                             El estado va debajo, en pequeño, para caber. */}
                         <div className="flex min-w-[5.5rem] flex-1 flex-col sm:flex-row sm:items-center sm:gap-2">
-                            <h1 className="truncate text-lg font-bold leading-tight tracking-tight text-gray-900 sm:text-2xl">{year.name}</h1>
+                            <h1 className="truncate text-seccion font-bold text-gray-900 sm:text-pantalla">{year.name}</h1>
                             <span
                                 className={`w-fit shrink-0 text-xs font-semibold sm:rounded-full sm:px-2 sm:py-0.5 sm:ring-1 sm:ring-inset ${ESTADOS[estado].clase}`}
                             >
@@ -322,7 +326,7 @@ export default function AcademicYearDashboard() {
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div>
                 <div className="space-y-6">
                     <div className="flex items-center justify-between">
                         <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -375,7 +379,7 @@ export default function AcademicYearDashboard() {
                         ))}
                     </div>
                 </div>
-            </main>
+            </div>
 
             <ClassroomModal
                 isOpen={isClassroomModalOpen}

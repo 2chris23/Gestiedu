@@ -330,7 +330,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
 
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0">
-                        <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+                        <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">
                             {classroom ? `${classroom.name}` : 'Cargando...'}
                         </h1>
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-gray-500">
@@ -421,7 +421,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                 />
             </div>
 
-            <main>
+            <div>
                 <div className="border-b border-gray-200 mb-6">
                     <nav className="-mb-px flex flex-wrap gap-x-6">
                         {[
@@ -864,19 +864,18 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                 {activeTab === 'observaciones' && (
                     <SectionObservationsTab classroomId={classroomId || ''} />
                 )}
-            </main>
+            </div>
 
             {isAddStudentModalOpen && (
-                <div className="fixed inset-0 z-50 overflow-y-auto">
-                    <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                        <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={() => setIsAddStudentModalOpen(false)} role="button" tabIndex={0} onKeyDown={(e) => {
+                <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Inscribir estudiantes en la sección">
+                    <div className="flex items-center justify-center min-h-full p-4 text-center">
+                        <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={() => setIsAddStudentModalOpen(false)} aria-hidden="true" onKeyDown={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
                                 setIsAddStudentModalOpen(false);
                             }
                         }}></div>
-                        <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
-                        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                        <div className="relative w-full max-w-lg bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all">
                             <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                                 <div className="sm:flex sm:items-start">
                                     <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100 sm:mx-0 sm:h-10 sm:w-10">

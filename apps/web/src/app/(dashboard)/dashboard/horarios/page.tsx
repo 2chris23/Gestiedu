@@ -1,5 +1,6 @@
 'use client';
 
+import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import { useState, useMemo } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -89,32 +90,26 @@ export default function HorariosPage() {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-500 rounded-2xl p-8 text-white shadow-xl">
-                <div className="flex items-center gap-3 mb-2">
-                    <Calendar className="w-8 h-8" />
-                    <h1 className="text-3xl font-bold">Gestión de Horarios</h1>
-                </div>
-                <p className="text-blue-100 text-sm mt-1">
-                    Administra los horarios de todas las secciones y profesores del ciclo escolar.
-                </p>
-
-                {/* Quick stats */}
-                <div className="grid grid-cols-3 gap-4 mt-6">
-                    <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4">
-                        <p className="text-blue-100 text-xs font-medium">Secciones</p>
-                        <p className="text-2xl font-bold">{totalSections}</p>
+            {/* Era un degradado de 30 px de título con las tres cifras encima,
+                el único así junto con Eventos: las demás pantallas empiezan con
+                título y descripción sobre el fondo. Las cifras siguen, en
+                tarjetas como las del Panel. */}
+            <EncabezadoDePantalla
+                titulo="Gestión de Horarios"
+                descripcion="Administra los horarios de todas las secciones y profesores del ciclo escolar."
+            />
+            <dl className="grid grid-cols-3 gap-3">
+                {[
+                    ['Secciones', `${totalSections}`],
+                    ['Horarios completos', `${completedSections}/${totalSections}`],
+                    ['Profesores asignados', `${totalTeachers}`],
+                ].map(([rotulo, cifra]) => (
+                    <div key={rotulo} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+                        <dt className="text-xs font-medium text-gray-600">{rotulo}</dt>
+                        <dd className="mt-1 text-xl font-bold text-gray-900 sm:text-2xl">{cifra}</dd>
                     </div>
-                    <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4">
-                        <p className="text-blue-100 text-xs font-medium">Horarios Completos</p>
-                        <p className="text-2xl font-bold">{completedSections}/{totalSections}</p>
-                    </div>
-                    <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4">
-                        <p className="text-blue-100 text-xs font-medium">Profesores Asignados</p>
-                        <p className="text-2xl font-bold">{totalTeachers}</p>
-                    </div>
-                </div>
-            </div>
+                ))}
+            </dl>
 
             {/* Controls. `sm:flex-wrap`: en una tableta (768 px) los botones de
                 vista, el año y el buscador no caben en una fila y empujaban la
@@ -190,7 +185,7 @@ export default function HorariosPage() {
                 <div className="space-y-4">
                     {/* Header bar with counter and expand/collapse actions */}
                     {filteredSections.length > 0 && (
-                        <div className="flex items-center justify-between px-1 text-xs text-gray-500">
+                        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-1 text-xs text-gray-500">
                             <span className="font-semibold text-gray-700">
                                 {availableGrades.length} niveles académicos • {filteredSections.length} secciones en total
                             </span>
@@ -198,7 +193,7 @@ export default function HorariosPage() {
                                 <button
                                     type="button"
                                     onClick={() => expandAll(availableGrades)}
-                                    className="text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
+                                    className="whitespace-nowrap text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
                                 >
                                     Expandir todos
                                 </button>
@@ -206,7 +201,7 @@ export default function HorariosPage() {
                                 <button
                                     type="button"
                                     onClick={collapseAll}
-                                    className="text-gray-500 hover:text-gray-700 font-medium transition-colors"
+                                    className="whitespace-nowrap text-gray-500 hover:text-gray-700 font-medium transition-colors"
                                 >
                                     Colapsar todos
                                 </button>

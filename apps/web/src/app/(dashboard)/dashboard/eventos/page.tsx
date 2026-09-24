@@ -1,7 +1,8 @@
 'use client';
 
+import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, CalendarDays, Coffee, Loader2, Trash2, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Coffee, Loader2, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useSchedulePeriods } from '@/hooks/useSchedulePeriods';
@@ -121,20 +122,12 @@ export default function EventosPage() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-500 rounded-2xl p-6 text-white shadow-xl">
-                <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                        <CalendarDays className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold">Eventos del Liceo</h1>
-                        <p className="text-blue-100 text-sm mt-0.5">
-                            Elige un día, pasa el ratón por un bloque para ver qué clases hay y haz clic para crear
-                            un evento. Las clases de esa franja se suspenden.
-                        </p>
-                    </div>
-                </div>
-            </div>
+            {/* Decía «pasa el ratón por un bloque… y haz clic»: en el teléfono no
+                hay ratón, y es donde más se usa. */}
+            <EncabezadoDePantalla
+                titulo="Eventos del Liceo"
+                descripcion="Elige un día y pulsa una hora para crear un evento. Las clases de esa franja se suspenden."
+            />
 
             <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-6">
                 {/* Mes */}
@@ -317,7 +310,7 @@ export default function EventosPage() {
                                                     </span>
                                                 ) : (
                                                     <span className="text-xs text-gray-400">
-                                                        Clic para crear un evento
+                                                        Pulsa para crear un evento
                                                     </span>
                                                 )}
                                             </div>

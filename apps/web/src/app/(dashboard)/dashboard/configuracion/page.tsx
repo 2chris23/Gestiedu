@@ -1,7 +1,8 @@
 'use client';
 
+import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import { useState } from 'react';
-import { Settings, Building2, Palette, GraduationCap, Bell, Shield, Wallet, QrCode } from 'lucide-react';
+import { Building2, Palette, GraduationCap, Bell, Shield, Wallet, QrCode } from 'lucide-react';
 import { GeneralSettings } from './components/GeneralSettings';
 import { AppearanceSettings } from './components/AppearanceSettings';
 import { AcademicSettings } from './components/AcademicSettings';
@@ -26,17 +27,14 @@ export default function ConfiguracionPage() {
     const ActiveComponent = tabs.find(tab => tab.id === activeTab)?.component || GeneralSettings;
 
     return (
-        <div className="min-h-screen bg-gray-50 p-6">
-            {/* Header */}
-            <div className="mb-6">
-                <div className="flex items-center gap-3 mb-2">
-                    <Settings className="w-8 h-8 text-indigo-600" />
-                    <h1 className="text-3xl font-bold text-gray-900">Configuración del Instituto</h1>
-                </div>
-                <p className="text-gray-600">
-                    Gestiona la información y configuración general de tu instituto
-                </p>
-            </div>
+        // Sin `min-h-screen bg-gray-50 p-6` propio: el marco de la pantalla ya
+        // pone el fondo y el margen, y con los dos el título quedaba 24 px más
+        // adentro que en el resto de pantallas.
+        <div className="space-y-6">
+            <EncabezadoDePantalla
+                titulo="Configuración del Instituto"
+                descripcion="Gestiona la información y configuración general de tu instituto"
+            />
 
             {/* Tabs */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">

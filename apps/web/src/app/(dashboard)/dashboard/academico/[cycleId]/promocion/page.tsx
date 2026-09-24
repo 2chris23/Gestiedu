@@ -406,22 +406,28 @@ export default function PromotionPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50/50 pb-24">
-            {/* Header Sticky */}
-            <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-xs">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="space-y-6">
+            {/* LA FRANJA DE ARRIBA, DE BORDE A BORDE Y ALINEADA
+                Iba con su propio `px-4` DENTRO del margen del marco: una franja
+                blanca que no llegaba a los bordes y un título 16 px más adentro
+                que todo lo demás. Ahora sale de borde a borde (márgenes negativos
+                iguales a los del marco) y su contenido cae en la misma columna.
+                Pegada arriba solo con barra lateral: en el teléfono, título,
+                botón y estrategias pegados se comían media pantalla al bajar. */}
+            <header className="-mx-4 -mt-6 border-b border-gray-200 bg-white px-4 py-4 shadow-xs sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 lateral:sticky lateral:top-0 lateral:z-30">
+                <div>
                     <div className="flex items-center justify-between gap-4 flex-wrap">
                         <div className="flex items-center gap-3">
                             <button
                                 onClick={() => router.push(`/dashboard/academico/${yearName}`)}
-                                className="p-2 -ml-2 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
+                                className="-ml-2.5 flex h-11 w-11 shrink-0 items-center justify-center hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
                                 title="Volver al panel académico"
+                                aria-label="Volver al ciclo"
                             >
-                                <ArrowLeft className="w-5 h-5" />
+                                <ArrowLeft className="w-5 h-5" aria-hidden />
                             </button>
                             <div>
-                                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                                    <GraduationCap className="w-7 h-7 text-indigo-600" />
+                                <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">
                                     Promoción Escolar — Ciclo {yearName}
                                 </h1>
                                 <p className="text-sm text-gray-500">
@@ -449,7 +455,7 @@ export default function PromotionPage() {
                                 key={s.key}
                                 onClick={() => applyStrategy(s.key)}
                                 disabled={applyingStrategy !== null}
-                                className="px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-indigo-400 hover:bg-indigo-50/50 hover:text-indigo-700 transition-colors disabled:opacity-50"
+                                className="whitespace-nowrap px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-indigo-400 hover:bg-indigo-50/50 hover:text-indigo-700 transition-colors disabled:opacity-50"
                                 title={s.description}
                             >
                                 {applyingStrategy === s.key ? 'Aplicando...' : s.name}
@@ -459,7 +465,7 @@ export default function PromotionPage() {
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+            <div className="space-y-6">
                 {/* NIVEL 1 — Selector de Años */}
                 <section>
                     <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -559,28 +565,28 @@ export default function PromotionPage() {
                                 </h2>
 
                                 {/* Filtros por Condición Académica */}
-                                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
+                                <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
                                     <button
                                         onClick={() => setStatusFilter('ALL')}
-                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'ALL' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                                        className={`whitespace-nowrap px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'ALL' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
                                     >
                                         Todos
                                     </button>
                                     <button
                                         onClick={() => setStatusFilter('PROMOVIDO')}
-                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'PROMOVIDO' ? 'bg-emerald-600 text-white' : 'text-emerald-700 hover:bg-emerald-50'}`}
+                                        className={`whitespace-nowrap px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'PROMOVIDO' ? 'bg-emerald-600 text-white' : 'text-emerald-700 hover:bg-emerald-50'}`}
                                     >
                                         Aprobados
                                     </button>
                                     <button
                                         onClick={() => setStatusFilter('PROMOVIDO_CON_PENDIENTES')}
-                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'PROMOVIDO_CON_PENDIENTES' ? 'bg-amber-600 text-white' : 'text-amber-700 hover:bg-amber-50'}`}
+                                        className={`whitespace-nowrap px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'PROMOVIDO_CON_PENDIENTES' ? 'bg-amber-600 text-white' : 'text-amber-700 hover:bg-amber-50'}`}
                                     >
                                         Con Pendientes (Arrastre)
                                     </button>
                                     <button
                                         onClick={() => setStatusFilter('NO_PROMOVIDO')}
-                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'NO_PROMOVIDO' ? 'bg-rose-600 text-white' : 'text-rose-700 hover:bg-rose-50'}`}
+                                        className={`whitespace-nowrap px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'NO_PROMOVIDO' ? 'bg-rose-600 text-white' : 'text-rose-700 hover:bg-rose-50'}`}
                                     >
                                         Repitientes
                                     </button>
@@ -761,11 +767,11 @@ export default function PromotionPage() {
                         </div>
                     </section>
                 )}
-            </main>
+            </div>
 
             {/* Modal de Retiro de Estudiante */}
             {retireModalStudent && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-label="Retirar Estudiante">
                     <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3 bg-red-50/50">
                             <ShieldAlert className="w-5 h-5 text-red-600" />
@@ -824,7 +830,7 @@ export default function PromotionPage() {
 
             {/* Modal para Crear Nueva Sección al Vuelo */}
             {newSectionModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-label="Crear Sección para el Siguiente Ciclo">
                     <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2 bg-indigo-50/50">
                             <Plus className="w-5 h-5 text-indigo-600" />
@@ -875,7 +881,7 @@ export default function PromotionPage() {
 
             {/* Modal de Confirmación y Cierre de Ciclo */}
             {confirmOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-label="Confirmar Cierre de Ciclo Escolar">
                     <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3 bg-gradient-to-r from-emerald-50/80 to-transparent">
                             <AlertTriangle className="w-6 h-6 text-amber-500" />
@@ -929,7 +935,7 @@ export default function PromotionPage() {
 
             {/* Modal de Acta de Materia Pendiente (Arrastre venezolano) */}
             {pendingModalStudent && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto print:p-0 print:bg-white">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto print:p-0 print:bg-white" role="dialog" aria-modal="true" aria-label="Acta de compromiso de materias pendientes">
                     <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 print:shadow-none print:max-w-full">
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-amber-50/70 print:hidden">
                             <div className="flex items-center gap-2 text-amber-900 font-bold text-base">

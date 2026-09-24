@@ -190,10 +190,12 @@ export default function UsersPage() {
     return (
         <div className="space-y-6">
             {/* Header con botón de carpeta para Usuarios Archivados */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-4 sm:px-0">
+            {/* Sin `px-4` propio (el marco de la pantalla ya lo pone): con los dos, el
+                título y los botones empezaban 16 px más adentro que la lista. */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <div className="flex items-center gap-3">
-                        <h1 className="text-2xl font-bold text-gray-900">
+                        <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">
                             {viewMode === 'archived' ? 'Carpeta de Usuarios Archivados' : 'Usuarios'}
                         </h1>
                         {viewMode === 'archived' && (
@@ -239,7 +241,7 @@ export default function UsersPage() {
                     )}
                     {viewMode === 'active' && (
                         <Button onClick={() => { setEditingUser(null); setIsModalOpen(true); }} className="w-auto">
-                            <Plus className="mr-2 h-4 w-4" />
+                            <Plus aria-hidden />
                             Nuevo Usuario
                         </Button>
                     )}
