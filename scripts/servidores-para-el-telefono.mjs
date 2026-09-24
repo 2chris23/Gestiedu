@@ -31,17 +31,39 @@
  * muerta, sin un solo botón que responda—. Compilada, arranca sola desde lo
  * guardado. Tarda un par de minutos más en levantarse, y un cambio en el código
  * no se ve hasta volver a lanzarlo.
+ *
+ *   npm run telefono:usb        (compilado y por el cable)
+ *
+ * **Por la red de casa, la app NO puede abrir sin conexión, y no es un fallo
+ * de la app.** Lo que la hace abrir sin servidor es el ayudante (`sw.js`), y
+ * Android solo lo deja funcionar en una dirección segura: https, o
+ * `localhost`. `http://192.168.1.156` no es ninguna de las dos, así que ahí
+ * el ayudante no existe y al quitar el wifi solo queda la pantalla de error.
+ * Medido: en `http://192.168.1.156:3000`, `isSecureContext` es falso y
+ * `navigator.serviceWorker` no existe; en la APK por `localhost`, los dos sí.
+ *
+ * En el liceo no pasa: va por https. Para probarlo aquí, el teléfono va por
+ * el cable (o por la depuración inalámbrica) y `adb reverse` hace que su
+ * `localhost:3000` sea el de este ordenador. Para ver la app sin servidor, se
+ * desenchufa el cable, o se quita el wifi si va por la inalámbrica.
  */
 
-import { spawn } from 'child_process';
+import { spawn, execFile } from 'child_process';
+import { existsSync } from 'fs';
 import { networkInterfaces } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 
+const POR_EL_CABLE = process.argv.includes('--usb');
+
 /** La dirección de este ordenador en la red de casa. */
 function laDireccionDeEsteOrdenador() {
+    // Por el cable, el teléfono llega a este ordenador por su propio
+    // `localhost` (ver `adb reverse` más abajo).
+    if (POR_EL_CABLE) return 'localhost';
+
     const preferida = process.argv.find((a) => a.startsWith('--ip='))?.slice(5);
     if (preferida) return preferida;
 
@@ -71,12 +93,12 @@ const hijos = [];
 
 const COMPILADO = process.argv.includes('--compilado');
 
-function levantar(nombre, carpeta, variables, orden = ['run', 'dev']) {
-    const proceso = spawn('npm', orden, {
+function levantar(nombre, carpeta, variables, orden = ['run', 'dev'], programa = 'npm') {
+    const proceso = spawn(programa, orden, {
         cwd: join(RAIZ, 'apps', carpeta),
         env: { ...process.env, ...variables },
         stdio: 'inherit',
-        shell: true,
+        shell: programa === 'npm',
     });
     proceso.on('exit', (codigo) => {
         console.log(`\n[${nombre}] se ha parado (${codigo}).`);
@@ -96,18 +118,102 @@ function parar() {
 process.on('SIGINT', parar);
 process.on('SIGTERM', parar);
 
-console.log(
-    '\n════════════════════════════════════════════════════════\n' +
-    ` Este ordenador en la red:  ${ip}\n` +
-    ` Pantallas:                 ${web}\n` +
-    ` Datos:                     ${api}/api\n` +
-    '\n' +
-    ' Para la APK de pruebas:\n' +
-    `   cd apps/movil && node scripts/preparar-liceo.mjs --liceo=<liceo> --pruebas --url="${web}/login?slug=<liceo>"\n` +
-    '\n' +
-    ' El teléfono tiene que estar en el MISMO wifi.\n' +
-    '════════════════════════════════════════════════════════\n'
-);
+/** `adb`, del SDK de Android: el que hay en el PATH o el que instala Android Studio. */
+function dondeEstaAdb() {
+    const exe = process.platform === 'win32' ? 'adb.exe' : 'adb';
+    const sdks = [
+        process.env.ANDROID_HOME,
+        process.env.ANDROID_SDK_ROOT,
+        process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, 'Android', 'Sdk'),
+        process.env.HOME && join(process.env.HOME, 'Library', 'Android', 'sdk'),
+        process.env.HOME && join(process.env.HOME, 'Android', 'Sdk'),
+    ].filter(Boolean);
+    for (const sdk of sdks) {
+        const ruta = join(sdk, 'platform-tools', exe);
+        if (existsSync(ruta)) return ruta;
+    }
+    return 'adb';
+}
+
+const adb = (argumentos) =>
+    new Promise((resolver) => execFile(ADB, argumentos, { timeout: 10000 }, (error, salida) => resolver(error ? null : salida)));
+
+const ADB = dondeEstaAdb();
+const conPuente = new Set();
+
+/**
+ * El puente: `localhost:3000` y `:3001` del teléfono llevan a este ordenador.
+ * Se mira cada pocos segundos porque el teléfono se desenchufa y se vuelve a
+ * enchufar —así se prueba la app sin servidor— y al volver el puente ya no
+ * está.
+ */
+async function tenderPuentes() {
+    const lista = await adb(['devices']);
+    if (lista === null) return false;
+    const conectados = lista
+        .split(/\r?\n/)
+        .slice(1)
+        .map((l) => l.trim().split(/\s+/))
+        .filter(([serie, estado]) => serie && estado === 'device')
+        .map(([serie]) => serie);
+
+    for (const serie of [...conPuente]) {
+        if (!conectados.includes(serie)) {
+            conPuente.delete(serie);
+            console.log(`\n[cable] ${serie} se ha desconectado: la app ya no llega al servidor.`);
+        }
+    }
+    for (const serie of conectados) {
+        if (conPuente.has(serie)) continue;
+        const a = await adb(['-s', serie, 'reverse', 'tcp:3000', 'tcp:3000']);
+        const b = await adb(['-s', serie, 'reverse', 'tcp:3001', 'tcp:3001']);
+        if (a !== null && b !== null) {
+            conPuente.add(serie);
+            console.log(`\n[cable] ${serie} conectado: su localhost:3000 es este ordenador.`);
+        }
+    }
+    return true;
+}
+
+if (POR_EL_CABLE) {
+    console.log(
+        '\n════════════════════════════════════════════════════════\n' +
+        ' Por el CABLE (o la depuración inalámbrica de Android)\n' +
+        ` Pantallas en el teléfono:  ${web}\n` +
+        ` Datos:                     ${api}/api\n` +
+        '\n' +
+        ' La APK de pruebas apunta a localhost:\n' +
+        `   cd apps/movil && node scripts/preparar-liceo.mjs --liceo=<liceo> --pruebas --url="${web}/login?slug=<liceo>"\n` +
+        '\n' +
+        ' Sin servidor: desenchufa el cable (o quita el wifi si va\n' +
+        ' por la inalámbrica) y vuelve a abrir la app.\n' +
+        '════════════════════════════════════════════════════════\n'
+    );
+    tenderPuentes().then((hay) => {
+        if (!hay) {
+            console.error(`No encuentro adb (${ADB}). Hace falta el SDK de Android (Android Studio).`);
+            parar();
+        }
+    });
+    setInterval(() => tenderPuentes().catch(() => {}), 3000).unref();
+} else {
+    console.log(
+        '\n════════════════════════════════════════════════════════\n' +
+        ` Este ordenador en la red:  ${ip}\n` +
+        ` Pantallas:                 ${web}\n` +
+        ` Datos:                     ${api}/api\n` +
+        '\n' +
+        ' Para la APK de pruebas:\n' +
+        `   cd apps/movil && node scripts/preparar-liceo.mjs --liceo=<liceo> --pruebas --url="${web}/login?slug=<liceo>"\n` +
+        '\n' +
+        ' El teléfono tiene que estar en el MISMO wifi.\n' +
+        '\n' +
+        ' OJO: por aquí (http) la app NO abre sin conexión: Android\n' +
+        ' solo deja guardarla en https o localhost. Para probar eso:\n' +
+        '   npm run telefono:usb\n' +
+        '════════════════════════════════════════════════════════\n'
+    );
+}
 
 levantar('datos', 'backend', { CORS_ORIGIN: `${web},${api}` });
 
@@ -131,6 +237,17 @@ if (!COMPILADO) {
             parar();
             return;
         }
-        levantar('pantallas', 'web', { NEXT_PUBLIC_API_URL: `${api}/api` }, ['run', 'start', '--', '-H', '0.0.0.0', '-p', '3000']);
+        // Next directamente, sin `npm run start` por delante. Lanzado desde
+        // aquí, ese npm se quedaba colgado sin arrancar nada —el puerto 3000
+        // no se abría nunca, medido dos veces— y `telefono:compilado` no llegó
+        // a servir una sola pantalla.
+        const next = join(RAIZ, 'node_modules', 'next', 'dist', 'bin', 'next');
+        levantar(
+            'pantallas',
+            'web',
+            { NEXT_PUBLIC_API_URL: `${api}/api` },
+            [next, 'start', '-H', '0.0.0.0', '-p', '3000'],
+            process.execPath
+        );
     });
 }
