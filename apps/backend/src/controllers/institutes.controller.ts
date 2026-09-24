@@ -2,7 +2,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { InstitutesService } from '../services/institutes.service';
 import { SUCCESS_MESSAGES } from '../utils/constants';
-import { getAcademicConfig, updateAcademicConfig, esAsistenciaMinimaValida } from '../services/promotion/close-cycle.service';
+import { getAcademicConfig, updateAcademicConfig, esAsistenciaMinimaValida, esRedondeoValido } from '../services/promotion/close-cycle.service';
 import { RedisCache } from '../config/redis';
 import { conLiceo } from '../config/ambito-del-liceo';
 import { platformPrisma } from '../config/database';
@@ -103,6 +103,9 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
         // Fuera de 0–100 se ignora y se queda el que había.
         if (esAsistenciaMinimaValida(Number(configObj.asistenciaMinima))) {
           nextAcademicConfig.asistenciaMinima = Number(configObj.asistenciaMinima);
+        }
+        if (esRedondeoValido(configObj.redondeoDeDefinitivas)) {
+          nextAcademicConfig.redondeoDeDefinitivas = configObj.redondeoDeDefinitivas;
         }
         if (configObj.schedule) nextAcademicConfig.schedule = configObj.schedule;
         if (configObj.language) nextAcademicConfig.language = configObj.language;
@@ -319,6 +322,8 @@ export async function updateAcademicConfigEndpoint(request: FastifyRequest, repl
     if (typeof body.permitePendientesEnUltimoAno === 'boolean') patch.permitePendientesEnUltimoAno = body.permitePendientesEnUltimoAno;
     // Un porcentaje fuera de 0–100 no se guarda: se queda el que había.
     if (esAsistenciaMinimaValida(body.asistenciaMinima)) patch.asistenciaMinima = body.asistenciaMinima;
+    // 'MPPE' o 'NINGUNO'; cualquier otra cosa se ignora y se queda la que había.
+    if (esRedondeoValido(body.redondeoDeDefinitivas)) patch.redondeoDeDefinitivas = body.redondeoDeDefinitivas;
     const instId = getInstId(request);
     const config = await updateAcademicConfig(instId, patch);
     await conLiceo(instId, () => RedisCache.delete(`dashboard:admin:${instId}`));

@@ -15,6 +15,19 @@ export interface AcademicConfig {
     modalidad?: 'MEDIA_GENERAL' | 'MEDIA_TECNICA';
     maxGradeLevel?: number;
     turnosHabilitados?: ('MANANA' | 'TARDE' | 'INTEGRAL')[];
+    /**
+     * Cómo se redondean las notas DEFINITIVAS (la del lapso y la de la materia
+     * al cerrar el ciclo). 'MPPE': una fracción de 0,50 o más sube al entero
+     * inmediato superior (Reglamento General de la LOE), cada lapso y luego la
+     * definitiva. 'NINGUNO': a dos decimales, sin redondear al entero.
+     */
+    redondeoDeDefinitivas?: RedondeoDeDefinitivas;
+}
+
+export type RedondeoDeDefinitivas = 'MPPE' | 'NINGUNO';
+export const REDONDEOS_DE_DEFINITIVAS: RedondeoDeDefinitivas[] = ['MPPE', 'NINGUNO'];
+export function esRedondeoValido(valor: unknown): valor is RedondeoDeDefinitivas {
+    return typeof valor === 'string' && (REDONDEOS_DE_DEFINITIVAS as string[]).includes(valor);
 }
 
 export const DEFAULT_ACADEMIC_CONFIG: AcademicConfig = {
@@ -25,6 +38,7 @@ export const DEFAULT_ACADEMIC_CONFIG: AcademicConfig = {
     modalidad: 'MEDIA_GENERAL',
     maxGradeLevel: 5,
     turnosHabilitados: ['MANANA', 'TARDE'],
+    redondeoDeDefinitivas: 'MPPE',
 };
 
 /** El porcentaje de asistencia va de 0 a 100 y no admite otra cosa. */
@@ -46,6 +60,7 @@ export async function getAcademicConfig(instituteId: string): Promise<AcademicCo
         modalidad,
         maxGradeLevel: typeof raw.maxGradeLevel === 'number' ? raw.maxGradeLevel : defaultMax,
         turnosHabilitados: Array.isArray(raw.turnosHabilitados) ? raw.turnosHabilitados : DEFAULT_ACADEMIC_CONFIG.turnosHabilitados,
+        redondeoDeDefinitivas: esRedondeoValido(raw.redondeoDeDefinitivas) ? raw.redondeoDeDefinitivas : DEFAULT_ACADEMIC_CONFIG.redondeoDeDefinitivas,
     };
 }
 
@@ -67,6 +82,7 @@ export async function updateAcademicConfig(instituteId: string, patch: Partial<A
         modalidad,
         maxGradeLevel: patch.maxGradeLevel ?? current.maxGradeLevel ?? defaultMax,
         turnosHabilitados: patch.turnosHabilitados ?? current.turnosHabilitados,
+        redondeoDeDefinitivas: esRedondeoValido(patch.redondeoDeDefinitivas) ? patch.redondeoDeDefinitivas : current.redondeoDeDefinitivas,
     };
     await platformPrisma.institute.update({
         where: { id: instituteId },
@@ -140,7 +156,11 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                 const classroom = enr.classroom;
                 const subjectGrades: StudentSuggestion['subjectGrades'] = await Promise.all(
                     classroom.subjects.map(async (cs: any) => {
-                        const { promedio: avg, conNotas } = await gradesService.promedioDeLaMateria(prisma, enr.studentId, cs.subjectId);
+                        // La definitiva, con el redondeo del liceo (MPPE por defecto): un
+                        // 9,5 es un 10 aprobado, no una materia pendiente (RED-01…04).
+                        const { promedio: avg, conNotas } = await gradesService.promedioDeLaMateria(
+                            prisma, enr.studentId, cs.subjectId, undefined, undefined, config.redondeoDeDefinitivas
+                        );
                         return {
                             subjectId: cs.subjectId,
                             subjectName: cs.subject.name,

@@ -1047,10 +1047,16 @@ class GradesService {
     studentId: string,
     subjectId: string,
     periodId?: string,
-    lapsosConocidos?: string[]
+    lapsosConocidos?: string[],
+    redondeo?: 'MPPE' | 'NINGUNO'
   ): Promise<{ promedio: number; conNotas: boolean }> {
+    // Con `redondeo: 'MPPE'` salen las DEFINITIVAS: cada lapso redondeado al
+    // entero (0,50 o más sube) y la de la materia, de esas, redondeada otra vez.
+    // Sin él, el promedio de siempre, a dos decimales (lo que se ve durante el año).
+    const definitiva = (n: number) => (redondeo === 'MPPE' ? redondearComoElMPPE(n) : n);
     if (periodId) {
-      return this.promedioDelLapso(prisma, studentId, subjectId, periodId);
+      const lapso = await this.promedioDelLapso(prisma, studentId, subjectId, periodId);
+      return { ...lapso, promedio: definitiva(lapso.promedio) };
     }
 
     let lapsos = lapsosConocidos;
@@ -1079,10 +1085,10 @@ class GradesService {
     );
 
     // Un lapso SIN notas no pesa; uno con notas en 0, sí (antes: `avg > 0`).
-    const sums = promedios.filter((p) => p.conNotas).map((p) => p.promedio);
+    const sums = promedios.filter((p) => p.conNotas).map((p) => definitiva(p.promedio));
     if (sums.length === 0) return { promedio: 0, conNotas: false };
     const global = sums.reduce((a, b) => a + b, 0) / sums.length;
-    return { promedio: Math.round(global * 100) / 100, conNotas: true };
+    return { promedio: definitiva(Math.round(global * 100) / 100), conNotas: true };
   }
 
   /**
@@ -2072,6 +2078,15 @@ class GradesService {
       });
     }
   }
+}
+
+/**
+ * La regla del Reglamento General de la LOE: al calcular, una fracción de
+ * 0,50 o más se lleva al entero inmediato superior. El `1e-9` es por la coma
+ * flotante: 9,5 guardado como 9,4999999… también es 9,5.
+ */
+export function redondearComoElMPPE(n: number): number {
+  return Math.floor(n + 0.5 + 1e-9);
 }
 
 export const gradesService = new GradesService();
