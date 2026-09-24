@@ -17,6 +17,7 @@ export function AcademicSettings() {
         gradeScale: { min: 0, max: 20 },
         passingGrade: 10,
         asistenciaMinima: 80,
+        redondeoDeDefinitivas: 'MPPE' as 'MPPE' | 'NINGUNO',
         language: 'es',
         dateFormat: 'DD/MM/YYYY',
         schedule: {
@@ -48,6 +49,7 @@ export function AcademicSettings() {
                     gradeScale: rawConfig.gradeScale || { min: 0, max: 20 },
                     passingGrade: rawConfig.passingGrade ?? rawConfig.notaMinimaAprobatoria ?? 10,
                     asistenciaMinima: rawConfig.asistenciaMinima ?? 80,
+                    redondeoDeDefinitivas: rawConfig.redondeoDeDefinitivas === 'NINGUNO' ? 'NINGUNO' : 'MPPE',
                     language: rawConfig.language || 'es',
                     dateFormat: rawConfig.dateFormat || 'DD/MM/YYYY',
                     schedule: rawConfig.schedule || {
@@ -209,6 +211,28 @@ export function AcademicSettings() {
                     />
                     <p className="mt-1 text-xs text-gray-500">
                         Por debajo de este porcentaje se le avisa al representante. No reprueba ni afecta las notas.
+                    </p>
+                </div>
+
+                {/* Redondeo de las definitivas */}
+                <div>
+                    <label htmlFor="redondeoDeDefinitivas" className="block text-sm font-medium text-gray-700 mb-2">
+                        Redondeo de las notas definitivas
+                    </label>
+                    <Select
+                        value={academicConfig.redondeoDeDefinitivas}
+                        onValueChange={(v) => setAcademicConfig(prev => ({ ...prev, redondeoDeDefinitivas: v === 'NINGUNO' ? 'NINGUNO' : 'MPPE' }))}
+                    >
+                        <SelectTrigger id="redondeoDeDefinitivas" className="w-full">
+                            <SelectValue placeholder="Redondeo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="MPPE">Al entero: 0,50 o más sube (MPPE)</SelectItem>
+                            <SelectItem value="NINGUNO">Sin redondear (dos decimales)</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <p className="mt-1 text-xs text-gray-500">
+                        Se aplica a la nota de cada lapso y a la definitiva al cerrar el ciclo: con la regla del MPPE, un 9,5 es un 10.
                     </p>
                 </div>
 
