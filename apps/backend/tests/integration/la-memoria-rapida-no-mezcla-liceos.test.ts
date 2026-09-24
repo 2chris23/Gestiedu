@@ -56,7 +56,7 @@ const SLUG_B = `otro-liceo-${SUFIJO}`;
 
 /** La clave exacta que construye `getGrades` cuando no se le pasa ningún filtro. */
 const CLAVE_DE_TODAS_LAS_NOTAS =
-    'grades:list|stu:-|sub:-|per:-|act:-|tch:-|cls:-|min:-|max:-|typ:-|df:-|dt:-|pg:1|lm:10|sb:createdAt|so:desc';
+    'grades:list|stu:-|sub:-|per:-|act:-|tch:-|cls:-|min:-|max:-|typ:-|df:-|dt:-|pg:1|lm:10|sb:createdAt|so:desc|prof:-';
 
 function datosDeConexion() {
     const url = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || '';
