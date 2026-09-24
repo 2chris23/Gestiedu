@@ -24,6 +24,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { calculateLapsoAverage, CriterionInput, CriterionActivityGrade } from '../utils/lapso-average';
+import { fechaDeLaActividad, lapsoDeLaFecha } from '../utils/lapso-de-la-actividad';
 
 export interface BulkAverageParams {
     classroomId: string;
@@ -105,14 +106,14 @@ export async function bulkSubjectAveragesConDatos(
     // `gradesService.seccionesDelAlumno`). Siguen siendo 4 consultas: de las
     // otras secciones solo vienen las actividades con notas de estos alumnos.
     const delMismoCiclo = { academicYear: { classrooms: { some: { id: classroomId } } } };
-    const [periods, rowsDelCiclo, grades, activities] = await Promise.all([
-        periodId
-            ? prisma.period.findMany({ where: { id: periodId }, select: { id: true, name: true } })
-            : prisma.period.findMany({
-                  where: delMismoCiclo,
-                  select: { id: true, name: true },
-                  orderBy: { startDate: 'asc' },
-              }),
+    const [lapsosDelCiclo, rowsDelCiclo, grades, activities] = await Promise.all([
+        // Todos los lapsos del ciclo, con sus fechas: hacen falta para saber de
+        // qué lapso es una nota suelta de Clase en Vivo (LAP-03).
+        prisma.period.findMany({
+            where: periodId ? { OR: [{ id: periodId }, delMismoCiclo] } : delMismoCiclo,
+            select: { id: true, name: true, startDate: true, endDate: true },
+            orderBy: { startDate: 'asc' },
+        }),
         prisma.evaluationPlanRow.findMany({
             where: { classroom: delMismoCiclo, subjectId: { in: subjectIds }, rowType: 'EVALUATION' },
             select: { id: true, puntos: true, activityId: true, subjectId: true, lapso: true, classroomId: true },
@@ -128,10 +129,15 @@ export async function bulkSubjectAveragesConDatos(
             maxScore: number | null;
             scores: unknown;
             classroomId: string;
+            fechaDeLaClase: Date | null;
+            dueDate: Date | null;
+            createdAt: Date | null;
         }>>`
-            SELECT ca.id, ca."subjectId", ca."planRowId", ca."maxScore", ca.scores, ca."classroomId"
+            SELECT ca.id, ca."subjectId", ca."planRowId", ca."maxScore", ca.scores, ca."classroomId",
+                   cs.date AS "fechaDeLaClase", ca."dueDate", ca."createdAt"
               FROM class_activities ca
               JOIN classrooms c ON c.id = ca."classroomId"
+              LEFT JOIN class_sessions cs ON cs.id = ca."classSessionId"
               JOIN classrooms mia ON mia.id = ${classroomId}
              WHERE ca."subjectId" = ANY(${subjectIds}::text[])
                AND c."academicYearId" = mia."academicYearId"
@@ -139,9 +145,16 @@ export async function bulkSubjectAveragesConDatos(
                     OR (jsonb_typeof(ca.scores) = 'object' AND ca.scores ?| ${studentIds}::text[]))`,
     ]);
 
+    const periods = periodId ? lapsosDelCiclo.filter((p) => p.id === periodId) : lapsosDelCiclo;
     if (periods.length === 0) return empty;
 
     const rows = rowsDelCiclo.filter((r) => r.classroomId === classroomId);
+    const lapsoDeLaFila = new Map(rowsDelCiclo.map((r) => [r.id, r.lapso]));
+    /** De qué lapso (id) es cada actividad: la del criterio, por su criterio; la suelta, por su fecha. */
+    const deQueLapso = (a: { planRowId: string | null; fechaDeLaClase: Date | null; dueDate: Date | null; createdAt: Date | null }) =>
+        a.planRowId && lapsoDeLaFila.has(a.planRowId)
+            ? { porCriterio: lapsoDeLaFila.get(a.planRowId)! }
+            : { porFecha: lapsoDeLaFecha(fechaDeLaActividad(a), lapsosDelCiclo) };
 
     /**
      * EL ALUMNO QUE SE CAMBIÓ DE SECCIÓN TRAE SUS NOTAS
@@ -182,6 +195,7 @@ export async function bulkSubjectAveragesConDatos(
         planRowId: a.planRowId,
         maxScore: a.maxScore ?? 20,
         scores: parseScores(a.scores),
+        lapso: deQueLapso(a),
     }));
     const actScoresDeFuera = actividadesDeFuera.map((a) => ({
         classroomId: a.classroomId,
@@ -189,6 +203,7 @@ export async function bulkSubjectAveragesConDatos(
         planRowId: a.planRowId,
         maxScore: a.maxScore ?? 20,
         scores: parseScores(a.scores),
+        lapso: deQueLapso(a),
     }));
 
     const gradesByStudent = new Map<string, typeof grades>();
@@ -231,6 +246,11 @@ export async function bulkSubjectAveragesConDatos(
                         .filter((g) => g.periodId === period.id && g.score !== null)
                         .forEach((g) => acts.push({ score: g.score as number, maxScore: 20 }));
                     susActs.forEach((a) => {
+                        // Solo las de ESTE lapso (LAP-03): antes entraban todas en todos.
+                        const esDeEsteLapso = 'porCriterio' in a.lapso
+                            ? a.lapso.porCriterio === lapso
+                            : a.lapso.porFecha === null || a.lapso.porFecha === period.id;
+                        if (!esDeEsteLapso) return;
                         const score = a.scores[studentId];
                         if (score !== undefined && score !== null) acts.push({ score, maxScore: a.maxScore });
                     });
