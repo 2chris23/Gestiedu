@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
+import { usePathname } from 'next/navigation';
+import { guardarEstasPaginas } from '@/lib/paginas-guardadas';
 
 /**
  * REGISTRAR EL AYUDANTE (SERVICE WORKER)
@@ -17,6 +19,8 @@ import { useEffect } from 'react';
  * apagar el PC dejaba el teléfono sin nada.
  */
 export function AyudanteDeLaApp() {
+    const pathname = usePathname();
+
     useEffect(() => {
         if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
         const url = process.env.NODE_ENV === 'production' ? '/sw.js' : '/sw.js?modo=desarrollo';
@@ -34,6 +38,24 @@ export function AyudanteDeLaApp() {
 
         return () => window.removeEventListener('load', registrar);
     }, []);
+
+    /**
+     * CADA PANTALLA QUE SE ABRE, GUARDADA ENTERA
+     *
+     * Dentro de la app se navega sin recargar, y así la página nunca pasaba
+     * por el ayudante: sin conexión solo se podía volver a lo que se hubiera
+     * abierto recargando. Se le avisa de cada pantalla (y del panel, que es
+     * por donde entra la app sin conexión) cuando esta ya terminó de cargar,
+     * para no quitarle ancho de banda.
+     */
+    useEffect(() => {
+        if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+        const direcciones = [window.location.href];
+        if (pathname.startsWith('/dashboard')) direcciones.push('/dashboard');
+
+        const reloj = window.setTimeout(() => guardarEstasPaginas(direcciones), 1500);
+        return () => window.clearTimeout(reloj);
+    }, [pathname]);
 
     return null;
 }

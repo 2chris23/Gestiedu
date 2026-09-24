@@ -133,7 +133,14 @@ async function laRedYSiNoLoGuardado(peticion) {
         if (respuesta.status >= 502 && respuesta.status <= 504) throw new Error('sin servidor');
         return await guardar(peticion, respuesta);
     } catch {
-        const guardada = await caches.match(peticion);
+        // Una página se busca solo por su dirección: la guardada pudo traerse
+        // con otras cabeceras (ver `guardarLaPagina`). Un trozo de Next
+        // (`?_rsc=`) no: depende de lo que ya había en pantalla, y uno que no
+        // encaje rompe la navegación; sin él, Next carga la página entera.
+        const guardada =
+            peticion.mode === 'navigate'
+                ? await caches.match(peticion.url, { ignoreVary: true })
+                : await caches.match(peticion);
         if (guardada) return guardada;
 
         // Una página que nunca se abrió no se puede inventar: ahí sí toca la
@@ -159,6 +166,72 @@ async function loGuardadoYSiNoLaRed(peticion) {
         return new Response('', { status: 504 });
     }
 }
+
+/**
+ * GUARDAR LA PÁGINA QUE SE ESTÁ VIENDO, AUNQUE SE LLEGARA SIN RECARGAR
+ *
+ * Aquí solo pasaban las páginas que se CARGABAN (la primera, o al recargar).
+ * Pero dentro de la app se navega sin recargar: Next pide solo un trozo
+ * (`?_rsc=`), y la página entera de «Académico» o del panel no pasaba nunca
+ * por aquí. Medido en un Motorola: se entró, se recorrió todo tocando botones,
+ * se quitó el wifi y al abrir la app salió «esta pantalla no está guardada».
+ *
+ * Ahora la app avisa de cada pantalla que se abre (`AyudanteDeLaApp`) y aquí
+ * se trae y se guarda entera, una vez cada `RECIEN` como mucho, para que el
+ * servidor no la pinte dos veces en cada paso.
+ */
+const RECIEN = 10 * 60 * 1000;
+
+async function guardarLaPagina(direccion) {
+    const url = new URL(direccion, self.location.origin);
+    url.hash = '';
+    if (url.origin !== self.location.origin || esDelServidor(url) || esUnArchivoFijo(url)) return;
+
+    const cache = await caches.open(CASCARA);
+    const yaEsta = await cache.match(url.href, { ignoreVary: true });
+    const cuando = yaEsta ? Date.parse(yaEsta.headers.get('date') || '') : NaN;
+    if (yaEsta && Date.now() - cuando < RECIEN) return;
+
+    const respuesta = await fetch(url.href, {
+        credentials: 'same-origin',
+        headers: { Accept: 'text/html' },
+    });
+    // Una redirección (la sesión caducó y manda al login, o el login manda al
+    // panel) no es esta página: guardarla aquí la serviría con otra dirección.
+    const esLaPagina =
+        respuesta.ok && !respuesta.redirected && (respuesta.headers.get('content-type') || '').includes('text/html');
+    if (!esLaPagina) return;
+    await cache.put(url.href, respuesta);
+    recortar(cache).catch(() => {});
+}
+
+/**
+ * AL CERRAR SESIÓN, FUERA LAS PÁGINAS
+ *
+ * Una página guardada lleva el nombre de quien la abrió (la cabecera), y lo
+ * que se guarda aquí es del navegador, no de la persona. Se queda la cáscara
+ * —el javascript, los estilos, los iconos—, que es igual para todos.
+ */
+async function olvidarLasPaginas() {
+    const cache = await caches.open(CASCARA);
+    const fijos = new Set(DE_ENTRADA.map((d) => new URL(d, self.location.origin).href));
+    for (const peticion of await cache.keys()) {
+        const url = new URL(peticion.url);
+        if (fijos.has(url.href) || esUnArchivoFijo(url)) continue;
+        await cache.delete(peticion);
+    }
+}
+
+self.addEventListener('message', (evento) => {
+    const mensaje = evento.data || {};
+    if (mensaje.tipo === 'guardar-pagina' && Array.isArray(mensaje.direcciones)) {
+        evento.waitUntil(
+            Promise.all(mensaje.direcciones.map((d) => guardarLaPagina(d).catch(() => {})))
+        );
+    } else if (mensaje.tipo === 'olvidar-paginas') {
+        evento.waitUntil(olvidarLasPaginas().catch(() => {}));
+    }
+});
 
 self.addEventListener('fetch', (evento) => {
     const peticion = evento.request;

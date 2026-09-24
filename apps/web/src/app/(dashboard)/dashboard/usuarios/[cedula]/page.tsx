@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, use, useMemo } from 'react';
 import { toast } from 'sonner';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ProfileHeader, { UserProfile } from '@/components/profile/ProfileHeader';
 import StudentScheduleSection from '@/components/schedule/StudentScheduleSection';
@@ -23,6 +24,7 @@ import api from '@/lib/axios';
 import { comprimirFotoEnElDispositivo, pesoLegible } from '@/lib/foto-comprimida';
 import { useConfirm } from '@/hooks/useConfirm';
 import { cn } from '@/lib/utils';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 interface PageProps {
     params: Promise<{
@@ -75,14 +77,97 @@ interface TeacherClass {
 export default function UserProfilePage({ params }: PageProps) {
     const { cedula } = use(params);
     const [activeTab, setActiveTab] = useState<'info' | 'schedule' | 'grades'>('schedule');
-    const [loading, setLoading] = useState(true);
-    const [user, setUser] = useState<UserProfile | null>(null);
-    const [studentStats, setStudentStats] = useState<StudentDashboardStats | null>(null);
-    const [teacherData, setTeacherData] = useState<{
-        guideSection?: { name: string; grade: number; section: string };
-        allClasses: TeacherClass[];
-        academicYears: Array<{ id: string; name: string }>;
-    }>({ allClasses: [], academicYears: [] });
+    const queryClient = useQueryClient();
+
+    /**
+     * LA FICHA, DE LA MEMORIA DE LA APP
+     *
+     * Se pedía a mano y vivía solo mientras la pantalla estaba abierta: sin
+     * conexión, la ficha de un alumno salía «Usuario no encontrado» aunque se
+     * hubiera abierto un minuto antes. Pasando por React Query entra en lo que
+     * se guarda en el teléfono (`MemoriaDelTelefono`).
+     */
+    const perfil = useQuery({
+        queryKey: ['usuario', cedula],
+        queryFn: () => userService.getUserById(cedula),
+    });
+    const dbUser = perfil.data;
+    const loading = perfil.isLoading;
+    const fullUserData = (dbUser ?? null) as {
+        teacherClassrooms?: TeacherClassroomEntry[];
+        studentClassrooms?: any[];
+        children?: any[];
+    } | null;
+
+    const user: UserProfile | null = useMemo(
+        () =>
+            dbUser
+                ? {
+                      name: `${dbUser.firstName} ${dbUser.lastName}`,
+                      cedula: dbUser.id,
+                      role: dbUser.role.toLowerCase() as 'student' | 'teacher' | 'admin' | 'tutor',
+                      email: dbUser.email,
+                      phone: dbUser.phone || 'No registrado',
+                      photoUrl: dbUser.avatar,
+                      address: dbUser.address,
+                  }
+                : null,
+        [dbUser]
+    );
+
+    /** La foto nueva, en la ficha guardada: sin volver a pedirla entera. */
+    const ponerLaFoto = (avatar: string | null) =>
+        queryClient.setQueryData(['usuario', cedula], (u: typeof dbUser) => (u ? { ...u, avatar } : u));
+
+    const teacherData = useMemo(() => {
+        const vacio = { guideSection: undefined, allClasses: [] as TeacherClass[], academicYears: [] as Array<{ id: string; name: string }> };
+        if (!dbUser || dbUser.role !== 'TEACHER') return vacio;
+
+        // La sección guía de hoy (del ciclo activo)
+        const currentGuideClassroom = dbUser.teacherClassrooms?.find(
+            (tc: TeacherClassroomEntry) => tc.isMainTeacher && ['ACTIVE', 'PLANNING'].includes(tc.classroom.academicYear.status)
+        );
+        const guideSection = currentGuideClassroom?.classroom;
+
+        /**
+         * EL PROMEDIO QUE NO HAY, NO SE INVENTA
+         *
+         * Si una materia no tenía promedio calculado se ponía 16,5, y la
+         * pantalla lo enseñaba como «Promedio Alumnos» igual que uno de verdad.
+         * Ahora se queda sin promedio y se ve «—».
+         */
+        const teacherAverages = (dbUser as any).teacherAverages || {};
+        const allClasses: TeacherClass[] =
+            dbUser.subjectTeachings?.map((st: any) => ({
+                subjectId: st.subject?.id || '',
+                subject: st.subject?.name || 'Materia',
+                subjectSlug: st.subject?.slug || '',
+                classroomId: st.classroom?.id || '',
+                classroom: st.classroom?.name || `Sección ${st.classroom?.section}`,
+                classroomSlug: st.classroom?.slug || '',
+                grade: st.classroom?.grade || 1,
+                section: st.classroom?.section || 'A',
+                academicYearId: st.classroom?.academicYear?.id || '',
+                academicYearName: st.classroom?.academicYear?.name || '',
+                weeklyBlocks: st.weeklyBlocks || 4,
+                hoursPerWeek: st.hoursPerWeek || ((st.weeklyBlocks || 4) * 45) / 60,
+                average: typeof teacherAverages[st.subject?.id] === 'number' ? teacherAverages[st.subject?.id] : undefined,
+            })) || [];
+
+        const academicYearsMap = new Map<string, string>();
+        allClasses.forEach((c: TeacherClass) => {
+            if (c.academicYearId) academicYearsMap.set(c.academicYearId, c.academicYearName);
+        });
+
+        return {
+            guideSection: guideSection
+                ? { name: guideSection.name, grade: guideSection.grade, section: guideSection.section }
+                : undefined,
+            allClasses,
+            academicYears: Array.from(academicYearsMap.entries()).map(([id, name]) => ({ id, name })),
+        };
+    }, [dbUser]);
+
     const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('current');
     const [selectedStudentYearId, setSelectedStudentYearId] = useState<string>('');
     const [showGuideHistoryModal, setShowGuideHistoryModal] = useState(false);
@@ -107,7 +192,7 @@ export default function UserProfilePage({ params }: PageProps) {
             const { data } = await api.put(`/users/${encodeURIComponent(cedula)}/photo`, datos, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
-            setUser((u) => (u ? { ...u, photoUrl: data.avatar } : u));
+            ponerLaFoto(data.avatar);
             toast.success(`Foto guardada: de ${pesoLegible(archivo.size)} a ${pesoLegible(data.bytesGuardados)}`);
         } catch (e: any) {
             toast.error(e?.response?.data?.error || e?.message || 'No se pudo guardar la foto');
@@ -121,18 +206,25 @@ export default function UserProfilePage({ params }: PageProps) {
         if (!si) return;
         try {
             await api.delete(`/users/${encodeURIComponent(cedula)}/photo`);
-            setUser((u) => (u ? { ...u, photoUrl: null } : u));
+            ponerLaFoto(null);
             toast.success('Foto quitada');
         } catch (e: any) {
             toast.error(e?.response?.data?.error || 'No se pudo quitar la foto');
         }
     };
 
-    const [fullUserData, setFullUserData] = useState<{ teacherClassrooms?: TeacherClassroomEntry[]; studentClassrooms?: any[]; children?: any[] } | null>(null);
     const [studentClassroomId, setStudentClassroomId] = useState<string>('');
     // Fase 3.5 — filtro por lapso/momento (undefined = "Todo el ciclo")
     const [lapsoId, setLapsoId] = useState<string | undefined>(undefined);
     const [studentPeriods, setStudentPeriods] = useState<Array<{ id: string; name: string }>>([]);
+
+    const estadisticas = useQuery({
+        queryKey: ['usuario', cedula, 'estadisticas', lapsoId ?? null, selectedStudentYearId || null],
+        queryFn: () => studentsService.getStudentDashboardStatsById(dbUser!.id, lapsoId, selectedStudentYearId || undefined),
+        enabled: dbUser?.role === 'STUDENT',
+        placeholderData: (anteriores) => anteriores,
+    });
+    const studentStats: StudentDashboardStats | null = estadisticas.data ?? null;
 
     // Extraer ciclos académicos únicos del estudiante (ordenados por el más reciente)
     const studentAcademicYears = useMemo(() => {
@@ -174,14 +266,7 @@ export default function UserProfilePage({ params }: PageProps) {
                 setStudentPeriods(matched.periods);
             }
         }
-        if (user?.cedula) {
-            try {
-                const stats = await studentsService.getStudentDashboardStatsById(user.cedula, undefined, yearId);
-                setStudentStats(stats);
-            } catch (err) {
-                console.error("Error fetching student stats for year:", err);
-            }
-        }
+        // Las cifras de ese ciclo las pide `estadisticas`, que depende de él.
     };
 
     // Real schedule data for teachers and students
@@ -196,118 +281,29 @@ export default function UserProfilePage({ params }: PageProps) {
             ? transformScheduleData(studentBlocks)
             : [];
 
+    // Lo que se elige al abrir la ficha: el ciclo y la sección más recientes.
     useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                // Fetch real user from DB
-                const dbUser = await userService.getUserById(cedula);
-
-                // Map DB User to Profile UI format
-                if (dbUser) {
-                    // Store complete user data for modal
-                    setFullUserData(dbUser);
-
-                    setUser({
-                        name: `${dbUser.firstName} ${dbUser.lastName}`,
-                        cedula: dbUser.id,
-                        role: dbUser.role.toLowerCase() as 'student' | 'teacher' | 'admin' | 'tutor',
-                        email: dbUser.email,
-                        phone: dbUser.phone || 'No registrado',
-                        photoUrl: dbUser.avatar,
-                        address: dbUser.address, // Agregar dirección desde DB
-                    });
-
-                    // If student, fetch dashboard stats
-                    if (dbUser.role === 'STUDENT') {
-                        const scs = (dbUser as any).studentClassrooms || [];
-                        const initialYear = scs[0]?.academicYear || dbUser.classroom?.academicYear;
-                        if (initialYear?.id) {
-                            setSelectedStudentYearId(initialYear.id);
-                        }
-                        if (dbUser.classroom?.id) {
-                            setStudentClassroomId(dbUser.classroom.id);
-                        }
-                        // Fase 3.5 — lapsos del aula para el selector de Momento
-                        if ((dbUser.classroom as any)?.academicYear?.periods) {
-                            setStudentPeriods((dbUser.classroom as any).academicYear.periods);
-                        }
-                        try {
-                            const stats = await studentsService.getStudentDashboardStatsById(dbUser.id, lapsoId, initialYear?.id);
-                            setStudentStats(stats);
-                            // Set it from stats as fallback in case it's not in dbUser directly
-                            if (!dbUser.classroom?.id && stats?.student?.currentSection?.id) {
-                                setStudentClassroomId(stats.student.currentSection.id);
-                            }
-                        } catch (err) {
-                            console.error("Error fetching student stats:", err);
-                        }
-                    }
-
-                    // If teacher, extract guide section and classes
-                    if (dbUser.role === 'TEACHER') {
-                        // Extract current guide section (from active academic year)
-                        const currentGuideClassroom = dbUser.teacherClassrooms?.find(
-                            (tc: TeacherClassroomEntry) => tc.isMainTeacher && ['ACTIVE', 'PLANNING'].includes(tc.classroom.academicYear.status)
-                        );
-                        const guideSection = currentGuideClassroom?.classroom;
-
-                        // Mapear las materias reales que imparte el profesor desde subjectTeachings
-                        const teacherAverages = (dbUser as any).teacherAverages || {};
-                        const allClasses: TeacherClass[] = dbUser.subjectTeachings?.map((st: any) => ({
-                            subjectId: st.subject?.id || '',
-                            subject: st.subject?.name || 'Materia',
-                            subjectSlug: st.subject?.slug || '',
-                            classroomId: st.classroom?.id || '',
-                            classroom: st.classroom?.name || `Sección ${st.classroom?.section}`,
-                            classroomSlug: st.classroom?.slug || '',
-                            grade: st.classroom?.grade || 1,
-                            section: st.classroom?.section || 'A',
-                            academicYearId: st.classroom?.academicYear?.id || '',
-                            academicYearName: st.classroom?.academicYear?.name || '',
-                            weeklyBlocks: st.weeklyBlocks || 4,
-                            hoursPerWeek: st.hoursPerWeek || ((st.weeklyBlocks || 4) * 45 / 60),
-                            average: teacherAverages[st.subject?.id] || 16.5
-                        })) || [];
-
-                        // Extract unique academic years
-                        const academicYearsMap = new Map<string, string>();
-                        allClasses.forEach((c: TeacherClass) => {
-                            if (c.academicYearId) {
-                                academicYearsMap.set(c.academicYearId, c.academicYearName);
-                            }
-                        });
-
-                        const academicYears = Array.from(academicYearsMap.entries()).map(([id, name]) => ({
-                            id,
-                            name
-                        }));
-
-                        setTeacherData({
-                            guideSection: guideSection ? {
-                                name: guideSection.name,
-                                grade: guideSection.grade,
-                                section: guideSection.section
-                            } : undefined,
-                            allClasses,
-                            academicYears
-                        });
-
-                        // Set default to first academic year if available
-                        if (academicYears.length > 0) {
-                            setSelectedAcademicYear(academicYears[0].id);
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error("User not found or error:", error);
-                setUser(null);
-            } finally {
-                setLoading(false);
+        if (!dbUser) return;
+        if (dbUser.role === 'STUDENT') {
+            const scs = (dbUser as any).studentClassrooms || [];
+            const initialYear = scs[0]?.academicYear || dbUser.classroom?.academicYear;
+            if (initialYear?.id) setSelectedStudentYearId((y) => y || initialYear.id);
+            if (dbUser.classroom?.id) setStudentClassroomId((c) => c || dbUser.classroom!.id);
+            // Fase 3.5 — lapsos del aula para el selector de Momento
+            if ((dbUser.classroom as any)?.academicYear?.periods) {
+                setStudentPeriods((dbUser.classroom as any).academicYear.periods);
             }
-        };
-        fetchData();
-    }, [cedula, lapsoId]);
+        }
+        if (dbUser.role === 'TEACHER' && teacherData.academicYears.length > 0) {
+            setSelectedAcademicYear((y) => (y === 'current' ? teacherData.academicYears[0].id : y));
+        }
+    }, [dbUser, teacherData]);
+
+    // Sin sección en la ficha, la de las cifras del alumno.
+    useEffect(() => {
+        const seccion = studentStats?.student?.currentSection?.id;
+        if (seccion) setStudentClassroomId((c) => c || seccion);
+    }, [studentStats]);
 
     // Filter classes by selected academic year
     const filteredClasses = selectedAcademicYear === 'current'
@@ -325,8 +321,17 @@ export default function UserProfilePage({ params }: PageProps) {
                     <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
                         <AlertCircle size={32} />
                     </div>
-                    <h2 className="text-xl font-bold text-gray-800 mb-2">Usuario no encontrado</h2>
-                    <p className="text-gray-500 mb-6">No existe ningún usuario registrado con la cédula <strong>{cedula}</strong> en la base de datos.</p>
+                    {esQueNoContesta(perfil.error) ? (
+                        <>
+                            <h2 className="text-xl font-bold text-gray-800 mb-2">Sin conexión</h2>
+                            <p className="text-gray-500 mb-6">Esta ficha no se había abierto antes en este dispositivo, así que no está guardada. Se verá en cuanto vuelva la conexión.</p>
+                        </>
+                    ) : (
+                        <>
+                            <h2 className="text-xl font-bold text-gray-800 mb-2">Usuario no encontrado</h2>
+                            <p className="text-gray-500 mb-6">No existe ningún usuario registrado con la cédula <strong>{cedula}</strong> en la base de datos.</p>
+                        </>
+                    )}
                     <button onClick={() => window.history.back()} className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700">Regresar</button>
                 </div>
             </div>
@@ -592,8 +597,10 @@ export default function UserProfilePage({ params }: PageProps) {
                                             };
                                         }
                                         groupedByGrade[g].classes.push(cls);
-                                        groupedByGrade[g].sumAvg += cls.average || 16.5;
-                                        groupedByGrade[g].count += 1;
+                                        if (typeof cls.average === 'number') {
+                                            groupedByGrade[g].sumAvg += cls.average;
+                                            groupedByGrade[g].count += 1;
+                                        }
                                         groupedByGrade[g].totalHours += cls.hoursPerWeek || 3;
                                     });
 
@@ -611,7 +618,7 @@ export default function UserProfilePage({ params }: PageProps) {
 
                                     return gradesList.map((g) => {
                                         const group = groupedByGrade[g];
-                                        const gradeAvg = (group.sumAvg / (group.count || 1)).toFixed(1);
+                                        const gradeAvg = group.count > 0 ? (group.sumAvg / group.count).toFixed(1) : null;
 
                                         return (
                                             <div key={g} className="border border-gray-200/80 rounded-xl overflow-hidden shadow-2xs transition-all">
@@ -634,7 +641,7 @@ export default function UserProfilePage({ params }: PageProps) {
                                                                 Promedio Alumnos
                                                             </span>
                                                             <span className="text-sm font-black text-indigo-600">
-                                                                {gradeAvg} pts
+                                                                {gradeAvg ? `${gradeAvg} pts` : '—'}
                                                             </span>
                                                         </div>
                                                     </div>

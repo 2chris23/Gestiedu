@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import CalendarDayView from '@/components/evaluation/CalendarDayView';
 import { classroomService, Classroom } from '@/services/classroom.service';
@@ -12,9 +13,7 @@ import api from '@/lib/axios';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export default function CalendarioPage() {
-    const [classrooms, setClassrooms] = useState<Classroom[]>([]);
     const [selectedClassroomId, setSelectedClassroomId] = useState<string>('');
-    const [loading, setLoading] = useState(true);
     const { yo, cargando: sinSaberQuienEs } = useQuienSoy();
 
     /**
@@ -38,61 +37,55 @@ export default function CalendarioPage() {
      * —con razón— respondía 403. Se veía como una pantalla rota nada más
      * entrar. Ahora se espera a saber quién llama.
      */
-    useEffect(() => {
-        if (sinSaberQuienEs) return;
-
-        const cargarSecciones = async () => {
-            try {
-                setLoading(true);
-
-                if (yo?.role === 'STUDENT') {
-                    const { data } = await api.get('/students/my-dashboard');
-                    const seccion = data?.data?.student?.currentSection;
-                    const suyas = seccion
-                        ? [{ id: seccion.id, name: seccion.name, section: '', grade: 0 } as unknown as Classroom]
-                        : [];
-                    setClassrooms(suyas);
-                    if (suyas.length) setSelectedClassroomId(suyas[0].id);
-                    return;
-                }
-
-                if (yo?.role === 'TUTOR') {
-                    const { data } = await api.get('/dashboard/tutor');
-                    const deSusHijos = (data?.data?.children ?? [])
-                        .filter((h: any) => h.classroomId)
-                        .map((h: any) => ({
-                            id: h.classroomId,
-                            name: `${h.fullName} · ${h.classroom ?? ''}`.trim(),
-                            section: '',
-                            grade: 0,
-                        })) as unknown as Classroom[];
-                    setClassrooms(deSusHijos);
-                    if (deSusHijos.length) setSelectedClassroomId(deSusHijos[0].id);
-                    return;
-                }
-
-                const years = await academicYearService.getAcademicYears();
-                const activeYear = years.find(y => y.status === 'ACTIVE') || years[0];
-
-                if (activeYear) {
-                    const data = await classroomService.getClassrooms(activeYear.id);
-                    const classes = Array.isArray(data) ? data : data.classrooms;
-                    setClassrooms(classes);
-
-                    if (classes.length > 0) {
-                        setSelectedClassroomId(classes[0].id);
-                    }
-                }
-            } catch (error) {
-                console.error(error);
-                if (!esQueNoContesta(error)) toast.error('No se pudieron cargar las secciones');
-            } finally {
-                setLoading(false);
+    /**
+     * Y DE LA MEMORIA DE LA APP, NO DEL ESTADO DE LA PANTALLA
+     *
+     * Se pedían a mano y se guardaban solo mientras la pantalla estaba abierta:
+     * sin conexión, el calendario salía sin secciones. Pasando por React Query
+     * entran en lo que se guarda en el teléfono (`MemoriaDelTelefono`).
+     */
+    const secciones = useQuery({
+        queryKey: ['calendario', 'secciones', yo?.role, yo?.id],
+        enabled: !sinSaberQuienEs,
+        queryFn: async (): Promise<Classroom[]> => {
+            if (yo?.role === 'STUDENT') {
+                const { data } = await api.get('/students/my-dashboard');
+                const seccion = data?.data?.student?.currentSection;
+                return seccion
+                    ? [{ id: seccion.id, name: seccion.name, section: '', grade: 0 } as unknown as Classroom]
+                    : [];
             }
-        };
 
-        cargarSecciones();
-    }, [yo?.role, sinSaberQuienEs]);
+            if (yo?.role === 'TUTOR') {
+                const { data } = await api.get('/dashboard/tutor');
+                return (data?.data?.children ?? [])
+                    .filter((h: any) => h.classroomId)
+                    .map((h: any) => ({
+                        id: h.classroomId,
+                        name: `${h.fullName} · ${h.classroom ?? ''}`.trim(),
+                        section: '',
+                        grade: 0,
+                    })) as unknown as Classroom[];
+            }
+
+            const years = await academicYearService.getAcademicYears();
+            const activeYear = years.find((y) => y.status === 'ACTIVE') || years[0];
+            if (!activeYear) return [];
+            const data = await classroomService.getClassrooms(activeYear.id);
+            return Array.isArray(data) ? data : data.classrooms;
+        },
+    });
+    const classrooms = secciones.data ?? [];
+    const loading = sinSaberQuienEs || secciones.isLoading;
+
+    // La primera sección, en cuanto se sabe cuáles hay.
+    useEffect(() => {
+        if (!selectedClassroomId && classrooms.length > 0) setSelectedClassroomId(classrooms[0].id);
+    }, [classrooms, selectedClassroomId]);
+
+    useEffect(() => {
+        if (secciones.error && !esQueNoContesta(secciones.error)) toast.error('No se pudieron cargar las secciones');
+    }, [secciones.error]);
 
     return (
         <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
