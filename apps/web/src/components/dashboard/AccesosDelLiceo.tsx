@@ -27,12 +27,16 @@ export function AccesosDelLiceo({ rol, conPagos }: { rol?: string; conPagos: boo
             <h2 id="accesos-del-liceo" className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
                 Ir a
             </h2>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {/* En el teléfono (dos columnas) la baldosa que queda sola al final
+                ocupa la fila entera: media fila vacía parecía que faltaba algo, y
+                al alumno y al representante, con UN solo acceso, les salía
+                media tarjeta descolgada. */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
                 {accesos.map(({ name, href, icon: Icono, pista }) => (
                     <Link
                         key={href}
                         href={href}
-                        className="group flex min-h-[92px] flex-col justify-between rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-colors active:bg-indigo-50 hover:border-indigo-200"
+                        className="group flex min-h-[92px] flex-col justify-start gap-2 rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-colors active:bg-indigo-50 hover:border-indigo-200"
                     >
                         <span className="flex items-center justify-between">
                             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50">
@@ -40,7 +44,11 @@ export function AccesosDelLiceo({ rol, conPagos }: { rol?: string; conPagos: boo
                             </span>
                             <ChevronRight className="h-4 w-4 text-gray-300" aria-hidden />
                         </span>
-                        <span className="mt-2 block">
+                        {/* Arriba, no empujado al fondo: con `justify-between` el
+                            nombre bajaba o subía según la pista ocupara una línea o
+                            dos, y en una misma fila «Académico» y «Materias» no
+                            empezaban a la misma altura. */}
+                        <span className="block">
                             <span className="block text-sm font-semibold text-gray-900">{name}</span>
                             {pista && <span className="mt-0.5 block text-xs leading-snug text-gray-500">{pista}</span>}
                         </span>

@@ -113,6 +113,7 @@ export default function DashboardPage() {
     // navegador todavía está vacío y un alumno pasaba por personal.
     const { yo } = useQuienSoy();
     const rol = yo?.role;
+    const esFamilia = rol === 'STUDENT' || rol === 'TUTOR';
     const hoy = useSchoolToday();
     const { data: pagos } = usePagosActivos();
 
@@ -254,7 +255,7 @@ export default function DashboardPage() {
                 comen lo primero que se ve.
             */}
             <div className="flex items-center justify-between gap-3">
-                <h1 className="text-lg font-bold text-gray-900 sm:text-2xl">Panel</h1>
+                <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">Panel</h1>
                 <p className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600 shadow-sm sm:text-sm">
                     <Calendar size={16} aria-hidden />
                     {/* En 390 px, «lunes, 21 de septiembre de 2026» se come media
@@ -289,8 +290,12 @@ export default function DashboardPage() {
                 </RejillaDeCifras>
             )}
 
-            {/* Lo que antes estaba escondido en la cortina lateral. */}
-            <AccesosDelLiceo rol={rol} conPagos={Boolean(pagos?.enabled)} />
+            {/* Lo que antes estaba escondido en la cortina lateral. Al personal,
+                arriba: es por donde empieza su día. Al alumno y al representante
+                les queda un solo acceso (Calendario), y ponerlo delante de SU
+                horario y de SUS representados era hacerles bajar para ver lo
+                que vinieron a ver: va al final. */}
+            {!esFamilia && <AccesosDelLiceo rol={rol} conPagos={Boolean(pagos?.enabled)} />}
 
             {/* El alumno: su horario de hoy y lo que le falta. */}
             {rol === 'STUDENT' && (
@@ -377,6 +382,8 @@ export default function DashboardPage() {
                     </Card>
                 </div>
             )}
+
+            {esFamilia && <AccesosDelLiceo rol={rol} conPagos={Boolean(pagos?.enabled)} />}
 
             {/*
                 AQUÍ HABÍA DOS TARJETAS QUE NO ERAN NADA
