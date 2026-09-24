@@ -279,7 +279,7 @@ export default function LiveTopicMirrorCard({
 
             {/* ===== MODAL DE EDICIÓN DEL TEMA Y PLAN ===== */}
             {isEditModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-label="Editar tema y plan">
                     <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
                         {/* Header Modal */}
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
@@ -289,7 +289,7 @@ export default function LiveTopicMirrorCard({
                                     Editar Tema y Plan (Semana {weekNumber || '1'})
                                 </h3>
                             </div>
-                            <button
+                            <button aria-label="Cerrar"
                                 onClick={() => setIsEditModalOpen(false)}
                                 className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-200 transition-colors"
                             >

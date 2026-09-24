@@ -76,7 +76,7 @@ export function AssignSubjectTeacherModal({ sectionId, sectionName, subjectSlug,
     const isSaving = assignTeacher.isPending || updateConfig.isPending;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Asignar Profesor">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
                 {/* Header */}
                 <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 py-4 flex items-center justify-between">
@@ -84,7 +84,7 @@ export function AssignSubjectTeacherModal({ sectionId, sectionName, subjectSlug,
                         <h2 className="text-white font-bold text-lg">Asignar Profesor</h2>
                         <p className="text-indigo-200 text-sm mt-0.5">Sección: <span className="font-semibold text-white">{sectionName}</span></p>
                     </div>
-                    <button onClick={onClose} className="p-2 rounded-lg hover:bg-indigo-500 text-white transition-colors">
+                    <button aria-label="Cerrar" onClick={onClose} className="p-2 rounded-lg hover:bg-indigo-500 text-white transition-colors">
                         <X size={18} />
                     </button>
                 </div>

@@ -153,7 +153,7 @@ export function UserProfileModal({ isOpen, onClose, userId }: UserProfileModalPr
                             <div className="flex flex-col h-full">
                                 {/* Header con color dinámico */}
                                 <div className={`${getRoleHeaderColor(user.role)} h-32 relative`}>
-                                    <button
+                                    <button aria-label="Cerrar"
                                         onClick={onClose}
                                         className="absolute top-4 right-4 text-white/80 hover:text-white p-1 rounded-full hover:bg-white/20 transition-colors"
                                     >

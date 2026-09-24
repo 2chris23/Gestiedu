@@ -91,7 +91,7 @@ export default function ScheduleHistoryModal({ classroomId, schedule, onSelectDa
     const monthLabel = firstDay.toLocaleDateString('es-VE', { month: 'long', year: 'numeric' });
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-label={title || 'Historial de Clases'}>
             <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                 {/* Header */}
                 <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-indigo-50/60 to-transparent">
@@ -104,7 +104,7 @@ export default function ScheduleHistoryModal({ classroomId, schedule, onSelectDa
                             <p className="text-[11px] text-gray-500">{subtitle || 'Elige un día con clase programada'}</p>
                         </div>
                     </div>
-                    <button
+                    <button aria-label="Cerrar"
                         onClick={onClose}
                         className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
                     >

@@ -50,7 +50,7 @@ export default function AssignTeacherModal({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={currentTeacher ? 'Cambiar Profesor Guía' : 'Asignar Profesor Guía'}>
             <div className="bg-white w-full max-w-2xl max-h-[80vh] rounded-xl shadow-2xl overflow-hidden flex flex-col">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-white">
@@ -63,7 +63,7 @@ export default function AssignTeacherModal({
                             Sección: <span className="font-semibold">{classroomName}</span>
                         </p>
                     </div>
-                    <button
+                    <button aria-label="Cerrar"
                         onClick={onClose}
                         className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
                     >

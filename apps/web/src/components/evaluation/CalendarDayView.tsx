@@ -305,7 +305,7 @@ export default function CalendarDayView({ classroomId }: CalendarDayViewProps) {
                                         {selectedClass.subjectName}
                                     </h3>
                                 </div>
-                                <button
+                                <button aria-label="Cerrar"
                                     onClick={() => setSelectedClass(null)}
                                     className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-xl transition"
                                 >
