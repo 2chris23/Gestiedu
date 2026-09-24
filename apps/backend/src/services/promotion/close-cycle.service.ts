@@ -51,6 +51,12 @@ export async function getAcademicConfig(instituteId: string): Promise<AcademicCo
 
 export async function updateAcademicConfig(instituteId: string, patch: Partial<AcademicConfig>): Promise<AcademicConfig> {
     const current = await getAcademicConfig(instituteId);
+    // La configuración académica guarda MÁS cosas que estas reglas (la escala
+    // de notas, el horario, la asistencia por QR…). Se escribían solo estas y
+    // lo demás se perdía: guardar las reglas de promoción borraba la escala.
+    const entera =
+        ((await platformPrisma.institute.findUnique({ where: { id: instituteId }, select: { academicConfig: true } }))
+            ?.academicConfig as Record<string, unknown> | null) || {};
     const modalidad = patch.modalidad ?? current.modalidad;
     const defaultMax = modalidad === 'MEDIA_TECNICA' ? 6 : 5;
     const next: AcademicConfig = {
@@ -64,7 +70,7 @@ export async function updateAcademicConfig(instituteId: string, patch: Partial<A
     };
     await platformPrisma.institute.update({
         where: { id: instituteId },
-        data: { academicConfig: next as any },
+        data: { academicConfig: { ...entera, ...next } as any },
     });
     return next;
 }

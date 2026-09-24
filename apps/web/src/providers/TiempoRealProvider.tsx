@@ -105,6 +105,10 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
             }, VENTANA_DE_AGRUPACION - desdeElUltimo);
         };
 
+        const avisarDelPase = (aviso: unknown) => {
+            window.dispatchEvent(new CustomEvent('gestiedu:asistencia-qr', { detail: aviso }));
+        };
+
         const alVolverALaPestaña = () => {
             if (document.visibilityState === 'visible' && huboCambios.current) {
                 pedirDeNuevoLoQueSeVe();
@@ -149,6 +153,9 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
             socketRef.current = socket;
 
             socket.on('datos:cambiaron', refrescarLoQueSeVe);
+            // El pase de lista por QR del profesor: alguien escaneó. Tampoco trae
+            // datos; la pantalla del QR lo vuelve a pedir (`PaseDeListaQr`).
+            socket.on('asistencia-qr:cambio', avisarDelPase);
 
             /**
              * AL CONECTAR TAMBIÉN, NO SOLO AL RECONECTAR
@@ -184,6 +191,7 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
             if (pendiente.current) clearTimeout(pendiente.current);
             document.removeEventListener('visibilitychange', alVolverALaPestaña);
             socket?.off('datos:cambiaron', refrescarLoQueSeVe);
+            socket?.off('asistencia-qr:cambio', avisarDelPase);
             socket?.disconnect();
             socketRef.current = null;
         };

@@ -19,6 +19,7 @@ import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { useTeacherScheduleBlocks, transformTeacherScheduleData, useClassroomSchedule, transformScheduleData } from '@/hooks/useSchedules';
 import Link from 'next/link';
 import { RepresentantesDelAlumno } from '@/components/users/RepresentantesDelAlumno';
+import { TelefonoDeAsistencia } from '@/components/users/TelefonoDeAsistencia';
 import ActividadesDelAlumno from '@/components/profile/ActividadesDelAlumno';
 import api from '@/lib/axios';
 import { comprimirFotoEnElDispositivo, pesoLegible } from '@/lib/foto-comprimida';
@@ -446,6 +447,7 @@ export default function UserProfilePage({ params }: PageProps) {
                                 )}
                             </div>
                             {user.role === 'student' && <RepresentantesDelAlumno studentId={user.cedula} />}
+                            {user.role === 'student' && <TelefonoDeAsistencia studentId={user.cedula} />}
                             {user.role === 'tutor' && (
                                 <div className="pt-4 border-t border-gray-100 mt-2">
                                     <span className="text-gray-400 text-xs uppercase font-bold tracking-wider">Representa a</span>

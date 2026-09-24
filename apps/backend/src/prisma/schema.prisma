@@ -262,8 +262,12 @@ model User {
   auditLogs AuditLog[]
 
   // Sesiones y tokens
-  refreshTokens RefreshToken[]
-  llavesDeTelefono DeviceKey[]
+  refreshTokens           RefreshToken[]
+  llavesDeTelefono        DeviceKey[]
+  // Asistencia por QR
+  pasesDeListaAbiertos    PaseDeLista[]            @relation("PaseAbiertoPor")
+  registrosDeAsistenciaQr RegistroDeAsistenciaQr[] @relation("RegistroQrAlumno")
+  aparatoDeAsistencia     AparatoDelAlumno?
 
   // Notificaciones
   notifications Notification[]
@@ -299,8 +303,8 @@ model RefreshToken {
   // Datos de sesión de dispositivo
   userAgent  String?
   ip         String? // IP con la que se creó la sesión
-  lastUsedAt DateTime @default(now()) // último uso actualizado en cada refresh
-  rememberMe Boolean  @default(false) // sliding expiration activa
+  lastUsedAt DateTime  @default(now()) // último uso actualizado en cada refresh
+  rememberMe Boolean   @default(false) // sliding expiration activa
   /// Cuándo se cambió por uno nuevo. Sigue valiendo unos segundos más: dos
   /// pestañas que renuevan a la vez mandan el mismo token y una se quedaría
   /// fuera. Ver `GRACIA_DE_ROTACION_MS` en auth.service.ts.
@@ -420,6 +424,7 @@ model Subject {
   grades             Grade[]
   schedules          Schedule[]
   classSessions      ClassSession[]
+  pasesDeLista       PaseDeLista[]
   classActivities    ClassActivity[]
   resources          SubjectResource[]
   evaluationPlanRows EvaluationPlanRow[]
@@ -483,6 +488,7 @@ model Classroom {
   attendanceRecords  DailyAttendance[]
   scheduleBlocks     ScheduleBlock[]     @relation("ClassroomScheduleBlocks")
   classSessions      ClassSession[]
+  pasesDeLista       PaseDeLista[]
   classActivities    ClassActivity[]
   evaluationPlanRows EvaluationPlanRow[]
   replacements       ClassReplacement[]
@@ -1198,6 +1204,114 @@ model ClassSession {
   @@index([classroomId, date])
   @@index([subjectId, date])
   @@map("class_sessions")
+}
+
+// =====================================================
+// ASISTENCIA POR QR (ver services/asistencia-qr.service.ts)
+// =====================================================
+
+/// UN PASE DE LISTA POR QR
+///
+/// Lo abre el profesor (o el admin) en una clase: su teléfono enseña un código
+/// que cambia cada 10 s y los alumnos lo escanean desde su app. Es solo la
+/// forma de IDENTIFICAR al alumno: lo que queda es la asistencia de siempre
+/// (`daily_attendance`), la misma que marca el profesor a mano.
+model PaseDeLista {
+  id String @id @default(cuid())
+
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  subjectId   String
+  subject     Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  /// El día de la clase. Si es anterior a hoy, el pase es una CORRECCIÓN.
+  fecha       DateTime  @db.Date
+
+  abiertoPorId String
+  abiertoPor   User   @relation("PaseAbiertoPor", fields: [abiertoPorId], references: [id], onDelete: Cascade)
+
+  abiertoEn    DateTime  @default(now())
+  /// Quien escanea después de esto entra como TARDE.
+  aTiempoHasta DateTime
+  /// Cierre de seguridad: un pase olvidado abierto no sirve para siempre.
+  caducaEn     DateTime
+  cerradoEn    DateTime?
+  esCorreccion Boolean   @default(false)
+
+  /// Firma los códigos que rotan. No sale nunca del servidor.
+  secreto String
+
+  /// El faro: dónde estaba el teléfono del profesor al abrirlo.
+  latitud   Float?
+  longitud  Float?
+  precision Float?
+
+  registros RegistroDeAsistenciaQr[]
+
+  @@index([classroomId, subjectId, fecha])
+  @@index([abiertoPorId, cerradoEn])
+  @@map("pases_de_lista")
+}
+
+/// CADA INTENTO DE UN ALUMNO, ACEPTADO O NO
+///
+/// Si mañana hay un reclamo, aquí está con qué teléfono, a qué hora, desde
+/// dónde y por qué se aceptó o se rechazó.
+model RegistroDeAsistenciaQr {
+  id String @id @default(cuid())
+
+  paseId String
+  pase   PaseDeLista @relation(fields: [paseId], references: [id], onDelete: Cascade)
+
+  studentId String
+  student   User   @relation("RegistroQrAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  /// ALUMNO_ESCANEA (el alumno escanea el QR del profesor) | PROFESOR_ESCANEA
+  forma  String
+  /// ACEPTADO | POR_CONFIRMAR | RECHAZADO | QUITADO
+  estado String
+  /// Por qué no se aceptó a la primera (OTRO_TELEFONO, FUERA_DEL_RADIO…).
+  motivo String?
+
+  /// Lo que se le puso: PRESENT o LATE.
+  asistencia         String?
+  /// Lo que tenía antes, para devolverlo si el profesor lo quita (corrección).
+  asistenciaAnterior String?
+
+  /// Resumen del identificador del aparato (nunca el identificador en claro).
+  aparatoHash String?
+  aparato     String?
+
+  latitud        Float?
+  longitud       Float?
+  precision      Float?
+  distancia      Float?
+  ubicacionFalsa Boolean @default(false)
+
+  creadoEn      DateTime  @default(now())
+  resueltoPorId String?
+  resueltoEn    DateTime?
+
+  @@index([paseId])
+  @@index([studentId])
+  @@index([aparatoHash])
+  @@map("registros_asistencia_qr")
+}
+
+/// EL TELÉFONO DE CADA ALUMNO PARA LA ASISTENCIA
+///
+/// Una cuenta, un teléfono. El primero desde el que un alumno pasa asistencia
+/// queda suyo; un teléfono, de un alumno. Si lo cambia, el admin lo desbloquea
+/// desde su perfil (y queda anotado en `audit_logs`).
+model AparatoDelAlumno {
+  studentId String @id
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  aparatoHash  String   @unique
+  descripcion  String?
+  registradoEn DateTime @default(now())
+  ultimoUso    DateTime @default(now())
+
+  @@map("aparatos_de_alumnos")
 }
 
 // =====================================================

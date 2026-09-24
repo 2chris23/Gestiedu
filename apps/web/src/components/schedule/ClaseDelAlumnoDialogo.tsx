@@ -5,6 +5,8 @@ import { BookOpen, CalendarClock, Ban, CheckCircle2, Clock } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ActividadDelDia, LiveOverviewSubject } from '@/hooks/useLiveClass';
 import { cn } from '@/lib/utils';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
+import { BotonesDeAsistencia } from '@/components/asistencia/AsistenciaDelAlumno';
 
 /**
  * ENTRAR A UNA CLASE SIENDO ALUMNO
@@ -14,8 +16,8 @@ import { cn } from '@/lib/utils';
  * hacer y su nota si ya se la pusieron—, y nada más.
  *
  * Es SOLO LECTURA, a propósito: el alumno no sube, no edita y no agrega nada
- * (y el servidor tampoco se lo permitiría). Aquí no hay un solo botón que
- * escriba.
+ * (y el servidor tampoco se lo permitiría). Lo único que hace es identificarse
+ * para la asistencia por QR, que decide el servidor.
  */
 
 interface Props {
@@ -74,6 +76,7 @@ export function ClaseDelAlumnoDialogo({
     reemplazaA,
     datos,
 }: Props) {
+    const { yo } = useQuienSoy();
     const actividades = datos?.actividades ?? [];
     const deHoy = actividades.filter((a) => !a.paraOtroDia);
     const paraOtroDia = actividades.filter((a) => a.paraOtroDia);
@@ -87,6 +90,9 @@ export function ClaseDelAlumnoDialogo({
                         {[fecha, hora, profesor, aula].filter(Boolean).join(' · ')}
                     </DialogDescription>
                 </DialogHeader>
+
+                {/* Pasar asistencia con QR: solo el propio alumno (el representante mira). */}
+                {yo?.role === 'STUDENT' && !datos?.suspendida && <BotonesDeAsistencia antes={alCerrar} />}
 
                 {datos?.suspendida && (
                     <p className="flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-900">

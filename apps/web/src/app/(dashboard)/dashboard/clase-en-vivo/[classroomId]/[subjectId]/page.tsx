@@ -7,8 +7,10 @@ import {
     ChevronLeft, Clock, User, Users, Save, Loader2, Calendar,
     Plus, Trash2, CheckCircle2, ListTodo, Ban, Search, X,
     ArrowUp, ShieldCheck, UserPlus, StickyNote, GraduationCap, CheckSquare, Square,
-    ArrowUpDown, ArrowUp as ArrowUpIcon, ArrowDown, Award, Check, ClipboardCheck, CloudUpload
+    ArrowUpDown, ArrowUp as ArrowUpIcon, ArrowDown, Award, Check, ClipboardCheck, CloudUpload, QrCode
 } from 'lucide-react';
+import PaseDeListaQr from '@/components/asistencia/PaseDeListaQr';
+import { useConfigAsistenciaQr } from '@/lib/asistencia-qr';
 import {
     useLiveClassDetail,
     useSaveLiveClass,
@@ -86,6 +88,18 @@ function LiveClassPageInner() {
      * momento del día en que el profesor solo quiere marcar y salir.
      */
     const [modoAsistencia, setModoAsistencia] = useState(false);
+
+    /**
+     * EL PASE DE LISTA POR QR
+     *
+     * Mientras el QR está abierto, esta pantalla NO guarda la asistencia sola:
+     * la escribe el servidor alumno por alumno según escanean, y un guardado de
+     * aquí mandaría a todos como «presente» (lo que se ve por defecto) antes de
+     * que escaneen. Al cerrar el pase se vuelve a pedir la clase y se ve lo que
+     * quedó de verdad.
+     */
+    const [paseQrAbierto, setPaseQrAbierto] = useState(false);
+    const { data: configQr } = useConfigAsistenciaQr();
 
     // Modal de observaciones
     const [isLiveObsModalOpen, setIsLiveObsModalOpen] = useState(false);
@@ -269,12 +283,12 @@ function LiveClassPageInner() {
     });
 
     useEffect(() => {
-        if (!cambiosPorGuardar || !canEdit) return;
+        if (!cambiosPorGuardar || !canEdit || paseQrAbierto) return;
         const t = setTimeout(() => {
             guardarRef.current();
         }, 800);
         return () => clearTimeout(t);
-    }, [cambiosPorGuardar, canEdit]);
+    }, [cambiosPorGuardar, canEdit, paseQrAbierto]);
 
     useEffect(() => {
         return () => {
@@ -662,6 +676,21 @@ function LiveClassPageInner() {
                                             {modoAsistencia ? 'Terminar asistencia' : 'Pasar asistencia'}
                                         </button>
                                     )}
+                                    {canEdit && configQr?.activa !== false && (
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                // Lo marcado a mano que quedara por mandar, primero.
+                                                if (cambiosPorGuardar > 0) await guardarRef.current();
+                                                setCambiosPorGuardar(0);
+                                                setPaseQrAbierto(true);
+                                            }}
+                                            className="flex min-h-[44px] items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-bold text-indigo-800 hover:bg-indigo-100"
+                                        >
+                                            <QrCode className="h-4 w-4" />
+                                            {date < hoyDelLiceo ? 'Corregir con QR' : 'Asistencia por QR'}
+                                        </button>
+                                    )}
                                     {modoAsistencia && canEdit && (
                                         <button
                                             type="button"
@@ -990,6 +1019,19 @@ function LiveClassPageInner() {
                     subjectId={subjectId}
                     fecha={date}
                     nombreMateria={data?.subject?.name}
+                />
+            )}
+
+            {paseQrAbierto && (
+                <PaseDeListaQr
+                    classroomId={classroomId}
+                    subjectId={subjectId}
+                    fecha={date}
+                    alTerminar={() => {
+                        setPaseQrAbierto(false);
+                        // Lo que quedó de verdad (lo escribió el servidor).
+                        void refetch();
+                    }}
                 />
             )}
         </div>

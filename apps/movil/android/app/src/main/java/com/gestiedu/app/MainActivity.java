@@ -106,6 +106,7 @@ public class MainActivity extends BridgeActivity {
         // Antes de `super.onCreate`: Capacitor solo conoce los complementos
         // registrados cuando arranca el puente.
         registerPlugin(ActualizarAppPlugin.class);
+        registerPlugin(AsistenciaQrPlugin.class);
         super.onCreate(savedInstanceState);
 
         dejarSitioParaElReloj();

@@ -9,6 +9,7 @@ import { laPuertaDelLiceo, elLiceoDeLaCookie } from '@/lib/la-puerta-del-liceo';
 import { laLlaveGuardada, olvidarLaLlave } from '@/lib/la-huella';
 import AvisoSinConexion from '@/components/common/AvisoSinConexion';
 import ActualizarLaApp from '@/components/common/ActualizarLaApp';
+import { AsistenciaEnPantalla } from '@/components/asistencia/AsistenciaDelAlumno';
 import { LogOut, GraduationCap, UserCircle } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useInstituteConfig } from '@/hooks/useInstitute';
@@ -123,6 +124,8 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
 
             {/* En la APK: si hay una versión nueva publicada, se ofrece aquí. */}
             <ActualizarLaApp />
+            {/* La cámara de la asistencia por QR del alumno, fuera de toda ventana. */}
+            <AsistenciaEnPantalla />
 
             {/*
                 LA BARRA LATERAL ES DEL ORDENADOR

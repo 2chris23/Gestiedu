@@ -49,6 +49,17 @@
     -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!--
+        Asistencia por QR (`AsistenciaQrPlugin`): la cámara para leer el QR del
+        profesor (o el del alumno), y la ubicación para el faro —el alumno
+        tiene que estar cerca del teléfono del profesor—. Android pide las dos
+        la primera vez que hacen falta, no al instalar.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <!--
         Guardar un comprobante o un boletín en «Descargas». Desde Android 10 el
         sistema ya no pide permiso para su propia carpeta de descargas, pero en
         los teléfonos viejos (la app llega hasta Android 6) sí hace falta: sin

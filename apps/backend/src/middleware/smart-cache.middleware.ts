@@ -144,6 +144,8 @@ function isCacheable(request: FastifyRequest, role: string): boolean {
     if (url.includes('/api/auth')) return false;
     // Recién publicada una versión de la app, se tiene que ver ya, no a los cinco minutos.
     if (url.startsWith('/api/app-movil')) return false;
+    // El QR del alumno cambia cada 10 s: uno guardado es un código caducado.
+    if (url.startsWith('/api/asistencia-qr')) return false;
     if (url.includes('/api/notifications/realtime')) return false;
     return true;
 }
