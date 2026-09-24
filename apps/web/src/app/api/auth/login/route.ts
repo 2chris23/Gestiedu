@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { setAuthCookies, CookieUser } from '@/lib/auth-cookies';
 import { API_URL } from '@/config/env';
+import { avisoDeDemasiadosIntentos, segundosDeEspera } from '@/lib/demasiados-intentos';
 
 /**
  * `secure` manda la cookie SOLO por conexión cifrada (https).
@@ -50,6 +51,19 @@ export async function POST(request: NextRequest) {
 
         if (!backendResponse.ok) {
             const errorData = await backendResponse.json().catch(() => ({}));
+
+            // Frenado por intentar demasiadas veces: su `error` es «Too Many
+            // Requests», en inglés. Ver `lib/demasiados-intentos.ts`. La cuenta
+            // cerrada por fallos no manda `Retry-After`, pero dice sus minutos.
+            if (backendResponse.status === 429) {
+                const segundos = segundosDeEspera(backendResponse.headers.get('retry-after'))
+                    ?? (typeof errorData.minutos === 'number' ? errorData.minutos * 60 : null);
+                return NextResponse.json(
+                    { message: avisoDeDemasiadosIntentos(segundos), code: 'DEMASIADOS_INTENTOS' },
+                    { status: 429, headers: segundos ? { 'Retry-After': String(segundos) } : undefined }
+                );
+            }
+
             return NextResponse.json(
                 { message: errorData.error || errorData.message || 'Error al iniciar sesión' },
                 { status: backendResponse.status }
