@@ -391,7 +391,8 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                 )}
                             </div>
 
-                            {/* Botón de acción */}
+                            {/* Botón de acción: el guía lo pone el administrador (el servidor lo exige) */}
+                            {user?.role === 'ADMIN' && (
                             <button
                                 className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
                                 onClick={() => setIsAssignTeacherModalOpen(true)}
@@ -399,6 +400,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                 <UserPlus className="w-3.5 h-3.5" />
                                 {classroom?.teacher ? 'Cambiar' : 'Asignar'}
                             </button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -461,6 +463,8 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                     placeholder="Buscar alumno por nombre o cédula..."
                                 />
                             </div>
+                            {/* Inscribir es del administrador (control de estudios): el servidor lo exige */}
+                            {user?.role === 'ADMIN' && (
                             <div className="flex items-center gap-3">
                                 <button
                                     onClick={handleOpenAddModal}
@@ -470,6 +474,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                     Nuevo Estudiante
                                 </button>
                             </div>
+                            )}
                         </div>
 
                         {/*
@@ -712,7 +717,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                         titulo: 'Acciones',
                                         acciones: true,
                                         alinear: 'derecha',
-                                        celda: (a) => (
+                                        celda: (a) => user?.role !== 'ADMIN' ? null : (
                                             <button
                                                 type="button"
                                                 onClick={(e) => {
