@@ -987,7 +987,10 @@ class GradesService {
       const gradedPts = criteria
         .filter(c => c.activities.some(a => a.score !== null && a.score !== undefined && !Number.isNaN(a.score)))
         .reduce((s, c) => s + (c.puntos || 0), 0);
-      average = (gradedPts > 0 && gradedPts < 20)
+      // Se escala a 20 siempre que lo calificado no sean justo 20 puntos: con
+      // un solo plan nunca pasa de 20, pero el alumno que se cambió de sección
+      // junta criterios de dos planes y puede pasar (SEC-04).
+      average = gradedPts > 0 && Math.abs(gradedPts - 20) > 0.009
         ? result.total * (20 / gradedPts)
         : result.total;
       average = Math.round(average * 100) / 100;
@@ -1095,19 +1098,17 @@ class GradesService {
     // 1. Lapso del período (Primer→1, Segundo→2, Tercer→3; fallback '1')
     const period = await prisma.period.findUnique({
       where: { id: periodId },
-      select: { name: true },
+      select: { name: true, academicYearId: true },
     });
     const lapso = this.periodToLapso(period?.name);
 
-    // Obtener aula activa del estudiante para aislar su plan de evaluación
-    const studentEnrollment = await prisma.studentClassroom.findFirst({
-      where: { studentId, isActive: true },
-      select: { classroomId: true },
-    });
+    // Las secciones de las que salen sus criterios: la suya y las otras del
+    // mismo ciclo donde tiene notas de esta materia (ver `seccionesDelAlumno`).
+    const aulas = await this.seccionesDelAlumno(prisma, studentId, subjectId, periodId, period?.academicYearId);
 
     const whereClause: any = { subjectId, lapso, rowType: 'EVALUATION' };
-    if (studentEnrollment?.classroomId) {
-      whereClause.classroomId = studentEnrollment.classroomId;
+    if (aulas.length > 0) {
+      whereClause.classroomId = { in: aulas };
     }
 
     // 2. Filas EVALUATION del plan = criterios (solo las que tienen puntos > 0)
@@ -1132,14 +1133,10 @@ class GradesService {
       let activities: Array<{ score: number; maxScore: number }> =
         scores.map(score => ({ score, maxScore: 20 }));
 
-      const studentClassroom = await prisma.studentClassroom.findFirst({
-        where: { studentId, isActive: true },
-        select: { classroomId: true },
-      });
-      if (studentClassroom?.classroomId) {
+      if (aulas.length > 0) {
         const adHoc = await prisma.classActivity.findMany({
           where: {
-            classroomId: studentClassroom.classroomId,
+            classroomId: { in: aulas },
             subjectId,
             scores: { not: undefined },
           },
@@ -1215,6 +1212,64 @@ class GradesService {
       classActs.forEach(a => activities.push(a));
       return { puntos: r.puntos || 0, activities };
     });
+  }
+
+  /**
+   * LAS SECCIONES DE LAS QUE SALEN LAS NOTAS DE UN ALUMNO EN UN LAPSO
+   *
+   * Se miraba SOLO su sección de ahora. Si se cambió de sección a mitad de
+   * lapso, lo que sacó en la anterior —notas de verdad, puestas por su
+   * profesor— dejaba de contar sin avisar: 18 en la A y 10 en la B daba 10
+   * (SEC-04). Es de las quejas más repetidas de otros sistemas escolares.
+   *
+   * Ahora: su sección de ESE ciclo (activa o no; si hay varias, la activa) y
+   * además las otras secciones del mismo ciclo donde tiene notas de esta
+   * materia. Los criterios sin notas no pesan (el promedio se escala a lo
+   * calificado), así que traer el plan de la anterior no cambia nada a quien
+   * no se movió.
+   *
+   * Y el ciclo es el del LAPSO que se calcula: con dos inscripciones activas
+   * (la de este año y la del que viene, inscrito por adelantado) se cogía una
+   * cualquiera.
+   */
+  async seccionesDelAlumno(
+    prisma: PrismaClient,
+    studentId: string,
+    subjectId: string,
+    periodId: string,
+    academicYearId?: string | null
+  ): Promise<string[]> {
+    const inscripciones = await prisma.studentClassroom.findMany({
+      where: { studentId, ...(academicYearId ? { academicYearId } : { isActive: true }) },
+      select: { classroomId: true, isActive: true },
+    });
+    const aulas = new Set<string>();
+    const vigente = inscripciones.find((i) => i.isActive) ?? inscripciones[0];
+    if (vigente) aulas.add(vigente.classroomId);
+
+    if (academicYearId) {
+      const conNotas = await prisma.$queryRaw<Array<{ classroomId: string }>>`
+        SELECT DISTINCT ca."classroomId"
+          FROM class_activities ca
+          JOIN classrooms c ON c.id = ca."classroomId"
+         WHERE ca."subjectId" = ${subjectId}
+           AND c."academicYearId" = ${academicYearId}
+           AND jsonb_typeof(ca.scores) = 'object'
+           AND jsonb_typeof(ca.scores -> ${studentId}) = 'number'
+        UNION
+        SELECT DISTINCT r."classroomId"
+          FROM evaluation_plan_rows r
+          JOIN classrooms c2 ON c2.id = r."classroomId"
+          JOIN grades g ON g."activityId" = r."activityId"
+         WHERE r."subjectId" = ${subjectId}
+           AND r."rowType" = 'EVALUATION'
+           AND c2."academicYearId" = ${academicYearId}
+           AND g."studentId" = ${studentId}
+           AND g."subjectId" = ${subjectId}
+           AND g.score IS NOT NULL`;
+      conNotas.forEach((r) => r.classroomId && aulas.add(r.classroomId));
+    }
+    return [...aulas];
   }
 
   /** Mapea el nombre del período al lapso del plan (fallback '1'). */

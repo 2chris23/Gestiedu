@@ -508,11 +508,27 @@ export const enrollStudent = async (
       }
     });
 
+    // El cupo cuenta a los inscritos ACTIVOS de la sección de destino. Vale
+    // igual para inscribir, para reactivar y para cambiar de sección: antes el
+    // cambio se saltaba esta comprobación (SEC-02).
+    const currentStudentsCount = (classroom as any)._count?.studentClassrooms ?? 0;
+    const seccionLlena = () =>
+      reply.status(400).send({
+        error: 'La sección ha alcanzado su capacidad máxima',
+        code: 'CLASSROOM_FULL',
+        details: {
+          capacity: classroom.capacity,
+          current: currentStudentsCount
+        }
+      });
+    const hayCupo = !classroom.capacity || currentStudentsCount < classroom.capacity;
+
     // Si ya existe una inscripción
     if (existingEnrollment) {
       // Caso 1: Ya está en la MISMA sección pero inactivo → Reactivar
       if (existingEnrollment.classroomId === classroomId) {
         if (!existingEnrollment.isActive) {
+          if (!hayCupo) return seccionLlena();
           await prisma.$transaction(async (tx) => {
             await tx.studentClassroom.update({
               where: { id: existingEnrollment.id },
@@ -536,49 +552,34 @@ export const enrollStudent = async (
         }
       }
 
-      // Caso 2: Está en OTRA sección del mismo año → Mover
-      if (existingEnrollment.isActive) {
-        await prisma.$transaction(async (tx) => {
-          // Desactivar inscripción anterior
-          await tx.studentClassroom.update({
-            where: { id: existingEnrollment.id },
-            data: { isActive: false }
-          });
+      // Caso 2: Tiene inscripción en OTRA sección del mismo año (activa o no)
+      // → se cambia de sección.
+      //
+      // Hay UNA inscripción por alumno y ciclo (`@@unique([studentId,
+      // academicYearId])`). Esto desactivaba la anterior y CREABA otra: la base
+      // lo rechazaba y el liceo veía un 500 al cambiar a un alumno de sección
+      // (SEC-01), y otro al volver a inscribir a uno que quedó inactivo en otra
+      // (SEC-03). Se cambia la misma fila de sitio; sus notas no dependen de
+      // ella (ver `gradesService.buildCriteriaForStudent`).
+      if (!hayCupo) return seccionLlena();
+      await prisma.studentClassroom.update({
+        where: { id: existingEnrollment.id },
+        data: { classroomId, isActive: true }
+      });
 
-          // Crear nueva inscripción
-          await tx.studentClassroom.create({
-            data: {
-              studentId,
-              classroomId,
-              academicYearId: classroom.academicYearId as string,
-              isActive: true,
-              enrollmentDate: new Date()
-            }
-          });
-        });
+      request.log.info({ studentId, fromClassroom: existingEnrollment.classroomId, toClassroom: classroomId }, 'Estudiante movido de sección');
 
-        request.log.info({ studentId, fromClassroom: existingEnrollment.classroomId, toClassroom: classroomId }, 'Estudiante movido de sección');
-
-        return reply.status(200).send({
-          success: true,
-          message: `Estudiante movido de ${existingEnrollment.classroom.name} a ${classroom.name}`,
-          movedFrom: existingEnrollment.classroom.name
-        });
-      }
+      return reply.status(200).send({
+        success: true,
+        message: existingEnrollment.isActive
+          ? `Estudiante movido de ${existingEnrollment.classroom.name} a ${classroom.name}`
+          : `Estudiante inscrito en ${classroom.name}`,
+        movedFrom: existingEnrollment.isActive ? existingEnrollment.classroom.name : null
+      });
     }
 
     // 4. Verificar capacidad de la sección
-    const currentStudentsCount = (classroom as any)._count?.studentClassrooms ?? 0;
-    if (classroom.capacity && currentStudentsCount >= classroom.capacity) {
-      return reply.status(400).send({
-        error: 'La sección ha alcanzado su capacidad máxima',
-        code: 'CLASSROOM_FULL',
-        details: {
-          capacity: classroom.capacity,
-          current: currentStudentsCount
-        }
-      });
-    }
+    if (!hayCupo) return seccionLlena();
 
     // 5. Crear inscripción con transacción para garantizar integridad
     const enrollment = await prisma.$transaction(async (tx) => {
@@ -672,6 +673,15 @@ export const enrollStudent = async (
     });
 
   } catch (error) {
+    // Dos inscripciones del mismo alumno a la vez (doble clic, dos pestañas):
+    // la base deja entrar solo una por ciclo. La segunda no es un fallo del
+    // servidor sino «ya está inscrito».
+    if ((error as any)?.code === 'P2002') {
+      return reply.status(409).send({
+        error: 'El estudiante ya tiene una inscripción en este ciclo',
+        code: 'ALREADY_ENROLLED'
+      });
+    }
     request.log.error({ error }, 'Error al inscribir estudiante');
     return reply.status(500).send({
       error: 'Error en el servidor',
