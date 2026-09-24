@@ -164,7 +164,15 @@ async function tenderPuentes() {
         }
     }
     for (const serie of conectados) {
-        if (conPuente.has(serie)) continue;
+        // Se mira en el teléfono, no en la lista de aquí: el puente se cae sin
+        // que el teléfono se desconecte (medido: el mismo teléfono visto dos
+        // veces por la depuración inalámbrica, y al quitar una se llevó el
+        // puente de la otra).
+        const tendidos = (await adb(['-s', serie, 'reverse', '--list'])) ?? '';
+        if (tendidos.includes('tcp:3000 tcp:3000') && tendidos.includes('tcp:3001 tcp:3001')) {
+            conPuente.add(serie);
+            continue;
+        }
         const a = await adb(['-s', serie, 'reverse', 'tcp:3000', 'tcp:3000']);
         const b = await adb(['-s', serie, 'reverse', 'tcp:3001', 'tcp:3001']);
         if (a !== null && b !== null) {
