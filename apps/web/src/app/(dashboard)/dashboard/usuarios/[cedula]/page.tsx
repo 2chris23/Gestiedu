@@ -351,7 +351,6 @@ export default function UserProfilePage({ params }: PageProps) {
             <div className="animate-in slide-in-from-bottom-2 duration-500">
                 <ProfileHeader
                     user={user}
-                    onEdit={() => toast.info('Modo edición no disponible en demo')}
                     alCambiarFoto={cambiarFoto}
                     alQuitarFoto={quitarFoto}
                     subiendoFoto={subiendoFoto}

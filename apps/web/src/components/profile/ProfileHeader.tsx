@@ -96,7 +96,9 @@ export default function ProfileHeader({ user, onEdit, alCambiarFoto, alQuitarFot
                 </div>
             </div>
 
-            {/* Actions */}
+            {/* Solo si alguien sabe editar: la ficha lo pasaba con un aviso de
+                «no disponible en demo», un botón que prometía y no hacía nada. */}
+            {onEdit && (
             <div className="absolute top-6 right-6 md:relative md:top-auto md:right-auto self-start">
                 <button
                     onClick={onEdit}
@@ -106,6 +108,7 @@ export default function ProfileHeader({ user, onEdit, alCambiarFoto, alQuitarFot
                     <span className="hidden md:inline">Editar Perfil</span>
                 </button>
             </div>
+            )}
         </div>
     );
 }
