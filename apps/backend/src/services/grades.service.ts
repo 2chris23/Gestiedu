@@ -939,11 +939,38 @@ class GradesService {
     subjectId: string,
     periodId: string
   ): Promise<number> {
+    return (await this.promedioDelLapso(prisma, studentId, subjectId, periodId)).promedio;
+  }
+
+  /**
+   * EL PROMEDIO DEL LAPSO, Y SI DE VERDAD HAY NOTAS
+   *
+   * Un 0 es una nota. Quien no entregó nada y sacó 0 no es lo mismo que quien
+   * todavía no tiene ninguna nota puesta, y el mapa de cálculos solo deja fuera
+   * al segundo. Todo el sistema miraba `promedio > 0` para saber si había
+   * notas, así que el alumno con todo en 0 pasaba por «sin calificar»: al cerrar
+   * el ciclo salía promovido sin materia pendiente, no salía en riesgo, el
+   * representante no recibía aviso, y un lapso en 0 no contaba en el ciclo
+   * (0 y 16 daba 16). `conNotas` dice lo que el número solo no puede decir.
+   * Pruebas: `funcional-notas-en-cero.test.ts` (CERO-01…07).
+   */
+  async promedioDelLapso(
+    prisma: PrismaClient,
+    studentId: string,
+    subjectId: string,
+    periodId: string
+  ): Promise<{ promedio: number; conNotas: boolean }> {
     const cacheKey = `grade:avg:student:${studentId}:subject:${subjectId}:period:${periodId}`;
 
-    let average = await RedisCache.get<number>(cacheKey);
+    const guardado = await RedisCache.get<{ promedio: number; conNotas: boolean } | number>(cacheKey);
+    if (guardado !== null && guardado !== undefined) {
+      // Lo guardado por la versión anterior era solo el número.
+      if (typeof guardado === 'number') return { promedio: guardado, conNotas: guardado > 0 };
+      return guardado;
+    }
 
-    if (average === null) {
+    let average: number;
+    {
       const criteria = await this.buildCriteriaForStudent(prisma, studentId, subjectId, periodId);
       const result = calculateLapsoAverage(criteria);
 
@@ -965,11 +992,11 @@ class GradesService {
         : result.total;
       average = Math.round(average * 100) / 100;
 
+      const detalle = { promedio: average, conNotas: result.gradedActivities > 0 };
       // Cache por 10 minutos
-      await RedisCache.set(cacheKey, average, CACHE_TTL.SHORT * 2);
+      await RedisCache.set(cacheKey, detalle, CACHE_TTL.SHORT * 2);
+      return detalle;
     }
-
-    return average;
   }
 
   /**
@@ -1004,8 +1031,23 @@ class GradesService {
     periodId?: string,
     lapsosConocidos?: string[]
   ): Promise<number> {
+    return (await this.promedioDeLaMateria(prisma, studentId, subjectId, periodId, lapsosConocidos)).promedio;
+  }
+
+  /**
+   * Lo mismo que `calculateWeightedSubjectAverage`, diciendo además si el
+   * alumno tiene alguna nota en la materia. Sin eso, quien lo usa no puede
+   * distinguir «sacó 0» de «no tiene notas» (ver `promedioDelLapso`).
+   */
+  async promedioDeLaMateria(
+    prisma: PrismaClient,
+    studentId: string,
+    subjectId: string,
+    periodId?: string,
+    lapsosConocidos?: string[]
+  ): Promise<{ promedio: number; conNotas: boolean }> {
     if (periodId) {
-      return this.calculateSubjectAverage(prisma, studentId, subjectId, periodId);
+      return this.promedioDelLapso(prisma, studentId, subjectId, periodId);
     }
 
     let lapsos = lapsosConocidos;
@@ -1025,18 +1067,19 @@ class GradesService {
       lapsos = (student?.studentClassrooms?.[0]?.classroom?.academicYear?.periods || []).map((p) => p.id);
     }
 
-    if (lapsos.length === 0) return 0;
+    if (lapsos.length === 0) return { promedio: 0, conNotas: false };
 
     // Los lapsos no dependen unos de otros: se piden a la vez y no de uno en
     // uno. Con tres lapsos, eso es una espera en vez de tres.
     const promedios = await Promise.all(
-      lapsos.map((id) => this.calculateSubjectAverage(prisma, studentId, subjectId, id))
+      lapsos.map((id) => this.promedioDelLapso(prisma, studentId, subjectId, id))
     );
 
-    const sums = promedios.filter((avg) => avg > 0);
-    if (sums.length === 0) return 0;
+    // Un lapso SIN notas no pesa; uno con notas en 0, sí (antes: `avg > 0`).
+    const sums = promedios.filter((p) => p.conNotas).map((p) => p.promedio);
+    if (sums.length === 0) return { promedio: 0, conNotas: false };
     const global = sums.reduce((a, b) => a + b, 0) / sums.length;
-    return Math.round(global * 100) / 100;
+    return { promedio: Math.round(global * 100) / 100, conNotas: true };
   }
 
   /**

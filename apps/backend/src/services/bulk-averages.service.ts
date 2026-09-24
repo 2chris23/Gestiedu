@@ -36,6 +36,14 @@ export interface BulkAverageParams {
 /** studentId → subjectId → promedio (0 si no tiene notas). */
 export type BulkAverageResult = Map<string, Map<string, number>>;
 
+/**
+ * studentId → subjectId → promedio y si hay notas.
+ *
+ * Un 0 es una nota: con solo el número, «sacó 0» y «no tiene notas» se
+ * confunden (ver `gradesService.promedioDelLapso`).
+ */
+export type BulkAverageDetail = Map<string, Map<string, { promedio: number; conNotas: boolean }>>;
+
 /** Mismo mapeo de nombre de lapso que `gradesService`. */
 export function periodNameToLapso(periodName?: string | null): string {
     if (!periodName) return '1';
@@ -53,22 +61,38 @@ function parseScores(raw: unknown): Record<string, number | null> {
     }
 }
 
-/** Nota del lapso a partir de sus criterios, escalada a 20 (nivel 2). */
-function lapsoNote(criteria: CriterionInput[]): number {
-    if (criteria.length === 0) return 0;
+/** Nota del lapso a partir de sus criterios, escalada a 20 (nivel 2), y si tiene notas. */
+function lapsoNote(criteria: CriterionInput[]): { nota: number; conNotas: boolean } {
+    if (criteria.length === 0) return { nota: 0, conNotas: false };
     const result = calculateLapsoAverage(criteria);
     const gradedPts = criteria
         .filter((c) => c.activities.some((a) => a.score !== null && a.score !== undefined && !Number.isNaN(a.score)))
         .reduce((s, c) => s + (c.puntos || 0), 0);
     const scaled = gradedPts > 0 && gradedPts < 20 ? result.total * (20 / gradedPts) : result.total;
-    return Math.round(scaled * 100) / 100;
+    return { nota: Math.round(scaled * 100) / 100, conNotas: result.gradedActivities > 0 };
 }
 
 export async function bulkSubjectAverages(
     prisma: PrismaClient,
-    { classroomId, studentIds, subjectIds, periodId }: BulkAverageParams
+    params: BulkAverageParams
 ): Promise<BulkAverageResult> {
-    const empty: BulkAverageResult = new Map(studentIds.map((id) => [id, new Map<string, number>()]));
+    const detalle = await bulkSubjectAveragesConDatos(prisma, params);
+    const result: BulkAverageResult = new Map();
+    detalle.forEach((materias, studentId) => {
+        const numeros = new Map<string, number>();
+        materias.forEach((v, subjectId) => numeros.set(subjectId, v.promedio));
+        result.set(studentId, numeros);
+    });
+    return result;
+}
+
+export async function bulkSubjectAveragesConDatos(
+    prisma: PrismaClient,
+    { classroomId, studentIds, subjectIds, periodId }: BulkAverageParams
+): Promise<BulkAverageDetail> {
+    const empty: BulkAverageDetail = new Map(
+        studentIds.map((id) => [id, new Map<string, { promedio: number; conNotas: boolean }>()])
+    );
     if (studentIds.length === 0 || subjectIds.length === 0) return empty;
 
     // --- 4 consultas para toda la sección ---
@@ -110,7 +134,9 @@ export async function bulkSubjectAverages(
         gradesByStudent.get(g.studentId)!.push(g);
     }
 
-    const result: BulkAverageResult = new Map(studentIds.map((id) => [id, new Map<string, number>()]));
+    const result: BulkAverageDetail = new Map(
+        studentIds.map((id) => [id, new Map<string, { promedio: number; conNotas: boolean }>()])
+    );
 
     for (const subjectId of subjectIds) {
         // Notas sueltas de Clase en Vivo de esta materia (sin criterio del plan)
@@ -158,16 +184,17 @@ export async function bulkSubjectAverages(
                     });
                 }
 
-                const nota = lapsoNote(criteria);
-                if (nota > 0) notasPorLapso.push(nota);
+                // Un lapso sin notas no pesa (regla de exclusión); uno con
+                // notas en 0, sí: un 0 es una nota.
+                const { nota, conNotas } = lapsoNote(criteria);
+                if (conNotas) notasPorLapso.push(nota);
             }
 
-            // Un lapso sin notas no pesa (regla de exclusión)
             const promedio =
                 notasPorLapso.length > 0
                     ? Math.round((notasPorLapso.reduce((a, b) => a + b, 0) / notasPorLapso.length) * 100) / 100
                     : 0;
-            result.get(studentId)!.set(subjectId, promedio);
+            result.get(studentId)!.set(subjectId, { promedio, conNotas: notasPorLapso.length > 0 });
         }
     }
 

@@ -88,7 +88,8 @@ export interface StudentSuggestion {
     defaultTargetGrade: number | null;
     defaultTargetSection: string | null;
     defaultTargetShift?: string | null;
-    subjectGrades: Array<{ subjectId: string; subjectName: string; average: number; approved: boolean }>;
+    /** `conNotas`: si tiene alguna nota en la materia. Un 0 es una nota; «sin notas», no. */
+    subjectGrades: Array<{ subjectId: string; subjectName: string; average: number; approved: boolean; conNotas?: boolean }>;
     failedSubjects: Array<{ name: string; average: number }>;
     pendingCount: number;
     finalAverage: number;
@@ -139,19 +140,23 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                 const classroom = enr.classroom;
                 const subjectGrades: StudentSuggestion['subjectGrades'] = await Promise.all(
                     classroom.subjects.map(async (cs: any) => {
-                        const avg = await gradesService.calculateWeightedSubjectAverage(prisma, enr.studentId, cs.subjectId);
+                        const { promedio: avg, conNotas } = await gradesService.promedioDeLaMateria(prisma, enr.studentId, cs.subjectId);
                         return {
                             subjectId: cs.subjectId,
                             subjectName: cs.subject.name,
                             average: avg,
                             approved: avg >= config.notaMinimaAprobatoria,
+                            conNotas,
                         };
                     })
                 );
 
-                const failed = subjectGrades.filter(sg => sg.average > 0 && sg.average < config.notaMinimaAprobatoria);
+                // Pendiente es la materia CON notas por debajo de la mínima. Se
+                // miraba `average > 0`, y el alumno con todo en 0 —el que no
+                // entregó nada— salía promovido sin pendientes (CERO-03).
+                const failed = subjectGrades.filter(sg => sg.conNotas && sg.average < config.notaMinimaAprobatoria);
                 const pendingCount = failed.length;
-                const graded = subjectGrades.filter(sg => sg.average > 0);
+                const graded = subjectGrades.filter(sg => sg.conNotas);
                 const finalAverage = graded.length > 0
                     ? Math.round((graded.reduce((a, b) => a + b.average, 0) / graded.length) * 100) / 100
                     : 0;

@@ -28,6 +28,8 @@ export interface SectionStudent {
     studentCode?: string;
     isActive: boolean;
     average?: number;
+    /** Tiene alguna nota. Un 0 es una nota: sin esto, 0 y «sin calificar» se confunden. */
+    hasGrades?: boolean;
     failedSubjectsCount?: number;
     failedSubjects?: Array<{ subjectId: string; average: number }>;
     attendancePercentage?: number;

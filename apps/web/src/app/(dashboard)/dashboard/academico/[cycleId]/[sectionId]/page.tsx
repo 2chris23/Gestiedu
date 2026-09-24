@@ -598,7 +598,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                                         title={`${failedCount} ${failedCount === 1 ? 'materia con calificación menor a' : 'materias con calificación menor a'} ${passingGrade} pts`}
                                                     >
                                                         <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-                                                        Riesgo Alto ({failedCount} &lt; 10)
+                                                        Riesgo Alto ({failedCount} &lt; {passingGrade})
                                                     </span>
                                                 );
                                             }
@@ -619,20 +619,22 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                             ancho: 'w-12',
                                             titulo: 'Prom.',
                                             celda: (a) =>
-                                                a.average ? (
+                                                a.average || a.hasGrades ? (
                                                     <span
-                                                        className={`text-sm font-bold tabular-nums ${a.average < passingGrade ? 'text-red-600' : 'text-indigo-700'}`}
+                                                        className={`text-sm font-bold tabular-nums ${(a.average ?? 0) < passingGrade ? 'text-red-600' : 'text-indigo-700'}`}
                                                     >
-                                                        {a.average.toFixed(1)}
+                                                        {(a.average ?? 0).toFixed(1)}
                                                     </span>
                                                 ) : (
                                                     <span className="text-xs text-gray-500">—</span>
                                                 ),
                                         },
+                                        // Un 0 es una nota: con `hasGrades` se enseña el 0, no
+                                        // «Sin calificar» (CERO-06).
                                         celda: (a) =>
-                                            a.average ? (
+                                            a.average || a.hasGrades ? (
                                                 <span className="inline-flex rounded bg-indigo-50 px-2 py-0.5 text-sm font-semibold text-indigo-700">
-                                                    {a.average.toFixed(1)}
+                                                    {(a.average ?? 0).toFixed(1)}
                                                 </span>
                                             ) : (
                                                 <span className="inline-flex rounded bg-gray-100 px-2 py-0.5 text-sm font-medium text-gray-500">
