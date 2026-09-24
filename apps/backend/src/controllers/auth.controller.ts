@@ -220,7 +220,7 @@ export async function refreshToken(
   reply: FastifyReply
 ) {
   try {
-    const result = await authService.refreshToken(request.body, request.tenantPrisma);
+    const result = await authService.refreshToken(request.body, request.tenantPrisma, request.institute?.id);
 
     return reply.status(200).send(result);
   } catch (error) {
