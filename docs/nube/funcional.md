@@ -16,6 +16,7 @@ Informe para el dueño del liceo. Se actualiza y se sube en cada arreglo que que
 | `afb6c7f` | Cambiar de sección: ya no da error 500, respeta el cupo, y las notas de la sección anterior siguen contando en el promedio. |
 | `f82d14a` | El alumno archivado (retirado) deja su sección: no cuenta, no ocupa cupo y no se le reinscribe solo al cerrar el ciclo. |
 | `d5bb535` | El representante ve el mismo promedio que su hijo y no recibe «Asistencia baja: 0%» sin registros. |
+| `4ce88a5` | Las definitivas se redondean como manda el MPPE (0,50 o más sube al entero), configurable por liceo: un 9,5 ya no queda pendiente. |
 
 - **Cómo probarlo:**
   ```bash
@@ -115,6 +116,22 @@ RET-01…04, tres en rojo antes.
 **Para `docs/MAPA_DE_CALCULOS.md`**, sección 4, fila «Panel del representante»: «Sin ningún registro de
 asistencia en el lapso no hay aviso (REP-02)». Y en la sección 1: «El promedio que ve el representante es el
 mismo que el del panel del alumno: media de las materias con notas (nivel 2), a un decimal (REP-01)».
+
+### 5. Un 9,5 quedaba como materia pendiente — **arreglado** (`4ce88a5`)
+
+Al cerrar el ciclo, la definitiva salía con decimales y así se comparaba con la mínima: **un 9,5 quedaba
+pendiente**. El Reglamento General de la Ley Orgánica de Educación manda que, al calcular, una fracción de
+0,50 o más suba al entero inmediato superior, y la mínima es 10 (fuentes abajo). Ahora hay una regla del liceo,
+`redondeoDeDefinitivas`, en Configuración → Académico:
+
+- **MPPE** (por defecto): cada lapso al entero y la definitiva, de esos, al entero otra vez.
+- **Sin redondear**: dos decimales, como antes.
+
+Durante el año (riesgo, promedios de la sección) no cambia nada. RED-01…05, cuatro en rojo antes.
+
+**Para `docs/MAPA_DE_CALCULOS.md`**, sección 6 o una nueva «Definitivas»: «Al cerrar el ciclo, con
+`redondeoDeDefinitivas = 'MPPE'` (por defecto) la nota de cada lapso se redondea al entero (≥ 0,50 sube) y la
+definitiva de la materia es la media de esas, redondeada igual. Con 'NINGUNO', a dos decimales. RED-01…05.»
 
 ## Qué se probó y qué no
 
