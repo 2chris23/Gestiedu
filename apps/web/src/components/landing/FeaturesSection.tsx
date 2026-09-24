@@ -1,157 +1,99 @@
-'use client';
-
-import { 
-    Clock, 
-    GraduationCap, 
-    Award, 
-    Users, 
-    CreditCard, 
-    ShieldCheck, 
-    Calendar,
-    BookOpen,
-    FileSpreadsheet,
-    CheckCircle2
+import {
+    Archive,
+    CalendarClock,
+    ClipboardCheck,
+    GraduationCap,
+    Landmark,
+    type LucideIcon,
+    Users,
+    WifiOff,
+    Calculator,
 } from 'lucide-react';
 
-const FEATURES = [
+/**
+ * LO QUE LE QUITA TRABAJO AL LICEO
+ *
+ * Cada tarjeta dice un problema de la dirección y lo que hace el sistema con
+ * él. Todo está comprobado en el código (ver `docs/nube/portada.md`, «Qué
+ * dice la portada y dónde está en el código»): si algo no lo hace el
+ * sistema, aquí no se promete.
+ */
+
+interface Funcion {
+    icono: LucideIcon;
+    titulo: string;
+    texto: string;
+}
+
+const FUNCIONES: Funcion[] = [
     {
-        icon: Clock,
-        title: 'Doble Turno Integrado',
-        subtitle: 'Turnos Mañana y Tarde',
-        description: 'Gestión simultánea de secciones en turno matutino (7:00 AM - 12:45 PM) y vespertino (1:00 PM - 6:00 PM). Asignación inteligente de profesores y aulas sin solapamientos.',
-        badge: 'Nuevo en 2026',
-        color: 'blue',
+        icono: Calculator,
+        titulo: 'Notas y promedios sin calculadora',
+        texto: 'Cada profesor carga sus notas según el plan de evaluación del lapso. El promedio del alumno, de la sección y del año sale solo, con la escala y la nota mínima de tu liceo: del 1 al 20 y se aprueba con 10, si no dices otra cosa.',
     },
     {
-        icon: GraduationCap,
-        title: 'Educación Media Técnica (6to Año)',
-        subtitle: 'Media General y Técnica',
-        description: 'Soporte completo para especialidades y menciones técnicas (Informática, Contabilidad, Salud, Agropecuaria). Ciclo de promoción automática y gestión de pasantías.',
-        badge: 'Conforme MPPE',
-        color: 'indigo',
+        icono: ClipboardCheck,
+        titulo: 'Asistencia en segundos',
+        texto: 'A mano, con un toque por alumno; con un QR que los alumnos escanean desde su app y cambia cada 10 segundos; o el profesor escanea el del alumno. Un mismo teléfono no puede marcar a dos alumnos en la misma clase.',
     },
     {
-        icon: Award,
-        title: 'Calificaciones por Lapsos Oficiales',
-        subtitle: 'Escala 01 a 20 Puntos',
-        description: 'Estructuración en tres lapsos académicos venezolanos. Ponderación por planes de evaluación, cálculo instantáneo de definitivas y actas oficiales de notas.',
-        badge: 'Normativa Oficial',
-        color: 'blue',
+        icono: CalendarClock,
+        titulo: 'Horarios sin choques',
+        texto: 'Turno de mañana, de tarde o integral, cada sección con su horario. El sistema no deja poner a un profesor en dos salones a la misma hora. Si se suspende una clase, la dirección puede poner otra materia en ese hueco si su profesor está libre.',
     },
     {
-        icon: Users,
-        title: 'Control de Asistencia y Matrícula',
-        subtitle: 'Asistencia Diaria o por Hora',
-        description: 'Registro de asistencia en tiempo real con vinculación a cédulas escolares, representantes legales y alertas automáticas por porcentaje de inasistencias.',
-        badge: 'Tiempo Real',
-        color: 'indigo',
+        icono: Landmark,
+        titulo: 'Mensualidades en orden',
+        texto: 'Si tu liceo cobra: cuotas mensuales, quincenales o por lapso, e inscripción. En dólares o en bolívares con la tasa que anota la administración. Se ve quién está al día y quién debe, y un pago no se borra: se anula con su motivo. Si no cobras, el módulo queda apagado.',
     },
     {
-        icon: CreditCard,
-        title: 'Módulo de Pagos y Mensualidades',
-        subtitle: 'Tasa BCV y Multidivisa',
-        description: 'Registro ágil de mensualidades, abonos y cuotas escolares en bolívares y divisas con conversión oficial automática, historial y comprobantes digitales.',
-        badge: 'Administración',
-        color: 'blue',
+        icono: Users,
+        titulo: 'Representantes al tanto',
+        texto: 'Cada representante entra con su propia cuenta y ve el promedio, la asistencia y el horario de sus representados, con un aviso si bajan de la nota o de la asistencia mínima del liceo. De ningún otro alumno.',
     },
     {
-        icon: ShieldCheck,
-        title: 'Aislamiento Multi-Liceo y Auditoría',
-        subtitle: 'Bases de Datos Dedicadas',
-        description: 'Arquitectura multi-inquilino de alta seguridad. Cada colegio posee su base de datos independiente, garantizando aislamiento estricto de estudiantes y notas.',
-        badge: 'Seguridad',
-        color: 'indigo',
+        icono: WifiOff,
+        titulo: 'Aunque se vaya la señal',
+        texto: 'El teléfono guarda lo último que descargó y lo enseña sin conexión, con un aviso. Guardar sí necesita internet, y lo dice en el momento: nada queda «pendiente de enviar» a escondidas. Se instala como app, sin pasar por una tienda.',
+    },
+    {
+        icono: GraduationCap,
+        titulo: 'Cierre de año y promoción',
+        texto: 'Al cerrar el año escolar, el sistema propone quién pasa al año siguiente, quién pasa con materias pendientes y quién repite, según las reglas de tu liceo, y la dirección lo confirma. De 1.º a 5.º año, o hasta 6.º en media técnica.',
+    },
+    {
+        icono: Archive,
+        titulo: 'Nada se pierde',
+        texto: 'Cada liceo tiene su propia base de datos, aparte de los demás. Se hace una copia de todo cada noche, y lo que se borra no desaparece: queda guardado entero en una papelera, con lo que arrastraba.',
     },
 ];
 
 export function FeaturesSection() {
     return (
-        <section id="funciones" className="py-24 px-4 sm:px-6 lg:px-8 bg-white relative">
-            <div className="max-w-7xl mx-auto">
-                {/* Cabecera */}
-                <div className="text-center max-w-3xl mx-auto mb-16">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold uppercase tracking-wider mb-3 border border-blue-100">
-                        <BookOpen className="w-3.5 h-3.5 text-blue-600" />
-                        Módulos Académicos
-                    </span>
-                    <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
-                        Específicamente adaptado a las <br className="hidden sm:inline" />
-                        <span className="text-blue-600">normas del sistema educativo venezolano</span>
+        <section id="funciones" aria-labelledby="funciones-titulo" className="scroll-mt-20 bg-white px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
+            <div className="mx-auto max-w-6xl">
+                <div className="mx-auto max-w-2xl text-center">
+                    <p className="text-sm font-semibold text-indigo-700">Qué resuelve</p>
+                    <h2 id="funciones-titulo" className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
+                        Lo que hoy se hace en papel, en hojas de cálculo y por WhatsApp
                     </h2>
-                    <p className="mt-4 text-base sm:text-lg text-slate-600 leading-relaxed">
-                        Cada función fue desarrollada con base en la estructura ministerial de evaluación por lapsos, la doble jornada de liceos y la formación media técnica.
+                    <p className="mt-4 text-base leading-7 text-slate-600 sm:text-lg">
+                        Un solo sitio para las notas, la asistencia, los horarios y los cobros, con las reglas de tu plantel y no con
+                        unas escritas en el código.
                     </p>
                 </div>
 
-                {/* Cuadrícula de características */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    {FEATURES.map((feature, idx) => {
-                        const Icon = feature.icon;
-                        return (
-                            <div
-                                key={idx}
-                                className="group relative bg-white rounded-2xl p-7 border border-slate-200/90 shadow-sm hover:shadow-xl hover:border-blue-300 transition-all duration-300 flex flex-col justify-between"
-                            >
-                                <div>
-                                    <div className="flex items-center justify-between mb-5">
-                                        <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300">
-                                            <Icon className="w-6 h-6" />
-                                        </div>
-                                        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                                            {feature.badge}
-                                        </span>
-                                    </div>
-
-                                    <h3 className="text-xl font-bold text-slate-900 mb-1 group-hover:text-blue-600 transition-colors duration-200">
-                                        {feature.title}
-                                    </h3>
-                                    <h4 className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-3">
-                                        {feature.subtitle}
-                                    </h4>
-
-                                    <p className="text-sm text-slate-600 leading-relaxed">
-                                        {feature.description}
-                                    </p>
-                                </div>
-
-                                <div className="mt-6 pt-4 border-t border-slate-100 flex items-center text-xs font-medium text-blue-600 gap-1">
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" />
-                                    <span>Habilitado de fábrica</span>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-
-                {/* Bloque destacado de Doble Turno & 6to Año */}
-                <div className="mt-16 bg-gradient-to-r from-blue-900 via-blue-800 to-indigo-900 rounded-3xl p-8 sm:p-12 text-white shadow-xl relative overflow-hidden">
-                    <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
-                    
-                    <div className="relative z-10 max-w-3xl">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/20 text-blue-200 text-xs font-semibold uppercase tracking-wider mb-4 border border-blue-400/30">
-                            <Calendar className="w-3.5 h-3.5 text-blue-300" />
-                            Flexibilidad Horaria y Académica
-                        </span>
-                        <h3 className="text-2xl sm:text-3xl font-extrabold text-white mb-3">
-                            ¿Tu liceo opera en la mañana y en la tarde?
-                        </h3>
-                        <p className="text-blue-100 text-sm sm:text-base leading-relaxed mb-6">
-                            GestiEdu permite configurar bloques de horario independientes para cada turno, garantizando que un docente con horas en ambos turnos tenga su agenda sincronizada sin choques. Además, admite alumnos de 6to año técnico con planes de evaluación diferenciados.
-                        </p>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-medium text-blue-200">
-                            <div className="flex items-center gap-2 bg-white/10 px-4 py-2.5 rounded-xl backdrop-blur-sm border border-white/10">
-                                <Clock className="w-4 h-4 text-blue-300 shrink-0" />
-                                <span>Turno Mañana: 7:00 AM a 12:45 PM</span>
-                            </div>
-                            <div className="flex items-center gap-2 bg-white/10 px-4 py-2.5 rounded-xl backdrop-blur-sm border border-white/10">
-                                <Clock className="w-4 h-4 text-blue-300 shrink-0" />
-                                <span>Turno Tarde: 1:00 PM a 6:00 PM</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
+                <ul className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                    {FUNCIONES.map(({ icono: Icono, titulo, texto }) => (
+                        <li key={titulo} className="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100">
+                                <Icono className="h-5 w-5" aria-hidden />
+                            </span>
+                            <h3 className="mt-4 text-base font-bold text-slate-900">{titulo}</h3>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">{texto}</p>
+                        </li>
+                    ))}
+                </ul>
             </div>
         </section>
     );
