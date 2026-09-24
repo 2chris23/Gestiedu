@@ -103,6 +103,9 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Antes de `super.onCreate`: Capacitor solo conoce los complementos
+        // registrados cuando arranca el puente.
+        registerPlugin(ActualizarAppPlugin.class);
         super.onCreate(savedInstanceState);
 
         dejarSitioParaElReloj();

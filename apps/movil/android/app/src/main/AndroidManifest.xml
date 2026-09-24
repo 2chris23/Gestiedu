@@ -39,6 +39,16 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <!--
+        Instalar la versión nueva de la app desde la propia app
+        (`ActualizarAppPlugin`). Android además pide a la persona que lo
+        permita la primera vez, y confirmar cada instalación.
+
+        OJO: Google Play no permite que una app se actualice por fuera de la
+        tienda. La APK que se publique en Play NO lleva este permiso: allí se
+        actualiza por Play. Ver docs/APP-MOVIL.md.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!--
         Guardar un comprobante o un boletín en «Descargas». Desde Android 10 el
         sistema ya no pide permiso para su propia carpeta de descargas, pero en
         los teléfonos viejos (la app llega hasta Android 6) sí hace falta: sin

@@ -1,5 +1,7 @@
 apply plugin: 'com.android.application'
 
+def laVersion = new groovy.json.JsonSlurper().parse(file('../../version-de-la-app.json'))
+
 android {
     namespace "com.gestiedu.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -7,8 +9,11 @@ android {
         applicationId "com.gestiedu.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // El número de versión vive en `version-de-la-app.json` y lo sube
+        // `npm run publicar`: la app compara el suyo con el publicado para
+        // saber si hay una nueva (ver `ActualizarAppPlugin`).
+        versionCode laVersion.versionCode
+        versionName laVersion.versionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

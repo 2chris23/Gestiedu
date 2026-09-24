@@ -117,7 +117,12 @@ services:
       # toda la API respondía 502 en cuanto alguien usara el ejemplo tal cual.
       PUERTO_DEL_HOST: '4000'
       BACKUP_DIR: /app/backups
+      APP_MOVIL_DIR: /app/apks
     volumes:
+      # Las APK que las apps ya instaladas se bajan solas al abrirse
+      # (`npm run publicar` en apps/movil; ver docs/APP-MOVIL.md). Publicar
+      # una es dejar sus dos archivos en `apks/`, junto a este archivo.
+      - ./apks:/app/apks:ro
       # Los logos subidos ANTES de que fueran a la base (los nuevos van a la
       # base de la plataforma: los ven todos los procesos y entran en el
       # respaldo). Sin volumen vivían DENTRO del contenedor, y cada

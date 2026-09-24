@@ -31,6 +31,7 @@ import { cacheMetricsRoutes } from '../controllers/cache-metrics.controller';
 import { monitoringRoutes } from './monitoring.routes';
 import { schoolEventsRoutes } from './school-events.routes';
 import { schoolTimeRoutes } from './school-time.routes';
+import { appMovilRoutes } from './app-movil.routes';
 
 // Función para registrar todas las rutas
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
@@ -52,6 +53,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(attendanceRoutes, { prefix: '/api/attendance' });
   // La hora oficial del liceo (el reloj del dispositivo no es de fiar)
   await fastify.register(schoolTimeRoutes, { prefix: '/api/time' });
+  // La versión nueva de la app del teléfono (ver `app-movil.routes.ts`).
+  await fastify.register(appMovilRoutes, { prefix: '/api/app-movil' });
   await fastify.register(schedulesRoutes, { prefix: '/api/schedules' });
   await fastify.register(scheduleBlocksRoutes, { prefix: '/api' });
   await fastify.register(classSessionsRoutes, { prefix: '/api/sessions' });

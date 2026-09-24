@@ -142,6 +142,8 @@ function isCacheable(request: FastifyRequest, role: string): boolean {
     const url = request.url;
     if (url.includes('/api/superadmin')) return false;
     if (url.includes('/api/auth')) return false;
+    // Recién publicada una versión de la app, se tiene que ver ya, no a los cinco minutos.
+    if (url.startsWith('/api/app-movil')) return false;
     if (url.includes('/api/notifications/realtime')) return false;
     return true;
 }

@@ -8,7 +8,8 @@
     "sincronizar": "cap sync android",
     "abrir": "cap open android",
     "apk:pruebas": "cd android && gradlew.bat assembleDebug",
-    "apk:firmada": "cd android && gradlew.bat assembleRelease"
+    "apk:firmada": "cd android && gradlew.bat assembleRelease",
+    "publicar": "node scripts/publicar-apk.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.4",

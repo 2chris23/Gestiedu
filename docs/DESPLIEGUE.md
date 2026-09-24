@@ -52,6 +52,13 @@ Al empujar a la rama `production`, el flujo de GitHub Actions
 Si un liceo falla al migrar, el despliegue se detiene: es preferible a dejar
 liceos con una base vieja frente a un código nuevo.
 
+**Una versión nueva de la APK** no va por aquí: se compila con
+`npm run publicar -- --firmada` en `apps/movil` y sus dos archivos
+(`<paquete>.apk` y `<paquete>.json`) se copian a la carpeta `apks/` del
+servidor, junto a `docker-compose.prod.yml` (montada en `/app/apks`,
+`APP_MOVIL_DIR`). No hace falta reiniciar nada: la próxima vez que alguien
+abra la app, le sale «Hay una versión nueva». Ver `docs/APP-MOVIL.md`.
+
 ## 4. Cuando un liceo se queda atrás
 
 Entra al panel de superadmin → **Migraciones**. Ahí se ve, liceo por liceo,
