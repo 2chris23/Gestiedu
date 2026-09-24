@@ -24,6 +24,9 @@ import { MEDIR_DISENO, QUE_SIGNIFICA_DISENO } from '../../scripts/reglas-del-dis
  *  DISENO-05  El representante ve cómo va cada hijo SIN TOCAR NADA.
  *  DISENO-06  Las ventanas, en el teléfono: centradas, dentro de la pantalla y
  *             con una X de 44 px que se llama «Cerrar».
+ *  DISENO-07  En la lista de una sección y en sus cifras, nada se recorta a una
+ *             sola línea con «…»: el profesor tiene que saber a quién le pone la
+ *             nota («Kleiver Josu…» y «Kleiver Josu…» son dos alumnos).
  */
 
 const TELEFONO = { width: 390, height: 844 };
@@ -295,6 +298,35 @@ test('DISENO-06: en el teléfono, las ventanas quedan centradas, dentro y con un
         const faltas = (await page.evaluate(MEDIR_DISENO, { tolerancia: 2 })) as any[];
         for (const f of faltas.filter((x) => vigiladas.has(x.regla)))
             fallos.push(`${nombre}: ${(QUE_SIGNIFICA_DISENO as any)[f.regla]} — «${f.que}» ${f.detalle}`);
+    }
+    await ctx.close();
+    expect(fallos, fallos.join('\n')).toEqual([]);
+});
+
+/** Lo que se recorta a UNA línea con «…» y no cabe: se lee a medias. */
+function recortadosAUnaLinea() {
+    const main = document.querySelector('main')!;
+    return [...main.querySelectorAll('*')]
+        .filter((el) => {
+            const s = getComputedStyle(el);
+            if (s.whiteSpace !== 'nowrap' || s.textOverflow !== 'ellipsis') return false;
+            if (!(el as HTMLElement).offsetParent) return false;
+            return el.scrollWidth > el.clientWidth + 1;
+        })
+        .map((el) => (el as HTMLElement).innerText.trim().slice(0, 40));
+}
+
+test('DISENO-07: en la sección, los nombres y los rótulos de las cifras se leen enteros en el teléfono', async ({ browser }) => {
+    const ctx = await contexto(browser, 'telefono');
+    const page = await ctx.newPage();
+    await entrar(page, ADMIN);
+    const pantallas = await lasPantallas();
+    const fallos: string[] = [];
+    for (const titulo of ['Sección', 'Sección · materia', 'Ciclo']) {
+        const [, ruta] = pantallas.find(([t]) => t === titulo)!;
+        await page.goto(`${WEB_BASE}${ruta}`);
+        await esperarAQueCargue(page);
+        for (const texto of await page.evaluate(recortadosAUnaLinea)) fallos.push(`${titulo}: «${texto}» se corta con «…»`);
     }
     await ctx.close();
     expect(fallos, fallos.join('\n')).toEqual([]);
