@@ -54,10 +54,13 @@ export async function classroomSubjectsRoutes(fastify: FastifyInstance) {
             getClassroomSubjectDetail as any
         );
 
-        // Asignar materia a sección (profesores y admins)
+        // Asignar materia a sección: SOLO el administrador. Estaba abierta a
+        // cualquier profesor, que se asignaba a sí mismo una materia en una
+        // sección ajena y con eso pasaba a «impartir» allí: notas, asistencia
+        // y datos de esos alumnos (`quien-puede-que.test.ts`).
         authenticatedRoutes.post(
             '/classrooms/:classroomId/subjects',
-            { onRequest: [requireTeacher] },
+            { onRequest: [requireAdmin] },
             assignSubjectToClassroom as any
         );
 

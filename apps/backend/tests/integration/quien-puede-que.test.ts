@@ -106,6 +106,7 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
         u.repB = await persona(UserRole.TUTOR);
         // No llama nunca: solo es a quien se intenta asignar una materia.
         u.profeSuelto = await persona(UserRole.TEACHER);
+        u.alumnoNuevo = await persona(UserRole.STUDENT);
 
         const roles: Record<string, UserRole> = {
             admin: UserRole.ADMIN, profeA: UserRole.TEACHER, guiaA: UserRole.TEACHER, profeB: UserRole.TEACHER,
@@ -262,7 +263,7 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
         { que: 'POST observación a alumnaA', metodo: 'post', url: () => `/api/observations`, cuerpo: () => ({ title: 'x', description: 'y', studentId: alumnaA(), classroomId: A(), subjectId: d.mate.id }), si: ['profeA'], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
         { que: 'PUT actividad de A', metodo: 'put', url: () => `/api/activities/${d.actividad2.id}`, cuerpo: () => ({ title: 'Taller A (editado)' }), si: ['profeA'], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
         { que: 'POST actividad en A', metodo: 'post', url: () => `/api/activities`, cuerpo: () => ({ title: 'Nueva', type: 'SUMATIVA', scope: 'CLASSROOM', startDate: '2026-09-20', maxGrade: 20, weight: 1, classroomId: A(), subjectId: d.mate.id, periodId: d.period.id, lapso: '1' }), si: ['profeA'], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
-        { que: 'POST inscribir alumnoB en A', metodo: 'post', url: () => `/api/classrooms/${A()}/students`, cuerpo: () => ({ studentId: u.alumnoB.id }), si: [], no: [...AJENOS, 'profeA', 'guiaA', 'profeB', ...NO_PERSONAL] },
+        { que: 'POST inscribir un alumno en A', metodo: 'post', url: () => `/api/classrooms/${A()}/students`, cuerpo: () => ({ studentId: u.alumnoNuevo.id }), si: [], no: [...AJENOS, 'profeA', 'guiaA', 'profeB', ...NO_PERSONAL] },
         { que: 'POST asignarse una materia en A', metodo: 'post', url: () => `/api/classrooms/${A()}/subjects`, cuerpo: () => ({ subjectId: d.otraMateria.id, teacherId: u.profeSuelto.id, weeklyBlocks: 2 }), si: [], no: [...AJENOS, 'profeA', 'guiaA', 'profeB', ...NO_PERSONAL] },
         { que: 'PUT horario de A', metodo: 'put', url: () => `/api/schedules/${d.horario.id}`, cuerpo: () => ({ room: 'Aula 9' }), si: [], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
         { que: 'PUT datos de alumnaA', metodo: 'put', url: () => `/api/users/${alumnaA()}`, cuerpo: () => ({ firstName: 'Cambiado' }), si: [], no: [...AJENOS, 'profeA', 'guiaA', 'profeB', ...NO_PERSONAL] },
@@ -302,11 +303,8 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
         'PUT nota de alumnaA',
         'POST observación a alumnaA',
         'POST actividad en A',
-        'POST inscribir alumnoB en A',
-        'POST asignarse una materia en A',
         'PUT horario de A',
         'POST abrir clase en A',
-        'DELETE sacar a alumnaA de A',
     ]);
 
     for (const caso of CASOS) {
