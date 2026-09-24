@@ -13,7 +13,7 @@ import {
   createSystemNotification,
   sendBulkNotifications
 } from '../controllers/notifications.controller';
-import { authenticate, requireAdmin, requireTeacher } from '../middleware/auth.middleware';
+import { authenticate, requireAdmin, requireTeacher, requireSelfOrAdmin } from '../middleware/auth.middleware';
 import { validateBody, validateParams, validateCUID, validateUserId } from '../middleware/validation.middleware';
 
 const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
@@ -149,10 +149,12 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [authenticate]
   }, markAllNotificationsAsRead);
 
-  // Rutas para administradores y profesores
+  // Los avisos de TODO el liceo: solo el administrador. Estaba abierta a
+  // cualquier profesor, que leía los avisos privados de alumnos y familias
+  // (`quien-puede-que.test.ts`). Los de uno mismo están en /my-notifications.
   fastify.get('/', {
     schema: { querystring: getNotificationsQuerySchema.querystring },
-    preHandler: [authenticate, requireTeacher]
+    preHandler: [authenticate, requireAdmin]
   }, getAllNotifications);
 
   // Las cuentas de TODO el liceo. Las de uno mismo están en
@@ -172,7 +174,8 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
       },
       querystring: getNotificationsQuerySchema.querystring
     },
-    preHandler: [authenticate, requireTeacher, validateUserId('userId')]
+    // Los avisos de una persona: ella misma o el administrador.
+    preHandler: [authenticate, validateUserId('userId'), requireSelfOrAdmin('userId')]
   }, getUserNotifications);
 
   fastify.get('/:id', {

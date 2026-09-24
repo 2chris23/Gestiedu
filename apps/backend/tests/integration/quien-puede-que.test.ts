@@ -272,6 +272,8 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
         { que: 'PUT su propio perfil (profesor)', metodo: 'put', url: () => `/api/teachers/profile/me`, cuerpo: () => ({ firstName: 'Otro' }), si: [], no: [...AJENOS, 'profeA', 'profeB', 'guiaA'] },
         { que: 'PUT su propio perfil (usuario)', metodo: 'put', url: () => `/api/users/profile/me`, cuerpo: () => ({ firstName: 'Otro' }), si: [], no: [...AJENOS, 'profeA', 'profeB', 'guiaA', ...NO_PERSONAL] },
         { que: 'PATCH marcar leído el aviso de alumnaA', metodo: 'patch', url: () => `/api/notifications/${d.aviso.id}/read`, si: [], no: [...AJENOS, ...LADO_B, 'profeA', 'guiaA', 'repA'] },
+        { que: 'POST aviso a alumnaA', metodo: 'post', url: () => `/api/notifications`, cuerpo: () => ({ title: 'Aviso', message: 'Entra a este enlace', type: 'INFO', priority: 'LOW', recipientId: alumnaA() }), si: ['profeA', 'admin'], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
+        { que: 'POST aviso a otro profesor', metodo: 'post', url: () => `/api/notifications`, cuerpo: () => ({ title: 'Aviso', message: 'Mensaje para un colega', type: 'INFO', priority: 'LOW', recipientId: u.profeB.id }), si: ['admin'], no: [...AJENOS, 'profeA', 'guiaA', ...NO_PERSONAL] },
         { que: 'POST abrir clase en A', metodo: 'post', url: () => `/api/sessions`, cuerpo: () => ({ classroomId: A(), subjectId: d.mate.id, date: HOY }), si: [], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
         { que: 'POST asistencia a alumnoB en la sección A', metodo: 'post', url: () => `/api/attendance`, cuerpo: () => ({ studentId: u.alumnoB.id, classroomId: A(), date: HOY, status: 'PRESENT' }), si: [], no: [...AJENOS, 'profeA', 'guiaA', 'profeB', ...NO_PERSONAL] },
         { que: 'POST asistencia en bloque con alumnoB en A', metodo: 'post', url: () => `/api/attendance/bulk`, cuerpo: () => ({ classroomId: A(), subjectId: d.mate.id, date: HOY, attendances: [{ studentId: u.alumnoB.id, status: 'ABSENT' }] }), si: [], no: [...AJENOS, 'profeA', 'guiaA', 'profeB', ...NO_PERSONAL] },
@@ -288,8 +290,6 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
      */
     const HUECOS_ABIERTOS = new Set<string>([
         'GET alumnos de la materia',
-        'GET avisos de alumnaA',
-        'GET todos los avisos',
         'GET un horario de A',
         'GET cabecera del plan de A',
         'GET buscar alumnos',
