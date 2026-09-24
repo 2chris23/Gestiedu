@@ -63,7 +63,7 @@ export function AvisoSinConexion() {
                 // En el teléfono, dentro de la cabecera, a la derecha (ahí no hay
                 // nada). En el ordenador no hay cabecera: abajo a la derecha.
                 'right-3 top-[calc(var(--zona-segura-arriba)+6px)]',
-                'lg:bottom-5 lg:right-5 lg:top-auto'
+                'lateral:bottom-5 lateral:right-5 lateral:top-auto'
             )}
         >
             <p role="status" aria-live="polite" className="sr-only">
@@ -84,7 +84,7 @@ export function AvisoSinConexion() {
                                 <CloudOff className="h-3.5 w-3.5 text-amber-700" />
                             </span>
                         </span>
-                        <span className={cn('pr-0.5', conTexto ? 'inline' : 'hidden lg:inline')} aria-hidden>
+                        <span className={cn('pr-0.5', conTexto ? 'inline' : 'hidden lateral:inline')} aria-hidden>
                             Sin conexión
                         </span>
                     </button>

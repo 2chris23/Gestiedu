@@ -222,3 +222,40 @@ test('MOVIL-03: en el teléfono tumbado, la tableta, el portátil y el escritori
 
     expect(faltas, `\n${faltas.join('\n')}\n`).toEqual([]);
 });
+
+/**
+ * EL TELÉFONO TUMBADO NO ES UNA TABLETA
+ *
+ * El Motorola G13 del dueño, de lado, mide 1075 × 484 px: pasa de 1024 de
+ * ancho, y la barra lateral —que se decidía solo por el ancho— aparecía y se
+ * comía un cuarto de una pantalla de 484 px de alto. La barra lateral es de
+ * tableta y ordenador; el teléfono, tumbado o de pie, lleva la de abajo.
+ */
+test('MOVIL-04: el teléfono tumbado lleva la barra de abajo, no la lateral; la tableta tumbada, la lateral', async ({ browser }, testInfo) => {
+    const casos = [
+        { nombre: 'Motorola tumbado', viewport: { width: 1075, height: 484 }, lateral: false },
+        { nombre: 'tableta tumbada', viewport: { width: 1280, height: 800 }, lateral: true },
+    ];
+    for (const caso of casos) {
+        const contexto = await browser.newContext({ viewport: caso.viewport, hasTouch: true, isMobile: true });
+        const page = await contexto.newPage();
+        try {
+            const sesion = await loginApi('admin@testing.edu.ve', '123456', true, TENANT_SLUG, true);
+            await injectSessionCookies(page, sesion);
+            await page.goto(`${WEB_BASE}/dashboard`, { waitUntil: 'domcontentloaded' });
+            const barra = page.getByRole('navigation', { name: 'Navegación principal' });
+            if (caso.lateral) {
+                await expect(page.locator('aside').first()).toBeVisible({ timeout: 30000 });
+                await expect(barra).toBeHidden();
+            } else {
+                await expect(barra).toBeVisible({ timeout: 30000 });
+                await expect(page.locator('aside').first()).toBeHidden();
+            }
+        } catch (error) {
+            await captureEvidence(testInfo, page, 'MOVIL-04', caso.nombre, error);
+            throw error;
+        } finally {
+            await contexto.close();
+        }
+    }
+});

@@ -132,7 +132,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 menú entero estaba a dos toques (abrir, elegir) y obligaba a
                 tapar la pantalla que se acababa de abrir. Aquí ya no se pinta.
             */}
-            <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 bg-white shadow-lg lg:block">
+            <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 bg-white shadow-lg lateral:block">
                 <div className="flex h-full flex-col">
                     {/* Logo / User Info */}
                     <div className="p-6 border-b">
@@ -209,11 +209,11 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
             </aside>
 
             {/* Main Content */}
-            <main className="min-h-screen lg:ml-64">
+            <main className="min-h-screen lateral:ml-64">
                 {/* El hueco de abajo es la barra del teléfono MÁS la del
                     sistema: sin él, lo último de cada pantalla queda donde el
                     dedo pulsa la barra de gestos. */}
-                <div className="mx-auto max-w-7xl px-4 py-6 pb-[calc(7rem+var(--zona-segura-abajo))] sm:px-6 lg:px-8 lg:pb-6">
+                <div className="mx-auto max-w-7xl px-4 py-6 pb-[calc(7rem+var(--zona-segura-abajo))] sm:px-6 lg:px-8 lateral:pb-6">
                     {children}
                 </div>
             </main>

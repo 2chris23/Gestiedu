@@ -35,6 +35,23 @@ module.exports = {
     ],
     theme: {
         extend: {
+            /**
+             * LA BARRA LATERAL ES DE LA TABLETA Y EL ORDENADOR, NO DEL TELÉFONO
+             *
+             * Se decidía solo por el ancho (`lg`, 1024 px), y un teléfono
+             * TUMBADO pasa de 1024: el Motorola de lado enseñaba la barra
+             * lateral, que se comía un cuarto de una pantalla de 400 px de
+             * alto. Un teléfono tumbado se distingue por el dedo y la poca
+             * altura; una tableta tumbada pasa de 600 px de alto.
+             *
+             * `lateral:` = hay sitio para la barra lateral: ancho de ordenador
+             * con ratón, o ancho de tableta y además alto de tableta.
+             */
+            screens: {
+                lateral: {
+                    raw: '(min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (min-height: 600px)',
+                },
+            },
             colors: {
                 // ── El papel y la tinta ──────────────────────────────────
                 lienzo: {

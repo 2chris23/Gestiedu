@@ -70,7 +70,7 @@ export function CabeceraMovil({
 
     return (
         <>
-            <header className="zona-segura-arriba sticky top-0 z-40 border-b border-gray-200 bg-white lg:hidden">
+            <header className="zona-segura-arriba sticky top-0 z-40 border-b border-gray-200 bg-white lateral:hidden">
                 <div className="flex h-14 items-center px-3">
                     <button
                         type="button"
