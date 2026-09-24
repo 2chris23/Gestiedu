@@ -497,7 +497,7 @@ export default function SectionSubjectDashboard() {
                                                     {a.lastName?.[0]}
                                                 </span>
                                                 <div className="min-w-0">
-                                                    <p className="truncate font-medium text-gray-900">
+                                                    <p className="line-clamp-2 break-words font-medium text-gray-900" title={`${a.firstName} ${a.lastName}`}>
                                                         {a.firstName} {a.lastName}
                                                     </p>
                                                     <p className="truncate font-mono text-xs text-gray-500 @2xl:hidden">

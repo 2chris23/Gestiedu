@@ -523,7 +523,10 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                                         initialsClassName="text-xs"
                                                     />
                                                     <div className="min-w-0">
-                                                        <p className="truncate text-sm font-medium leading-5 text-gray-900">
+                                                        {/* En dos líneas, no cortado: «Kleiver Josu…» y
+                                                            «Jesús Albert…» no dejaban saber a quién
+                                                            se le ponía la nota. */}
+                                                        <p className="line-clamp-2 break-words text-sm font-medium leading-5 text-gray-900" title={`${a.firstName} ${a.lastName}`}>
                                                             {a.firstName} {a.lastName}
                                                         </p>
                                                         <p className="truncate text-xs text-gray-500">
@@ -543,7 +546,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                                     initialsClassName="text-sm"
                                                 />
                                                 <div className="min-w-0">
-                                                    <p className="truncate font-medium text-gray-900">
+                                                    <p className="line-clamp-2 break-words font-medium text-gray-900" title={`${a.firstName} ${a.lastName}`}>
                                                         {a.firstName} {a.lastName}
                                                     </p>
                                                     {/* La cédula, debajo del nombre: en la tarjeta

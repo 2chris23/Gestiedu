@@ -106,7 +106,9 @@ function Celda({ cifra, className }: { cifra: Cifra; className?: string }) {
                 {/* En el teléfono, sin icono: con él «Observaciones» no cabía
                     (y con la letra del teléfono agrandada, tampoco otras). */}
                 <Icono className={cn('hidden h-3.5 w-3.5 shrink-0 sm:block', TONOS[cifra.tono])} aria-hidden />
-                <span className="truncate">{cifra.titulo}</span>
+                {/* El rótulo entero, en dos líneas si hace falta: «Observacio…»
+                    y «Promedio Sec…» no decían qué cifra era. */}
+                <span className="line-clamp-2 break-words leading-tight">{cifra.titulo}</span>
             </span>
             <span
                 className={cn(
@@ -117,7 +119,7 @@ function Celda({ cifra, className }: { cifra: Cifra; className?: string }) {
                 {cifra.valor}
             </span>
             {cifra.barra && <BarraDeLaCifra barra={cifra.barra} />}
-            {cifra.pie && <span className="mt-1 truncate text-xs tabular-nums text-gray-500">{cifra.pie}</span>}
+            {cifra.pie && <span className="mt-1 line-clamp-2 break-words text-xs tabular-nums leading-tight text-gray-500">{cifra.pie}</span>}
             {cifra.detalle && <span className="sr-only">{cifra.detalle}</span>}
         </div>
     );
@@ -253,7 +255,7 @@ export default function AcademicStats({
             <div className="row-span-2 flex min-w-0 flex-col justify-center bg-white px-2.5 py-2 sm:px-3 md:row-span-1">
                 <span className="flex items-center gap-1.5 text-xs font-medium text-gray-500">
                     <GraduationCap className="hidden h-3.5 w-3.5 shrink-0 text-blue-600 sm:block" aria-hidden />
-                    <span className="truncate">{averageTitle}</span>
+                    <span className="line-clamp-2 break-words leading-tight">{averageTitle}</span>
                 </span>
                 <span
                     className={cn(
