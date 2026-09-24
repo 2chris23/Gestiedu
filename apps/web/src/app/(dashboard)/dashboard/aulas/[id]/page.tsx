@@ -20,6 +20,7 @@ import { studentsService } from '@/services/students.service';
 import { Card } from '@/components/ui';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 interface Student {
     id: string;
@@ -54,7 +55,7 @@ export default function ClassroomDetailPage() {
             setStudents(Array.isArray(studentsData) ? studentsData : studentsData.students || []);
         } catch (error) {
             console.error('Error fetching classroom:', error);
-            toast.error('Error al cargar los datos de la sección');
+            if (!esQueNoContesta(error)) toast.error('Error al cargar los datos de la sección');
         } finally {
             setLoading(false);
         }

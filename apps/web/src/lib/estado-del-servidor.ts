@@ -104,7 +104,15 @@ export function esQueNoContesta(error: any): boolean {
     if (error.name === 'SinConexion' || error.name === 'SinServidor') return true;
     if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK' || error.code === 'ETIMEDOUT') return true;
     const r = error.response;
-    if (!r) return !!error.isAxiosError || error instanceof TypeError;
+    /**
+     * Muchos servicios envuelven el error en uno suyo
+     * (`throw new Error(getApiErrorMessage(error, '…'))`) y la respuesta se
+     * pierde por el camino: no se sabe si contestó. Pero cuando el servidor
+     * ya consta como caído, es eso. Sin esto, sin conexión salía «Error al
+     * cargar años escolares» en rojo encima de los años que sí se veían,
+     * guardados (medido en la APK).
+     */
+    if (!r) return !!error.isAxiosError || error instanceof TypeError || !elEstadoDelServidor().contesta;
     if ([502, 503, 504].includes(r.status)) return true;
     if (r.status >= 500) {
         const tipo = String(r.headers?.['content-type'] ?? '');

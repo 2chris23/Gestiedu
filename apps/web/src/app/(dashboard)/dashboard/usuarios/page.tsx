@@ -14,6 +14,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { UserProfileModal } from '@/components/users/UserProfileModal';
 import { useRouter } from 'next/navigation';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export default function UsersPage() {
     const queryClient = useQueryClient();
@@ -58,7 +59,7 @@ export default function UsersPage() {
             }
         } catch (error) {
             console.error('Error loading users:', error);
-            toast.error('Error al cargar usuarios');
+            if (!esQueNoContesta(error)) toast.error('Error al cargar usuarios');
         } finally {
             setIsLoading(false);
         }

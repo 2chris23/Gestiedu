@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Save, Shield, Clock, Lock, AlertTriangle, RefreshCw, Laptop, Smartphone, ShieldAlert, Trash2 } from 'lucide-react';
 import { instituteService } from '@/services/institute.service';
 import { toast } from 'sonner';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 interface SecurityConfig {
     sessionTimeout: number;
@@ -60,7 +61,7 @@ export function SecuritySettings() {
             }
         } catch (error) {
             console.error(error);
-            toast.error('Error al cargar la configuración');
+            if (!esQueNoContesta(error)) toast.error('Error al cargar la configuración');
         } finally {
             setLoading(false);
         }

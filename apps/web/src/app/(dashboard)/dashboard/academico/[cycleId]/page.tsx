@@ -16,6 +16,7 @@ import AcademicStats from '@/components/academic/AcademicStats';
 import LapsoSelector from '@/components/academic/LapsoSelector';
 import { useAuthStore } from '@/store/auth.store';
 import { YearSelector } from '@/components/navigation/YearSelector';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export default function AcademicYearDashboard() {
     const confirmDialog = useConfirm();
@@ -68,7 +69,7 @@ export default function AcademicYearDashboard() {
 
         } catch (err) {
             console.error(err);
-            toast.error('Error al cargar datos del ciclo escolar');
+            if (!esQueNoContesta(err)) toast.error('Error al cargar datos del ciclo escolar');
             setError(err instanceof Error ? err.message : 'Error desconocido');
         } finally {
             setLoading(false);

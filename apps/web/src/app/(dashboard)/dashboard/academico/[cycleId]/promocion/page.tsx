@@ -9,6 +9,7 @@ import {
     Printer, FileText
 } from 'lucide-react';
 import { academicYearService } from '@/services/academic-year.service';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 interface Suggestion {
     studentId: string;
@@ -205,7 +206,7 @@ export default function PromotionPage() {
                 setSelectedSection(sorted[0].currentSection || 'A');
             }
         } catch (e: any) {
-            toast.error(e?.response?.data?.error || 'Error al cargar el panel de promoción');
+            if (!esQueNoContesta(e)) toast.error(e?.response?.data?.error || 'Error al cargar el panel de promoción');
         } finally {
             setLoading(false);
         }

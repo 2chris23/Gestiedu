@@ -120,10 +120,18 @@ async function guardar(peticion, respuesta) {
     return respuesta;
 }
 
-/** Primero la red; si no hay, lo guardado. Para páginas y para datos de pantalla. */
+/**
+ * Primero la red; si no hay, lo guardado. Para páginas y para datos de pantalla.
+ *
+ * «No hay red» es también el repartidor diciendo que detrás no hay nadie (502,
+ * 503, 504): el servidor del liceo está caído aunque su puerta conteste. Se
+ * devolvía esa página de error tal cual, teniendo la de verdad guardada.
+ */
 async function laRedYSiNoLoGuardado(peticion) {
     try {
-        return await guardar(peticion, await fetch(peticion));
+        const respuesta = await fetch(peticion);
+        if (respuesta.status >= 502 && respuesta.status <= 504) throw new Error('sin servidor');
+        return await guardar(peticion, respuesta);
     } catch {
         const guardada = await caches.match(peticion);
         if (guardada) return guardada;

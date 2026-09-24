@@ -9,6 +9,7 @@ import { BookOpen, Users, Calendar as CalendarIcon } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
 import api from '@/lib/axios';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export default function CalendarioPage() {
     const [classrooms, setClassrooms] = useState<Classroom[]>([]);
@@ -84,7 +85,7 @@ export default function CalendarioPage() {
                 }
             } catch (error) {
                 console.error(error);
-                toast.error('No se pudieron cargar las secciones');
+                if (!esQueNoContesta(error)) toast.error('No se pudieron cargar las secciones');
             } finally {
                 setLoading(false);
             }

@@ -33,6 +33,17 @@ describe('¿Contestó el servidor?', () => {
         expect(esQueNoContesta(null)).toBe(false);
     });
 
+    it('un error envuelto por un servicio: es la conexión solo si el servidor consta como caído', () => {
+        const envuelto = new Error('Error al obtener años escolares');
+        elServidorContesto();
+        expect(esQueNoContesta(envuelto)).toBe(false);
+        elServidorNoContesta();
+        expect(esQueNoContesta(envuelto)).toBe(true);
+        // Una respuesta del servidor sigue siendo una respuesta, caído o no.
+        expect(esQueNoContesta(conRespuesta(403))).toBe(false);
+        elServidorContesto();
+    });
+
     it('lleva la cuenta: no contesta, y vuelve', () => {
         elServidorNoContesta();
         expect(elEstadoDelServidor().contesta).toBe(false);

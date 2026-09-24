@@ -10,6 +10,7 @@ import ClassroomModal from '@/components/classrooms/ClassroomModal';
 import { classroomService, Classroom } from '@/services/classroom.service';
 import { academicYearService, AcademicYear } from '@/services/academic-year.service';
 import TurnoBadge from '@/components/common/TurnoBadge';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export default function ClassroomsPage() {
     const confirmDialog = useConfirm();
@@ -45,7 +46,7 @@ export default function ClassroomsPage() {
             }
         } catch (error) {
             console.error(error);
-            toast.error('Error al cargar datos');
+            if (!esQueNoContesta(error)) toast.error('Error al cargar datos');
         } finally {
             setLoading(false);
         }
