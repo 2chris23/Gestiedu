@@ -1,14 +1,14 @@
 'use client';
 
 import * as React from 'react';
-import { LazyMotion, MotionConfig, domAnimation, m, useReducedMotion } from 'framer-motion';
+import { LazyMotion, MotionConfig, domAnimation, m } from 'framer-motion';
 import { Pause, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dedo } from './Dedo';
 import { MEDIDAS, Portatil, Tableta, Telefono } from './Marcos';
 import { PortCifras, PortHorario, TabNotas, TabQr, TelAsistencia, TelEscaner, TelHorario, TelInicio } from './Pantallas';
 import { ESCENAS, INICIO_DE, PASO_MS, PASOS_DEL_CICLO, PASO_QUIETO, type Aparato, type IdDeEscena, momentoDe } from './guion';
-import { useALaVista, usePestanaVisible, useReloj } from './useReloj';
+import { useALaVista, useMenosMovimiento, usePestanaVisible, useReloj } from './useReloj';
 
 /**
  * EL ESCAPARATE: TRES APARATOS QUE SE USAN SOLOS
@@ -165,6 +165,9 @@ function portatil(pasoGlobal: number): Estado {
 
 const ESTADOS: Record<Aparato, (p: number) => Estado> = { portatil, tableta, telefono };
 
+/** El teléfono primero: es lo primero que se ve en un teléfono. */
+const ORDEN_DE_MONTAJE: Aparato[] = ['telefono', 'tableta', 'portatil'];
+
 /** A dónde va el dedo en este medio paso. */
 function blancoDe(aparato: Aparato, paso: number, segundaMitad: boolean) {
     const ahora = ESTADOS[aparato](paso).toca;
@@ -173,6 +176,15 @@ function blancoDe(aparato: Aparato, paso: number, segundaMitad: boolean) {
 }
 
 // ─── El componente ─────────────────────────────────────────────────────────
+
+/**
+ * Lo que se anima en CSS y no con framer-motion: las cifras que cambian. Con
+ * «menos movimiento», `globals.css` deja la animación en nada.
+ */
+const CSS_DEL_ESCAPARATE = `
+@keyframes cifra-entra { from { transform: translateY(60%); opacity: 0 } to { transform: none; opacity: 1 } }
+.cifra-entra { display: inline-block; animation: cifra-entra 350ms cubic-bezier(0.22, 1, 0.36, 1) both }
+`;
 
 function Aparato3D({
     aparato,
@@ -205,23 +217,59 @@ function Aparato3D({
                 rotateY: giro,
                 rotateX: pose.rotX ?? 0,
             }}
-            transition={{ type: 'spring', stiffness: 60, damping: 18, mass: 1.2 }}
+            // Con «menos movimiento», al sitio de golpe (MotionConfig no lo
+            // garantiza para `transform` en esta versión: medido en PORTADA-05).
+            transition={quieto ? { duration: 0 } : { type: 'spring', stiffness: 60, damping: 18, mass: 1.2 }}
         >
             {children}
         </m.div>
     );
 }
 
+/**
+ * La pantalla de un aparato solo cambia con el PASO; el dedo, cada medio paso.
+ * Separados, cada medio paso se repinta el dedo y no las tres pantallas.
+ */
+const PantallaDelPaso = React.memo(function PantallaDelPaso({ aparato, paso }: { aparato: Aparato; paso: number }) {
+    return <>{ESTADOS[aparato](paso).pantalla}</>;
+});
+
 export function Escaparate() {
     const caja = React.useRef<HTMLDivElement>(null);
     const [forma, setForma] = React.useState<Forma>('ancha');
     const [escala, setEscala] = React.useState<number | null>(null);
     const [pausado, setPausado] = React.useState(false);
-    const reducir = useReducedMotion() === true;
+    const reducir = useMenosMovimiento();
+
+    /**
+     * Los aparatos se montan cuando el navegador queda libre, no al hidratar.
+     * Son cientos de nodos: montados junto con el resto de la página, en un
+     * teléfono lento sumaban tareas largas justo cuando la persona empieza a
+     * leer y a tocar (medido: `docs/nube/portada.md`). La caja ya ocupa su
+     * sitio, así que llegar un poco después no mueve nada.
+     */
+    const [montados, setMontados] = React.useState(0);
+    React.useEffect(() => {
+        // De uno en uno (teléfono, tableta, portátil): tres tareas cortas en vez
+        // de una larga que bloquee el primer toque.
+        if (montados >= ORDEN_DE_MONTAJE.length) return;
+        const w = window as Window & {
+            requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number;
+            cancelIdleCallback?: (id: number) => void;
+        };
+        const siguiente = () => setMontados((n) => n + 1);
+        if (w.requestIdleCallback && w.cancelIdleCallback) {
+            const id = w.requestIdleCallback(siguiente, { timeout: 2000 });
+            return () => w.cancelIdleCallback!(id);
+        }
+        const id = window.setTimeout(siguiente, 200);
+        return () => window.clearTimeout(id);
+    }, [montados]);
+    const montado = montados >= ORDEN_DE_MONTAJE.length;
 
     const aLaVista = useALaVista(caja);
     const visible = usePestanaVisible();
-    const enMarcha = aLaVista && visible && !pausado && !reducir && escala !== null;
+    const enMarcha = montado && aLaVista && visible && !pausado && !reducir && escala !== null;
 
     const [medios, setMedios] = useReloj(enMarcha, 0, PASO_MS / 2);
     const paso = reducir ? PASO_QUIETO : Math.floor(medios / 2);
@@ -257,8 +305,9 @@ export function Escaparate() {
 
     return (
         <LazyMotion features={domAnimation} strict>
-            <MotionConfig reducedMotion="user">
+            <MotionConfig reducedMotion={reducir ? 'always' : 'never'}>
                 <div className="mx-auto w-full max-w-6xl">
+                    <style>{CSS_DEL_ESCAPARATE}</style>
                     {/* Lo decorativo: los aparatos. El mensaje va en texto de verdad debajo. */}
                     <div
                         ref={caja}
@@ -272,7 +321,7 @@ export function Escaparate() {
                         <div
                             className={cn(
                                 'absolute left-0 top-0 origin-top-left transition-opacity duration-500',
-                                escala === null ? 'opacity-0' : 'opacity-100'
+                                escala === null || montados === 0 ? 'opacity-0' : 'opacity-100'
                             )}
                             style={{
                                 width: ESCENARIO[forma].ancho,
@@ -286,9 +335,10 @@ export function Escaparate() {
                                 style={{ transformStyle: 'preserve-3d' }}
                                 initial={false}
                                 animate={{ rotateY: reducir ? 0 : giroDelEscenario }}
-                                transition={{ duration: 1.8, ease: [0.22, 1, 0.36, 1] }}
+                                transition={reducir ? { duration: 0 } : { duration: 1.8, ease: [0.22, 1, 0.36, 1] }}
                             >
                                 {(['portatil', 'tableta', 'telefono'] as Aparato[]).map((a) => {
+                                    if (ORDEN_DE_MONTAJE.indexOf(a) >= montados) return null;
                                     const estado = ESTADOS[a](pasoVisto);
                                     const toque = !reducir && estado.toca ? pasoVisto : null;
                                     const Marco = a === 'portatil' ? Portatil : a === 'tableta' ? Tableta : Telefono;
@@ -296,7 +346,7 @@ export function Escaparate() {
                                         <Aparato3D key={a} aparato={a} forma={forma} activo={momentoVisto.escena.activo === a} quieto={reducir}>
                                             <Marco>
                                                 <div className="relative h-full w-full">
-                                                    {estado.pantalla}
+                                                    <PantallaDelPaso aparato={a} paso={pasoVisto} />
                                                     {!reducir && (
                                                         <Dedo
                                                             forma={a === 'portatil' ? 'cursor' : 'dedo'}

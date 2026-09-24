@@ -123,14 +123,14 @@ export interface Alumno {
 }
 
 export const ALUMNOS: Alumno[] = [
-    { nombre: 'Valentina Rojas', cedula: 'V-31.482.117', color: 'bg-orange-500' },
-    { nombre: 'Santiago Pérez', cedula: 'V-31.905.264', color: 'bg-blue-500' },
-    { nombre: 'Camila Hernández', cedula: 'V-32.114.830', color: 'bg-emerald-500' },
-    { nombre: 'Diego Morales', cedula: 'V-31.377.552', color: 'bg-violet-500' },
-    { nombre: 'Isabella Gutiérrez', cedula: 'V-32.046.391', color: 'bg-rose-500' },
-    { nombre: 'Samuel Castillo', cedula: 'V-31.690.028', color: 'bg-cyan-600' },
-    { nombre: 'Paola Contreras', cedula: 'V-31.558.740', color: 'bg-amber-500' },
-    { nombre: 'Miguel Ángel Rivas', cedula: 'V-32.201.965', color: 'bg-indigo-500' },
+    { nombre: 'Valentina Rojas', cedula: 'V-31.482.117', color: 'bg-orange-700' },
+    { nombre: 'Santiago Pérez', cedula: 'V-31.905.264', color: 'bg-blue-600' },
+    { nombre: 'Camila Hernández', cedula: 'V-32.114.830', color: 'bg-emerald-700' },
+    { nombre: 'Diego Morales', cedula: 'V-31.377.552', color: 'bg-violet-600' },
+    { nombre: 'Isabella Gutiérrez', cedula: 'V-32.046.391', color: 'bg-rose-600' },
+    { nombre: 'Samuel Castillo', cedula: 'V-31.690.028', color: 'bg-cyan-700' },
+    { nombre: 'Paola Contreras', cedula: 'V-31.558.740', color: 'bg-amber-700' },
+    { nombre: 'Miguel Ángel Rivas', cedula: 'V-32.201.965', color: 'bg-indigo-600' },
 ];
 
 export const iniciales = (nombre: string) =>
