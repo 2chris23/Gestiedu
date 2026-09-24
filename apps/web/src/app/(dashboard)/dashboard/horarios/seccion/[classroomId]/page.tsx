@@ -40,7 +40,7 @@ export default function ScheduleEditorPage({ params }: { params: Promise<{ class
                         <Edit className="w-6 h-6" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold">
+                        <h1 className="text-seccion font-bold sm:text-pantalla">
                             Editor de Horario{classroom ? `: ${classroom.name}` : ''}
                         </h1>
                         <p className="text-blue-100 text-sm mt-0.5">

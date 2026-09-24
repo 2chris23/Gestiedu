@@ -121,7 +121,7 @@ export default function ClassroomDetailPage() {
                             <ArrowLeft size={20} />
                         </button>
                         <div>
-                            <h1 className="text-2xl font-bold text-gray-900">{classroom.name}</h1>
+                            <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">{classroom.name}</h1>
                             <p className="text-sm text-gray-500 mt-1">
                                 {classroom.academicYear?.name || 'Año académico no asignado'}
                             </p>

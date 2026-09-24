@@ -88,7 +88,8 @@ export default function CalendarioPage() {
     }, [secciones.error]);
 
     return (
-        <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        // Sin margen propio: el marco ya lo pone (con los dos, 32 px de más).
+        <div className="space-y-6">
             <Toaster position="top-right" />
             
             {/* Page Header */}
@@ -98,7 +99,7 @@ export default function CalendarioPage() {
                         <CalendarIcon className="w-5 h-5" />
                         <span className="text-xs font-bold uppercase tracking-widest">Calendario Escolar</span>
                     </div>
-                    <h1 className="text-2xl font-extrabold text-slate-100 tracking-tight mt-1">
+                    <h1 className="text-seccion sm:text-pantalla font-bold text-slate-100 mt-1">
                         Agenda del Plan de Evaluación
                     </h1>
                     <p className="text-sm text-slate-400 mt-1">

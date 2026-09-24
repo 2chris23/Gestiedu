@@ -7,6 +7,8 @@ import { useAcademicYears } from '@/hooks/useAcademicYears';
 import AcademicYearModal from '@/components/academic/AcademicYearModal';
 import AcademicTimeline from '@/components/academic/AcademicTimeline';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export default function AcademicPage() {
@@ -29,19 +31,18 @@ export default function AcademicPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center px-4 md:px-0">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Línea de Tiempo Escolar</h1>
-                    <p className="text-sm text-gray-500">Historial y gestión de ciclos académicos</p>
-                </div>
-                <button
-                    onClick={() => setIsModalOpen(true)}
-                    className="flex items-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
-                >
-                    <Plus className="w-5 h-5 mr-2" />
-                    Nuevo Ciclo
-                </button>
-            </div>
+            {/* Sin `px-4` propio: el contenedor de la pantalla ya lo pone, y con
+                los dos el título empezaba 16 px más adentro que todo lo demás. */}
+            <EncabezadoDePantalla
+                titulo="Línea de Tiempo Escolar"
+                descripcion="Historial y gestión de ciclos académicos"
+                acciones={
+                    <Button onClick={() => setIsModalOpen(true)}>
+                        <Plus aria-hidden />
+                        Nuevo Ciclo
+                    </Button>
+                }
+            />
 
             {/* Timeline View */}
             <AcademicTimeline years={years} loading={loading} onRefresh={loadYears} />

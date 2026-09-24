@@ -342,7 +342,9 @@ export default function UserProfilePage({ params }: PageProps) {
 
 
     return (
-        <div className="min-h-screen bg-gray-50/50 p-6 md:p-8 max-w-6xl mx-auto space-y-8">
+        // Sin margen ni ancho propios: con `p-6 md:p-8` encima del margen del
+        // marco, la ficha empezaba 24 px más adentro que las demás pantallas.
+        <div className="space-y-6">
 
 
             {/* 1. Cabecera (Profile Header) - Keeping it as the main identity card */}

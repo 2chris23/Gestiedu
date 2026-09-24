@@ -91,7 +91,7 @@ export default function ProfileHeader({ user, onEdit, alCambiarFoto, alQuitarFot
             {/* Main Info */}
             <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-3 mb-2">
-                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900 truncate">{user.name}</h1>
+                    <h1 className="text-seccion sm:text-pantalla font-bold text-gray-900 truncate">{user.name}</h1>
                     <RoleBadge role={user.role} />
                 </div>
             </div>

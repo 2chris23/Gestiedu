@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import * as React from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, Search, Wallet } from 'lucide-react';
@@ -37,14 +39,20 @@ export default function PagosPage() {
     }
 
     if (!activo) {
+        // La misma cabecera que las demás pantallas, y el aviso debajo como un
+        // estado vacío que dice qué hacer. Antes el título de la pantalla ERA el
+        // aviso, centrado: al entrar desde el menú no parecía la misma aplicación.
         return (
-            <div className="mx-auto max-w-xl p-8 text-center">
-                <Wallet className="mx-auto h-10 w-10 text-gray-500" />
-                <h1 className="mt-3 text-xl font-bold text-gray-900">El control de pagos está apagado</h1>
-                <p className="mt-2 text-gray-700">Se activa en Configuración → Pagos.</p>
-                <Link href="/dashboard/configuracion" className="mt-4 inline-block rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
-                    Ir a Configuración
-                </Link>
+            <div className="space-y-6">
+                <EncabezadoDePantalla titulo="Pagos" descripcion="Cuotas, abonos y deudas de cada estudiante" />
+                <div className="mx-auto max-w-xl rounded-2xl border border-dashed border-gray-300 bg-white p-8 text-center">
+                    <Wallet className="mx-auto h-10 w-10 text-gray-500" aria-hidden />
+                    <h2 className="mt-3 text-lg font-bold text-gray-900">El control de pagos está apagado</h2>
+                    <p className="mt-2 text-gray-700">Se activa en Configuración → Pagos.</p>
+                    <Button asChild className="mt-4">
+                        <Link href="/dashboard/configuracion">Ir a Configuración</Link>
+                    </Button>
+                </div>
             </div>
         );
     }
@@ -72,18 +80,14 @@ export default function PagosPage() {
     const moneda = data.currency;
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            <header className="border-b border-gray-200 bg-white">
-                <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-                    <div className="flex flex-wrap items-center gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
-                            <Wallet size={22} />
-                        </div>
-                        <div>
-                            <h1 className="text-2xl font-bold text-gray-900">Pagos</h1>
-                            <p className="text-sm text-gray-700">Ciclo escolar {data.academicYear.name}</p>
-                        </div>
-                    </div>
+        // Era una página suelta metida dentro de otra: su propio fondo, su propia
+        // franja blanca y su propio margen encima del margen del marco (el título
+        // empezaba 32 px más adentro que en las demás pantallas) y un segundo
+        // `<main>` dentro del primero, que confunde al lector de pantalla.
+        <div className="space-y-6">
+            <div>
+                <div>
+                    <EncabezadoDePantalla titulo="Pagos" descripcion={`Ciclo escolar ${data.academicYear.name}`} />
 
                     {summary.debtors > 0 ? (
                         <button
@@ -120,9 +124,9 @@ export default function PagosPage() {
                         ))}
                     </dl>
                 </div>
-            </header>
+            </div>
 
-            <main className="mx-auto max-w-7xl space-y-4 px-4 py-6 sm:px-6 lg:px-8">
+            <div className="space-y-4">
                 <div className="flex flex-wrap items-center gap-2">
                     <div className="relative min-w-[14rem] flex-1">
                         <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -184,7 +188,7 @@ export default function PagosPage() {
                         </div>
                     </AcordeonDeAno>
                 ))}
-            </main>
+            </div>
 
             <DialogoDeFicha studentId={abierto} alCerrar={() => setAbierto(null)} />
         </div>

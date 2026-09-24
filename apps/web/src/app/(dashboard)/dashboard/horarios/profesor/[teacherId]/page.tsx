@@ -52,7 +52,7 @@ export default function TeacherScheduleEditorPage({
                         <Edit className="w-6 h-6" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold">
+                        <h1 className="text-seccion font-bold sm:text-pantalla">
                             Horario del Profesor
                             {teacher ? `: ${teacher.firstName} ${teacher.lastName}` : ''}
                         </h1>

@@ -86,7 +86,7 @@ export default function SubjectDashboard() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50/50 pb-12">
+        <div className="space-y-6">
             {/* Header with real subject data */}
             <SubjectHeader
                 subjectName={subject.name}
@@ -97,7 +97,7 @@ export default function SubjectDashboard() {
                 subjectId={subjectId}
             />
 
-            <div className="container mx-auto p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                 {/* KPIs */}
                 <SubjectKPIs {...metrics} />
 
