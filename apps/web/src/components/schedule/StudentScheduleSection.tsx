@@ -296,6 +296,16 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
         return 'upcoming';
     };
 
+    // El carril arranca en la hora que va (o la siguiente), no en la primera
+    // de la mañana: a las diez nadie viene a ver la clase de las siete.
+    const primeraQueQueda = timeline.findIndex((p) => getPeriodStatus(p.startTime, p.endTime) !== 'past');
+    React.useEffect(() => {
+        if (viewMode !== 'day' || primeraQueQueda <= 0) return;
+        const carril = carouselRef.current;
+        const ficha = carril?.children[primeraQueQueda] as HTMLElement | undefined;
+        if (carril && ficha) carril.scrollTo({ left: ficha.offsetLeft - carril.offsetLeft, behavior: 'auto' });
+    }, [viewMode, primeraQueQueda, timeline.length, carouselRef]);
+
     // Mapeo consistente de estilo moderno por materia
     const subjectStyleMap = useMemo(() => {
         const map: Record<string, typeof MODERN_SUBJECT_STYLES[0]> = {};
@@ -529,16 +539,28 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                     <div
                         ref={carouselRef}
                         /*
-                            EN UN TELÉFONO, EN VERTICAL
+                            EL DÍA, EN UN CARRIL DE LADO (TAMBIÉN EN EL TELÉFONO)
 
-                            Las cinco horas del día iban en un carril que se
-                            arrastra de lado: 1168 px en una pantalla de 390. En
-                            un ordenador se ven las cinco de un vistazo y está
-                            bien; de pie, una debajo de otra se baja con el
-                            dedo, que es el gesto que ya se está haciendo para
-                            leer la pantalla.
+                            Estuvo una temporada en vertical —una hora debajo de
+                            otra, 140 px cada una— y el dueño lo quiso de vuelta
+                            de lado, como antes: el día cabe en un vistazo y se
+                            pasa con el dedo. Pero más apretado: en el teléfono
+                            cada ficha mide menos de la mitad del ancho, así que
+                            se ven dos y se asoma la tercera (eso dice «hay
+                            más»), y el carril arranca en la hora que va.
+
+                            `data-carril-a-proposito`: la regla `arrastre` de
+                            `npm run movil` no lo cuenta como fallo; es a
+                            propósito.
+
+                            `relative`: la etiqueta escondida del tema
+                            (`sr-only`, que es `absolute`) se salía del carril
+                            y ensanchaba la PÁGINA entera a 1188 px; el
+                            teléfono la enseñaba alejada y los botones de la
+                            ventana de la clase no se podían pulsar.
                         */
-                        className={`flex w-full flex-col gap-3 pb-2 pt-0.5 select-none min-[700px]:flex-row min-[700px]:snap-x min-[700px]:snap-mandatory min-[700px]:overflow-x-auto min-[700px]:no-scrollbar ${
+                        data-carril-a-proposito=""
+                        className={`relative flex w-full gap-2.5 overflow-x-auto snap-x snap-mandatory no-scrollbar pb-2 pt-0.5 select-none min-[700px]:gap-3 ${
                             arrastrando ? 'cursor-grabbing scroll-auto' : 'cursor-grab scroll-smooth'
                         }`}
                         style={{
@@ -559,7 +581,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                     return (
                                         <div
                                             key={index}
-                                            className={`w-full min-h-[92px] min-[700px]:snap-start min-[700px]:flex-shrink-0 min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[170px] min-[700px]:min-h-[145px] p-3 rounded-2xl border transition-all flex flex-col justify-center items-center text-center ${
+                                            className={`snap-start flex-shrink-0 w-[44%] min-w-[148px] min-h-[104px] p-2.5 min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[170px] min-[700px]:min-h-[145px] min-[700px]:p-3 rounded-2xl border transition-all flex flex-col justify-center items-center text-center ${
                                                 status === 'current'
                                                     ? 'bg-amber-50 border-amber-300 shadow-xs ring-2 ring-amber-200'
                                                     : status === 'past'
@@ -609,7 +631,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                                   }
                                                 : undefined
                                         }
-                                        className={`w-full min-h-[92px] min-[700px]:snap-start min-[700px]:flex-shrink-0 min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[170px] min-[700px]:min-h-[145px] p-3 rounded-2xl border-2 transition-all flex flex-col justify-between ${
+                                        className={`snap-start flex-shrink-0 w-[44%] min-w-[148px] min-h-[104px] p-2.5 min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[170px] min-[700px]:min-h-[145px] min-[700px]:p-3 rounded-2xl border-2 transition-all flex flex-col justify-between ${
                                             isClickable ? 'cursor-pointer hover:ring-2 hover:ring-indigo-400 hover:shadow-xs' : ''
                                         } ${
                                             !classItem?.color
@@ -657,11 +679,14 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                                     )}
 
                                                     {/* Tema Generador / Primera Columna del Plan */}
-                                                    <div className="bg-white/80 p-1.5 rounded-lg border border-gray-100/80 shadow-2xs">
-                                                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tight block truncate">
+                                                    <div className="bg-white/80 px-1.5 py-1 rounded-lg border border-gray-100/80 shadow-2xs min-[700px]:p-1.5">
+                                                        {/* De pie, sin el rótulo: la ficha baja una línea
+                                                            y el día cabe en menos alto. */}
+                                                        <span className="hidden text-[9px] font-bold text-gray-400 uppercase tracking-tight truncate min-[700px]:block">
                                                             {firstColLabel}:
                                                         </span>
                                                         <p className="text-[11px] font-bold text-gray-800 line-clamp-1 leading-tight">
+                                                            <span className="sr-only min-[700px]:hidden">{firstColLabel}: </span>
                                                             {temaGenerador || '—'}
                                                         </p>
                                                     </div>

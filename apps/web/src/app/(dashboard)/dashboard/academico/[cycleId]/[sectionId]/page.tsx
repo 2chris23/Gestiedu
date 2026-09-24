@@ -298,7 +298,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     // Show loading state while classroom data is being fetched
     if (!classroom) {
         return (
-            <div className="min-h-screen bg-[#F3F4F6] p-6 flex items-center justify-center">
+            <div className="flex min-h-[60vh] items-center justify-center">
                 <div className="text-center">
                     <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
                     <p className="mt-4 text-gray-600">Cargando sección...</p>
@@ -308,7 +308,15 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     }
 
     return (
-        <div className="min-h-screen bg-[#F3F4F6] p-6 space-y-6 text-slate-800">
+        /*
+            SIN CAJA GRIS PROPIA
+
+            La página iba metida en una caja de otro gris (#F3F4F6) con 24 px
+            de margen, dentro del fondo del panel, que es otro: en el teléfono
+            se veía un rectángulo de otro color con un marco claro alrededor.
+            Ahora usa el fondo y el margen del panel, como las demás.
+        */
+        <div className="space-y-5 text-slate-800">
             <header className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
                     <Link href={`/dashboard/academico/${cycleId}`} className="hover:text-indigo-600 flex items-center gap-1">
@@ -362,7 +370,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
 
                                         {/* Información del profesor */}
                                         <div>
-                                            <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">Profesor Guía</p>
+                                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Profesor Guía</p>
                                             <h3 className="text-sm font-bold text-gray-900">
                                                 {classroom.teacher.firstName} {classroom.teacher.lastName}
                                             </h3>
@@ -375,7 +383,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                             <GraduationCap className="w-6 h-6 text-gray-400" />
                                         </div>
                                         <div>
-                                            <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">Profesor Guía</p>
+                                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Profesor Guía</p>
                                             <h3 className="text-sm font-semibold text-gray-700">Sin profesor asignado</h3>
                                             <p className="text-xs text-gray-500">Asigna un profesor guía</p>
                                         </div>
@@ -396,7 +404,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                 </div>
 
                 {/* Estadísticas Académicas de la Sección */}
-                <div className="mt-6 pt-6 border-t border-gray-100">
+                <div>
                     <AcademicStats stats={classroomStats} averageTitle="Promedio Sección" />
                 </div>
             </header>
@@ -475,13 +483,17 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                             pulsando la cabecera, y en el teléfono la cabecera
                             estaba fuera de la pantalla.
 
-                            Ahora cada alumno es una tarjeta con TODO lo suyo,
-                            la cédula debajo del nombre, y las fichas de
-                            «Ordenar por» encima. En pantalla ancha sigue
-                            siendo la misma tabla de siempre.
+                            Luego cada alumno fue una tarjeta con todo lo suyo:
+                            330 px de alto, dos alumnos por pantalla. Ahora es
+                            UNA FILA por alumno (`compacta`): nombre y cédula, y
+                            al lado riesgo (solo el número de materias),
+                            promedio y asistencia, con su cabecera para
+                            ordenar. Lo demás está en su ficha, a un toque. En
+                            pantalla ancha sigue siendo la tabla de siempre.
                         */}
-                        <div className="p-4 sm:p-5">
+                        <div className="p-3 sm:p-5">
                             <TablaAdaptable<SectionStudent>
+                                compacta
                                 datos={sortedStudents}
                                 cargando={isLoading}
                                 clave={(a) => a.id}
@@ -500,6 +512,28 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                         tituloCorto: 'Nombre',
                                         principal: true,
                                         ordenable: true,
+                                        celdaCompacta: (a) => {
+                                            const obs = (a as any).observationsCount || 0;
+                                            return (
+                                                <div className="flex min-w-0 items-center gap-2">
+                                                    <UserAvatar
+                                                        name={`${a.firstName} ${a.lastName}`}
+                                                        src={(a as any).avatar}
+                                                        className="h-8 w-8 shrink-0"
+                                                        initialsClassName="text-xs"
+                                                    />
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-sm font-medium leading-5 text-gray-900">
+                                                            {a.firstName} {a.lastName}
+                                                        </p>
+                                                        <p className="truncate text-xs text-gray-500">
+                                                            <span className="font-mono">{a.studentCode || a.id}</span>
+                                                            {obs > 0 && <span className="font-semibold text-amber-700"> · {obs} obs</span>}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        },
                                         celda: (a) => (
                                             <div className="flex items-center gap-3">
                                                 <UserAvatar
@@ -535,6 +569,26 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                         id: 'riesgo',
                                         titulo: 'Riesgo',
                                         ordenable: true,
+                                        // Solo el número de materias por debajo de la
+                                        // nota mínima: «Riesgo alto (2 < 10)» no cabía.
+                                        compacta: {
+                                            ancho: 'w-12',
+                                            celda: (a) => {
+                                                const n = (a as any).failedSubjectsCount || 0;
+                                                return n > 0 ? (
+                                                    <span
+                                                        className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-rose-50 px-1.5 text-xs font-bold text-rose-700 ring-1 ring-rose-200"
+                                                        title={`${n} ${n === 1 ? 'materia' : 'materias'} por debajo de ${passingGrade}`}
+                                                    >
+                                                        {n}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs font-semibold text-emerald-700" title="Ninguna materia en riesgo">
+                                                        0
+                                                    </span>
+                                                );
+                                            },
+                                        },
                                         celda: (a) => {
                                             const failedCount = (a as any).failedSubjectsCount || 0;
                                             if (failedCount > 0) {
@@ -561,6 +615,20 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                         titulo: 'Promedio',
                                         ordenable: true,
                                         alinear: 'derecha',
+                                        compacta: {
+                                            ancho: 'w-12',
+                                            titulo: 'Prom.',
+                                            celda: (a) =>
+                                                a.average ? (
+                                                    <span
+                                                        className={`text-sm font-bold tabular-nums ${a.average < passingGrade ? 'text-red-600' : 'text-indigo-700'}`}
+                                                    >
+                                                        {a.average.toFixed(1)}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs text-gray-500">—</span>
+                                                ),
+                                        },
                                         celda: (a) =>
                                             a.average ? (
                                                 <span className="inline-flex rounded bg-indigo-50 px-2 py-0.5 text-sm font-semibold text-indigo-700">
@@ -577,6 +645,25 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                         titulo: 'Asistencia',
                                         ordenable: true,
                                         alinear: 'derecha',
+                                        compacta: {
+                                            ancho: 'w-14',
+                                            titulo: 'Asist.',
+                                            celda: (a) => {
+                                                const pct = a.attendancePercentage ?? 0;
+                                                const minima = academicConfig?.asistenciaMinima ?? 80;
+                                                return (
+                                                    <span className="flex w-full flex-col items-center gap-1">
+                                                        <span className="text-xs font-semibold tabular-nums text-gray-900">{pct}%</span>
+                                                        <span className="h-1 w-10 rounded-full bg-gray-200">
+                                                            <span
+                                                                className={`block h-1 rounded-full ${pct >= minima ? 'bg-green-500' : pct >= minima - 10 ? 'bg-amber-500' : 'bg-red-500'}`}
+                                                                style={{ width: `${Math.min(pct, 100)}%` }}
+                                                            />
+                                                        </span>
+                                                    </span>
+                                                );
+                                            },
+                                        },
                                         celda: (a) => (
                                             <span className="inline-flex items-center gap-2">
                                                 <span className="text-sm text-gray-900">

@@ -86,6 +86,20 @@ export interface ColumnaAdaptable<T> {
     soloAncha?: boolean;
     /** El nombre corto para la ficha del teléfono, si el título es largo. */
     tituloCorto?: string;
+    /**
+     * En la lista COMPACTA del teléfono (`compacta` en la tabla), esta columna
+     * sale como una columna estrecha de la fila: su ancho (`w-11`…) y, si hace
+     * falta, otro contenido más corto y otro título. Una columna sin esto no
+     * sale en la lista compacta: su dato tiene que estar ya en el titular
+     * (`celdaCompacta`) o en la ficha a la que lleva la fila.
+     */
+    compacta?: {
+        ancho: string;
+        celda?: (fila: T, indice: number) => React.ReactNode;
+        titulo?: string;
+    };
+    /** El titular en la lista compacta: más bajo que el de la tarjeta. */
+    celdaCompacta?: (fila: T, indice: number) => React.ReactNode;
 }
 
 /** Por qué columna está ordenada la lista, y en qué sentido. */
@@ -111,6 +125,17 @@ interface Props<T> {
     /** Se llama al pulsar una columna ordenable. Le toca a quien usa la tabla
      *  decidir si invierte el sentido o empieza de nuevo. */
     alOrdenar?: (por: string) => void;
+    /**
+     * En el teléfono, una FILA por persona en vez de una tarjeta: el titular a
+     * la izquierda y las columnas que llevan `compacta`, estrechas, a la
+     * derecha, con una cabecera arriba que sirve para ordenar. Para listas
+     * largas que se recorren con la vista (los alumnos de una sección): la
+     * tarjeta de cada uno medía 330 px de alto y en la pantalla cabían dos.
+     *
+     * Las acciones (sacar de la sección) no caben en la fila: salen al pulsar
+     * «Editar» en la cabecera.
+     */
+    compacta?: boolean;
     className?: string;
 }
 
@@ -130,8 +155,10 @@ export function TablaAdaptable<T>({
     filasFantasma = 5,
     orden,
     alOrdenar,
+    compacta = false,
     className,
 }: Props<T>) {
+    const [editando, setEditando] = React.useState(false);
     const principal = columnas.find((c) => c.principal) ?? columnas[0];
     const secundarias = columnas.filter((c) => c !== principal && !c.acciones && !c.soloAncha);
     const deAcciones = columnas.filter((c) => c.acciones);
@@ -229,7 +256,22 @@ export function TablaAdaptable<T>({
                 pulsar, así que ordenar se quedaba sin sitio. Se envuelven las
                 fichas (`flex-wrap`) en vez de ponerlas en un carril: una fila
                 que se arrastra de lado es justo lo que no queremos. */}
-            {ordenables.length > 0 && alOrdenar && (
+            {compacta && (
+                <ListaCompacta
+                    datos={datos}
+                    columnas={columnas}
+                    principal={principal}
+                    deAcciones={deAcciones}
+                    clave={clave}
+                    alPulsar={alPulsar}
+                    orden={orden}
+                    alOrdenar={alOrdenar}
+                    editando={editando}
+                    alEditar={() => setEditando((e) => !e)}
+                />
+            )}
+
+            {!compacta && ordenables.length > 0 && alOrdenar && (
                 <div className="mb-3 flex flex-wrap items-center gap-2 @2xl:hidden">
                     <span className="text-etiqueta font-medium uppercase tracking-wide text-tinta-tenue">
                         Ordenar por
@@ -257,7 +299,7 @@ export function TablaAdaptable<T>({
                 </div>
             )}
 
-            <ul className="flex flex-col gap-2.5 @2xl:hidden">
+            <ul className={cn('flex flex-col gap-2.5 @2xl:hidden', compacta && 'hidden')}>
                 {datos.map((fila, i) => (
                     <li key={clave(fila, i)}>
                         <div
@@ -311,6 +353,133 @@ export function TablaAdaptable<T>({
                     </li>
                 ))}
             </ul>
+        </div>
+    );
+}
+
+/**
+ * LA LISTA COMPACTA DEL TELÉFONO
+ *
+ * Una fila por persona: el titular, y las columnas estrechas con su cabecera
+ * arriba (que se pulsa para ordenar). La fila entera se pulsa para abrir.
+ */
+function ListaCompacta<T>({
+    datos,
+    columnas,
+    principal,
+    deAcciones,
+    clave,
+    alPulsar,
+    orden,
+    alOrdenar,
+    editando,
+    alEditar,
+}: {
+    datos: T[];
+    columnas: Array<ColumnaAdaptable<T>>;
+    principal: ColumnaAdaptable<T>;
+    deAcciones: Array<ColumnaAdaptable<T>>;
+    clave: (fila: T, indice: number) => string;
+    alPulsar?: (fila: T) => void;
+    orden?: OrdenDeTabla | null;
+    alOrdenar?: (por: string) => void;
+    editando: boolean;
+    alEditar: () => void;
+}) {
+    const estrechas = columnas.filter((c) => c.compacta && c !== principal && !c.acciones);
+    const sePulsa = Boolean(alPulsar) && !editando;
+
+    const cabecera = (col: ColumnaAdaptable<T>, className?: string) => {
+        const titulo = col.compacta?.titulo ?? col.tituloCorto ?? col.titulo;
+        if (!col.ordenable || !alOrdenar) {
+            return <span className={cn('text-xs font-semibold uppercase tracking-wide text-tinta-tenue', className)}>{titulo}</span>;
+        }
+        return (
+            <button
+                type="button"
+                onClick={() => alOrdenar(col.id)}
+                aria-label={`Ordenar por ${col.titulo}`}
+                className={cn(
+                    'inline-flex min-h-[44px] items-center gap-0.5 text-xs font-semibold uppercase tracking-wide transition-colors',
+                    orden?.por === col.id ? 'text-tinta' : 'text-tinta-tenue',
+                    className
+                )}
+            >
+                {titulo}
+                {orden?.por === col.id && <FlechaDeOrden columna={col.id} orden={orden} />}
+            </button>
+        );
+    };
+
+    return (
+        <div className="overflow-hidden rounded-lg border border-linea bg-tarjeta shadow-1 @2xl:hidden" role="table">
+            <div role="row" className="flex items-center gap-1 border-b border-linea bg-lienzo-hundido/60 px-3">
+                <div role="columnheader" className="flex min-w-0 flex-1 items-center gap-3">
+                    {cabecera(principal)}
+                    {deAcciones.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={alEditar}
+                            aria-pressed={editando}
+                            className="inline-flex min-h-[44px] min-w-[44px] items-center px-1 text-xs font-semibold text-indigo"
+                        >
+                            {editando ? 'Listo' : 'Editar'}
+                        </button>
+                    )}
+                </div>
+                {estrechas.map((col) => (
+                    <div
+                        key={col.id}
+                        role="columnheader"
+                        aria-sort={orden?.por === col.id ? (orden.hacia === 'asc' ? 'ascending' : 'descending') : undefined}
+                        className={cn('flex shrink-0 justify-center', col.compacta!.ancho)}
+                    >
+                        {cabecera(col, 'justify-center')}
+                    </div>
+                ))}
+                {editando && deAcciones.length > 0 && <div className="w-11 shrink-0" aria-hidden />}
+            </div>
+
+            {datos.map((fila, i) => (
+                <div
+                    key={clave(fila, i)}
+                    role="row"
+                    onClick={sePulsa ? () => alPulsar!(fila) : undefined}
+                    className={cn(
+                        'flex min-h-[56px] items-center gap-1 border-b border-linea/70 px-3 py-1.5 last:border-0',
+                        sePulsa && 'cursor-pointer active:bg-indigo-claro/60'
+                    )}
+                >
+                    <div
+                        role="cell"
+                        className="min-w-0 flex-1"
+                        tabIndex={sePulsa ? 0 : undefined}
+                        onKeyDown={
+                            sePulsa
+                                ? (e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                          e.preventDefault();
+                                          alPulsar!(fila);
+                                      }
+                                  }
+                                : undefined
+                        }
+                    >
+                        {(principal.celdaCompacta ?? principal.celda)(fila, i)}
+                    </div>
+                    {estrechas.map((col) => (
+                        <div key={col.id} role="cell" className={cn('flex shrink-0 justify-center text-center', col.compacta!.ancho)}>
+                            {(col.compacta!.celda ?? col.celda)(fila, i)}
+                        </div>
+                    ))}
+                    {editando &&
+                        deAcciones.map((col) => (
+                            <div key={col.id} role="cell" className="flex w-11 shrink-0 justify-center">
+                                {col.celda(fila, i)}
+                            </div>
+                        ))}
+                </div>
+            ))}
         </div>
     );
 }

@@ -93,6 +93,9 @@ export const MEDIR = ({ bandaArriba, bandaAbajo, dedo, letra }) => {
         if (!seArrastra) continue;
         if (el.scrollWidth <= el.clientWidth + 1) continue;
         if (el.clientWidth < 120) continue; // una pastilla de fichas no cuenta
+        // Un carril puesto a propósito: el horario de hoy, que el dueño quiso
+        // de lado, con las fichas asomando para que se vea que hay más.
+        if (el.closest('[data-carril-a-proposito]')) continue;
         if (arrastrados.some((otro) => otro.contains(el))) continue;
         arrastrados.push(el);
     }
