@@ -6,6 +6,46 @@ probó y qué no.
 
 > **Estado: BORRADOR.** Se va completando y subiendo durante la sesión.
 
+## Para revisar (lo primero que hay que leer)
+
+**En qué punto está:** tercera vuelta. Cerrados los seis huecos que la matriz
+dejaba abiertos salvo uno (buscar alumnos, por decidir: §4), y una fuga nueva
+(resúmenes de contraseña) encontrada con la prueba `nada-de-mas-en-el-json`.
+
+**Commits de esta rama** (`git log --oneline origin/nube/base..origin/nube/seguridad`):
+
+| Commit | Qué |
+|---|---|
+| `5894c60` | S-01 · La llave de renovar ya no abre puertas ni cambia de liceo |
+| `2674a0c` | S-03 · La asistencia de una sección solo la toca quien la lleva |
+| `93bedf7` | S-02 · Inscribir alumnos y asignar materias, solo el administrador |
+| `81e5c47` | S-04 · El guía ya no pone notas en materias que no da |
+| `d385ba1` | S-05 · Un profesor ya no lista las notas de todo el liceo |
+| `4cd9ced` | S-06 · Actividades y observaciones: cada quien lo de sus secciones |
+| `11f0ec4` | S-07 · Promedios de una sección, solo su guía y el administrador |
+| `c7abee5` | S-08 · Los avisos de cada persona son suyos |
+| `60c6a86` | S-09 · Los alumnos de una materia salían con el resumen de su contraseña |
+| `34b4e7d` | S-10 · Un profesor cambiaba o borraba horas del horario de otra sección |
+| `afc4e16` | S-11 · Clase en vivo: abrir, leer, cambiar y pasar lista, solo quien la da |
+| (siguiente) | S-12 · La cabecera del plan (cédula y teléfono del profesor) a cualquiera |
+
+**Cómo probarlo:**
+
+```bash
+cd apps/backend
+npx jest tests/integration/quien-puede-que.test.ts        # la matriz ruta × rol (10 llamantes)
+npx jest tests/integration/nada-de-mas-en-el-json.test.ts # todas las GET × 4 roles: sin contraseñas ni llaves
+ESCRIBIR_MATRIZ=1 npx jest tests/integration/quien-puede-que.test.ts   # regenera docs/nube/matriz-de-permisos.md
+```
+
+**Qué falta** (en este orden): IDOR de pagos y comprobantes; separación entre
+liceos por subdominio/dominio y salas de socket.io; JWT `alg none` / firma
+cambiada / caducado (ya hay pruebas en `auditoria-intrusion`, repasar);
+recuperar contraseña y enumeración de correos; QR (firmar por otro, reusar,
+otra sección); pagos apagados → 403 en todas; inyección en `$queryRaw`;
+cabeceras de seguridad medidas; la web (RSC, `__NEXT_DATA__`, `app/api/**`);
+investigación (OWASP, LOPNNA) en §5.
+
 ## 1. Línea base (antes de tocar nada)
 
 Entorno montado desde cero en la nube: PostgreSQL 16, Redis 7, `npm ci`,
