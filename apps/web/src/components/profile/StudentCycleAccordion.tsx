@@ -554,14 +554,14 @@ export default function StudentCycleAccordion({
                             <button aria-label="Cerrar"
                                 type="button"
                                 onClick={() => setObsModalState(prev => ({ ...prev, isOpen: false }))}
-                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                             >
                                 <X size={18} />
                             </button>
                         </div>
 
                         {/* Cuerpo de la Modal: Lista de Observaciones */}
-                        <div className="p-6 overflow-y-auto flex-1 divide-y divide-gray-100 space-y-3">
+                        <div className="flex-1 space-y-3 overflow-y-auto p-4 sm:p-6">
                             {obsModalState.observations.length === 0 ? (
                                 <div className="py-12 text-center text-gray-400">
                                     <MessageSquare size={40} className="mx-auto mb-2 text-gray-300" />
@@ -584,7 +584,7 @@ export default function StudentCycleAccordion({
                                         <div
                                             key={obs.id}
                                             onClick={() => handleNavigateToClass(obs)}
-                                            className="pt-3 first:pt-0 group p-4 rounded-xl border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/40 hover:shadow-sm transition-all cursor-pointer"
+                                            className="group p-4 rounded-xl border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/40 hover:shadow-sm transition-all cursor-pointer"
                                             role="button"
                                             tabIndex={0}
                                         >

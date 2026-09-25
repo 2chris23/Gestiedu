@@ -597,3 +597,30 @@
 @media (prefers-reduced-motion: reduce) {
   .barra-crece { animation: none; }
 }
+
+/* ── LAS VENTANAS FLOTANTES, DE BORDE A BORDE ────────────────────────────────
+   Una capa `fixed inset-0` dentro de un `space-y-*` recibe su margen de arriba
+   y baja 24 px: por arriba quedaba una franja sin oscurecer, «como rota»
+   (clase en vivo, perfil del alumno). Una capa que tapa la pantalla no lleva
+   márgenes nunca. */
+.fixed.inset-0 {
+  margin: 0 !important;
+}
+
+/* ── NADA SE SELECCIONA NI SE COPIA MANTENIENDO PULSADO ───────────────────────
+   Lo pidió el dueño: en toda la app, mantener el dedo sobre una nota, un
+   nombre o una cifra abría «Copiar / Traducir / Seleccionar todo». Donde se
+   ESCRIBE sí se puede seleccionar (si no, no se podría corregir lo tecleado). */
+html {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input,
+textarea,
+select,
+[contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
