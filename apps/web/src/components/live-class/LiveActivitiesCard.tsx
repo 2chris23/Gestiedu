@@ -370,7 +370,7 @@ export default function LiveActivitiesCard({
                     </div>
                 </div>
 
-                {/* 🚀 TARJETA 2: PRÓXIMA CLASE */}
+                {/* TARJETA 2: PRÓXIMA CLASE */}
                 <div className="bg-indigo-50/30 rounded-xl border border-indigo-100 p-3.5 flex flex-col justify-between">
                     <div>
                         <div className="flex items-center justify-between pb-2 mb-2 border-b border-indigo-100/80">
@@ -524,7 +524,7 @@ export default function LiveActivitiesCard({
                                                 : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
                                         }`}
                                     >
-                                        🚀 Próxima Clase
+                                        Próxima Clase
                                     </button>
                                 </div>
                             </div>

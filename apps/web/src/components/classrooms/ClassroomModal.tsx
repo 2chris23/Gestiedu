@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, Transition } from '@headlessui/react';
-import { X, BookOpen } from 'lucide-react';
+import { X, BookOpen, AlertTriangle } from 'lucide-react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -282,7 +282,11 @@ export default function ClassroomModal({
                                                     )}
                                                 />
                                                 {errors.section && <p className="text-red-500 text-xs mt-1 ml-1 font-medium">{errors.section.message}</p>}
-                                                {duplicateWarning && <p className="text-red-600 text-xs mt-1 ml-1 font-bold">⚠️ Esta sección ya existe</p>}
+                                                {duplicateWarning && (
+                                                    <p className="text-red-600 text-xs mt-1 ml-1 font-bold flex items-center gap-1">
+                                                        <AlertTriangle size={12} /> Esta sección ya existe
+                                                    </p>
+                                                )}
                                             </div>
 
                                             <div>

@@ -13,7 +13,7 @@ import AcademicOverview from '@/components/profile/AcademicOverview';
 import StudentCycleAccordion from '@/components/profile/StudentCycleAccordion';
 import { ScheduleBlock } from '@/components/schedule/UniversalScheduleViewer';
 import { notFound } from 'next/navigation';
-import { User, Calendar, FileText, AlertCircle, Edit, GraduationCap, ChevronLeft } from 'lucide-react';
+import { User, Calendar, FileText, AlertCircle, Edit, GraduationCap, ChevronLeft, Clock } from 'lucide-react';
 import GuideHistoryModal from '@/components/modals/GuideHistoryModal';
 import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { useTeacherScheduleBlocks, transformTeacherScheduleData, useClassroomSchedule, transformScheduleData } from '@/hooks/useSchedules';
@@ -667,8 +667,8 @@ export default function UserProfilePage({ params }: PageProps) {
                                                                     {c.subject}
                                                                 </p>
                                                                 <div className="flex items-center gap-1.5 text-[11px] text-gray-500 font-medium">
-                                                                    <span className="bg-white px-1.5 py-0.5 rounded border border-gray-200 text-indigo-700 font-semibold">
-                                                                        ⏱️ {(c.hoursPerWeek || 3).toFixed(1)}h/sem
+                                                                    <span className="bg-white px-1.5 py-0.5 rounded border border-gray-200 text-indigo-700 font-semibold inline-flex items-center gap-1">
+                                                                        <Clock size={11} /> {(c.hoursPerWeek || 3).toFixed(1)}h/sem
                                                                     </span>
                                                                     <span>({c.weeklyBlocks || 4} bloques)</span>
                                                                 </div>

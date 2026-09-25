@@ -4,7 +4,8 @@ import { useState, useMemo } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
     Calendar, Clock, Users, BookOpen, Edit,
-    ChevronRight, ChevronDown, Search, Building2, UserCheck, AlertTriangle
+    ChevronRight, ChevronDown, Search, Building2, UserCheck, AlertTriangle,
+    CheckCircle2, RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAcademicYears } from '@/hooks/useAcademicYears';
@@ -306,7 +307,13 @@ export default function HorariosPage() {
                                                             ? "bg-amber-50 text-amber-700 border-amber-200"
                                                             : "bg-rose-50 text-rose-700 border-rose-200"
                                                 )}>
-                                                    {percent === 100 ? '✅' : percent > 0 ? '🔄' : '⚠️'}
+                                                    {percent === 100 ? (
+                                                        <CheckCircle2 size={13} className="shrink-0" />
+                                                    ) : percent > 0 ? (
+                                                        <RefreshCw size={13} className="shrink-0" />
+                                                    ) : (
+                                                        <AlertTriangle size={13} className="shrink-0" />
+                                                    )}
                                                     {percent}% completado
                                                 </span>
                                             </div>
@@ -364,8 +371,13 @@ export default function HorariosPage() {
                                                                         section.completionPercent === 100 ? 'text-emerald-600' :
                                                                         section.completionPercent > 50 ? 'text-amber-600' : 'text-rose-500'
                                                                     )}>
-                                                                        {section.completionPercent === 100 ? '✅' :
-                                                                         section.completionPercent > 0 ? '🔄' : '⚠️'}
+                                                                        {section.completionPercent === 100 ? (
+                                                                            <CheckCircle2 size={13} className="shrink-0" />
+                                                                        ) : section.completionPercent > 0 ? (
+                                                                            <RefreshCw size={13} className="shrink-0" />
+                                                                        ) : (
+                                                                            <AlertTriangle size={13} className="shrink-0" />
+                                                                        )}
                                                                         {section.completionPercent}% completado
                                                                     </span>
                                                                 </div>
