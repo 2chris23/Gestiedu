@@ -14,6 +14,7 @@ import { getStudentAttendance } from '../controllers/attendance.controller';
 import { getStudentDashboard } from '../controllers/dashboard.controller';
 import { actividadesDelAlumno } from '../controllers/actividades-del-alumno.controller';
 import { obtenerBoleta } from '../controllers/boleta.controller';
+import { obtenerConstancia } from '../controllers/constancias.controller';
 import { authenticate, requireAdmin, requireTeacher, requireStudent, requireSelfOrAdmin } from '../middleware/auth.middleware';
 import { validateParams, validateCUID } from '../middleware/validation.middleware';
 import { FastifyRequest, FastifyReply } from 'fastify';
@@ -271,6 +272,15 @@ const studentsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/:id/boleta', {
     preHandler: [authenticate]
   }, obtenerBoleta as any);
+
+  /**
+   * Constancia de estudio o de buena conducta. Sin guardián de rol a
+   * propósito: la de estudio la sacan el admin, el alumno y su representante;
+   * la de conducta, solo el admin. Lo decide `puedeSacarLaConstancia`.
+   */
+  fastify.get('/:id/constancia', {
+    preHandler: [authenticate]
+  }, obtenerConstancia as any);
 };
 
 export default studentsRoutes;

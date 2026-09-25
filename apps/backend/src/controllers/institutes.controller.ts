@@ -8,6 +8,7 @@ import { conLiceo } from '../config/ambito-del-liceo';
 import { platformPrisma } from '../config/database';
 import { revisarImagen } from '../utils/archivos-que-se-aceptan';
 import { guardarArchivoDelLiceo } from '../services/archivos-del-liceo.service';
+import { limpiarDatosDeDocumentos } from '../services/constancias.service';
 
 const institutesService = new InstitutesService();
 
@@ -106,6 +107,11 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
         }
         if (esRedondeoValido(configObj.redondeoDeDefinitivas)) {
           nextAcademicConfig.redondeoDeDefinitivas = configObj.redondeoDeDefinitivas;
+        }
+        // Quién firma las constancias y el código del plantel. Solo los
+        // campos conocidos, como texto (`limpiarDatosDeDocumentos`).
+        if (configObj.documentos !== undefined) {
+          nextAcademicConfig.documentos = limpiarDatosDeDocumentos(configObj.documentos);
         }
         if (configObj.schedule) nextAcademicConfig.schedule = configObj.schedule;
         if (configObj.language) nextAcademicConfig.language = configObj.language;
