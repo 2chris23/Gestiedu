@@ -164,6 +164,9 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
         d.aviso = await prisma.notification.create({
             data: { title: 'Aviso para alumnaA', message: 'mensaje privado', type: 'INFO', priority: 'LOW', recipientId: u.alumnaA.id, instituteId: 'institute' } as any,
         });
+        d.sesion = await prisma.classSession.create({
+            data: { publicId: createId(), classroomId: d.A.id, subjectId: d.mate.id, date: new Date('2026-09-14T00:00:00.000Z'), topic: 'Tema de A' } as any,
+        });
         d.horario = await prisma.schedule.create({
             data: { dayOfWeek: 'MONDAY', startTime: '07:00', endTime: '07:45', classroomId: d.A.id, subjectId: d.mate.id, teacherId: u.profeA.id, instituteId: 'institute' } as any,
         });
@@ -249,6 +252,8 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
         { que: 'GET clase en vivo de A', metodo: 'get', url: () => `/api/sessions/live-overview?classroomId=${A()}&date=${HOY}`, si: ['admin', 'profeA'], no: [...AJENOS, ...LADO_B] },
         { que: 'GET plan de evaluación de A', metodo: 'get', url: () => `/api/evaluation-plan/rows?classroomId=${A()}&subjectId=${d.mate.id}&lapso=1`, si: ['admin', 'profeA'], no: [...AJENOS, ...LADO_B] },
         { que: 'GET cabecera del plan de A', metodo: 'get', url: () => `/api/evaluation-plan/metadata?classroomId=${A()}&subjectId=${d.mate.id}&lapso=1`, si: ['admin', 'profeA'], no: [...AJENOS, ...LADO_B] },
+        { que: 'GET una clase de A', metodo: 'get', url: () => `/api/sessions/${d.sesion.id}`, si: ['admin', 'profeA'], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
+        { que: 'GET actividades de la clase de A', metodo: 'get', url: () => `/api/sessions/activities?classroomId=${A()}&subjectId=${d.mate.id}`, si: ['admin', 'profeA'], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
         { que: 'GET buscar alumnos', metodo: 'get', url: () => `/api/sessions/search-students?q=Test&classroomId=${A()}`, si: ['admin'], no: [...AJENOS, ...NO_PERSONAL], noDebeContener: () => [alumnaA()], sinFugaPara: ['profeB'] },
         { que: 'GET panel del representante', metodo: 'get', url: () => `/api/dashboard/tutor`, si: ['repA', 'repB'], no: [...AJENOS], noDebeContener: () => [alumnaA()], sinFugaPara: ['repB'] },
         { que: 'GET usuarios (lista)', metodo: 'get', url: () => `/api/users`, si: ['admin'], no: [...AJENOS, 'profeA', 'profeB', 'guiaA', ...NO_PERSONAL] },
@@ -275,6 +280,8 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
         { que: 'POST aviso a alumnaA', metodo: 'post', url: () => `/api/notifications`, cuerpo: () => ({ title: 'Aviso', message: 'Entra a este enlace', type: 'INFO', priority: 'LOW', recipientId: alumnaA() }), si: ['profeA', 'admin'], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
         { que: 'POST aviso a otro profesor', metodo: 'post', url: () => `/api/notifications`, cuerpo: () => ({ title: 'Aviso', message: 'Mensaje para un colega', type: 'INFO', priority: 'LOW', recipientId: u.profeB.id }), si: ['admin'], no: [...AJENOS, 'profeA', 'guiaA', ...NO_PERSONAL] },
         { que: 'POST abrir clase en A', metodo: 'post', url: () => `/api/sessions`, cuerpo: () => ({ classroomId: A(), subjectId: d.mate.id, date: HOY }), si: [], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
+        { que: 'PUT una clase de A', metodo: 'put', url: () => `/api/sessions/${d.sesion.id}`, cuerpo: () => ({ topic: 'Tema cambiado' }), si: ['profeA'], no: [...AJENOS, ...LADO_B, 'guiaA', 'alumnaA', 'repA'] },
+        { que: 'POST clase en vivo con alumnoB en A', metodo: 'post', url: () => `/api/sessions/live-save`, cuerpo: () => ({ classroomId: A(), subjectId: d.mate.id, date: HOY, attendances: [{ studentId: u.alumnoB.id, status: 'ABSENT' }] }), si: [], no: [...AJENOS, 'profeA', 'guiaA', 'profeB', ...NO_PERSONAL] },
         { que: 'POST asistencia a alumnoB en la sección A', metodo: 'post', url: () => `/api/attendance`, cuerpo: () => ({ studentId: u.alumnoB.id, classroomId: A(), date: HOY, status: 'PRESENT' }), si: [], no: [...AJENOS, 'profeA', 'guiaA', 'profeB', ...NO_PERSONAL] },
         { que: 'POST asistencia en bloque con alumnoB en A', metodo: 'post', url: () => `/api/attendance/bulk`, cuerpo: () => ({ classroomId: A(), subjectId: d.mate.id, date: HOY, attendances: [{ studentId: u.alumnoB.id, status: 'ABSENT' }] }), si: [], no: [...AJENOS, 'profeA', 'guiaA', 'profeB', ...NO_PERSONAL] },
         { que: 'DELETE registro de asistencia', metodo: 'delete', url: () => `/api/attendance/${d.asistenciaVieja.id}`, si: [], no: [...AJENOS, ...LADO_B, 'alumnaA', 'repA'] },
@@ -291,7 +298,6 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
     const HUECOS_ABIERTOS = new Set<string>([
         'GET cabecera del plan de A',
         'GET buscar alumnos',
-        'POST abrir clase en A',
     ]);
 
     for (const caso of CASOS) {
