@@ -1,8 +1,9 @@
 'use client';
 
 import { use } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Printer } from 'lucide-react';
+import { ChevronLeft, FileText, Printer } from 'lucide-react';
 import { useBoleta } from '@/hooks/useBoleta';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
 
@@ -64,12 +65,23 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                 <button onClick={() => router.back()} className="inline-flex min-h-[44px] items-center gap-1 text-sm text-gray-700 hover:text-gray-900">
                     <ChevronLeft className="h-4 w-4" /> Volver
                 </button>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                {/* La constancia de estudio: el alumno la saca él mismo (la del guía no: la emite el liceo). */}
+                {yo?.role === 'STUDENT' && (
+                    <Link
+                        href="/dashboard/constancia/mia"
+                        className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                    >
+                        <FileText className="h-4 w-4" /> Constancia de estudio
+                    </Link>
+                )}
                 <button
                     onClick={() => window.print()}
                     className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700"
                 >
                     <Printer className="h-4 w-4" /> Imprimir
                 </button>
+                </div>
             </div>
 
             <article className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-8 print:border-0 print:shadow-none" aria-label="Boleta de calificaciones">
