@@ -12,6 +12,15 @@ import { createTestServer, createTestPrismaClient, createTestUser, generateTestT
  * Se guardaba en `uploads/` del proceso que lo recibía. Con dos procesos
  * detrás del repartidor, el otro no lo tenía; y el respaldo nocturno, que
  * guarda bases, no lo guardaba. Ver `services/archivos-del-liceo.service.ts`.
+ *
+ * LOGO-03 cuenta las filas que guardan ESTOS BYTES, no todos los `logo-` del
+ * liceo. La base de plataforma es una para toda la tanda y el liceo de pruebas
+ * (`institute`) es el mismo en todos los archivos: FALT-13
+ * (`las-doce-que-faltaban.test.ts`) sube otro PNG y su fila se queda hasta el
+ * `globalTeardown`. Si ese archivo corría antes, había dos `logo-` y LOGO-03
+ * caía en la tanda completa y pasaba sola. Contar por contenido prueba lo mismo
+ * —el mismo archivo dos veces, una sola fila, se llame como se llame— sin
+ * depender del orden de los archivos.
  */
 
 const SLUG = 'test-institute';
@@ -81,8 +90,14 @@ describe('El logo del liceo, en la base', () => {
 
     it('LOGO-03: subir el mismo archivo otra vez no lo duplica', async () => {
         const res = await subir(logo);
+        expect(res.status).toBe(200);
         expect(res.body.data?.logo).toBe(direccion);
-        expect(await platformPrisma.archivoDeLiceo.count({ where: { instituteId: LICEO, nombre: { startsWith: 'logo-' } } })).toBe(1);
+        // Por contenido, no por prefijo: otros archivos dejan sus logos en este
+        // mismo liceo (ver la cabecera).
+        const conEstosBytes = await platformPrisma.archivoDeLiceo.count({
+            where: { instituteId: LICEO, datos: { equals: new Uint8Array(logo) } },
+        });
+        expect(conEstosBytes).toBe(1);
     });
 
     it('LOGO-04: una dirección que no tiene la forma de un archivo no abre nada', async () => {
