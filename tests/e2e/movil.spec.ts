@@ -40,7 +40,7 @@ const PANTALLAS: Array<[string, string]> = [
     ['Inicio', '/dashboard'],
     ['Usuarios', '/dashboard/usuarios'],
     ['Horarios', '/dashboard/horarios'],
-    ['Calendario', '/dashboard/calendario'],
+    ['Materias', '/dashboard/materias'],
 ];
 
 type Falta = { regla: string; detalle: string };

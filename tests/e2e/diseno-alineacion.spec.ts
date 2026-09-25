@@ -102,7 +102,6 @@ async function lasPantallas() {
         ['Horarios', '/dashboard/horarios'],
         ['Usuarios', '/dashboard/usuarios'],
         ['Ficha de alumno', `/dashboard/usuarios/${alumno.id}`],
-        ['Calendario', '/dashboard/calendario'],
         ['Eventos', '/dashboard/eventos'],
         ['Pagos', '/dashboard/pagos'],
         ['Configuración', '/dashboard/configuracion'],

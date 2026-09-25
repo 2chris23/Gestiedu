@@ -25,6 +25,7 @@ import {
     Users,
     X,
     type LucideIcon,
+    UserCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -196,7 +197,7 @@ function BarraDeAbajo({ activo }: { activo: Destino }) {
                     <span className="-mt-2.5 text-xs font-semibold text-gray-800">Inicio</span>
                 </span>
                 <BotonDeLaBarra id="horarios" nombre="Horarios" Icono={Calendar} activo={activo} />
-                <BotonDeLaBarra id="calendario" nombre="Calendario" Icono={CalendarDays} activo={activo} />
+                <BotonDeLaBarra id="calendario" nombre="Mi cuenta" Icono={UserCircle} activo={activo} />
             </div>
             <div className="mx-auto mt-1 h-1 w-28 rounded-full bg-gray-900/80" />
         </div>
@@ -731,7 +732,6 @@ function Lateral({ activo }: { activo: Seccion }) {
         ['academico', 'Académico', BookOpen],
         ['materias', 'Materias', Library],
         ['horarios', 'Horarios', Calendar],
-        ['calendario', 'Calendario', CalendarDays],
     ];
     return (
         <div className="flex h-full w-[196px] shrink-0 flex-col border-r border-gray-200 bg-white">

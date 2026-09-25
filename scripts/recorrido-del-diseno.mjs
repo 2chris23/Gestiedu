@@ -129,7 +129,6 @@ async function losRecorridos() {
                 ['Horario de profesor', `/dashboard/horarios/profesor/${profe?.id}`],
                 ['Usuarios', '/dashboard/usuarios'],
                 ['Ficha de alumno', `/dashboard/usuarios/${alumno?.id}`],
-                ['Calendario', '/dashboard/calendario'],
                 ['Eventos', '/dashboard/eventos'],
                 ['Pagos', '/dashboard/pagos'],
                 ['Configuración', '/dashboard/configuracion'],
@@ -146,7 +145,6 @@ async function losRecorridos() {
                 ['Clase en vivo', `/dashboard/clase-en-vivo/${suyo?.classroomId}/${suyo?.subjectId}`],
                 ['Materias', '/dashboard/materias'],
                 ['Horarios', '/dashboard/horarios'],
-                ['Calendario', '/dashboard/calendario'],
             ]),
         },
         {
@@ -154,7 +152,6 @@ async function losRecorridos() {
             email: 'est0575@testing.edu.ve',
             pantallas: [
                 ['Inicio', '/dashboard'],
-                ['Calendario', '/dashboard/calendario'],
             ],
         },
         {
@@ -162,7 +159,6 @@ async function losRecorridos() {
             email: 'tutor.prueba@testing.edu.ve',
             pantallas: [
                 ['Inicio', '/dashboard'],
-                ['Calendario', '/dashboard/calendario'],
             ],
         },
     ].filter((r) => !SOLO_ROL || r.rol === SOLO_ROL);

@@ -86,17 +86,6 @@ const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[] }> = [
     { prefijo: '/dashboard/clases', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/aulas', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/horario', roles: ['ADMIN', 'TEACHER'] },
-    /**
-     * `/dashboard/calendario` NO va aquí, a propósito.
-     *
-     * Se puso al escribir lo de arriba, dando por hecho que era una pantalla de
-     * gestión. No lo es: **el alumno y el representante también la usan** para
-     * ver sus clases. Ponerla en esta lista los dejaba fuera de su propio
-     * calendario.
-     *
-     * Lo cazó PANT-estudiante, que ya decía —desde antes— qué pantallas son
-     * suyas. Queda escrito para que no se vuelva a "arreglar".
-     */
 ];
 
 function rolDeLaSesion(request: NextRequest): Rol | null {

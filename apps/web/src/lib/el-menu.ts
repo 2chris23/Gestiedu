@@ -6,7 +6,6 @@ import {
     Settings,
     Calendar,
     CalendarDays,
-    CalendarRange,
     Wallet,
     FileText,
     type LucideIcon,
@@ -89,16 +88,6 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean): DestinoDel
             roles: ['ADMIN'],
             pista: 'Alumnos, profesores y representantes',
         },
-        // El calendario del liceo lo usan TODOS —el alumno y el representante
-        // también—, pero no estaba en el menú de nadie: solo se llegaba
-        // escribiendo la dirección a mano.
-        {
-            name: 'Calendario',
-            href: '/dashboard/calendario',
-            icon: CalendarRange,
-            roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'],
-            pista: 'Qué pasa este mes',
-        },
         // La boleta del alumno: notas por lapso, definitiva e inasistencias.
         // El representante la abre desde cada representado, en el inicio.
         {
@@ -130,10 +119,12 @@ export const MI_CUENTA = '@mi-cuenta';
  * casita del centro.
  *
  *  · El personal lleva cuatro, dos a cada lado de Inicio.
- *  · El alumno y el representante no tienen más pantallas que el inicio y el
- *    calendario: al otro lado va «Mi cuenta» (cambiar la contraseña, la
- *    huella, cerrar sesión), que si no solo se encuentra tocando la foto.
- *  · El administrador ve Pagos solo si el liceo los usa; si no, Calendario.
+ *  · «Mi cuenta» (cambiar la contraseña, la huella, cerrar sesión) va en la
+ *    barra del profesor, del alumno y del representante: si no, solo se
+ *    encuentra tocando la foto.
+ *  · El administrador ve Pagos solo si el liceo los usa; si no, Eventos.
+ *  · El calendario (la agenda del plan de evaluación) se quitó: el dueño no
+ *    lo quiere. El horario en vivo ya dice qué toca cada día.
  */
 export function losDeLaBarra(rol: string | undefined, conPagos: boolean): string[] {
     switch (rol) {
@@ -142,13 +133,14 @@ export function losDeLaBarra(rol: string | undefined, conPagos: boolean): string
                 '/dashboard/academico',
                 '/dashboard/usuarios',
                 '/dashboard/horarios',
-                conPagos ? '/dashboard/pagos' : '/dashboard/calendario',
+                conPagos ? '/dashboard/pagos' : '/dashboard/eventos',
             ];
         case 'TEACHER':
-            return ['/dashboard/academico', '/dashboard/materias', '/dashboard/horarios', '/dashboard/calendario'];
+            return ['/dashboard/academico', '/dashboard/materias', '/dashboard/horarios', MI_CUENTA];
         case 'STUDENT':
+            return ['/dashboard/boleta/mia', MI_CUENTA];
         case 'TUTOR':
-            return ['/dashboard/calendario', MI_CUENTA];
+            return [MI_CUENTA];
         default:
             return [];
     }
