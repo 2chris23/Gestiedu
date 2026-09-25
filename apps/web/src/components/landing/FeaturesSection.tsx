@@ -9,6 +9,8 @@ import {
     WifiOff,
     Calculator,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { PlegableEnTelefono } from './PlegableEnTelefono';
 
 /**
  * LO QUE LE QUITA TRABAJO AL LICEO
@@ -37,11 +39,6 @@ const FUNCIONES: Funcion[] = [
         texto: 'A mano, con un toque por alumno; con un QR que los alumnos escanean desde su app y cambia cada 10 segundos; o el profesor escanea el del alumno. Un mismo teléfono no puede marcar a dos alumnos en la misma clase.',
     },
     {
-        icono: CalendarClock,
-        titulo: 'Horarios sin choques',
-        texto: 'Turno de mañana, de tarde o integral, cada sección con su horario. El sistema no deja poner a un profesor en dos salones a la misma hora. Si se suspende una clase, la dirección puede poner otra materia en ese hueco si su profesor está libre.',
-    },
-    {
         icono: Landmark,
         titulo: 'Mensualidades en orden',
         texto: 'Si tu liceo cobra: cuotas mensuales, quincenales o por lapso, e inscripción. En dólares o en bolívares con la tasa que anota la administración. Se ve quién está al día y quién debe, y un pago no se borra: se anula con su motivo. Si no cobras, el módulo queda apagado.',
@@ -50,6 +47,11 @@ const FUNCIONES: Funcion[] = [
         icono: Users,
         titulo: 'Representantes al tanto',
         texto: 'Cada representante entra con su propia cuenta y ve el promedio, la asistencia y el horario de sus representados, con un aviso si bajan de la nota o de la asistencia mínima del liceo. De ningún otro alumno.',
+    },
+    {
+        icono: CalendarClock,
+        titulo: 'Horarios sin choques',
+        texto: 'Turno de mañana, de tarde o integral, cada sección con su horario. El sistema no deja poner a un profesor en dos salones a la misma hora. Si se suspende una clase, la dirección puede poner otra materia en ese hueco si su profesor está libre.',
     },
     {
         icono: WifiOff,
@@ -68,6 +70,12 @@ const FUNCIONES: Funcion[] = [
     },
 ];
 
+/**
+ * Las que se ven en un teléfono sin pulsar «Ver más»: lo que más pesa a un
+ * director (notas, asistencia, cobros, representantes; ver el informe).
+ */
+const EN_TELEFONO = 4;
+
 export function FeaturesSection() {
     return (
         <section id="funciones" aria-labelledby="funciones-titulo" className="scroll-mt-20 bg-white px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
@@ -83,9 +91,19 @@ export function FeaturesSection() {
                     </p>
                 </div>
 
-                <ul className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-                    {FUNCIONES.map(({ icono: Icono, titulo, texto }) => (
-                        <li key={titulo} className="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <PlegableEnTelefono
+                    id="funciones-lista"
+                    escondidos={FUNCIONES.length - EN_TELEFONO}
+                    className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4"
+                >
+                    {FUNCIONES.map(({ icono: Icono, titulo, texto }, i) => (
+                        <li
+                            key={titulo}
+                            className={cn(
+                                'flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-sm',
+                                i < EN_TELEFONO ? 'flex' : 'hidden group-data-[abierto=true]:flex sm:flex'
+                            )}
+                        >
                             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100">
                                 <Icono className="h-5 w-5" aria-hidden />
                             </span>
@@ -93,7 +111,7 @@ export function FeaturesSection() {
                             <p className="mt-2 text-sm leading-6 text-slate-600">{texto}</p>
                         </li>
                     ))}
-                </ul>
+                </PlegableEnTelefono>
             </div>
         </section>
     );
