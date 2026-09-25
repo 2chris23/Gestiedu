@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useStudentObservations, useDeleteObservation, StudentObservationItem } from '@/hooks/useObservations';
 import { useAuthStore } from '@/store/auth.store';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 interface Props {
   isOpen: boolean;
@@ -52,18 +53,17 @@ export default function StudentObservationsModal({ isOpen, onClose, student }: P
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150" role="dialog" aria-modal="true" aria-label={`Observaciones de ${student.firstName} ${student.lastName}`}>
       <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/80">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-sm">
-              {student.avatar ? (
-                <img src={student.avatar} alt="" className="w-full h-full rounded-full object-cover" />
-              ) : (
-                `${student.firstName?.[0] || ''}${student.lastName?.[0] || ''}`
-              )}
-            </div>
+            <UserAvatar
+              name={`${student.firstName ?? ''} ${student.lastName ?? ''}`.trim()}
+              src={student.avatar}
+              className="h-10 w-10"
+              initialsClassName="text-sm"
+            />
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-gray-900">
@@ -79,7 +79,7 @@ export default function StudentObservationsModal({ isOpen, onClose, student }: P
             </div>
           </div>
 
-          <button
+          <button aria-label="Cerrar"
             type="button"
             onClick={onClose}
             className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"

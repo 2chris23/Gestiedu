@@ -1,19 +1,29 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Plus, Layers, Pencil, GraduationCap } from 'lucide-react';
-import { academicYearService, AcademicYear } from '@/services/academic-year.service';
+import { ArrowLeft, Layers, Pencil, GraduationCap, MoreVertical } from 'lucide-react';
+import { academicYearService } from '@/services/academic-year.service';
 import { classroomService, Classroom } from '@/services/classroom.service';
+import { useAcademicYears } from '@/hooks/useAcademicYears';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import GradeAccordion from '@/components/academic/GradeAccordion';
+import TurnoBadge from '@/components/common/TurnoBadge';
+import { Turno } from '@/lib/turnos';
 import ClassroomModal from '@/components/classrooms/ClassroomModal';
 import AcademicYearModal from '@/components/academic/AcademicYearModal';
 import { toast } from 'sonner';
 import AcademicStats from '@/components/academic/AcademicStats';
 import LapsoSelector from '@/components/academic/LapsoSelector';
 import { useAuthStore } from '@/store/auth.store';
-import { YearSelector } from '@/components/navigation/YearSelector';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export default function AcademicYearDashboard() {
     const confirmDialog = useConfirm();
@@ -21,13 +31,8 @@ export default function AcademicYearDashboard() {
     const router = useRouter();
     const cycleIdParam = decodeURIComponent(params.cycleId as string);
 
-    const [year, setYear] = useState<AcademicYear | null>(null);
-    const [allCycles, setAllCycles] = useState<AcademicYear[]>([]);
-    const [classrooms, setClassrooms] = useState<Classroom[]>([]);
-    const [gradeStats, setGradeStats] = useState<Record<number, any>>({});
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
     const [lapsoId, setLapsoId] = useState<string | undefined>(undefined);
+    const queryClient = useQueryClient();
     const { user } = useAuthStore();
     const isAdmin = (user?.role as string) === 'ADMIN' || (user?.role as string) === 'SUPERADMIN';
 
@@ -36,46 +41,47 @@ export default function AcademicYearDashboard() {
     const [selectedGradeForCreation, setSelectedGradeForCreation] = useState<number>(1);
     const [classroomToEdit, setClassroomToEdit] = useState<Classroom | null>(null);
 
-    const fetchData = useCallback(async () => {
-        try {
-            setLoading(true);
-            setError(null);
+    /**
+     * LOS DATOS, DE LA MEMORIA DE LA APP
+     *
+     * Se pedían a mano al entrar y se guardaban en el estado de la pantalla:
+     * sin conexión no había nada que enseñar, porque lo guardado en el teléfono
+     * es lo que pasa por React Query (`MemoriaDelTelefono`). Un administrador
+     * sin luz ni internet abría el ciclo y lo encontraba vacío. Ahora se ve el
+     * ciclo tal como estaba la última vez que se cargó.
+     */
+    const ciclos = useAcademicYears();
+    const allCycles = ciclos.data ?? [];
+    const year = allCycles.find((y) => y.id === cycleIdParam || y.name === cycleIdParam) ?? null;
 
-            const allYears = await academicYearService.getAcademicYears();
-            setAllCycles(allYears);
+    const secciones = useQuery({
+        // La misma llave que `useClassrooms`: lo que invalide una, invalida la otra.
+        queryKey: ['classrooms', year?.id, undefined],
+        queryFn: () => classroomService.getClassrooms(year!.id),
+        enabled: Boolean(year?.id),
+    });
+    const classrooms: Classroom[] = useMemo(() => {
+        const d = secciones.data as Classroom[] | { classrooms: Classroom[] } | undefined;
+        if (!d) return [];
+        return Array.isArray(d) ? d : d.classrooms ?? [];
+    }, [secciones.data]);
 
-            const foundYear = allYears.find(y => y.id === cycleIdParam || y.name === cycleIdParam);
+    const cifras = useQuery({
+        queryKey: ['academicYearStats', year?.id, lapsoId ?? null],
+        queryFn: () => academicYearService.getAcademicYearStats(year!.id, lapsoId),
+        enabled: Boolean(year?.id),
+        // Al cambiar de lapso se siguen viendo las cifras de antes hasta que
+        // lleguen las nuevas, en vez de un salto a cero.
+        placeholderData: (anteriores) => anteriores,
+    });
+    const gradeStats: Record<number, any> = useMemo(() => cifras.data ?? {}, [cifras.data]);
 
-            if (!foundYear) {
-                setYear(null);
-                setLoading(false);
-                setError('Año escolar no encontrado');
-                return;
-            }
-
-            setYear(foundYear);
-
-            // Cargar aulas y estadísticas en paralelo con máxima velocidad
-            const [classroomsData, stats] = await Promise.all([
-                classroomService.getClassrooms(foundYear.id),
-                academicYearService.getAcademicYearStats(foundYear.id, lapsoId)
-            ]);
-
-            setClassrooms(Array.isArray(classroomsData) ? classroomsData : classroomsData.classrooms);
-            setGradeStats(stats);
-
-        } catch (err) {
-            console.error(err);
-            toast.error('Error al cargar datos del ciclo escolar');
-            setError(err instanceof Error ? err.message : 'Error desconocido');
-        } finally {
-            setLoading(false);
-        }
-    }, [cycleIdParam, lapsoId]);
-
-    useEffect(() => {
-        if (cycleIdParam) fetchData();
-    }, [cycleIdParam, fetchData, lapsoId]);
+    /** Tras crear, editar o borrar: que se vuelva a pedir lo de esta pantalla. */
+    const fetchData = () => {
+        queryClient.invalidateQueries({ queryKey: ['academicYears'] });
+        queryClient.invalidateQueries({ queryKey: ['classrooms'] });
+        queryClient.invalidateQueries({ queryKey: ['academicYearStats'] });
+    };
 
     const handleBack = () => {
         router.push('/dashboard/academico');
@@ -86,11 +92,27 @@ export default function AcademicYearDashboard() {
         setClassroomModalOpen(true);
     };
 
+    /**
+     * FILTRO POR TURNO
+     *
+     * Un liceo de dos turnos tiene el doble de secciones en esta pantalla, y de
+     * dos en dos con el mismo nombre. Con el filtro se mira un turno cada vez.
+     * `TODOS` es lo normal; el filtro solo aparece si de verdad hay dos turnos.
+     */
+    const [turnoElegido, setTurnoElegido] = useState<'TODOS' | Turno>('TODOS');
+
+    const turnosQueHay = useMemo(
+        () => Array.from(new Set(classrooms.map((c) => (c.shift as Turno) || 'MANANA'))).sort(),
+        [classrooms]
+    );
+
     const classroomsByGrade = useMemo(() => {
         const grouped: Record<number, Classroom[]> = {};
-        [1, 2, 3, 4, 5].forEach(g => grouped[g] = []);
+        [1, 2, 3, 4, 5, 6].forEach(g => grouped[g] = []);
 
-        classrooms.forEach(c => {
+        classrooms
+            .filter((c) => turnoElegido === 'TODOS' || ((c.shift as Turno) || 'MANANA') === turnoElegido)
+            .forEach(c => {
             if (grouped[c.grade]) grouped[c.grade].push(c);
         });
 
@@ -99,7 +121,7 @@ export default function AcademicYearDashboard() {
         });
 
         return grouped;
-    }, [classrooms]);
+    }, [classrooms, turnoElegido]);
 
     const handleEditSection = (classroom: Classroom) => {
         setClassroomToEdit(classroom);
@@ -182,7 +204,9 @@ export default function AcademicYearDashboard() {
         };
     }, [gradeStats]);
 
-    if (loading) {
+    // Solo se espera si no hay NADA que enseñar: con lo guardado en el
+    // teléfono, se pinta al instante aunque no haya conexión.
+    if (ciclos.isLoading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
@@ -190,10 +214,17 @@ export default function AcademicYearDashboard() {
         );
     }
 
-    if (error || !year) {
+    if (!year) {
+        const sinConexion = esQueNoContesta(ciclos.error);
         return (
             <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-                <p className="text-red-500 font-medium">Error: {error || 'Año escolar no encontrado'}</p>
+                <p className="text-red-500 font-medium">
+                    {sinConexion
+                        ? 'Sin conexión, y este ciclo no se había abierto antes en este dispositivo.'
+                        : ciclos.error
+                          ? 'No se pudo cargar el ciclo escolar.'
+                          : 'Año escolar no encontrado'}
+                </p>
                 <button onClick={() => router.back()} className="flex items-center gap-2 text-indigo-600 hover:underline">
                     <ArrowLeft className="w-4 h-4" /> Volver
                 </button>
@@ -201,89 +232,139 @@ export default function AcademicYearDashboard() {
         );
     }
 
-    const cyclesForSelector = allCycles.map(c => ({
-        id: c.name,
-        name: c.name,
-        status: c.status
-    }));
+    const estado: 'UPCOMING' | 'ACTIVE' | 'COMPLETED' = (() => {
+        const now = new Date();
+        const start = new Date(year.startDate);
+        const end = new Date(year.endDate);
+        end.setHours(23, 59, 59, 999);
+        if (now > end) return 'COMPLETED';
+        if (now >= start && now <= end) return 'ACTIVE';
+        return 'UPCOMING';
+    })();
+    const ESTADOS = {
+        ACTIVE: { texto: 'En curso', clase: 'sm:bg-emerald-50 text-emerald-700 ring-emerald-200' },
+        UPCOMING: { texto: 'Próximo', clase: 'sm:bg-blue-50 text-blue-700 ring-blue-200' },
+        COMPLETED: { texto: 'Finalizado', clase: 'sm:bg-gray-100 text-gray-600 ring-gray-200' },
+    } as const;
 
     return (
-        <div className="min-h-screen bg-gray-50/50 pb-20">
-            <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                    <div className="flex items-center gap-4 mb-4 justify-between">
-                        <div className="flex items-center gap-4">
-                            <button onClick={handleBack} className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500">
-                                <ArrowLeft className="w-5 h-5" />
-                            </button>
-                            <div>
-                                <h1 className="text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
-                                    {year.name}
-                                    <YearSelector cycles={cyclesForSelector} />
-                                    <LapsoSelector periods={(year.periods || []).map((p) => ({ id: p.id as string, name: p.name }))} value={lapsoId} onChange={setLapsoId} compact />
-                                    {isAdmin && (
-                                        <button
-                                            onClick={() => router.push(`/dashboard/academico/${year.name}/promocion`)}
-                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition-colors"
-                                            title="Finalizar ciclo escolar (página de promoción con revisión)"
-                                        >
-                                            <GraduationCap className="w-3.5 h-3.5" />
-                                            Finalizar Ciclo Escolar
-                                        </button>
-                                    )}
-                                </h1>
-                                <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
-                                    {(() => {
-                                        const now = new Date();
-                                        const start = new Date(year.startDate);
-                                        const end = new Date(year.endDate);
-                                        end.setHours(23, 59, 59, 999);
+        // Sin fondo ni márgenes propios (ver «SIN CAJA GRIS PROPIA» en la
+        // sección): con la franja blanca y su `px-4` encima del margen del marco,
+        // todo empezaba 16 px más adentro que en las demás pantallas, y había un
+        // segundo `<main>` dentro del primero.
+        <div className="space-y-6">
+            {/*
+                EL ENCABEZADO, EN UNA LÍNEA
 
-                                        let status: 'UPCOMING' | 'ACTIVE' | 'COMPLETED' = 'UPCOMING';
-                                        if (now > end) status = 'COMPLETED';
-                                        else if (now >= start && now <= end) status = 'ACTIVE';
+                Eran tres filas de botones —el ciclo, un selector para cambiar
+                de ciclo, el lapso, «Finalizar Ciclo Escolar» en rojo, el estado,
+                «Editar»— más cinco tarjetas, y todo pegado arriba al bajar: en
+                un teléfono tapaba media pantalla todo el rato. Ahora:
 
-                                        return (
-                                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold
-                                                ${status === 'ACTIVE' ? 'bg-green-100 text-green-700' :
-                                                    status === 'UPCOMING' ? 'bg-blue-100 text-blue-700' :
-                                                        'bg-gray-100 text-gray-600'}`}>
-                                                {status === 'ACTIVE' ? 'En Curso' :
-                                                    status === 'UPCOMING' ? 'Próximo' : 'Finalizado'}
-                                            </span>
-                                        );
-                                    })()}
-                                    <span>•</span>
-                                    <span>Panel Académico</span>
-                                </div>
-                            </div>
-                        </div>
+                · El selector de ciclo, fuera: para ir a otro ciclo se vuelve
+                  atrás y se entra en él.
+                · Editar y Finalizar, en el menú de los tres puntos. Finalizar un
+                  ciclo es de una vez al año y no puede estar a un toque sin
+                  querer, en rojo, al lado del lapso.
+                · Ya no se queda pegado al bajar.
+            */}
+            <header>
+                <div>
+                    <div className="flex items-center gap-2">
                         <button
-                            onClick={() => setYearModalOpen(true)}
-                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            type="button"
+                            onClick={handleBack}
+                            aria-label="Volver a los ciclos escolares"
+                            className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100"
                         >
-                            <Pencil className="w-4 h-4" />
-                            Editar
+                            <ArrowLeft className="h-5 w-5" />
                         </button>
+                        {/* El nombre no se encoge: en un teléfono el lapso se lo
+                            comía entero y la cabecera no decía qué ciclo era.
+                            El estado va debajo, en pequeño, para caber. */}
+                        <div className="flex min-w-[5.5rem] flex-1 flex-col sm:flex-row sm:items-center sm:gap-2">
+                            <h1 className="truncate text-seccion font-bold text-gray-900 sm:text-pantalla">{year.name}</h1>
+                            <span
+                                className={`w-fit shrink-0 text-xs font-semibold sm:rounded-full sm:px-2 sm:py-0.5 sm:ring-1 sm:ring-inset ${ESTADOS[estado].clase}`}
+                            >
+                                {ESTADOS[estado].texto}
+                            </span>
+                        </div>
+                        <LapsoSelector
+                            periods={(year.periods || []).map((p) => ({ id: p.id as string, name: p.name }))}
+                            value={lapsoId}
+                            onChange={setLapsoId}
+                            compact
+                        />
+                        {isAdmin && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <button
+                                        type="button"
+                                        aria-label="Más opciones del ciclo"
+                                        className="-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-gray-100"
+                                    >
+                                        <MoreVertical className="h-5 w-5" />
+                                    </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onSelect={() => setYearModalOpen(true)}>
+                                        <Pencil className="mr-2 h-4 w-4" /> Editar el ciclo
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                        onSelect={() => router.push(`/dashboard/academico/${year.name}/promocion`)}
+                                        className="text-rose-700 focus:text-rose-700"
+                                    >
+                                        <GraduationCap className="mr-2 h-4 w-4" /> Finalizar el ciclo escolar
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
                     </div>
 
-                    <div className="mt-6">
-                        <AcademicStats stats={globalStats || undefined} />
-                    </div>
+                    <AcademicStats stats={globalStats || undefined} className="mt-3" />
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div>
                 <div className="space-y-6">
                     <div className="flex items-center justify-between">
                         <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                             <Layers className="w-5 h-5 text-indigo-600" />
                             Gestión por Niveles
                         </h2>
+
+                        {turnosQueHay.length > 1 && (
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setTurnoElegido('TODOS')}
+                                    aria-pressed={turnoElegido === 'TODOS'}
+                                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                                        turnoElegido === 'TODOS'
+                                            ? 'border-indigo-600 bg-indigo-600 text-white'
+                                            : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    Todos los turnos
+                                </button>
+                                {turnosQueHay.map((t) => (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => setTurnoElegido(t)}
+                                        aria-pressed={turnoElegido === t}
+                                        className={`rounded-full ${turnoElegido === t ? 'ring-2 ring-indigo-600' : ''}`}
+                                    >
+                                        <TurnoBadge turno={t} tamano="md" />
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div className="space-y-4">
-                        {[1, 2, 3, 4, 5].map((grade) => (
+                        {[1, 2, 3, 4, 5, 6].map((grade) => (
                             <GradeAccordion
                                 key={grade}
                                 grade={grade}
@@ -298,7 +379,7 @@ export default function AcademicYearDashboard() {
                         ))}
                     </div>
                 </div>
-            </main>
+            </div>
 
             <ClassroomModal
                 isOpen={isClassroomModalOpen}
@@ -307,6 +388,7 @@ export default function AcademicYearDashboard() {
                 defaultYearId={year.id}
                 defaultGrade={selectedGradeForCreation}
                 classroomToEdit={classroomToEdit}
+                existingClassrooms={classroomsByGrade[selectedGradeForCreation] || []}
                 existingSections={(classroomsByGrade[selectedGradeForCreation] || []).map(c => c.section)}
             />
 

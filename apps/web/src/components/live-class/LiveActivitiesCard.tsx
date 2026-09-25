@@ -170,8 +170,11 @@ export default function LiveActivitiesCard({
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
             {/* Header */}
-            <div className="p-4 sm:p-5 border-b border-gray-100 bg-gradient-to-r from-blue-500/5 via-indigo-500/5 to-transparent flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
+            <div className="p-4 sm:p-5 border-b border-gray-100 bg-gradient-to-r from-blue-500/5 via-indigo-500/5 to-transparent flex flex-wrap items-center justify-between gap-3">
+                {/* `flex-wrap` y el botón sin partir: en el teléfono el título
+                    quedaba cortado («Actividades de Cl…») y «Nueva Actividad» en
+                    dos líneas, las dos cosas aplastadas en la misma fila. */}
+                <div className="flex min-w-0 items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shadow-xs">
                         <ListTodo className="w-5 h-5" />
                     </div>
@@ -191,9 +194,9 @@ export default function LiveActivitiesCard({
                     <button
                         type="button"
                         onClick={() => handleOpenAdd('CURRENT')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
+                        className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap px-4 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
                     >
-                        <Plus className="w-3.5 h-3.5" />
+                        <Plus className="w-4 h-4" aria-hidden />
                         <span>Nueva Actividad</span>
                     </button>
                 )}
@@ -478,7 +481,7 @@ export default function LiveActivitiesCard({
 
             {/* ===== MODAL DE CREACIÓN DE ACTIVIDAD ===== */}
             {isAddModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-label={modalTarget === 'CURRENT' ? 'Nueva actividad para la clase de hoy' : 'Nueva actividad para la próxima clase'}>
                     <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                         {/* Header */}
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
@@ -488,7 +491,7 @@ export default function LiveActivitiesCard({
                                     Nueva Actividad ({modalTarget === 'CURRENT' ? 'Clase de Hoy' : 'Próxima Clase'})
                                 </h3>
                             </div>
-                            <button
+                            <button aria-label="Cerrar"
                                 onClick={() => setIsAddModalOpen(false)}
                                 className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-200 transition-colors"
                             >

@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import { useState, useEffect } from 'react';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useRouter } from 'next/navigation';
@@ -9,6 +11,8 @@ import { Toaster, toast } from 'sonner';
 import ClassroomModal from '@/components/classrooms/ClassroomModal';
 import { classroomService, Classroom } from '@/services/classroom.service';
 import { academicYearService, AcademicYear } from '@/services/academic-year.service';
+import TurnoBadge from '@/components/common/TurnoBadge';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export default function ClassroomsPage() {
     const confirmDialog = useConfirm();
@@ -44,7 +48,7 @@ export default function ClassroomsPage() {
             }
         } catch (error) {
             console.error(error);
-            toast.error('Error al cargar datos');
+            if (!esQueNoContesta(error)) toast.error('Error al cargar datos');
         } finally {
             setLoading(false);
         }
@@ -90,31 +94,28 @@ export default function ClassroomsPage() {
         <div className="space-y-6">
             <Toaster position="top-right" />
 
-            <div className="flex justify-between items-center bg-white p-6 rounded-lg shadow-sm border border-gray-100">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Aulas y Secciones</h1>
-                    <p className="text-sm text-gray-500 mt-1">Administra los espacios académicos por año escolar</p>
-                </div>
-                <div className="flex gap-4 items-center">
-                    <Select value={selectedYearId || undefined} onValueChange={setSelectedYearId}>
-                        <SelectTrigger className="w-48">
-                            <SelectValue placeholder="Seleccionar Año..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {years.map(y => (
-                                <SelectItem key={y.id} value={y.id}>{y.name} {y.status === 'ACTIVE' ? '(Activo)' : ''}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <button
-                        onClick={handleCreate}
-                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none transition-colors"
-                    >
-                        <Plus className="-ml-1 mr-2 h-5 w-5" />
-                        Nueva Aula
-                    </button>
-                </div>
-            </div>
+            <EncabezadoDePantalla
+                titulo="Aulas y Secciones"
+                descripcion="Administra los espacios académicos por año escolar"
+                acciones={
+                    <>
+                        <Select value={selectedYearId || undefined} onValueChange={setSelectedYearId}>
+                            <SelectTrigger className="w-full sm:w-48" aria-label="Año escolar">
+                                <SelectValue placeholder="Seleccionar Año..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {years.map(y => (
+                                    <SelectItem key={y.id} value={y.id}>{y.name} {y.status === 'ACTIVE' ? '(Activo)' : ''}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Button onClick={handleCreate}>
+                            <Plus aria-hidden />
+                            Nueva Aula
+                        </Button>
+                    </>
+                }
+            />
 
             {loading ? (
                 <div className="flex justify-center p-12">
@@ -142,7 +143,10 @@ export default function ClassroomsPage() {
                                         <BookOpen className="h-6 w-6" />
                                     </div>
                                     <div>
-                                        <h3 className="text-lg font-semibold text-gray-900">{classroom.name}</h3>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-lg font-semibold text-gray-900">{classroom.name}</h3>
+                                            <TurnoBadge turno={classroom.shift} />
+                                        </div>
                                         <p className="text-xs text-gray-500">
                                             Profesor: {classroom.teacher ? `${classroom.teacher.firstName} ${classroom.teacher.lastName}` : 'Sin asignar'}
                                         </p>

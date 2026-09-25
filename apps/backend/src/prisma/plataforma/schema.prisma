@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../generated/platform-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("PLATFORM_DATABASE_URL")
+}
+
+model SuperAdmin {
+  id            String                   @id @default(cuid())
+  email         String                   @unique
+  password      String
+  name          String
+  isActive      Boolean                  @default(true)
+  lastLogin     DateTime?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  refreshTokens SuperAdminRefreshToken[]
+
+  @@index([email])
+  @@index([isActive])
+  @@map("super_admins")
+}
+
+model SuperAdminRefreshToken {
+  id           String     @id @default(cuid())
+  token        String     @unique
+  superAdminId String
+  expiresAt    DateTime
+  createdAt    DateTime   @default(now())
+  superAdmin   SuperAdmin @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
+
+  @@index([superAdminId])
+  @@index([expiresAt])
+  @@map("super_admin_refresh_tokens")
+}
+
+model PlatformConfig {
+  id              String   @id @default("platform")
+  maintenanceMode Boolean  @default(false)
+  supportEmail    String   @default("soporte@tuapp.com")
+  platformName    String   @default("GestiEdu")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("platform_config")
+}
+
+model Institute {
+  id               String                @id @default(cuid())
+  name             String
+  code             String                @unique
+  // Opcional por decisión de producto: un instituto puede no tener email de contacto.
+  email            String?
+  phone            String?
+  address          String?
+  slug             String                @unique
+  subdomain        String                @unique
+  customDomain     String?               @unique
+  environment      String                @default("development")
+  status           InstituteStatus       @default(PENDING)
+  trialEndsAt      DateTime?
+  notes            String?
+  databaseName     String?               @unique
+  databaseHost     String?
+  databasePort     Int?                  @default(5432)
+  databaseUser     String?
+  databasePassword String?
+  adminId          String?               @unique
+  timezone         String                @default("America/Caracas")
+  country          String                @default("VE")
+  city             String?
+  academicConfig   Json?
+  logo             String?
+  favicon          String?
+  primaryColor     String?               @default("#4F46E5")
+  secondaryColor   String?               @default("#3B82F6")
+  subjectPalette   String?
+  plan             String                @default("BASIC")
+  maxStudents      Int                   @default(2000)
+  maxTeachers      Int                   @default(100)
+  maxStorage       Int                   @default(5)
+  currentStudents  Int                   @default(0)
+  currentTeachers  Int                   @default(0)
+  currentStorage   Float                 @default(0.0)
+  monthlyPrice     Decimal               @default(50) @db.Decimal(10, 2)
+  billingStatus    String                @default("ACTIVE")
+  nextBillingDate  DateTime?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  invitations      InstituteInvitation[]
+  webhookLogs      WebhookLog[]
+  archivos         ArchivoDeLiceo[]
+
+  @@index([status])
+  @@index([slug])
+  @@index([subdomain])
+  @@index([environment])
+  @@map("institutes")
+}
+
+model InstituteInvitation {
+  id          String    @id @default(cuid())
+  email       String
+  instituteId String
+  token       String    @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  institute   Institute @relation(fields: [instituteId], references: [id], onDelete: Cascade)
+
+  @@index([instituteId])
+  @@index([token])
+  @@map("institute_invitations")
+}
+
+model WebhookLog {
+  id          String     @id @default(cuid())
+  event       String
+  payload     Json
+  response    Json?
+  status      String
+  error       String?
+  instituteId String?
+  createdAt   DateTime   @default(now())
+  institute   Institute? @relation(fields: [instituteId], references: [id])
+
+  @@index([instituteId])
+  @@index([event])
+  @@index([status])
+  @@map("webhook_logs")
+}
+
+enum InstituteStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+  INACTIVE
+  PROVISIONING
+  FAILED
+}
+
+/// LOS ARCHIVOS QUE SUBE UN LICEO (el logo y el icono de la pestaña)
+///
+/// Van en la base, no en el disco del proceso. En el disco, con dos procesos
+/// detrás del repartidor el logo lo tenía solo el que lo recibió, y el otro
+/// respondía «no existe»; y el respaldo nocturno, que guarda bases, no lo
+/// guardaba: perdido el disco, cada liceo se quedaba sin logo. Son uno o dos
+/// archivos por liceo, de pocos cientos de KB.
+///
+/// El nombre lleva la huella del contenido: el mismo archivo tiene siempre el
+/// mismo nombre, y uno nuevo, otro. Por eso se puede servir con caché
+/// «para siempre» y no se pisa nunca uno con otro.
+model ArchivoDeLiceo {
+  id          String    @id @default(cuid())
+  instituteId String
+  nombre      String
+  tipo        String
+  datos       Bytes
+  bytes       Int
+  createdAt   DateTime  @default(now())
+  institute   Institute @relation(fields: [instituteId], references: [id], onDelete: Cascade)
+
+  @@unique([instituteId, nombre])
+  @@map("archivos_de_liceo")
+}

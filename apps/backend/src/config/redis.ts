@@ -2,75 +2,84 @@ import Redis, { RedisOptions } from 'ioredis';
 import { config } from './environment';
 import { liceoActual } from './ambito-del-liceo';
 
-// Configuración de Redis
-const redisConfig: RedisOptions = {
-  host: config.redis.host,
-  port: config.redis.port,
-  password: config.redis.password,
+/**
+ * SI REDIS SE CAE, EL SISTEMA SIGUE, Y RÁPIDO
+ *
+ * Redis es una ayuda (lo guardado para no volver a preguntar, el límite de
+ * peticiones, los avisos entre procesos), no la base de datos: si se cae, todo
+ * tiene que seguir funcionando, con la memoria del proceso mientras tanto.
+ *
+ * Había dos trampas, medidas con un Redis apagado:
+ *
+ *   · En producción (con REDIS_URL) los clientes se creaban SIN estas
+ *     opciones, con las de fábrica: cada consulta a Redis esperaba 20
+ *     reintentos antes de rendirse. Medido: **10,6 segundos por consulta**. Y
+ *     casi cada petición toca Redis, así que un Redis caído dejaba TODO el
+ *     sistema colgado diez segundos por pantalla. Ahora se rinde a la primera
+ *     (60 ms medidos) y la petición sigue con la memoria.
+ *   · En desarrollo, tras cinco reintentos se dejaba de reconectar PARA
+ *     SIEMPRE: una caída de dos segundos dejaba al proceso sin Redis hasta el
+ *     próximo reinicio, y sin decirlo (los errores estaban silenciados).
+ *     Ahora reintenta siempre, cada vez más espaciado, y avisa —una vez por
+ *     minuto, no una por intento— cuando se cae y cuando vuelve.
+ */
+const opcionesComunes: RedisOptions = {
   lazyConnect: true,
   keepAlive: 30000,
   connectTimeout: 1000,
   commandTimeout: 5000,
-  // Configuración específica para desarrollo/producción
-  ...(config.isProduction ? {
-    // Configuración de producción
-    enableReadyCheck: true,
-    maxRetriesPerRequest: 5,
-  } : {
-    // Configuración de desarrollo
-    maxRetriesPerRequest: 3,
-    showFriendlyErrorStack: true,
-  }),
-  retryStrategy: (times) => {
-    // Si falla más de 5 veces, deja de intentar reconectar para no spammear la consola
-    // pero idealmente deberíamos mantener el servidor vivo.
-    // Retornar null detiene la reconexión automática.
-    // Retornar número espera esos ms antes de reintentar.
-    const maxRetries = 5;
-    if (times > maxRetries) {
-      console.warn('Redis reconnection stopped after too many attempts. Running without Redis.');
-      return null;
-    }
-    return Math.min(times * 100, 3000);
-  },
+  enableReadyCheck: true,
+  maxRetriesPerRequest: 1,
+  // Sin cola de espera: con Redis caído, un comando falla en el acto en vez de
+  // esperar al siguiente reintento de conexión (hasta 5 s).
+  enableOfflineQueue: false,
+  showFriendlyErrorStack: !config.isProduction,
+  retryStrategy: (intentos) => Math.min(intentos * 200, 5000),
 };
 
+// Si hay REDIS_URL, manda la dirección (y la contraseña) de la URL.
+export function crearClienteRedis(url: string | undefined = config.redis.url): Redis {
+  return url
+    ? new Redis(url, opcionesComunes)
+    : new Redis({
+        ...opcionesComunes,
+        host: config.redis.host,
+        port: config.redis.port,
+        password: config.redis.password,
+      });
+}
+
 // Cliente Redis principal
-export const redis = config.redis.url
-  ? new Redis(config.redis.url, { lazyConnect: true })
-  : new Redis(redisConfig);
+export const redis = crearClienteRedis();
 
 // Cliente Redis para suscripciones (pub/sub)
-export const redisSub = config.redis.url
-  ? new Redis(config.redis.url, { lazyConnect: true })
-  : new Redis(redisConfig);
+export const redisSub = crearClienteRedis();
 
 // Cliente Redis para publicaciones (pub/sub)
-export const redisPub = config.redis.url
-  ? new Redis(config.redis.url, { lazyConnect: true })
-  : new Redis(redisConfig);
+export const redisPub = crearClienteRedis();
 
-// Eventos de conexión
-// Eventos de conexión
-redis.on('connect', () => {
-  console.log('✅ Redis connected successfully');
-});
-
-redis.on('error', (error) => {
-  // console.error('❌ Redis connection error:', error); // Silent or less verbose
-});
-
-redisSub.on('error', (err) => {
-  // Silent error for sub client
-});
-
-redisPub.on('error', (err) => {
-  // Silent error for pub client
-});
-
-redis.on('reconnecting', () => {
-  console.log('🔄 Redis reconnecting...');
-});
+/** Avisa de que Redis se cayó o volvió: una vez por minuto como mucho, por cliente. */
+function vigilar(cliente: Redis, nombre: string) {
+  let ultimoAviso = 0;
+  let caido = false;
+  cliente.on('error', (error: Error) => {
+    if (process.env.NODE_ENV === 'test') return;
+    const ahora = Date.now();
+    if (!caido || ahora - ultimoAviso > 60_000) {
+      console.warn(`⚠️  Redis (${nombre}) no responde: ${error.message}. Se sigue con la memoria del proceso.`);
+      ultimoAviso = ahora;
+    }
+    caido = true;
+  });
+  cliente.on('ready', () => {
+    if (caido) console.log(`✅ Redis (${nombre}) volvió`);
+    else if (nombre === 'principal') console.log('✅ Redis connected successfully');
+    caido = false;
+  });
+}
+vigilar(redis, 'principal');
+vigilar(redisSub, 'suscripciones');
+vigilar(redisPub, 'publicaciones');
 
 // Función para conectar a Redis
 export async function connectRedis(): Promise<boolean> {
@@ -165,6 +174,88 @@ export class RedisCache {
   private static memoryStore = new Map<string, { value: any; expiresAt: number }>();
 
   /**
+   * EL ÍNDICE POR PERSONA DE LA MEMORIA DE RESPALDO
+   *
+   * Lo que se guarda de las pantallas tiene la forma
+   * `cache:<liceo>:<ruta>:<persona>:<parámetros>`, y al guardar algo se borra
+   * lo de las personas afectadas con patrones `cache:<liceo>:*:<persona>:*`.
+   *
+   * Sin índice, cada borrado recorría **todas** las claves de la memoria y las
+   * comparaba contra cada patrón. El coste de guardar crecía con la gente
+   * conectada: medido en la prueba de estrés incremental, 300 personas y los
+   * profesores guardando asistencia llevaban el p99 de 16 ms a 215 ms y el peor
+   * caso a 1,5 s — y no solo a quien guardaba: el recorrido bloquea el proceso y
+   * hace esperar a todas las peticiones que llegan mientras tanto.
+   *
+   * Con el índice, borrar lo de una persona mira solo sus claves. Los patrones
+   * con otra forma (poco frecuentes) siguen recorriendo todo, como antes.
+   *
+   * La clave del índice ya lleva el liceo (va dentro de la clave completa), así
+   * que no mezcla liceos.
+   */
+  private static indicePorPersona = new Map<string, Set<string>>();
+
+  /** `…cache:<liceo>:<ruta>:<persona>:…` → "…cache:<liceo>:\0<persona>", o null si no tiene esa forma. */
+  private static personaDeLaClave(key: string): string | null {
+    const m = /^(.*?cache:[^:]*:)[^:]*:([^:]+):/.exec(key);
+    return m ? `${m[1]}\u0000${m[2]}` : null;
+  }
+
+  /** Lo mismo para un patrón, si nombra a UNA persona concreta y un liceo concreto. */
+  private static personaDelPatron(pattern: string): string | null {
+    const m = /^(.*?cache:[^:*]*:)[^:]*:([^:*]+):/.exec(pattern);
+    if (!m || m[1].includes('*')) return null;
+    return `${m[1]}\u0000${m[2]}`;
+  }
+
+  private static guardarEnMemoria(key: string, entry: { value: any; expiresAt: number }): void {
+    this.memoryStore.set(key, entry);
+    const persona = this.personaDeLaClave(key);
+    if (persona) {
+      let claves = this.indicePorPersona.get(persona);
+      if (!claves) this.indicePorPersona.set(persona, (claves = new Set()));
+      claves.add(key);
+    }
+  }
+
+  private static borrarDeMemoria(key: string): void {
+    if (!this.memoryStore.delete(key)) return;
+    const persona = this.personaDeLaClave(key);
+    if (!persona) return;
+    const claves = this.indicePorPersona.get(persona);
+    if (claves) {
+      claves.delete(key);
+      if (claves.size === 0) this.indicePorPersona.delete(persona);
+    }
+  }
+
+  /**
+   * Borra de la memoria lo que casa con alguno de los patrones. Los que nombran
+   * a una persona van por el índice; si queda alguno de otra forma, se recorre
+   * todo una sola vez para esos.
+   */
+  private static borrarDeMemoriaPorPatrones(patronesConPrefijo: string[]): void {
+    const sueltos: Array<(k: string) => boolean> = [];
+    for (const patron of patronesConPrefijo) {
+      const persona = this.personaDelPatron(patron);
+      const coincide = this.matchPattern(patron);
+      if (!persona) {
+        sueltos.push(coincide);
+        continue;
+      }
+      const claves = this.indicePorPersona.get(persona);
+      if (!claves) continue;
+      for (const key of Array.from(claves)) {
+        if (coincide(key)) this.borrarDeMemoria(key);
+      }
+    }
+    if (sueltos.length === 0) return;
+    for (const key of Array.from(this.memoryStore.keys())) {
+      if (sueltos.some((m) => m(key))) this.borrarDeMemoria(key);
+    }
+  }
+
+  /**
    * La clave con la que se guarda de verdad.
    *
    * Lleva **el liceo de la petición** delante, y por eso dos liceos que pidan
@@ -208,7 +299,7 @@ export class RedisCache {
 
     for (const [key, entry] of this.memoryStore) {
       if (entry.expiresAt !== 0 && entry.expiresAt < now) {
-        this.memoryStore.delete(key);
+        this.borrarDeMemoria(key);
       }
     }
   }
@@ -217,7 +308,7 @@ export class RedisCache {
     const entry = this.memoryStore.get(key);
     if (!entry) return null;
     if (entry.expiresAt !== 0 && entry.expiresAt < Date.now()) {
-      this.memoryStore.delete(key);
+      this.borrarDeMemoria(key);
       return null;
     }
     return entry.value;
@@ -225,7 +316,7 @@ export class RedisCache {
 
   private static memorySet(key: string, value: any, ttlSeconds?: number): void {
     this.pruneMemory();
-    this.memoryStore.set(key, {
+    this.guardarEnMemoria(key, {
       value,
       expiresAt: ttlSeconds ? Date.now() + ttlSeconds * 1000 : 0,
     });
@@ -273,7 +364,7 @@ export class RedisCache {
         await redis.del(redisKey);
       }
     } catch { /* noop */ }
-    this.memoryStore.delete(redisKey);
+    this.borrarDeMemoria(redisKey);
   }
 
   // Alias para delete
@@ -338,10 +429,7 @@ export class RedisCache {
         }
       }
     } catch { /* noop */ }
-    const matcher = this.matchPattern(redisPattern);
-    for (const key of Array.from(this.memoryStore.keys())) {
-      if (matcher(key)) this.memoryStore.delete(key);
-    }
+    this.borrarDeMemoriaPorPatrones([redisPattern]);
   }
 
   /**
@@ -387,9 +475,7 @@ export class RedisCache {
       }
     } catch { /* noop */ }
 
-    for (const key of Array.from(this.memoryStore.keys())) {
-      if (coincideAlguno(key)) this.memoryStore.delete(key);
-    }
+    this.borrarDeMemoriaPorPatrones(conPrefijo);
   }
 
   private static matchPattern(pattern: string): (key: string) => boolean {

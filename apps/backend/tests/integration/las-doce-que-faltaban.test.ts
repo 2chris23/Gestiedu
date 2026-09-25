@@ -287,13 +287,9 @@ describe('Las doce acciones que nadie había probado', () => {
             // extensión sale del contenido, no del nombre que mandó quien sube.
             const guardado: string = res.body.data?.logo ?? '';
             expect(guardado).toMatch(/\.png$/);
-
-            // Esta prueba deja un archivo de verdad en la carpeta de subidas:
-            // se borra para no ir llenándola cada vez que se pasan las pruebas.
-            const fs = await import('fs');
-            const path = await import('path');
-            const enDisco = path.join(process.cwd(), guardado.replace(/^\//, ''));
-            if (fs.existsSync(enDisco)) fs.unlinkSync(enDisco);
+            // Ya no deja nada en el disco: el logo va a la base de la
+            // plataforma (logo-en-la-base.test.ts), y se va con el liceo de
+            // pruebas al terminar.
         });
 
         it('FALT-14: una página web disfrazada de logo NO entra', async () => {

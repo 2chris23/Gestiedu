@@ -11,8 +11,9 @@ import { academicYearService, AcademicYear } from '../../services/academic-year.
 
 const schema = z.object({
     academicYearId: z.string().min(1, 'Periodo escolar requerido'),
-    grade: z.coerce.number().min(1).max(5),
+    grade: z.coerce.number().min(1).max(6),
     section: z.string().min(1, 'Sección requerida'),
+    shift: z.enum(['MANANA', 'TARDE', 'INTEGRAL']).default('MANANA'),
     capacity: z.coerce.number().min(1).default(35),
 });
 
@@ -26,6 +27,7 @@ interface ClassroomModalProps {
     classroomToEdit?: Classroom | null;
     defaultYearId?: string;
     defaultGrade?: number;
+    existingClassrooms?: Array<{ section: string; shift?: string }>;
     existingSections?: string[];
 }
 
@@ -36,6 +38,7 @@ export default function ClassroomModal({
     classroomToEdit,
     defaultYearId,
     defaultGrade,
+    existingClassrooms,
     existingSections = []
 }: ClassroomModalProps) {
     const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
@@ -52,12 +55,21 @@ export default function ClassroomModal({
     } = useForm<FormInput, any, FormData>({
         resolver: zodResolver(schema),
         defaultValues: {
-            capacity: 35
+            capacity: 35,
+            shift: 'MANANA'
         }
     });
 
     const selectedSection = watch('section');
-    const duplicateWarning = !classroomToEdit && existingSections.includes(selectedSection);
+    const selectedShift = watch('shift') || 'MANANA';
+    const isSectionTaken = (sec: string) => {
+        if (!sec || classroomToEdit) return false;
+        if (existingClassrooms && existingClassrooms.length > 0) {
+            return existingClassrooms.some(c => c.section === sec && (c.shift || 'MANANA') === selectedShift);
+        }
+        return existingSections.includes(sec);
+    };
+    const duplicateWarning = isSectionTaken(selectedSection);
 
     useEffect(() => {
         const loadYears = async () => {
@@ -86,12 +98,14 @@ export default function ClassroomModal({
                 setValue('academicYearId', classroomToEdit.academicYearId);
                 setValue('grade', classroomToEdit.grade);
                 setValue('section', classroomToEdit.section);
+                setValue('shift', (classroomToEdit.shift as any) || 'MANANA');
                 setValue('capacity', classroomToEdit.capacity || 35);
             } else {
                 reset({
                     academicYearId: defaultYearId || '',
                     grade: defaultGrade || 1,
                     section: '', // Force user to select
+                    shift: 'MANANA',
                     capacity: 35
                 });
             }
@@ -145,11 +159,12 @@ export default function ClassroomModal({
                             leaveFrom="opacity-100 scale-100"
                             leaveTo="opacity-0 scale-95"
                         >
-                            <Dialog.Panel className="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:w-full sm:max-w-md border border-gray-100">
-                                <div className="absolute right-4 top-4">
+                            <Dialog.Panel className="relative w-full max-w-md transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all border border-gray-100">
+                                <div className="absolute right-2 top-2">
                                     <button
                                         type="button"
-                                        className="rounded-full p-1 bg-gray-50 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors focus:outline-none"
+                                        aria-label="Cerrar"
+                                        className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                                         onClick={onClose}
                                     >
                                         <X className="h-5 w-5" aria-hidden="true" />
@@ -199,15 +214,48 @@ export default function ClassroomModal({
                                         </div>
 
                                         <div className={defaultGrade ? 'hidden' : ''}>
-                                            <label htmlFor="grade" className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 ml-1">Grado</label>
-                                            <input
-                                                id="grade"
-                                                type="number"
-                                                min="1" max="5"
-                                                {...register('grade')}
-                                                className="block w-full rounded-xl border-gray-200 bg-gray-50/50 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2.5 px-3 transition-colors outline-none"
+                                            <label htmlFor="grade" className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 ml-1">Grado / Año</label>
+                                            <Controller
+                                                name="grade"
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <Select value={String(field.value || 1)} onValueChange={(val) => field.onChange(Number(val))}>
+                                                        <SelectTrigger id="grade" className="w-full">
+                                                            <SelectValue placeholder="Seleccionar año..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="1">1er Año</SelectItem>
+                                                            <SelectItem value="2">2do Año</SelectItem>
+                                                            <SelectItem value="3">3er Año</SelectItem>
+                                                            <SelectItem value="4">4to Año</SelectItem>
+                                                            <SelectItem value="5">5to Año</SelectItem>
+                                                            <SelectItem value="6">6to Año (Educación Media Técnica)</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                )}
                                             />
                                             {errors.grade && <p className="text-red-500 text-xs mt-1 ml-1 font-medium">{errors.grade.message}</p>}
+                                        </div>
+
+                                        <div>
+                                            <label htmlFor="shift" className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 ml-1">Turno / Horario</label>
+                                            <Controller
+                                                name="shift"
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <Select value={field.value || 'MANANA'} onValueChange={field.onChange}>
+                                                        <SelectTrigger id="shift" className="w-full">
+                                                            <SelectValue placeholder="Seleccionar turno..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="MANANA">Turno Mañana (Matutino: 07:00 - 12:15)</SelectItem>
+                                                            <SelectItem value="TARDE">Turno Tarde (Vespertino: 13:00 - 17:30)</SelectItem>
+                                                            <SelectItem value="INTEGRAL">Turno Integral / Completo</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                )}
+                                            />
+                                            {errors.shift && <p className="text-red-500 text-xs mt-1 ml-1 font-medium">{errors.shift.message}</p>}
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-5">
@@ -224,10 +272,10 @@ export default function ClassroomModal({
                                                             >
                                                                 <SelectValue placeholder="--" />
                                                             </SelectTrigger>
-<SelectContent>
+                                                            <SelectContent>
                                                                 {SECTION_OPTIONS.map(opt => (
-                                                                    <SelectItem key={opt} value={opt} disabled={!classroomToEdit && existingSections.includes(opt)}>
-                                                                        {opt}{(!classroomToEdit && existingSections.includes(opt)) ? ' (Existe)' : ''}
+                                                                    <SelectItem key={opt} value={opt} disabled={isSectionTaken(opt)}>
+                                                                        {opt}{isSectionTaken(opt) ? ' (Existe)' : ''}
                                                                     </SelectItem>
                                                                 ))}
                                                             </SelectContent>

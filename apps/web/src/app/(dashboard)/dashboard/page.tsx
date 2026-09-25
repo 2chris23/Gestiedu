@@ -1,12 +1,18 @@
 'use client';
 
 import { Card } from '@/components/ui';
-import { DataCard } from '@/components/common/DataCard';
+import { CifraCompacta, RejillaDeCifras, type ColorDeCifra } from '@/components/dashboard/CifraCompacta';
+import { AccesosDelLiceo } from '@/components/dashboard/AccesosDelLiceo';
 import { TrendChart, StatusBadge } from '@/components/dashboard';
 import { useAuthStore } from '@/store/auth.store';
-import { useStudentDashboard } from '@/hooks/useStudents';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
+import { useSchoolToday } from '@/hooks/useSchoolTime';
+import { usePagosActivos } from '@/hooks/usePagos';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/axios';
+import { PagosDelRepresentante } from '@/components/pagos/PagosDelRepresentante';
+import MiDiaDeClases from '@/components/dashboard/MiDiaDeClases';
+import MisRepresentados from '@/components/dashboard/MisRepresentados';
 import {
     Users,
     TrendingUp,
@@ -14,9 +20,9 @@ import {
     AlertTriangle,
     BookOpen,
     Calendar,
-    Bell,
     GraduationCap,
-    School
+    School,
+    type LucideIcon,
 } from 'lucide-react';
 
 // Tipos para el dashboard de admin
@@ -36,6 +42,11 @@ interface AdminDashboardData {
 
 // Tipos para el dashboard de estudiante
 interface StudentDashboardData {
+    student?: {
+        id: string;
+        fullName: string;
+        currentSection?: { id: string; name: string; academicYearName?: string | null } | null;
+    };
     kpis: {
         globalAverage: number;
         failedSubjects: number;
@@ -56,26 +67,93 @@ interface StudentDashboardData {
     }>;
 }
 
+// Lo que el servidor le da a un profesor: lo suyo, no lo del liceo entero.
+interface TeacherDashboardData {
+    classrooms: Array<{ id: string; name: string; studentCount: number }>;
+    upcomingActivities: Array<{ id: string; title: string; dueDate: string }>;
+    stats: {
+        totalStudents: number;
+        totalClassrooms: number;
+        pendingGrades: number;
+    };
+}
+
+interface Cifra {
+    titulo: string;
+    valor: number | string;
+    icono: LucideIcon;
+    color: ColorDeCifra;
+    pie?: string;
+}
+
+/**
+ * LA FECHA LA PONE EL SERVIDOR
+ *
+ * Aquí se escribía `new Date()`: el reloj del teléfono. Se cambia a mano en
+ * dos toques, y una VPN mueve la zona horaria sola. La regla de la casa es que
+ * la hora del liceo la dice el liceo (`useSchoolToday`, `GET /api/time`).
+ *
+ * La fecha llega como «2026-09-21». Pasarla por `new Date('2026-09-21')` la
+ * lee en UTC y en Venezuela sale el día anterior; por eso se parte a mano.
+ */
+function comoSeLeeLaFecha(ymd: string, corta = false): string {
+    const [a, m, d] = ymd.split('-').map(Number);
+    if (!a || !m || !d) return '';
+    return new Date(a, m - 1, d).toLocaleDateString(
+        'es-VE',
+        corta
+            ? { weekday: 'short', day: 'numeric', month: 'short' }
+            : { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }
+    );
+}
+
 export default function DashboardPage() {
     const { user } = useAuthStore();
+    // El rol lo dice el servidor: en la primera pintada el almacén del
+    // navegador todavía está vacío y un alumno pasaba por personal.
+    const { yo } = useQuienSoy();
+    const rol = yo?.role;
+    const esFamilia = rol === 'STUDENT' || rol === 'TUTOR';
+    const hoy = useSchoolToday();
+    const { data: pagos } = usePagosActivos();
 
-    // ✅ Usando React Query para caché automático - solo si es estudiante
     const { data: studentStats, isLoading: isLoadingStudent } = useQuery({
         queryKey: ['studentDashboard'],
         queryFn: () => api.get<{ data: StudentDashboardData }>('/students/my-dashboard').then(res => res.data.data),
-        enabled: user?.role === 'STUDENT', // Solo ejecutar si es estudiante
+        enabled: rol === 'STUDENT',
         retry: false,
     });
 
-    // Hook para admin/teacher - obtener datos reales del backend
+    /**
+     * CADA UNO PIDE LO SUYO
+     *
+     * Esta pantalla pedía `/dashboard/admin` también para el profesor, y el
+     * servidor —con razón— respondía 403: esos números son del liceo entero.
+     * No se veía porque el rol se leía del almacén del navegador y en la
+     * primera pintada estaba vacío, así que muchas veces la petición ni salía.
+     * Al preguntarle el rol al servidor (`useQuienSoy`), el 403 salió a la luz.
+     *
+     * El profesor tiene su propia ruta, con lo que sí es suyo: sus alumnos,
+     * sus secciones y lo que le falta por calificar.
+     */
     const { data: adminData, isLoading: isLoadingAdmin } = useQuery({
         queryKey: ['adminDashboard'],
         queryFn: async () => {
             const response = await api.get<{ data: AdminDashboardData }>('/dashboard/admin');
             return response.data.data;
         },
-        enabled: user?.role === 'ADMIN' || user?.role === 'TEACHER',
-        staleTime: 2 * 60 * 1000, // 2 minutos
+        enabled: rol === 'ADMIN',
+        staleTime: 2 * 60 * 1000,
+    });
+
+    const { data: teacherData, isLoading: isLoadingTeacher } = useQuery({
+        queryKey: ['teacherDashboard'],
+        queryFn: async () => {
+            const response = await api.get<{ data: TeacherDashboardData }>('/dashboard/teacher');
+            return response.data.data;
+        },
+        enabled: rol === 'TEACHER',
+        staleTime: 2 * 60 * 1000,
     });
 
     // Datos de evolución REALES: promedio del estudiante por lapso (calculado en el backend)
@@ -84,126 +162,162 @@ export default function DashboardPage() {
         value: p.average,
     }));
 
+    const cargandoCifras =
+        rol === 'STUDENT' ? isLoadingStudent : rol === 'TEACHER' ? isLoadingTeacher : isLoadingAdmin;
 
+    const cifras: Cifra[] = (() => {
+        if (rol === 'STUDENT' && studentStats) {
+            return [
+                { titulo: 'Promedio General', valor: studentStats.kpis.globalAverage.toFixed(1), icono: TrendingUp, color: 'indigo' },
+                { titulo: 'Asistencia', valor: `${studentStats.kpis.attendancePercentage}%`, icono: Clock, color: 'cian' },
+                { titulo: 'Materias en Riesgo', valor: studentStats.kpis.failedSubjects, icono: AlertTriangle, color: 'coral' },
+                { titulo: 'Observaciones', valor: studentStats.kpis.totalObservations, icono: BookOpen, color: 'ambar' },
+            ];
+        }
 
-    // Preparar tarjetas usando DataCard - SOLO DATOS REALES
-    const getCards = () => {
-        if (user?.role === 'STUDENT' && studentStats) {
+        if (rol === 'TEACHER' && teacherData) {
             return [
                 {
-                    title: 'Promedio General',
-                    value: studentStats.kpis.globalAverage.toFixed(1),
-                    icon: TrendingUp,
-                    color: 'blue' as const,
-                    isLoading: isLoadingStudent,
+                    titulo: 'Mis estudiantes',
+                    valor: teacherData.stats.totalStudents,
+                    icono: Users,
+                    color: 'indigo',
+                    pie: 'En mis secciones',
                 },
                 {
-                    title: 'Asistencia',
-                    value: `${studentStats.kpis.attendancePercentage}%`,
-                    icon: Clock,
-                    color: 'indigo' as const,
-                    isLoading: isLoadingStudent,
+                    titulo: 'Mis secciones',
+                    valor: teacherData.stats.totalClassrooms,
+                    icono: School,
+                    color: 'cian',
+                    pie: 'Donde doy clase',
                 },
                 {
-                    title: 'Materias en Riesgo',
-                    value: studentStats.kpis.failedSubjects,
-                    icon: AlertTriangle,
-                    color: 'red' as const,
-                    isLoading: isLoadingStudent,
+                    titulo: 'Por calificar',
+                    valor: teacherData.stats.pendingGrades,
+                    icono: AlertTriangle,
+                    color: 'ambar',
+                    pie: 'Actividades sin notas',
                 },
                 {
-                    title: 'Observaciones',
-                    value: studentStats.kpis.totalObservations,
-                    icon: BookOpen,
-                    color: 'amber' as const,
-                    isLoading: isLoadingStudent,
+                    titulo: 'Próximas',
+                    valor: teacherData.upcomingActivities.length,
+                    icono: Calendar,
+                    color: 'menta',
+                    pie: 'Actividades por venir',
                 },
             ];
         }
 
-        // Tarjetas para admin/teacher con datos reales
-        if ((user?.role === 'ADMIN' || user?.role === 'TEACHER') && adminData) {
+        if (rol === 'ADMIN' && adminData) {
             return [
                 {
-                    title: 'Total Estudiantes',
-                    value: adminData.kpis.totalStudents,
-                    icon: Users,
-                    color: 'blue' as const,
-                    subtitle: adminData.kpis.activeAcademicYear || 'Ciclo actual',
-                    isLoading: isLoadingAdmin,
+                    titulo: 'Estudiantes',
+                    valor: adminData.kpis.totalStudents,
+                    icono: Users,
+                    color: 'indigo',
+                    pie: adminData.kpis.activeAcademicYear || 'Ciclo actual',
                 },
                 {
-                    title: 'Asistencia Promedio',
-                    value: `${adminData.stats.averageAttendance}%`,
-                    icon: GraduationCap,
-                    color: 'green' as const,
-                    subtitle: 'Últimos 30 días',
-                    isLoading: isLoadingAdmin,
+                    titulo: 'Asistencia',
+                    valor: `${adminData.stats.averageAttendance}%`,
+                    icono: GraduationCap,
+                    color: 'menta',
+                    pie: 'Últimos 30 días',
                 },
                 {
-                    title: 'Estudiantes en Riesgo',
-                    value: adminData.stats.studentsAtRisk,
-                    icon: AlertTriangle,
-                    color: 'red' as const,
-                    subtitle: 'Materias < 10',
-                    isLoading: isLoadingAdmin,
+                    titulo: 'En riesgo',
+                    valor: adminData.stats.studentsAtRisk,
+                    icono: AlertTriangle,
+                    color: 'coral',
+                    pie: 'Materias < 10',
                 },
                 {
-                    title: 'Total Profesores',
-                    value: adminData.kpis.totalTeachers,
-                    icon: School,
-                    color: 'purple' as const,
-                    subtitle: 'Activos',
-                    isLoading: isLoadingAdmin,
+                    titulo: 'Profesores',
+                    valor: adminData.kpis.totalTeachers,
+                    icono: School,
+                    color: 'morado',
+                    pie: 'Activos',
                 },
             ];
         }
 
-        // Sin datos disponibles
         return [];
-
-    };
-
-    const cards = getCards();
+    })();
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900">
-                        ¡Hola, {user?.firstName || 'Usuario'}! 👋
-                    </h1>
-                    <p className="text-gray-600 mt-1">
-                        Bienvenido al panel de control de {user?.institute?.name || 'tu escuela'}.
-                    </p>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-600 bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200">
-                    <Calendar size={16} />
-                    {new Date().toLocaleDateString('es-ES', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                    })}
-                </div>
+            {/*
+                LA CABECERA ES LA FECHA
+
+                Aquí ponía «¡Hola, Nombre! 👋» a `text-3xl` y debajo «Bienvenido
+                al panel de control de…». Dos líneas que no dicen nada —quien
+                entró ya sabe quién es y dónde está— y que en un teléfono se
+                comen lo primero que se ve.
+            */}
+            <div className="flex items-center justify-between gap-3">
+                <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">Panel</h1>
+                <p className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600 shadow-sm sm:text-sm">
+                    <Calendar size={16} aria-hidden />
+                    {/* En 390 px, «lunes, 21 de septiembre de 2026» se come media
+                        cabecera para decir lo mismo que «lun, 21 sept». */}
+                    <span className="first-letter:uppercase sm:hidden">{comoSeLeeLaFecha(hoy, true)}</span>
+                    <span className="hidden first-letter:uppercase sm:inline">{comoSeLeeLaFecha(hoy)}</span>
+                </p>
             </div>
 
-            {/* KPI Cards Grid - ✅ Usando DataCard con datos reales */}
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                {cards.map((card, index) => (
-                    <DataCard
-                        key={`${card.title}-${index}`}
-                        {...card}
-                    />
-                ))}
-            </div>
+            {/* Los cuatro números, en 2 × 2 en el teléfono. */}
+            {(cifras.length > 0 || cargandoCifras) && (
+                <RejillaDeCifras>
+                    {(cifras.length > 0
+                        ? cifras
+                        : ([
+                              { titulo: ' ', valor: '', icono: Users, color: 'indigo' },
+                              { titulo: ' ', valor: '', icono: Users, color: 'menta' },
+                              { titulo: ' ', valor: '', icono: Users, color: 'coral' },
+                              { titulo: ' ', valor: '', icono: Users, color: 'morado' },
+                          ] as Cifra[])
+                    ).map((c, i) => (
+                        <CifraCompacta
+                            key={`${c.titulo}-${i}`}
+                            titulo={c.titulo}
+                            valor={c.valor}
+                            icono={c.icono}
+                            color={c.color}
+                            pie={c.pie}
+                            cargando={cargandoCifras}
+                        />
+                    ))}
+                </RejillaDeCifras>
+            )}
+
+            {/* Lo que antes estaba escondido en la cortina lateral. Al personal,
+                arriba: es por donde empieza su día. Al alumno y al representante
+                les queda un solo acceso (Calendario), y ponerlo delante de SU
+                horario y de SUS representados era hacerles bajar para ver lo
+                que vinieron a ver: va al final. */}
+            {!esFamilia && <AccesosDelLiceo rol={rol} conPagos={Boolean(pagos?.enabled)} />}
+
+            {/* El alumno: su horario de hoy y lo que le falta. */}
+            {rol === 'STUDENT' && (
+                <MiDiaDeClases
+                    studentId={user?.id ?? ''}
+                    classroomId={studentStats?.student?.currentSection?.id}
+                    nombre={`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim()}
+                    seccion={studentStats?.student?.currentSection?.name}
+                />
+            )}
+
+            {/* Representante: sus representados y lo que les falta. */}
+            {rol === 'TUTOR' && <MisRepresentados />}
+
+            {/* Representante: estado de pago de sus representados (si el liceo usa pagos) */}
+            {rol === 'TUTOR' && <PagosDelRepresentante />}
 
             {/* Charts Section */}
-            {user?.role === 'STUDENT' && (
+            {rol === 'STUDENT' && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* Evolution Chart */}
-                    <Card className="p-6">
+                    <Card className="p-4 sm:p-6">
                         <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                             <TrendingUp size={20} className="text-blue-600" />
                             Evolución del Promedio
@@ -227,7 +341,7 @@ export default function DashboardPage() {
                     </Card>
 
                     {/* Subjects Status */}
-                    <Card className="p-6">
+                    <Card className="p-4 sm:p-6">
                         <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                             <BookOpen size={20} className="text-purple-600" />
                             Estado de Materias
@@ -269,36 +383,18 @@ export default function DashboardPage() {
                 </div>
             )}
 
-            {/* Activity Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Schedule Placeholder */}
-                <Card className="p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <Calendar size={20} className="text-green-600" />
-                        Horario de Hoy
-                    </h3>
-                    <div className="border-2 border-dashed border-gray-200 rounded-lg h-64 flex items-center justify-center bg-gradient-to-br from-gray-50 to-white">
-                        <div className="text-center">
-                            <Calendar size={48} className="mx-auto text-gray-500 mb-2" />
-                            <p className="text-gray-500 font-medium">Calendario interactivo</p>
-                            <p className="text-gray-500 text-sm">Próximamente</p>
-                        </div>
-                    </div>
-                </Card>
+            {esFamilia && <AccesosDelLiceo rol={rol} conPagos={Boolean(pagos?.enabled)} />}
 
-                {/* Notifications */}
-                <Card className="p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <Bell size={20} className="text-orange-600" />
-                        Avisos Recientes
-                    </h3>
-                    <div className="text-center py-8">
-                        <Bell size={48} className="mx-auto text-gray-500 mb-2" />
-                        <p className="text-gray-500 font-medium">No hay avisos recientes</p>
-                        <p className="text-gray-500 text-sm">Los avisos aparecerán aquí cuando estén disponibles</p>
-                    </div>
-                </Card>
-            </div>
+            {/*
+                AQUÍ HABÍA DOS TARJETAS QUE NO ERAN NADA
+
+                «Horario de Hoy · Calendario interactivo · Próximamente» y
+                «Avisos Recientes · No hay avisos recientes», las dos con un
+                icono grande y 250 px de alto. En un teléfono eran media
+                pantalla de bajar para leer que algo no existe todavía. Cuando
+                el calendario del panel y los avisos existan, se pintan con sus
+                datos; mientras tanto, no ocupan sitio.
+            */}
         </div>
     );
 }

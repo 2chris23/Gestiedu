@@ -5,9 +5,9 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
     ArrowLeft, Users, BookOpen, GraduationCap, Calendar,
-    Bell, Search, Plus, MoreVertical, TrendingUp, Clock,
+    Bell, Search, Plus, TrendingUp, Clock,
     FileText, CheckCircle, AlertTriangle, MapPin, Settings,
-    ChevronRight, Home, UserCircle, ArrowUpDown, ArrowUp, ArrowDown,
+    ChevronRight, Home, UserCircle,
     ListTodo
 } from 'lucide-react';
 import { useClassroomBySlug } from '@/hooks/useClassrooms';
@@ -22,6 +22,7 @@ import EvaluationPlanSection from '@/components/evaluation/EvaluationPlanSection
 import CalendarDayView from '@/components/evaluation/CalendarDayView';
 import { useAcademicConfig } from '@/hooks/useAcademicConfig';
 import { getAcademicRisk } from '@/utils/academicRisk';
+import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
 import SubjectActivitiesTab from '@/components/subject/SubjectActivitiesTab';
 import SubjectObservationsTab from '@/components/subject/SubjectObservationsTab';
 import StudentObservationsModal from '@/components/observations/StudentObservationsModal';
@@ -288,20 +289,17 @@ export default function SectionSubjectDashboard() {
         }
     };
 
-    const SortIcon = ({ column }: { column: string }) => {
-        if (sortColumn !== column) return <ArrowUpDown className="h-4 w-4 text-gray-400" />;
-        return sortDirection === 'asc' ? <ArrowUp className="h-4 w-4 text-indigo-600" /> : <ArrowDown className="h-4 w-4 text-indigo-600" />;
-    };
-
     return (
-        <div className="min-h-screen bg-gray-50/50 pb-12">
-            {/* Header */}
-            <header className="bg-white border-b border-gray-200">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="space-y-6">
+            {/* La franja blanca, de borde a borde y con el contenido en la columna
+                de la pantalla: con su propio `px-4` dentro del margen del marco
+                quedaba 16 px más adentro que todo lo demás (ver Promoción). */}
+            <header className="-mx-4 -mt-6 border-b border-gray-200 bg-white px-4 py-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+                <div>
                     {/* Breadcrumbs */}
-                    <nav className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-                        <Link href="/dashboard" className="hover:text-indigo-600">
-                            <Home className="w-4 h-4" />
+                    <nav aria-label="Ruta" className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
+                        <Link href="/dashboard" className="hover:text-indigo-600" aria-label="Inicio">
+                            <Home className="w-4 h-4" aria-hidden />
                         </Link>
                         <ChevronRight className="w-4 h-4" />
                         <Link href="/dashboard/academico" className="hover:text-indigo-600">Académico</Link>
@@ -319,21 +317,25 @@ export default function SectionSubjectDashboard() {
                         <span className="font-semibold text-gray-900">{subject.name}</span>
                     </nav>
 
-                    {/* Title Row */}
-                    <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-4">
+                    {/* Title Row — se parte en vez de empujar la pantalla: en un
+                        teléfono, «Educación Física 5to Año A» más el código, los
+                        estudiantes y el selector de lapso en una sola línea sacaban
+                        la pantalla 440 px de ancho. */}
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-2 sm:gap-3">
                             <Link
                                 href={`/dashboard/academico/${cycleId}/${sectionId}`}
-                                className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
+                                aria-label={`Volver a ${sectionName}`}
+                                className="-ml-2.5 flex h-11 w-11 shrink-0 items-center justify-center hover:bg-gray-100 rounded-full transition-colors text-gray-500"
                             >
-                                <ArrowLeft className="w-5 h-5" />
+                                <ArrowLeft className="w-5 h-5" aria-hidden />
                             </Link>
                             <div>
-                                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                                <h1 className="flex flex-wrap items-center gap-x-2 text-seccion font-bold text-gray-900 sm:text-pantalla">
                                     {subject.name}{' '}
                                     <span className="text-indigo-600">{sectionName}</span>
                                 </h1>
-                                <div className="flex items-center gap-4 mt-1">
+                                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2">
                                     {subject.code && (
                                         <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded">
                                             {subject.code}
@@ -356,8 +358,11 @@ export default function SectionSubjectDashboard() {
                             </div>
                         </div>
 
-                        {/* Teacher and Hours Card */}
-                        <div className="flex items-center gap-6 bg-white rounded-full border border-gray-200 shadow-sm px-4 py-2">
+                        {/* Teacher and Hours Card — de pie se parte y se
+                            redondea menos: en una línea de 390 px, el profesor
+                            más «Cambiar» más las horas sacaban la pantalla
+                            434 px de ancho. */}
+                        <div className="flex w-full flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-gray-200 bg-white px-4 py-2 shadow-sm sm:w-auto sm:flex-nowrap sm:rounded-full">
                             <div className="flex items-center gap-3">
                                 {teacher ? (
                                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center text-white font-bold text-sm">
@@ -369,7 +374,7 @@ export default function SectionSubjectDashboard() {
                                     </div>
                                 )}
                                 <div>
-                                    <p className="text-[10px] text-gray-400 uppercase tracking-wide">Profesor</p>
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide">Profesor</p>
                                     <p className="font-semibold text-gray-900 text-sm">{teacherName}</p>
                                 </div>
                             </div>
@@ -381,11 +386,11 @@ export default function SectionSubjectDashboard() {
                                 {teacher ? 'Cambiar' : 'Asignar'}
                             </button>
 
-                            <div className="h-8 w-px bg-gray-200" />
+                            <div className="hidden h-8 w-px bg-gray-200 sm:block" />
                             <div className="flex items-center gap-2">
                                 <Clock className="w-4 h-4 text-gray-400" />
                                 <div>
-                                    <p className="text-[10px] text-gray-400 uppercase tracking-wide">Horario</p>
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide">Horario</p>
                                     <p className="font-semibold text-gray-900 text-sm">{hoursPerWeek}h Semanales</p>
                                 </div>
                             </div>
@@ -394,7 +399,7 @@ export default function SectionSubjectDashboard() {
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div>
                 {/* Estadísticas de la Materia (Ancho Completo como en Secciones) */}
                 <div className="mb-6">
                     <AcademicStats
@@ -413,12 +418,13 @@ export default function SectionSubjectDashboard() {
                         showActions={true}
                         classroomId={classroomId}
                         editUrl={`/dashboard/horario/${cycleId}/${sectionId}`}
+                        subtitulo={sectionName}
                     />
                 </div>
 
                 {/* Tabs */}
                 <div className="border-b border-gray-200 mb-6">
-                    <nav className="-mb-px flex space-x-8 overflow-x-auto">
+                    <nav className="-mb-px flex flex-wrap gap-x-6">
                         {[
                             { id: 'estudiantes', label: 'Estudiantes', icon: Users },
                             { id: 'calificaciones', label: 'Plan de Evaluación / Calificaciones', icon: GraduationCap },
@@ -462,96 +468,128 @@ export default function SectionSubjectDashboard() {
                             </div>
                         </div>
 
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-gray-50">
-                                    <tr>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('nombre')}>
-                                            <div className="flex items-center gap-2">Perfil <SortIcon column="nombre" /></div>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('cedula')}>
-                                            <div className="flex items-center gap-2">ID / Cédula <SortIcon column="cedula" /></div>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('riesgo')}>
-                                            <div className="flex items-center gap-2">Riesgo Académico <SortIcon column="riesgo" /></div>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('promedio')}>
-                                            <div className="flex items-center gap-2">Promedio <SortIcon column="promedio" /></div>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('asistencia')}>
-                                            <div className="flex items-center gap-2">Asistencia <SortIcon column="asistencia" /></div>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('observaciones')}>
-                                            <div className="flex items-center gap-2">Observaciones <SortIcon column="observaciones" /></div>
-                                        </th>
-                                        <th scope="col" className="relative px-6 py-3"><span className="sr-only">Acciones</span></th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
-                                    {isLoadingStudents ? (
-                                        <tr><td colSpan={7} className="px-6 py-4 text-center text-gray-500">Cargando estudiantes...</td></tr>
-                                    ) : sortedStudents.length === 0 ? (
-                                        <tr><td colSpan={7} className="px-6 py-4 text-center text-gray-500">{searchTerm ? 'No se encontraron estudiantes.' : 'No hay estudiantes inscritos.'}</td></tr>
-                                    ) : (
-                                        sortedStudents.map((student: SectionStudent) => (
-                                            <tr key={student.id} className="hover:bg-gray-50">
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="flex items-center">
-                                                        <div className="flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center font-bold text-sm bg-indigo-100 text-indigo-600">
-                                                            {student.firstName?.[0]}{student.lastName?.[0]}
-                                                        </div>
-                                                        <div className="ml-4">
-                                                            <div className="text-sm font-medium text-gray-900">{student.firstName} {student.lastName}</div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.studentCode || student.id}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    {(() => {
-                                                        const risk = getAcademicRisk(student.average, passingGrade);
-                                                        return (
-                                                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${risk.className}`}>
-                                                                {risk.label}
-                                                            </span>
-                                                        );
-                                                    })()}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    {student.average ? (
-                                                        <span className="px-2 py-0.5 inline-flex text-sm font-semibold rounded bg-indigo-50 text-indigo-700">{student.average.toFixed(1)}</span>
-                                                    ) : (
-                                                        <span className="px-2 py-0.5 inline-flex text-sm font-medium rounded bg-gray-100 text-gray-500">Sin calificar</span>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="flex items-center">
-                                                        <span className="text-sm text-gray-900 mr-2">{student.attendancePercentage != null ? `${student.attendancePercentage}%` : '0%'}</span>
-                                                        <div className="w-16 h-1.5 bg-gray-200 rounded-full">
-                                                            <div className={`h-1.5 rounded-full ${(student.attendancePercentage || 0) >= 80 ? 'bg-green-500' : (student.attendancePercentage || 0) >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${Math.min(student.attendancePercentage || 0, 100)}%` }}></div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                    {((student as any).observationsCount || 0) > 0 ? (
-                                                        <button type="button" onClick={() => setSelectedStudentForObs(student)} className="text-indigo-600 hover:text-indigo-800 font-medium">
-                                                            {(student as any).observationsCount} observacione(s)
-                                                        </button>
-                                                    ) : (
-                                                        <button type="button" onClick={() => setSelectedStudentForObs(student)} className="text-gray-400 hover:text-gray-600 italic">
-                                                            Agregar observación
-                                                        </button>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                    <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200">
-                                                        <MoreVertical className="w-5 h-5" />
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
+                        {/* Cada alumno, una tarjeta con todo lo suyo. Antes eran
+                            siete columnas dentro de un `overflow-x-auto`: 765 px
+                            de tabla en una pantalla de 390. */}
+                        <div className="p-4 sm:p-5">
+                            <TablaAdaptable<SectionStudent>
+                                datos={sortedStudents}
+                                cargando={isLoadingStudents}
+                                clave={(a) => a.id}
+                                orden={sortColumn ? { por: sortColumn, hacia: sortDirection } : null}
+                                alOrdenar={handleSort}
+                                vacio={
+                                    <p className="text-cuerpo text-tinta-suave">
+                                        {searchTerm ? 'No se encontraron estudiantes.' : 'No hay estudiantes inscritos.'}
+                                    </p>
+                                }
+                                columnas={[
+                                    {
+                                        id: 'nombre',
+                                        titulo: 'Estudiante',
+                                        tituloCorto: 'Nombre',
+                                        principal: true,
+                                        ordenable: true,
+                                        celda: (a) => (
+                                            <div className="flex items-center gap-3">
+                                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-600">
+                                                    {a.firstName?.[0]}
+                                                    {a.lastName?.[0]}
+                                                </span>
+                                                <div className="min-w-0">
+                                                    <p className="line-clamp-2 break-words font-medium text-gray-900" title={`${a.firstName} ${a.lastName}`}>
+                                                        {a.firstName} {a.lastName}
+                                                    </p>
+                                                    <p className="truncate font-mono text-xs text-gray-500 @2xl:hidden">
+                                                        {a.studentCode || a.id}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ),
+                                    },
+                                    {
+                                        id: 'cedula',
+                                        titulo: 'ID / Cédula',
+                                        ordenable: true,
+                                        soloAncha: true,
+                                        celda: (a) => (
+                                            <span className="font-mono text-sm text-gray-500">{a.studentCode || a.id}</span>
+                                        ),
+                                    },
+                                    {
+                                        id: 'riesgo',
+                                        titulo: 'Riesgo',
+                                        ordenable: true,
+                                        celda: (a) => {
+                                            const risk = getAcademicRisk(a.average, passingGrade);
+                                            return (
+                                                <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${risk.className}`}>
+                                                    {risk.label}
+                                                </span>
+                                            );
+                                        },
+                                    },
+                                    {
+                                        id: 'promedio',
+                                        titulo: 'Promedio',
+                                        ordenable: true,
+                                        alinear: 'derecha',
+                                        celda: (a) =>
+                                            a.average ? (
+                                                <span className="inline-flex rounded bg-indigo-50 px-2 py-0.5 text-sm font-semibold text-indigo-700">
+                                                    {a.average.toFixed(1)}
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex rounded bg-gray-100 px-2 py-0.5 text-sm font-medium text-gray-500">
+                                                    Sin calificar
+                                                </span>
+                                            ),
+                                    },
+                                    {
+                                        id: 'asistencia',
+                                        titulo: 'Asistencia',
+                                        ordenable: true,
+                                        alinear: 'derecha',
+                                        celda: (a) => (
+                                            <span className="inline-flex items-center gap-2">
+                                                <span className="text-sm text-gray-900">
+                                                    {a.attendancePercentage != null ? `${a.attendancePercentage}%` : '0%'}
+                                                </span>
+                                                <span className="h-1.5 w-16 rounded-full bg-gray-200">
+                                                    <span
+                                                        className={`block h-1.5 rounded-full ${(a.attendancePercentage || 0) >= 80 ? 'bg-green-500' : (a.attendancePercentage || 0) >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                                                        style={{ width: `${Math.min(a.attendancePercentage || 0, 100)}%` }}
+                                                    />
+                                                </span>
+                                            </span>
+                                        ),
+                                    },
+                                    {
+                                        id: 'observaciones',
+                                        titulo: 'Observaciones',
+                                        tituloCorto: 'Obs.',
+                                        ordenable: true,
+                                        celda: (a) => (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSelectedStudentForObs(a);
+                                                }}
+                                                className={
+                                                    ((a as any).observationsCount || 0) > 0
+                                                        ? 'inline-flex min-h-[44px] items-center px-1 text-sm font-medium text-indigo-600'
+                                                        : 'inline-flex min-h-[44px] items-center px-1 text-sm italic text-gray-500'
+                                                }
+                                            >
+                                                {((a as any).observationsCount || 0) > 0
+                                                    ? `${(a as any).observationsCount} observación(es)`
+                                                    : 'Agregar observación'}
+                                            </button>
+                                        ),
+                                    },
+                                ]}
+                            />
                         </div>
 
                         {pagination && pagination.totalPages > 1 && (
@@ -617,7 +655,7 @@ export default function SectionSubjectDashboard() {
                         periods={periods}
                     />
                 )}
-            </main>
+            </div>
 
             {/* Modal de Detalle de Observaciones del Estudiante */}
             <StudentObservationsModal

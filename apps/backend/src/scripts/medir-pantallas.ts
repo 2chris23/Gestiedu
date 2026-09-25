@@ -11,6 +11,7 @@
  * usa el sistema.
  */
 import { platformPrisma } from '../config/database';
+import { guardarMedicion } from './guardar-medicion';
 
 const API = process.env.API_BASE || 'http://localhost:3001/api';
 const SLUG = process.env.LICEO || 'instituto-testing';
@@ -168,6 +169,7 @@ async function main() {
         console.log('');
     }
 
+    guardarMedicion('pantallas', { liceo: SLUG, veces: VECES, medidas, lentasDeMasDe300ms: lentas.map((m) => m.pantalla) });
     await platformPrisma.$disconnect();
     process.exit(0);
 }

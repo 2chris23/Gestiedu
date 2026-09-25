@@ -46,6 +46,8 @@ export interface ClassActivity {
 }
 
 export interface LiveClassDetail {
+    /** La sección donde se da la clase, con su turno (mañana / tarde). */
+    classroom?: { id: string; name: string; shift?: string; grade?: number; section?: string } | null;
     session: {
         id: string;
         topic?: string;
@@ -106,6 +108,21 @@ export function useLiveClassDetail(classroomId: string, subjectId: string, date:
     });
 }
 
+/** Una actividad tal y como la ve quien mira el horario de ese día. */
+export interface ActividadDelDia {
+    id: string;
+    title: string;
+    type: string;
+    tag?: string | null;
+    target: string;
+    dueDate: string | null;
+    maxScore: number | null;
+    /** Se puso en esa clase para otro día (el contador «Próx.»). */
+    paraOtroDia: boolean;
+    /** Solo llega cuando quien pregunta es el alumno (o su representante). */
+    miNota?: number | null;
+}
+
 export interface LiveOverviewSubject {
     subjectName: string;
     color?: string;
@@ -115,19 +132,30 @@ export interface LiveOverviewSubject {
     activitiesCount?: number;
     todayActivitiesCount?: number;
     nextActivitiesCount?: number;
+    suspendida?: boolean;
+    actividades?: ActividadDelDia[];
 }
 
-export function useLiveOverview(classroomId: string, date: string) {
+/**
+ * El contenido del horario de una sección en un día.
+ *
+ * Lo pide también el alumno para SU sección y el representante para la de su
+ * representado: el servidor decide quién puede (`assertCanSeeClassroom`) y, si
+ * es un alumno, le manda solo SU nota.
+ */
+export function useLiveOverview(classroomId: string, date: string, studentId?: string) {
     return useQuery({
-        queryKey: ['liveOverview', classroomId, date],
+        queryKey: ['liveOverview', classroomId, date, studentId ?? ''],
         queryFn: async () => {
             if (!classroomId || !date) return null;
             const { data } = await api.get('/sessions/live-overview', {
-                params: { classroomId, date },
+                params: { classroomId, date, ...(studentId ? { studentId } : {}) },
             });
-            return data as { overview: Record<string, LiveOverviewSubject> };
+            return data as { overview: Record<string, LiveOverviewSubject>; shift?: 'MANANA' | 'TARDE' | 'INTEGRAL' };
         },
         enabled: !!classroomId && !!date,
+        // Que un alumno no pueda ver una sección no es un fallo que reintentar.
+        retry: false,
     });
 }
 
@@ -293,6 +321,14 @@ export function useSaveActivityGrades() {
                 queryClient.setQueryData(clave, datos);
             });
 
+            // Una nota que el servidor rechaza por su valor (25 sobre 20, una
+            // letra…) no se apunta para reintentar: volvería a rechazarse
+            // siempre. Se dice qué tiene de malo y se corrige ahí mismo.
+            if (error?.response?.status === 400) {
+                toast.error(error?.response?.data?.error || 'Hay una nota que no es válida.');
+                return;
+            }
+
             // 2. Las notas NO se pierden.
             recordarPendiente({
                 id: `notas:${variables.activityId}`,
@@ -342,19 +378,26 @@ export function useDeleteClassActivity() {
 export function useSuspendClass() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (payload: { classroomId: string; subjectId: string; date: string; reason?: string }) => {
+        mutationFn: async (payload: {
+            classroomId: string;
+            subjectId: string;
+            date: string;
+            reason?: string;
+            /** Otra materia de la sección que entra en ese hueco (solo admin). */
+            replacementSubjectId?: string;
+        }) => {
             const { data } = await api.post('/sessions/suspend', payload);
             return data;
         },
         onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['classReplacements'] });
             queryClient.invalidateQueries({
                 queryKey: ['liveClassDetail', variables.classroomId, variables.subjectId],
             });
             queryClient.invalidateQueries({ queryKey: ['classroomHistory'] });
         },
-        onError: (error: Error) => {
-            toast.error(error.message || 'Error al suspender la clase');
-        },
+        // Sin aviso aquí: el diálogo de suspender enseña el motivo del servidor
+        // ("Beto no está libre: tiene Historia en 1er B…") donde se decide.
     });
 }
 

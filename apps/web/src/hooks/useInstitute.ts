@@ -1,25 +1,43 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { instituteService, InstituteConfig, UpdateInstituteDto } from '@/services/institute.service';
 import { toast } from 'sonner';
+import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
 
-// Query keys
+function getActiveTenantSlug(): string | null {
+    if (typeof window === 'undefined') return null;
+    // Ver `lib/el-liceo-de-la-direccion.ts`: una dirección de red (probar desde
+    // el teléfono) no nombra a ningún liceo, y antes se leía como «192».
+    const delHost = elLiceoDelHost(window.location.hostname);
+    if (delHost) return delHost;
+
+    // Si viene en parámetro de URL
+    const params = new URLSearchParams(window.location.search);
+    const slugParam = params.get('slug') || params.get('instituto') || params.get('institute');
+    if (slugParam) return slugParam;
+
+    return null;
+}
+
+// Query keys aisladas por inquilino
 export const instituteKeys = {
     all: ['institute'] as const,
-    config: () => [...instituteKeys.all, 'config'] as const,
-    palette: () => [...instituteKeys.all, 'palette'] as const,
+    config: (slug?: string | null) => [...instituteKeys.all, 'config', slug || 'none'] as const,
+    palette: (slug?: string | null) => [...instituteKeys.all, 'palette', slug || 'none'] as const,
 };
 
 /**
- * Hook para obtener la configuración del instituto
+ * Hook para obtener la configuración del instituto.
+ * Se desactiva automáticamente si estamos en la Landing Page o fuera de un liceo.
  */
-export function useInstituteConfig(options?: { enabled?: boolean }) {
+export function useInstituteConfig(options?: { enabled?: boolean; slug?: string }) {
+    const slug = options?.slug || getActiveTenantSlug();
     return useQuery({
-        queryKey: instituteKeys.config(),
+        queryKey: instituteKeys.config(slug),
         queryFn: instituteService.getConfig,
         staleTime: 5 * 60 * 1000, // 5 minutos
         retry: false,
         refetchOnWindowFocus: false,
-        enabled: options?.enabled !== false,
+        enabled: options?.enabled !== false && Boolean(slug),
     });
 }
 

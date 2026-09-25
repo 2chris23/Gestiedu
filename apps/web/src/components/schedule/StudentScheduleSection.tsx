@@ -1,18 +1,23 @@
 'use client';
 
-import React, { useMemo, useRef } from 'react';
-import { toast } from 'sonner';
+import React, { useMemo } from 'react';
 import {
-    Calendar, Clock, Coffee, Printer, Edit, Search, MapPin, User,
+    Calendar, Clock, Coffee, Edit, Search, MapPin, User,
     ChevronLeft, ChevronRight, ListTodo, BookOpen, CalendarDays
 } from 'lucide-react';
 import { ScheduleBlock } from '@/components/schedule/UniversalScheduleViewer';
+import { DescargarHorario } from '@/components/schedule/DescargarHorario';
+import { useClassReplacements } from '@/hooks/useClassReplacements';
 import ScheduleCalendarModal from '@/components/modals/ScheduleCalendarModal';
 import ScheduleHistoryModal from '@/components/schedule/ScheduleHistoryModal';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSchedulePeriods } from '@/hooks/useSchedulePeriods';
-import { useLiveOverview } from '@/hooks/useLiveClass';
+import { useLiveOverview, LiveOverviewSubject } from '@/hooks/useLiveClass';
+import { ClaseDelAlumnoDialogo } from '@/components/schedule/ClaseDelAlumnoDialogo';
+import { useArrastrarParaDesplazar } from '@/hooks/useArrastrarParaDesplazar';
+import TurnoBadge from '@/components/common/TurnoBadge';
+import { turnoDeLaHora } from '@/lib/turnos';
 import { toLocalYMD } from '@/utils/date.utils';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
 
@@ -22,9 +27,16 @@ interface Props {
     showActions?: boolean;
     classroomId?: string;
     editUrl?: string;
+    /** Lo que encabeza el horario descargado: la sección, o el nombre de la persona. */
+    titulo?: string;
+    subtitulo?: string;
+    /** Horario de un profesor: para enseñar las clases que cubre como reemplazo. */
+    teacherId?: string;
 }
 
 // Días de la semana laborables
+import HorarioPorDias from '@/components/schedule/HorarioPorDias';
+
 const WORKING_DAYS = [
     { key: 'Lun', label: 'Lunes', fullLabel: 'lunes' },
     { key: 'Mar', label: 'Martes', fullLabel: 'martes' },
@@ -86,14 +98,25 @@ const MODERN_SUBJECT_STYLES = [
     },
 ];
 
-export default function StudentScheduleSection({ schedule, role, showActions = false, classroomId, editUrl }: Props) {
+export default function StudentScheduleSection({ schedule, role, showActions = false, classroomId, editUrl, titulo = 'Horario semanal', subtitulo, teacherId }: Props) {
     const [viewMode, setViewMode] = React.useState<'day' | 'week'>('day');
     const [isCalendarModalOpen, setIsCalendarModalOpen] = React.useState(false);
-    const { periods: dynamicPeriods, isLoading } = useSchedulePeriods();
+    /**
+     * EL TURNO MANDA EN LAS HORAS
+     *
+     * Una sección de la tarde empieza a la una, no a las siete. Si se pintan
+     * las horas de la mañana, el horario sale vacío: las clases caen fuera de
+     * todos los bloques. El turno sale de la propia sección; si no se sabe
+     * todavía, de la hora del primer bloque que tenga.
+     */
+    const turnoDeLosBloques = React.useMemo(
+        () => (schedule.length ? turnoDeLaHora([...schedule].sort((a, b) => a.startTime.localeCompare(b.startTime))[0].startTime) : 'MANANA'),
+        [schedule]
+    );
     const router = useRouter();
 
-    // Ref para el carrusel de 5 bloques
-    const carouselRef = useRef<HTMLDivElement>(null);
+    // El carril de bloques: se arrastra con el ratón, además de las flechas.
+    const { ref: carouselRef, arrastrando } = useArrastrarParaDesplazar<HTMLDivElement>();
 
     // Get current day and time
     const now = new Date();
@@ -136,16 +159,41 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
         return target.toISOString().split('T')[0];
     };
 
-    // Tema generador y actividades por materia para el horario en vivo
+    // Tema generador y actividades por materia para el horario en vivo.
+    // Lo pide también el alumno: es SU sección (lo comprueba el servidor).
     const activeOverviewDate = histDate || todayDateStr;
     const { data: liveOverview } = useLiveOverview(classroomId || '', activeOverviewDate);
+    const turno = liveOverview?.shift ?? turnoDeLosBloques;
+    const { periods: dynamicPeriods, isLoading } = useSchedulePeriods(turno === 'INTEGRAL' ? 'MANANA' : turno);
 
-    const handleClassClick = (classItem: ScheduleBlock | null) => {
-        if (role !== 'teacher' || !classItem || !classItem.subjectId || !classroomId) return;
-        const blockDate = (viewMode === 'day' && histDate) ? histDate : getDateForDayKey(classItem.day || '');
-        router.push(
-            `/dashboard/clase-en-vivo/${classroomId}/${classItem.subjectId}?date=${blockDate}&start=${encodeURIComponent(classItem.startTime)}&end=${encodeURIComponent(classItem.endTime)}`
-        );
+    /**
+     * ENTRAR A UNA CLASE
+     *
+     * El profesor va a la Clase en Vivo, donde trabaja. El alumno —y quien mira
+     * su horario— abre la ficha de esa hora: tema, qué hay que hacer y su nota.
+     * Antes el bloque no respondía a nadie que no fuera profesor y el alumno se
+     * quedaba mirando una tarjeta muerta.
+     */
+    const [claseAbierta, setClaseAbierta] = React.useState<
+        (ScheduleBlock & { reemplazaA?: string; classroomIdDeLaClase?: string }) | null
+    >(null);
+
+    const handleClassClick = (
+        classItem: (ScheduleBlock & { reemplazaA?: string; classroomIdDeLaClase?: string }) | null
+    ) => {
+        if (!classItem?.subjectId) return;
+        const seccion = classItem.classroomIdDeLaClase ?? classItem.classroomId ?? classroomId;
+        if (!seccion) return;
+
+        if (role === 'teacher') {
+            const blockDate = (viewMode === 'day' && histDate) ? histDate : getDateForDayKey(classItem.day || '');
+            router.push(
+                `/dashboard/clase-en-vivo/${seccion}/${classItem.subjectId}?date=${blockDate}&start=${encodeURIComponent(classItem.startTime)}&end=${encodeURIComponent(classItem.endTime)}`
+            );
+            return;
+        }
+
+        setClaseAbierta(classItem);
     };
 
     // Scroll por bloque completo en el carrusel
@@ -181,6 +229,21 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
     // Horario de hoy para la vista diaria
     const todaySchedule = schedule.filter((s) => s.day === displayDayKey);
 
+    /**
+     * REEMPLAZOS DE ESE DÍA
+     *
+     * Si el admin suspendió una clase y puso otra materia en su lugar, el
+     * carril enseña la que SE DA, no la del horario semanal, con una marca de a
+     * quién reemplaza. En el horario de un profesor aparecen además las clases
+     * que cubre en otras secciones.
+     */
+    const fechaDelDia = histDate || getDateForDayKey(displayDayKey);
+    const { data: reemplazos = [] } = useClassReplacements({
+        classroomId: teacherId ? undefined : classroomId,
+        teacherId,
+        fecha: viewMode === 'day' ? fechaDelDia : undefined,
+    });
+
     // Timeline para vista diaria ("Hoy")
     const timeline = dynamicPeriods.map((period) => {
         if (period.type === 'break') {
@@ -197,10 +260,28 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                 (c.startTime >= period.startTime && c.startTime < period.endTime)
         );
 
+        const reemplazo = reemplazos.find(
+            (r) => r.startTime >= period.startTime && r.startTime < period.endTime
+        );
+        const clase = reemplazo
+            ? {
+                  day: displayDayKey,
+                  startTime: reemplazo.startTime,
+                  endTime: reemplazo.endTime,
+                  subject: reemplazo.subject.name,
+                  subjectId: reemplazo.subject.id,
+                  color: reemplazo.subject.color || classItem?.color,
+                  location: reemplazo.classroom.name,
+                  detail: `Prof. ${reemplazo.teacher.firstName} ${reemplazo.teacher.lastName}`,
+                  reemplazaA: reemplazo.suspendedSubject.name,
+                  classroomIdDeLaClase: reemplazo.classroom.id,
+              }
+            : classItem;
+
         return {
             ...period,
             isBreak: false,
-            class: classItem || null,
+            class: (clase || null) as (ScheduleBlock & { reemplazaA?: string; classroomIdDeLaClase?: string }) | null,
         };
     });
 
@@ -214,6 +295,16 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
         if (currentTime >= endTime) return 'past';
         return 'upcoming';
     };
+
+    // El carril arranca en la hora que va (o la siguiente), no en la primera
+    // de la mañana: a las diez nadie viene a ver la clase de las siete.
+    const primeraQueQueda = timeline.findIndex((p) => getPeriodStatus(p.startTime, p.endTime) !== 'past');
+    React.useEffect(() => {
+        if (viewMode !== 'day' || primeraQueQueda <= 0) return;
+        const carril = carouselRef.current;
+        const ficha = carril?.children[primeraQueQueda] as HTMLElement | undefined;
+        if (carril && ficha) carril.scrollTo({ left: ficha.offsetLeft - carril.offsetLeft, behavior: 'auto' });
+    }, [viewMode, primeraQueQueda, timeline.length, carouselRef]);
 
     // Mapeo consistente de estilo moderno por materia
     const subjectStyleMap = useMemo(() => {
@@ -335,18 +426,26 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             <Calendar size={18} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-gray-900 text-sm sm:text-base leading-tight">Horario en Vivo</h3>
-                            <p className="text-[11px] text-gray-500 font-medium">
+                            <div className="flex items-center gap-2">
+                                <h3 className="font-bold text-gray-900 text-sm sm:text-base leading-tight">Horario en Vivo</h3>
+                                <TurnoBadge turno={turno} />
+                            </div>
+                            <p className="text-[11px] text-gray-600 font-medium">
                                 {histLabel}
                             </p>
                         </div>
                     </div>
 
-                    {/* Acciones y Toggle */}
-                    <div className="flex items-center gap-2">
-                        {/* Controles de avance por bloque (solo en vista Hoy si hay más de 5 bloques) */}
+                    {/* Acciones y Toggle — se parten en vez de empujar la
+                        pantalla: con los botones a 44 px, «Hoy · Semana ·
+                        Historial» más las acciones ya no caben en una línea de
+                        390 px. */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/* Controles de avance por bloque (solo en vista Hoy si hay más de 5 bloques).
+                            De pie no se pintan: ahí las horas van una debajo de
+                            otra y no hay carril que mover. */}
                         {viewMode === 'day' && timeline.length > 5 && (
-                            <div className="flex items-center gap-1 bg-gray-50 p-0.5 rounded-lg border border-gray-200/60">
+                            <div className="hidden items-center gap-1 rounded-lg border border-gray-200/60 bg-gray-50 p-0.5 min-[700px]:flex">
                                 <button
                                     type="button"
                                     onClick={() => scrollByBlock('prev')}
@@ -366,6 +465,8 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             </div>
                         )}
 
+                        <DescargarHorario bloques={schedule} titulo={titulo} subtitulo={subtitulo} />
+
                         {showActions && (
                             <div className="flex items-center gap-1 mr-1 pr-1 border-r border-gray-200">
                                 {classroomId && (
@@ -378,14 +479,6 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                         <Search size={15} />
                                     </button>
                                 )}
-                                <button
-                                    type="button"
-                                    onClick={() => toast.info('Impresión disponible desde el menú superior')}
-                                    className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                    title="Imprimir horario"
-                                >
-                                    <Printer size={15} />
-                                </button>
                                 {editUrl && (
                                     <Link
                                         href={editUrl}
@@ -445,7 +538,31 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                 {viewMode === 'day' && (
                     <div
                         ref={carouselRef}
-                        className="flex w-full gap-3 overflow-x-auto pb-2 pt-0.5 snap-x snap-mandatory scroll-smooth no-scrollbar"
+                        /*
+                            EL DÍA, EN UN CARRIL DE LADO (TAMBIÉN EN EL TELÉFONO)
+
+                            Estuvo una temporada en vertical —una hora debajo de
+                            otra, 140 px cada una— y el dueño lo quiso de vuelta
+                            de lado, como antes: el día cabe en un vistazo y se
+                            pasa con el dedo. Pero más apretado: en el teléfono
+                            cada ficha mide menos de la mitad del ancho, así que
+                            se ven dos y se asoma la tercera (eso dice «hay
+                            más»), y el carril arranca en la hora que va.
+
+                            `data-carril-a-proposito`: la regla `arrastre` de
+                            `npm run movil` no lo cuenta como fallo; es a
+                            propósito.
+
+                            `relative`: la etiqueta escondida del tema
+                            (`sr-only`, que es `absolute`) se salía del carril
+                            y ensanchaba la PÁGINA entera a 1188 px; el
+                            teléfono la enseñaba alejada y los botones de la
+                            ventana de la clase no se podían pulsar.
+                        */
+                        data-carril-a-proposito=""
+                        className={`relative flex w-full gap-2.5 overflow-x-auto snap-x snap-mandatory no-scrollbar pb-2 pt-0.5 select-none min-[700px]:gap-3 ${
+                            arrastrando ? 'cursor-grabbing scroll-auto' : 'cursor-grab scroll-smooth'
+                        }`}
                         style={{
                             scrollbarWidth: 'none',
                             msOverflowStyle: 'none',
@@ -464,7 +581,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                     return (
                                         <div
                                             key={index}
-                                            className={`snap-start flex-shrink-0 w-[calc((100%-48px)/5)] min-w-[170px] min-h-[145px] p-3 rounded-2xl border transition-all flex flex-col justify-center items-center text-center ${
+                                            className={`snap-start flex-shrink-0 w-[44%] min-w-[148px] min-h-[104px] p-2.5 min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[170px] min-[700px]:min-h-[145px] min-[700px]:p-3 rounded-2xl border transition-all flex flex-col justify-center items-center text-center ${
                                                 status === 'current'
                                                     ? 'bg-amber-50 border-amber-300 shadow-xs ring-2 ring-amber-200'
                                                     : status === 'past'
@@ -491,13 +608,14 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                 }
 
                                 const classItem = period.class;
-                                const isClickable = role === 'teacher' && classItem?.subjectId && classroomId;
+                                const isClickable = Boolean(
+                                    classItem?.subjectId && (classItem?.classroomIdDeLaClase || classItem?.classroomId || classroomId)
+                                );
 
                                 // Datos enriquecidos desde el Plan de Evaluación y Actividades
                                 const subjectInfo = classItem?.subjectId ? liveOverview?.overview?.[classItem.subjectId] : null;
                                 const temaGenerador = subjectInfo?.temaGenerador || null;
                                 const firstColLabel = subjectInfo?.firstColumnLabel || 'Tema Generador';
-                                const activitiesCount = subjectInfo?.activitiesCount ?? 0;
                                 const todayActivitiesCount = subjectInfo?.todayActivitiesCount ?? 0;
                                 const nextActivitiesCount = subjectInfo?.nextActivitiesCount ?? 0;
 
@@ -513,7 +631,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                                   }
                                                 : undefined
                                         }
-                                        className={`snap-start flex-shrink-0 w-[calc((100%-48px)/5)] min-w-[170px] min-h-[145px] p-3 rounded-2xl border-2 transition-all flex flex-col justify-between ${
+                                        className={`snap-start flex-shrink-0 w-[44%] min-w-[148px] min-h-[104px] p-2.5 min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[170px] min-[700px]:min-h-[145px] min-[700px]:p-3 rounded-2xl border-2 transition-all flex flex-col justify-between ${
                                             isClickable ? 'cursor-pointer hover:ring-2 hover:ring-indigo-400 hover:shadow-xs' : ''
                                         } ${
                                             !classItem?.color
@@ -554,13 +672,21 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                                     >
                                                         {classItem.subject}
                                                     </h4>
+                                                    {classItem.reemplazaA && (
+                                                        <span className="inline-block rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+                                                            Reemplaza a {classItem.reemplazaA}
+                                                        </span>
+                                                    )}
 
                                                     {/* Tema Generador / Primera Columna del Plan */}
-                                                    <div className="bg-white/80 p-1.5 rounded-lg border border-gray-100/80 shadow-2xs">
-                                                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tight block truncate">
+                                                    <div className="bg-white/80 px-1.5 py-1 rounded-lg border border-gray-100/80 shadow-2xs min-[700px]:p-1.5">
+                                                        {/* De pie, sin el rótulo: la ficha baja una línea
+                                                            y el día cabe en menos alto. */}
+                                                        <span className="hidden text-[9px] font-bold text-gray-400 uppercase tracking-tight truncate min-[700px]:block">
                                                             {firstColLabel}:
                                                         </span>
                                                         <p className="text-[11px] font-bold text-gray-800 line-clamp-1 leading-tight">
+                                                            <span className="sr-only min-[700px]:hidden">{firstColLabel}: </span>
                                                             {temaGenerador || '—'}
                                                         </p>
                                                     </div>
@@ -572,38 +698,40 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                             )}
                                         </div>
 
-                                        {/* Footer del Bloque: Contador de Actividades (Hoy y Próx) + Docente/Aula */}
-                                        {classItem && (
+                                        {/*
+                                          * Pie del bloque. Solo se enseña lo que hay:
+                                          *   · «1 para hoy» — lo que toca en esta clase;
+                                          *   · «1 para otro día» — lo que se DEJÓ aquí para más adelante;
+                                          *   · el aula, si la sección tiene aula asignada.
+                                          * Los ceros y el «Sin aula» se fueron: ocupaban sitio para
+                                          * decir que no hay nada que decir.
+                                          */}
+                                        {classItem && (todayActivitiesCount > 0 || nextActivitiesCount > 0 || classItem.location) && (
                                             <div className="pt-2 border-t border-gray-100/80 flex items-center justify-between gap-1 mt-auto flex-wrap">
-                                                <div className="flex items-center gap-1">
-                                                    {/* Hoy */}
-                                                    <div
-                                                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${
-                                                            todayActivitiesCount > 0
-                                                                ? 'bg-blue-100 text-blue-800'
-                                                                : 'bg-gray-100 text-gray-500'
-                                                        }`}
-                                                        title={`${todayActivitiesCount} actividad(es) para hoy`}
-                                                    >
-                                                        <span>Hoy: {todayActivitiesCount}</span>
-                                                    </div>
-
-                                                    {/* Próx */}
-                                                    <div
-                                                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${
-                                                            nextActivitiesCount > 0
-                                                                ? 'bg-purple-100 text-purple-800'
-                                                                : 'bg-gray-100 text-gray-500'
-                                                        }`}
-                                                        title={`${nextActivitiesCount} actividad(es) para la próxima clase`}
-                                                    >
-                                                        <span>Próx: {nextActivitiesCount}</span>
-                                                    </div>
+                                                <div className="flex items-center gap-1 flex-wrap">
+                                                    {todayActivitiesCount > 0 && (
+                                                        <span
+                                                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-blue-100 text-blue-900"
+                                                            title={`${todayActivitiesCount} actividad(es) para esta clase`}
+                                                        >
+                                                            {todayActivitiesCount} para hoy
+                                                        </span>
+                                                    )}
+                                                    {nextActivitiesCount > 0 && (
+                                                        <span
+                                                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-purple-100 text-purple-900"
+                                                            title={`En esta clase se dejaron ${nextActivitiesCount} actividad(es) para otro día`}
+                                                        >
+                                                            {nextActivitiesCount} para otro día
+                                                        </span>
+                                                    )}
                                                 </div>
 
-                                                <span className="text-[10px] text-gray-400 truncate max-w-[65px]">
-                                                    {classItem.location || 'Sin aula'}
-                                                </span>
+                                                {classItem.location && (
+                                                    <span className="text-[10px] text-gray-600 truncate max-w-[70px]">
+                                                        {classItem.location}
+                                                    </span>
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -617,7 +745,48 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                 {/* 2. VISTA DE SEMANA (TABLA MATRIZ COMPACTA, ELEGANTE Y PRO)    */}
                 {/* ───────────────────────────────────────────────────────────── */}
                 {viewMode === 'week' && (
-                    <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-2xs">
+                    <>
+                        {/*
+                            LA SEMANA, DE PIE
+
+                            La rejilla de la semana son cinco días por siete
+                            horas: 700 px largos. De pie había que arrastrarla, y
+                            al llegar al viernes ya no se sabía qué hora se
+                            miraba. Aquí va un día cada vez, en vertical, con las
+                            fichas de los días arriba; la rejilla entera sale en
+                            cuanto hay ancho, y eso incluye el teléfono tumbado.
+                        */}
+                        <div className="min-[700px]:hidden">
+                            <HorarioPorDias
+                                dias={WORKING_DAYS.map((d) => ({ id: d.key, label: d.label }))}
+                                periodos={dynamicPeriods.map((p) => ({
+                                    id: `${p.startTime}-${p.endTime}`,
+                                    label: p.label,
+                                    startTime: p.startTime,
+                                    endTime: p.endTime,
+                                    type: p.type,
+                                }))}
+                                cargando={isLoading}
+                                motivoDelGiro="Para ver la semana entera"
+                                loDeLaHora={(dia, periodo) => {
+                                    const clase = schedule.find(
+                                        (c) =>
+                                            c.day === dia.id &&
+                                            (c.startTime === periodo.startTime ||
+                                                (c.startTime <= periodo.startTime && c.endTime > periodo.startTime))
+                                    );
+                                    if (!clase) return null;
+                                    return {
+                                        titulo: clase.subject,
+                                        subtitulo: clase.detail
+                                            ? clase.detail.replace(/^Prof\.\s*/i, '').trim()
+                                            : undefined,
+                                    };
+                                }}
+                            />
+                        </div>
+
+                        <div className="rejilla-densa hidden overflow-x-auto rounded-xl border border-gray-200 shadow-2xs min-[700px]:block">
                         <table className="w-full border-collapse text-center text-xs">
                             {/* Cabecera Estilizada */}
                             <thead>
@@ -704,7 +873,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                                 const classItem = cell.classItem!;
                                                 const subjectKey = (classItem.subject || '').trim().toLowerCase();
                                                 const style = subjectStyleMap[subjectKey] || MODERN_SUBJECT_STYLES[0];
-                                                const isClickable = role === 'teacher' && classItem.subjectId && classroomId;
+                                                const isClickable = Boolean(classItem.subjectId && (classItem.classroomId || classroomId));
 
                                                 const teacherName = classItem.detail
                                                     ? classItem.detail.replace(/^Prof\.\s*/i, '').trim()
@@ -750,8 +919,26 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             </tbody>
                         </table>
                     </div>
+                    </>
                 )}
             </div>
+
+            {/* La ficha de una clase para quien no es profesor: solo lectura. */}
+            <ClaseDelAlumnoDialogo
+                abierto={Boolean(claseAbierta)}
+                alCerrar={() => setClaseAbierta(null)}
+                materia={claseAbierta?.subject}
+                hora={claseAbierta ? `${claseAbierta.startTime} - ${claseAbierta.endTime}` : undefined}
+                profesor={claseAbierta?.detail || undefined}
+                aula={claseAbierta?.location || undefined}
+                fecha={histLabel}
+                reemplazaA={claseAbierta?.reemplazaA}
+                datos={
+                    (claseAbierta?.subjectId
+                        ? liveOverview?.overview?.[claseAbierta.subjectId]
+                        : null) as LiveOverviewSubject | null
+                }
+            />
 
             {/* Modal de Calendario e Historial */}
             {classroomId && (

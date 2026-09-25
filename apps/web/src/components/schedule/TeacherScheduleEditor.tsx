@@ -45,6 +45,8 @@ interface TeacherScheduleEditorProps {
     assignments: any[];
 }
 
+import HorarioPorDias from '@/components/schedule/HorarioPorDias';
+
 const DAYS = [
     { id: 1, label: 'Lunes' },
     { id: 2, label: 'Martes' },
@@ -740,7 +742,43 @@ export default function TeacherScheduleEditor({
                     </div>
 
                     {/* Cuadrícula */}
-                    <div className="flex-1 overflow-x-auto">
+                    {/*
+                        DE PIE, UN DÍA CADA VEZ
+
+                        Lo mismo que en el horario de una sección: la rejilla
+                        pide 700 px y un teléfono de pie tiene 390. El corte es
+                        por ancho, así que el propio teléfono tumbado ya la
+                        enseña entera.
+                    */}
+                    <div className="flex-1 min-[700px]:hidden">
+                        <HorarioPorDias
+                            dias={DAYS}
+                            periodos={dynamicPeriods}
+                            cargando={isLoading}
+                            motivoDelGiro="Para mover horas de sitio"
+                            loDeLaHora={(dia, periodo) => {
+                                const suyos = blocks.filter((b) => b.cellId === `${dia.id}-${periodo.startTime}`);
+                                const primero = suyos[0];
+                                if (!primero) return null;
+                                return {
+                                    titulo: primero.primaryLabel,
+                                    subtitulo: primero.secondaryLabel,
+                                    color: primero.color || undefined,
+                                    // Dos clases a la misma hora es un choque, y
+                                    // hay que verlo también aquí: en la rejilla
+                                    // se marca en rojo, y de pie no había rejilla.
+                                    extra:
+                                        suyos.length > 1 ? (
+                                            <span className="mt-1 inline-flex rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">
+                                                Choque: {suyos.length} a la misma hora
+                                            </span>
+                                        ) : undefined,
+                                };
+                            }}
+                        />
+                    </div>
+
+                    <div className="rejilla-densa hidden flex-1 overflow-x-auto min-[700px]:block">
                         <div className="min-w-[700px] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                             <div className="grid grid-cols-6 border-b border-gray-200 bg-gray-50">
                                 <div className="p-3 text-center text-xs font-bold text-gray-500 uppercase">Hora</div>

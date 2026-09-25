@@ -17,7 +17,7 @@ export default function ScheduleCalendarModal({ isOpen, onClose, classroomId }: 
     // en Venezuela (UTC-4), a partir de las 8 de la noche pedía el día siguiente.
     const dateStr = toLocalYMD(selectedDate);
     
-    const { data: history, isLoading } = useClassroomHistory(classroomId, dateStr);
+    const { data: history, isLoading } = useClassroomHistory(classroomId, dateStr, isOpen);
 
     if (!isOpen) return null;
 
@@ -37,13 +37,12 @@ export default function ScheduleCalendarModal({ isOpen, onClose, classroomId }: 
     };
 
     return (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+        <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Historial de clases">
+            <div className="flex items-center justify-center min-h-full p-4 text-center">
                 <div
                     className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75"
                     onClick={onClose}
-                    role="button"
-                    tabIndex={0}
+                    aria-hidden="true"
                     onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
@@ -51,8 +50,6 @@ export default function ScheduleCalendarModal({ isOpen, onClose, classroomId }: 
                         }
                     }}
                 />
-                
-                <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
                 
                 <div className="inline-block w-full max-w-2xl text-left align-middle transition-all transform bg-white rounded-2xl shadow-xl sm:my-8">
                     {/* Header */}
@@ -63,7 +60,7 @@ export default function ScheduleCalendarModal({ isOpen, onClose, classroomId }: 
                             </div>
                             <h3 className="text-lg font-bold text-gray-900">Historial de Clases</h3>
                         </div>
-                        <button
+                        <button aria-label="Cerrar"
                             onClick={onClose}
                             className="text-gray-400 hover:text-gray-500 hover:bg-gray-100 p-2 rounded-lg transition-colors"
                         >

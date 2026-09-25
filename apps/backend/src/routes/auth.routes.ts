@@ -8,6 +8,9 @@ import {
   getSessions,
   deleteSession,
   deleteOtherSessions,
+  crearLlaveDeTelefono,
+  entrarConLaLlaveDelTelefono,
+  anularLlaveDeTelefono,
 } from '../controllers/auth.controller';
 import { authenticate, userRateLimit } from '../middleware/auth.middleware';
 
@@ -77,6 +80,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           // `accessToken` y `expiresIn`. Fastify serializaba la respuesta a {}
           // y el frontend (route.ts de refresh) recibía accessToken undefined.
           accessToken: { type: 'string' },
+          // La llave de volver a entrar CAMBIA en cada renovación, y el
+          // navegador tiene que quedarse con la nueva. Sin esta línea, Fastify
+          // la borraba de la respuesta (solo deja pasar lo que está declarado)
+          // y el navegador seguía con la vieja: a los pocos segundos se
+          // quedaba fuera sin explicación.
+          refreshToken: { type: 'string' },
           expiresIn: { type: 'string' },
         },
       },
@@ -117,6 +126,32 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     { schema: changePasswordSchema, preHandler: authenticate },
     changePassword as any
   );
+
+  /**
+   * LA LLAVE DE ESTE TELÉFONO
+   *
+   * Tres rutas y una regla: **la primera vez en un teléfono se entra siempre
+   * con correo y contraseña**. Guardar la llave pide sesión; entrar con ella
+   * no —como el login—, y por eso lleva el mismo freno de intentos: por aquí
+   * se podrían probar llaves a lo bruto igual que contraseñas.
+   */
+  const llaveSchema = {
+    body: {
+      type: 'object',
+      required: ['llave'],
+      properties: {
+        llave: { type: 'string', minLength: 20, maxLength: 200 },
+      },
+    },
+  };
+
+  fastify.post('/llave-del-telefono', { preHandler: authenticate }, crearLlaveDeTelefono as any);
+  fastify.post(
+    '/entrar-con-el-telefono',
+    { schema: llaveSchema, preHandler: userRateLimit as any },
+    entrarConLaLlaveDelTelefono as any
+  );
+  fastify.post('/anular-llave-del-telefono', { preHandler: authenticate }, anularLlaveDeTelefono as any);
 
   // Sesiones/dispositivos activos del usuario autenticado
   fastify.get('/sessions', { preHandler: authenticate }, getSessions as any);

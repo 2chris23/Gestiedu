@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Save, Bell, Mail, Smartphone, RefreshCw } from 'lucide-react';
 import { instituteService } from '@/services/institute.service';
 import { toast } from 'sonner';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 interface NotificationConfig {
     channels: {
@@ -62,7 +63,7 @@ export function NotificationSettings() {
             }
         } catch (error) {
             console.error(error);
-            toast.error('Error al cargar la configuración');
+            if (!esQueNoContesta(error)) toast.error('Error al cargar la configuración');
         } finally {
             setLoading(false);
         }

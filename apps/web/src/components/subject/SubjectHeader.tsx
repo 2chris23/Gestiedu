@@ -35,8 +35,11 @@ export function SubjectHeader({ subjectName, subjectCode, subjectColor, cycles, 
     };
 
     return (
-        <div className="bg-white border-b border-gray-200">
-            <div className="container mx-auto px-6 py-8">
+        // Franja de borde a borde con el contenido en la columna de la pantalla:
+        // con `container px-6` propio, dentro del margen del marco, el nombre de
+        // la materia quedaba 24 px más adentro que el resto.
+        <div className="-mx-4 -mt-6 border-b border-gray-200 bg-white px-4 py-6 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+            <div>
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
                     <div>
                         <div className="flex items-center gap-2 mb-2">
@@ -57,14 +60,14 @@ export function SubjectHeader({ subjectName, subjectCode, subjectColor, cycles, 
                             <span className="text-gray-300">•</span>
                             <span className="text-gray-500 text-sm font-medium">Vista Global de Materia</span>
                         </div>
-                        <h1 className="text-3xl font-black text-gray-900 tracking-tight">{subjectName}</h1>
+                        <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">{subjectName}</h1>
                     </div>
 
                     {/* Cycle Selector (Control Area) */}
                     <div className="relative z-10 w-full md:w-auto">
                         <Menu as="div" className="relative inline-block text-left w-full md:w-auto">
                             <div>
-                                <label htmlFor="cycleSelector" className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 ml-1">
+                                <label htmlFor="cycleSelector" className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 ml-1">
                                     Ciclo Escolar Visualizado
                                 </label>
                                 <Menu.Button id="cycleSelector" className="group inline-flex w-full md:min-w-[260px] justify-between items-center rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-200 hover:bg-gray-50 hover:ring-indigo-200 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500">

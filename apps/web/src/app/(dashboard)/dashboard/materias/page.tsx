@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
+import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import { useState, useMemo, useEffect } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -13,6 +15,7 @@ import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { CreateSubjectData, UpdateSubjectData, Subject } from '@/services/subjects.service';
 import { Pagination } from '@/components/ui';
+import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
 import { PaletteColorSelector } from '@/components/ui/PaletteColorSelector';
 import { toast } from 'sonner';
 
@@ -68,12 +71,6 @@ export default function MateriasPage() {
         }
     };
 
-    // Componente de icono de ordenamiento
-    const SortIcon = ({ column }: { column: 'name' | 'sectionCount' | 'teacherCount' }) => {
-        if (sortField !== column) return <ArrowUpDown className="h-4 w-4 text-gray-400" />;
-        return sortDirection === 'asc' ? <ArrowUp className="h-4 w-4 text-indigo-600" /> : <ArrowDown className="h-4 w-4 text-indigo-600" />;
-    };
-
     // Ordenar materias
     const sortedSubjects = useMemo(() => {
         if (!sortField) return subjects;
@@ -124,25 +121,23 @@ export default function MateriasPage() {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-                        <Link href="/dashboard" className="hover:text-gray-700">Dashboard</Link>
-                        <span>/</span>
-                        <span className="text-gray-900 font-medium">Materias</span>
-                    </div>
-                    <h1 className="text-3xl font-bold text-gray-900">Catálogo de Materias</h1>
-                    <p className="text-gray-600 mt-1">Gestiona el catálogo global de materias del sistema</p>
-                </div>
-                <button
-                    onClick={() => setIsCreateModalOpen(true)}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
-                >
-                    <Plus className="w-5 h-5" />
-                    Nueva Materia
-                </button>
-            </div>
+            <EncabezadoDePantalla
+                migas={
+                    <nav aria-label="Ruta" className="flex items-center gap-2 text-sm text-gray-600">
+                        <Link href="/dashboard" className="hover:text-gray-900">Inicio</Link>
+                        <span aria-hidden>/</span>
+                        <span className="font-medium text-gray-900">Materias</span>
+                    </nav>
+                }
+                titulo="Catálogo de Materias"
+                descripcion="Gestiona el catálogo global de materias del sistema"
+                acciones={
+                    <Button onClick={() => setIsCreateModalOpen(true)}>
+                        <Plus aria-hidden />
+                        Nueva Materia
+                    </Button>
+                }
+            />
 
             {/* No academic years state */}
             {!isLoadingYears && (!academicYears || academicYears.length === 0) && (
@@ -202,86 +197,87 @@ export default function MateriasPage() {
 
             {/* Table */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full">
-                        <thead className="bg-gray-50 border-b border-gray-200">
-                            <tr>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('name')}>
-                                    <div className="flex items-center gap-2">Materia <SortIcon column="name" /></div>
-                                </th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('sectionCount')}>
-                                    <div className="flex items-center gap-2">Secciones <SortIcon column="sectionCount" /></div>
-                                </th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('teacherCount')}>
-                                    <div className="flex items-center gap-2">Profesores <SortIcon column="teacherCount" /></div>
-                                </th>
-                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Acciones
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                            {isLoading ? (
-                                <tr>
-                                    <td colSpan={4} className="px-6 py-12 text-center text-gray-500">
-                                        Cargando materias...
-                                    </td>
-                                </tr>
-                            ) : subjects.length === 0 ? (
-                                <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
-                                        No hay materias registradas
-                                    </td>
-                                </tr>
-                            ) : (
-                                sortedSubjects.map((subject) => (
-                                    <tr key={subject.id} className="hover:bg-gray-50">
-                                        <td className="px-6 py-4">
-                                            <Link href={`/dashboard/materias/${selectedCycleName}/${subject.slug}`} className="flex items-center gap-3 cursor-pointer group">
-                                                <div
-                                                    className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold transition-transform group-hover:scale-105"
-                                                    style={{ backgroundColor: subject.color }}
-                                                >
-                                                    {subject.name.charAt(0)}
-                                                </div>
-                                                <div>
-                                                    <div className="font-medium text-gray-900 group-hover:text-indigo-600 transition-colors">{subject.name}</div>
-                                                </div>
-                                            </Link>
-                                        </td>
-                                        <td className="px-6 py-4 text-sm text-gray-900">
-                                            {subject.sectionCount || 0}
-                                        </td>
-                                        <td className="px-6 py-4 text-sm text-gray-900">
-                                            {subject.teacherCount || 0}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex items-center justify-end gap-2">
-                                                <button
-                                                    onClick={() => {
-                                                        setSelectedSubject(subject);
-                                                        setIsEditModalOpen(true);
-                                                    }}
-                                                    className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                                >
-                                                    <Edit className="w-4 h-4" />
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        setSelectedSubject(subject);
-                                                        setIsDeleteModalOpen(true);
-                                                    }}
-                                                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                <div className="p-4 sm:p-5">
+                    <TablaAdaptable<(typeof sortedSubjects)[number]>
+                        datos={sortedSubjects}
+                        cargando={isLoading}
+                        clave={(m) => m.id}
+                        orden={sortField ? { por: sortField, hacia: sortDirection } : null}
+                        alOrdenar={(por) => handleSort(por as 'name' | 'sectionCount' | 'teacherCount')}
+                        vacio={<p className="text-cuerpo text-tinta-suave">No hay materias registradas</p>}
+                        columnas={[
+                            {
+                                id: 'name',
+                                titulo: 'Materia',
+                                principal: true,
+                                ordenable: true,
+                                celda: (m) => (
+                                    <Link
+                                        href={`/dashboard/materias/${selectedCycleName}/${m.slug}`}
+                                        className="group flex items-center gap-3"
+                                    >
+                                        <span
+                                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-bold text-white"
+                                            style={{ backgroundColor: m.color }}
+                                        >
+                                            {m.name.charAt(0)}
+                                        </span>
+                                        <span className="min-w-0 truncate font-medium text-gray-900 group-hover:text-indigo-600">
+                                            {m.name}
+                                        </span>
+                                    </Link>
+                                ),
+                            },
+                            {
+                                id: 'sectionCount',
+                                titulo: 'Secciones',
+                                ordenable: true,
+                                alinear: 'derecha',
+                                celda: (m) => <span className="text-sm text-gray-900">{m.sectionCount || 0}</span>,
+                            },
+                            {
+                                id: 'teacherCount',
+                                titulo: 'Profesores',
+                                ordenable: true,
+                                alinear: 'derecha',
+                                celda: (m) => <span className="text-sm text-gray-900">{m.teacherCount || 0}</span>,
+                            },
+                            {
+                                id: 'acciones',
+                                titulo: 'Acciones',
+                                acciones: true,
+                                alinear: 'derecha',
+                                celda: (m) => (
+                                    <span className="flex items-center justify-end gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedSubject(m);
+                                                setIsEditModalOpen(true);
+                                            }}
+                                            title="Editar materia"
+                                            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                                        >
+                                            <Edit className="h-4 w-4" />
+                                            <span className="sr-only">Editar</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedSubject(m);
+                                                setIsDeleteModalOpen(true);
+                                            }}
+                                            title="Eliminar materia"
+                                            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                            <span className="sr-only">Eliminar</span>
+                                        </button>
+                                    </span>
+                                ),
+                            },
+                        ]}
+                    />
                 </div>
 
                 {pagination && pagination.totalPages > 1 && (
@@ -365,22 +361,22 @@ function SubjectFormModal({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-                <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} role="button" tabIndex={0} onKeyDown={(e) => {
+        <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label={title}>
+            <div className="flex items-center justify-center min-h-full p-4 text-center">
+                <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} aria-hidden="true" onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
                         onClose();
                     }
                 }} />
 
-                <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div className="relative w-full max-w-lg bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all">
                     <form onSubmit={handleSubmit}>
                         <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                             <div className="flex items-center justify-between mb-4">
                                 <h3 className="text-lg font-medium text-gray-900">{title}</h3>
-                                <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-500">
-                                    <X className="w-5 h-5" />
+                                <button type="button" onClick={onClose} aria-label="Cerrar" className="-mr-2 flex h-11 w-11 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700">
+                                    <X className="w-5 h-5" aria-hidden />
                                 </button>
                             </div>
 
@@ -452,16 +448,16 @@ function DeleteConfirmModal({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-                <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} role="button" tabIndex={0} onKeyDown={(e) => {
+        <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Borrar materia">
+            <div className="flex items-center justify-center min-h-full p-4 text-center">
+                <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} aria-hidden="true" onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
                         onClose();
                     }
                 }} />
 
-                <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div className="relative w-full max-w-lg bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all">
                     <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                         <div className="sm:flex sm:items-start">
                             <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">

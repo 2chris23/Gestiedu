@@ -7,6 +7,10 @@
   ],
   "packageManager": "npm@10.2.4",
   "scripts": {
+    "telefono": "node scripts/servidores-para-el-telefono.mjs",
+    "telefono:compilado": "node scripts/servidores-para-el-telefono.mjs --compilado",
+    "telefono:usb": "node scripts/servidores-para-el-telefono.mjs --compilado --usb",
+    "movil": "node scripts/auditoria-del-telefono.mjs",
     "test:e2e": "playwright test -c playwright.config.ts",
     "test:seed": "npx tsx apps/backend/src/scripts/seed-load-test.ts",
     "test:seed:clean": "npx tsx apps/backend/src/scripts/seed-load-test.ts --clean",

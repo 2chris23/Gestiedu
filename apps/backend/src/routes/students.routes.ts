@@ -12,6 +12,7 @@ import { getStudentCompleteHistory } from '../controllers/student-history.contro
 import { getStudentGrades } from '../controllers/grades.controller';
 import { getStudentAttendance } from '../controllers/attendance.controller';
 import { getStudentDashboard } from '../controllers/dashboard.controller';
+import { actividadesDelAlumno } from '../controllers/actividades-del-alumno.controller';
 import { authenticate, requireAdmin, requireTeacher, requireStudent, requireSelfOrAdmin } from '../middleware/auth.middleware';
 import { validateParams, validateCUID } from '../middleware/validation.middleware';
 import { FastifyRequest, FastifyReply } from 'fastify';
@@ -249,6 +250,17 @@ const studentsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/my-dashboard', {
     preHandler: [authenticate, requireStudent]
   }, getStudentDashboard);
+
+  /**
+   * Qué le falta y qué ya le evaluaron a un alumno.
+   *
+   * Sin guardián de rol a propósito: lo ven el propio alumno, su representante,
+   * su profesor y el admin. Quién es cada cual lo decide `assertCanSeeStudent`
+   * dentro, que es donde se sabe de qué alumno se habla. Solo lectura.
+   */
+  fastify.get('/:id/actividades', {
+    preHandler: [authenticate]
+  }, actividadesDelAlumno as any);
 };
 
 export default studentsRoutes;

@@ -1,47 +1,95 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import CalendarDayView from '@/components/evaluation/CalendarDayView';
 import { classroomService, Classroom } from '@/services/classroom.service';
 import { academicYearService } from '@/services/academic-year.service';
 import { BookOpen, Users, Calendar as CalendarIcon } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
+import api from '@/lib/axios';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export default function CalendarioPage() {
-    const [classrooms, setClassrooms] = useState<Classroom[]>([]);
     const [selectedClassroomId, setSelectedClassroomId] = useState<string>('');
-    const [loading, setLoading] = useState(true);
+    const { yo, cargando: sinSaberQuienEs } = useQuienSoy();
+
+    /**
+     * CADA UNO VE SUS SECCIONES
+     *
+     * Esta pantalla pedía TODAS las secciones del liceo y abría la primera. Al
+     * alumno y al representante —que también usan el calendario, por eso está
+     * abierto a ellos— les salía un aviso de error y una pantalla vacía: esa
+     * lista es de personal.
+     *
+     * Ahora: el alumno ve la suya, el representante las de sus representados, y
+     * el personal, todas.
+     */
+    /**
+     * PRIMERO SABER QUIÉN ES, LUEGO PEDIR
+     *
+     * Los datos de la sesión se recuperan del navegador en el primer pintado,
+     * así que durante un instante el rol es `null`. Este efecto corría antes de
+     * eso y caía en la rama del personal: al alumno le pedía TODAS las
+     * secciones del liceo y abría la primera, que no es la suya, y el servidor
+     * —con razón— respondía 403. Se veía como una pantalla rota nada más
+     * entrar. Ahora se espera a saber quién llama.
+     */
+    /**
+     * Y DE LA MEMORIA DE LA APP, NO DEL ESTADO DE LA PANTALLA
+     *
+     * Se pedían a mano y se guardaban solo mientras la pantalla estaba abierta:
+     * sin conexión, el calendario salía sin secciones. Pasando por React Query
+     * entran en lo que se guarda en el teléfono (`MemoriaDelTelefono`).
+     */
+    const secciones = useQuery({
+        queryKey: ['calendario', 'secciones', yo?.role, yo?.id],
+        enabled: !sinSaberQuienEs,
+        queryFn: async (): Promise<Classroom[]> => {
+            if (yo?.role === 'STUDENT') {
+                const { data } = await api.get('/students/my-dashboard');
+                const seccion = data?.data?.student?.currentSection;
+                return seccion
+                    ? [{ id: seccion.id, name: seccion.name, section: '', grade: 0 } as unknown as Classroom]
+                    : [];
+            }
+
+            if (yo?.role === 'TUTOR') {
+                const { data } = await api.get('/dashboard/tutor');
+                return (data?.data?.children ?? [])
+                    .filter((h: any) => h.classroomId)
+                    .map((h: any) => ({
+                        id: h.classroomId,
+                        name: `${h.fullName} · ${h.classroom ?? ''}`.trim(),
+                        section: '',
+                        grade: 0,
+                    })) as unknown as Classroom[];
+            }
+
+            const years = await academicYearService.getAcademicYears();
+            const activeYear = years.find((y) => y.status === 'ACTIVE') || years[0];
+            if (!activeYear) return [];
+            const data = await classroomService.getClassrooms(activeYear.id);
+            return Array.isArray(data) ? data : data.classrooms;
+        },
+    });
+    const classrooms = secciones.data ?? [];
+    const loading = sinSaberQuienEs || secciones.isLoading;
+
+    // La primera sección, en cuanto se sabe cuáles hay.
+    useEffect(() => {
+        if (!selectedClassroomId && classrooms.length > 0) setSelectedClassroomId(classrooms[0].id);
+    }, [classrooms, selectedClassroomId]);
 
     useEffect(() => {
-        const fetchClassrooms = async () => {
-            try {
-                setLoading(true);
-                const years = await academicYearService.getAcademicYears();
-                const activeYear = years.find(y => y.status === 'ACTIVE') || years[0];
-                
-                if (activeYear) {
-                    const data = await classroomService.getClassrooms(activeYear.id);
-                    const classes = Array.isArray(data) ? data : data.classrooms;
-                    setClassrooms(classes);
-                    
-                    if (classes.length > 0) {
-                        setSelectedClassroomId(classes[0].id);
-                    }
-                }
-            } catch (error) {
-                console.error(error);
-                toast.error('Error al cargar aulas');
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchClassrooms();
-    }, []);
+        if (secciones.error && !esQueNoContesta(secciones.error)) toast.error('No se pudieron cargar las secciones');
+    }, [secciones.error]);
 
     return (
-        <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        // Sin margen propio: el marco ya lo pone (con los dos, 32 px de más).
+        <div className="space-y-6">
             <Toaster position="top-right" />
             
             {/* Page Header */}
@@ -51,7 +99,7 @@ export default function CalendarioPage() {
                         <CalendarIcon className="w-5 h-5" />
                         <span className="text-xs font-bold uppercase tracking-widest">Calendario Escolar</span>
                     </div>
-                    <h1 className="text-2xl font-extrabold text-slate-100 tracking-tight mt-1">
+                    <h1 className="text-seccion sm:text-pantalla font-bold text-slate-100 mt-1">
                         Agenda del Plan de Evaluación
                     </h1>
                     <p className="text-sm text-slate-400 mt-1">
@@ -73,7 +121,7 @@ export default function CalendarioPage() {
                         <SelectContent>
                             {classrooms.map((c) => (
                                 <SelectItem key={c.id} value={c.id}>
-                                    {c.name} - Sección {c.section}
+                                    {c.section ? `${c.name} - Sección ${c.section}` : c.name}
                                 </SelectItem>
                             ))}
                         </SelectContent>
