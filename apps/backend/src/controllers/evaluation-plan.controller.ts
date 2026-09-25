@@ -38,6 +38,11 @@ export async function getEvaluationPlanMetadata(
       throw AppErrors.BadRequest('Faltan parámetros requeridos (classroomId, subjectId, lapso)');
     }
 
+    // La cabecera lleva la cédula, el teléfono y el correo del profesor: la
+    // consulta quien puede ver las filas del plan, ni uno más. Antes la leía
+    // cualquiera con sesión, un alumno de otra sección incluido.
+    await assertClassroomScope(db, request.user as any, classroomId, { subjectId, accion: 'consultar el plan' });
+
     // Obtener metadata guardada
     const metadata = await db.evaluationPlanMetadata.findUnique({
       where: {
