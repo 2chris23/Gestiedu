@@ -59,6 +59,9 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
         );
     }
 
+    // La columna de revisión sale solo si alguna materia la tiene.
+    const conRevision = b.materias.some((m) => m.revision != null);
+
     return (
         <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6 print:max-w-none print:p-0">
             <div className="flex items-center justify-between gap-2 print:hidden">
@@ -110,6 +113,7 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                                     <th key={l.id} scope="col" className="border border-gray-200 px-2 py-2 text-center">{l.nombre}</th>
                                 ))}
                                 <th scope="col" className="border border-gray-200 px-2 py-2 text-center">Definitiva</th>
+                                {conRevision && <th scope="col" className="border border-gray-200 px-2 py-2 text-center">Revisión</th>}
                             </tr>
                         </thead>
                         <tbody>
@@ -124,9 +128,14 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                                             </td>
                                         );
                                     })}
-                                    <td className={`border border-gray-200 px-2 py-1.5 text-center font-bold tabular-nums ${m.aprobada === false ? 'text-red-700' : 'text-gray-900'}`}>
+                                    <td className={`border border-gray-200 px-2 py-1.5 text-center font-bold tabular-nums ${m.aprobada === false && m.revision == null ? 'text-red-700' : 'text-gray-900'}`}>
                                         {nota(m.definitiva)}
                                     </td>
+                                    {conRevision && (
+                                        <td className={`border border-gray-200 px-2 py-1.5 text-center font-bold tabular-nums ${m.revision != null && m.aprobada === false ? 'text-red-700' : 'text-gray-900'}`}>
+                                            {m.revision == null ? '' : nota(m.revision)}
+                                        </td>
+                                    )}
                                 </tr>
                             ))}
                             <tr className="bg-gray-50">
@@ -134,7 +143,7 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                                 {b.lapsos.map((l) => (
                                     <td key={l.id} className="border border-gray-200 px-2 py-1.5 text-center font-semibold tabular-nums">{nota(b.promedios[l.id])}</td>
                                 ))}
-                                <td className="border border-gray-200 px-2 py-1.5 text-center font-bold tabular-nums">{nota(b.promedios.definitivo)}</td>
+                                <td className="border border-gray-200 px-2 py-1.5 text-center font-bold tabular-nums" colSpan={conRevision ? 2 : 1}>{nota(b.promedios.definitivo)}</td>
                             </tr>
                             <tr>
                                 <th scope="row" className="border border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-800">Inasistencias</th>
@@ -146,7 +155,7 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                                         </td>
                                     );
                                 })}
-                                <td className="border border-gray-200 px-2 py-1.5" />
+                                <td className="border border-gray-200 px-2 py-1.5" colSpan={conRevision ? 2 : 1} />
                             </tr>
                         </tbody>
                     </table>
@@ -157,7 +166,7 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                     {b.reglas.redondeo === 'MPPE'
                         ? 'Las notas se redondean al entero: una fracción de 0,50 o más sube al entero siguiente.'
                         : 'Las notas se expresan con dos decimales, sin redondear al entero.'}{' '}
-                    «—»: sin notas.
+                    «—»: sin notas.{conRevision ? ' La nota de revisión es la definitiva de la materia que se reprobó en el año.' : ''}
                 </p>
 
                 <footer className="mt-10 grid grid-cols-1 gap-10 text-center text-sm sm:grid-cols-2">

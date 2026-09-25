@@ -111,6 +111,12 @@ export const academicYearService = {
     },
 
     // Fase 3.5-C — cierre de ciclo escolar + prosecución
+    /** La nota de revisión de una materia reprobada (antes del cierre). */
+    guardarRevision: async (yearId: string, datos: { studentId: string; subjectId: string; score: number }): Promise<any> => {
+        const response = await api.put(`/academic-years/${yearId}/revisiones`, datos);
+        return response.data.data;
+    },
+
     prepareClose: async (yearId: string): Promise<any> => {
         const response = await api.post(`/academic-years/${yearId}/close/prepare`);
         return response.data;

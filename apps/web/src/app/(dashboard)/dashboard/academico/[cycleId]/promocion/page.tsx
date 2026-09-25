@@ -20,8 +20,8 @@ interface Suggestion {
     isLastGrade: boolean;
     defaultTargetGrade: number | null;
     defaultTargetSection: string | null;
-    subjectGrades: Array<{ subjectId: string; subjectName: string; average: number; approved: boolean }>;
-    failedSubjects: Array<{ name: string; average: number }>;
+    subjectGrades: Array<{ subjectId: string; subjectName: string; average: number; approved: boolean; revision?: number | null; definitivaDeLapsos?: number }>;
+    failedSubjects: Array<{ subjectId?: string; name: string; average: number; revision?: number | null }>;
     pendingCount: number;
     finalAverage: number;
     suggestedStatus: 'PROMOVIDO' | 'PROMOVIDO_CON_PENDIENTES' | 'NO_PROMOVIDO';
@@ -129,6 +129,11 @@ export default function PromotionPage() {
     // Modal de Acta de Materia Pendiente (Arrastre venezolano)
     const [pendingModalStudent, setPendingModalStudent] = useState<Suggestion | null>(null);
 
+    // Revisión de las materias reprobadas: su nota es la definitiva.
+    const [revisionStudent, setRevisionStudent] = useState<Suggestion | null>(null);
+    const [revisionScores, setRevisionScores] = useState<Record<string, string>>({});
+    const [savingRevision, setSavingRevision] = useState(false);
+
     // Modales
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [confirmText, setConfirmText] = useState('');
@@ -215,6 +220,55 @@ export default function PromotionPage() {
     useEffect(() => {
         load();
     }, [load]);
+
+    /** Materias que se pueden revisar: las reprobadas y las que ya tienen revisión. */
+    const materiasDeRevision = (s: Suggestion) =>
+        s.subjectGrades.filter(g => g.revision != null || s.failedSubjects.some(f => f.subjectId === g.subjectId));
+
+    const abrirRevision = (s: Suggestion) => {
+        const iniciales: Record<string, string> = {};
+        materiasDeRevision(s).forEach(g => { iniciales[g.subjectId] = g.revision != null ? String(g.revision) : ''; });
+        setRevisionScores(iniciales);
+        setRevisionStudent(s);
+    };
+
+    const guardarRevisiones = async () => {
+        if (!revisionStudent) return;
+        const cambios = materiasDeRevision(revisionStudent).filter(g => {
+            const v = revisionScores[g.subjectId];
+            return v !== undefined && v.trim() !== '' && Number(v) !== g.revision;
+        });
+        for (const g of cambios) {
+            const n = Number(revisionScores[g.subjectId].replace(',', '.'));
+            if (!Number.isFinite(n) || n < 0 || n > 20) {
+                toast.error(`La nota de revisión de ${g.subjectName} va de 0 a 20`);
+                return;
+            }
+        }
+        setSavingRevision(true);
+        try {
+            for (const g of cambios) {
+                await academicYearService.guardarRevision(yearId, {
+                    studentId: revisionStudent.studentId,
+                    subjectId: g.subjectId,
+                    score: Number(revisionScores[g.subjectId].replace(',', '.')),
+                });
+            }
+            // Se vuelven a pedir las sugerencias, sin tocar lo que el admin ya
+            // asignó: solo cambia la condición de este alumno.
+            const context = await academicYearService.getPromotionContext(yearId);
+            const nuevas: Suggestion[] = context.suggestions || [];
+            setSuggestions(nuevas);
+            const suya = nuevas.find(n => n.studentId === revisionStudent.studentId);
+            if (suya) setFinalResults(prev => ({ ...prev, [suya.studentId]: suya.suggestedStatus }));
+            toast.success(cambios.length > 0 ? 'Revisión guardada' : 'No había cambios');
+            setRevisionStudent(null);
+        } catch (e: any) {
+            if (!esQueNoContesta(e)) toast.error(e?.response?.data?.error || 'No se pudo guardar la revisión');
+        } finally {
+            setSavingRevision(false);
+        }
+    };
 
     // Niveles 1 y 2 derivados
     const grades = useMemo(() => {
@@ -614,6 +668,7 @@ export default function PromotionPage() {
                                 const isRetired = currentAsg.action === 'RETIRE_KEEP_HISTORY' || currentAsg.action === 'RETIRE_DELETE';
                                 const isGraduate = s.isLastGrade || currentAsg.action === 'GRADUATE';
                                 const hasPending = s.failedSubjects.length > 0;
+                                const conRevision = s.subjectGrades.some(g => g.revision != null);
 
                                 // Secciones disponibles para el año destino elegido
                                 const availableSections = [
@@ -646,7 +701,7 @@ export default function PromotionPage() {
                                                     <div className="inline-flex items-center gap-1.5 flex-wrap">
                                                         <span className="inline-flex items-center gap-1 text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-md font-semibold">
                                                             <AlertTriangle className="w-3 h-3 text-amber-600" />
-                                                            Materia Pendiente ({s.failedSubjects.length}): {s.failedSubjects.map(f => `${f.name} (${f.average} pts)`).join(', ')}
+                                                            Materia Pendiente ({s.failedSubjects.length}): {s.failedSubjects.map(f => `${f.name} (${f.average} pts${f.revision != null ? ', en revisión' : ''})`).join(', ')}
                                                         </span>
                                                         <button
                                                             onClick={() => setPendingModalStudent(s)}
@@ -656,9 +711,28 @@ export default function PromotionPage() {
                                                             <FileText className="w-3 h-3 text-indigo-600" />
                                                             Acta de Arrastre
                                                         </button>
+                                                        <button
+                                                            onClick={() => abrirRevision(s)}
+                                                            className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 bg-white border border-indigo-200 hover:bg-indigo-50 px-2 py-0.5 rounded-md transition-colors"
+                                                            title="Anotar la nota de la revisión de las materias reprobadas"
+                                                        >
+                                                            Revisión
+                                                        </button>
                                                     </div>
                                                 ) : (
-                                                    <span className="text-emerald-600 font-medium">✓ Todas las materias aprobadas</span>
+                                                    <span className="inline-flex items-center gap-1.5 flex-wrap">
+                                                        <span className="text-emerald-600 font-medium">
+                                                            ✓ Todas las materias aprobadas{conRevision ? ' (con revisión)' : ''}
+                                                        </span>
+                                                        {conRevision && (
+                                                            <button
+                                                                onClick={() => abrirRevision(s)}
+                                                                className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 bg-white border border-indigo-200 hover:bg-indigo-50 px-2 py-0.5 rounded-md transition-colors"
+                                                            >
+                                                                Revisión
+                                                            </button>
+                                                        )}
+                                                    </span>
                                                 )}
                                             </div>
                                         </div>
@@ -928,6 +1002,53 @@ export default function PromotionPage() {
             )}
 
             {/* Modal de Acta de Materia Pendiente (Arrastre venezolano) */}
+            {revisionStudent && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
+                    <div role="dialog" aria-modal="true" aria-labelledby="titulo-revision" className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden">
+                        <div className="px-6 py-4 border-b border-gray-100">
+                            <h3 id="titulo-revision" className="font-bold text-gray-900">Revisión de {revisionStudent.name}</h3>
+                            <p className="mt-1 text-xs text-gray-600">
+                                La nota de la revisión es la definitiva de la materia para la promoción. Del 0 al 20; se redondea como las definitivas del liceo.
+                            </p>
+                        </div>
+                        <div className="px-6 py-4 space-y-3">
+                            {materiasDeRevision(revisionStudent).map(g => (
+                                <div key={g.subjectId} className="flex items-center justify-between gap-3">
+                                    <label htmlFor={`revision-${g.subjectId}`} className="text-sm text-gray-800">
+                                        <span className="font-semibold">{g.subjectName}</span>
+                                        <span className="block text-xs text-gray-600">Definitiva del año: {g.definitivaDeLapsos ?? g.average}</span>
+                                    </label>
+                                    <input
+                                        id={`revision-${g.subjectId}`}
+                                        type="number"
+                                        inputMode="decimal"
+                                        min={0}
+                                        max={20}
+                                        step="0.5"
+                                        value={revisionScores[g.subjectId] ?? ''}
+                                        onChange={e => setRevisionScores(prev => ({ ...prev, [g.subjectId]: e.target.value }))}
+                                        className="w-24 min-h-[44px] border border-gray-300 rounded-lg px-3 text-center"
+                                        placeholder="—"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-2">
+                            <button onClick={() => setRevisionStudent(null)} className="min-h-[44px] px-4 text-sm font-semibold text-gray-700 hover:bg-gray-200 rounded-xl">
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={guardarRevisiones}
+                                disabled={savingRevision}
+                                className="min-h-[44px] px-4 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-60"
+                            >
+                                {savingRevision ? 'Guardando…' : 'Guardar revisión'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {pendingModalStudent && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto print:p-0 print:bg-white">
                     <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 print:shadow-none print:max-w-full">
