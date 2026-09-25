@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { BookOpen, Eye, EyeOff, Fingerprint } from 'lucide-react';
-import { BACKEND_URL } from '@/config/env';
+import { BACKEND_URL, getAssetUrl } from '@/config/env';
 import NotFound from '@/app/not-found';
 import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
 import { abrirConLaHuella, guardarLaLlave, hayHuella, hayLlaveGuardada, olvidarLaLlave } from '@/lib/la-huella';
@@ -48,6 +48,7 @@ export default function LoginPage() {
     } | null>(null);
     const [instituteNotFound, setInstituteNotFound] = useState(false);
     const [validatingInstitute, setValidatingInstitute] = useState(false);
+    const [logoError, setLogoError] = useState(false);
 
     useEffect(() => {
         const sub = getSubdomainFromBrowser();
@@ -79,6 +80,7 @@ export default function LoginPage() {
         let isMounted = true;
         setValidatingInstitute(true);
         setInstituteNotFound(false);
+        setLogoError(false);
 
         fetch(`/api/instituto/${detectedSlug}/info`)
             .then(async (res) => {
@@ -135,9 +137,7 @@ export default function LoginPage() {
             return quitarLosNuestros;
         }
 
-        const faviconUrl = instituteData.favicon.startsWith('/uploads')
-            ? `${BACKEND_URL}${instituteData.favicon}`
-            : instituteData.favicon;
+        const faviconUrl = getAssetUrl(instituteData.favicon);
 
         quitarLosNuestros();
 
@@ -324,17 +324,16 @@ export default function LoginPage() {
                 {/* El liceo: su escudo y su nombre. Quien entra tiene que
                     reconocer el sitio antes de escribir su contraseña. */}
                 <div className="mb-6 flex flex-col items-center text-center">
-                    {instituteData?.logo ? (
+                    {instituteData?.logo && !logoError ? (
                         <Image
-                            src={instituteData.logo.startsWith('/uploads')
-                                ? `${BACKEND_URL}${instituteData.logo}`
-                                : instituteData.logo}
+                            src={getAssetUrl(instituteData.logo)}
                             alt={displayName || 'Logo del Instituto'}
                             width={84}
                             height={84}
                             className="max-h-20 w-auto object-contain drop-shadow-sm"
                             unoptimized
                             priority
+                            onError={() => setLogoError(true)}
                         />
                     ) : (
                         <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-primary-600">

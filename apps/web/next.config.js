@@ -11,9 +11,7 @@ const nextConfig = {
    * la app estuviera mal hecha. Esto es solo de desarrollo —en el liceo no
    * existe ninguna de las dos—, pero estorbaba justo donde se prueba.
    */
-  devIndicators: {
-    position: 'top-left',
-  },
+  devIndicators: false,
   transpilePackages: ['@repo/ui'],
 
   // Permite subdominios *.localhost en desarrollo y dominios de túnel público
@@ -76,6 +74,10 @@ const nextConfig = {
       {
         source: '/api/:path*',
         destination: `${backendBase}/api/:path*`, // Proxy to backend
+      },
+      {
+        source: '/uploads/:path*',
+        destination: `${backendBase}/uploads/:path*`, // Proxy uploads to backend
       },
     ];
   },
