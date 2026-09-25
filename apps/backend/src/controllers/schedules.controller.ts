@@ -5,6 +5,7 @@ import { CreateScheduleDto, UpdateScheduleDto, ScheduleFiltersDto } from '../dto
 import { PaginationInput } from '../utils/validators';
 import { logger } from '../utils/logger';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
+import { canSeeClassroom } from '../services/authorization.service';
 
 interface CreateScheduleRequest {
   Body: CreateScheduleDto;
@@ -283,7 +284,9 @@ export async function getSchedule(
       },
     });
 
-    if (!schedule) {
+    // Un horario es de su sección: lo mira quien la ve (el alumno de otra
+    // sección, o su representante, no). Se responde igual que si no existiera.
+    if (!schedule || !(await canSeeClassroom(request.tenantPrisma, request.user as any, schedule.classroomId))) {
       return reply.status(404).send({
         error: 'Horario no encontrado',
         code: 'SCHEDULE_NOT_FOUND',
