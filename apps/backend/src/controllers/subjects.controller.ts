@@ -328,7 +328,11 @@ export async function getSubjectStudents(request: FastifyRequest, reply: Fastify
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
-    const students = await subjectsService.getSubjectStudents(id, prisma);
+    const students = await subjectsService.getSubjectStudents(
+      id,
+      prisma,
+      request.user?.role === 'TEACHER' ? userId : undefined
+    );
 
     await auditLog({
       userId,

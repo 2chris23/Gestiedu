@@ -685,29 +685,46 @@ export class SubjectsService {
         return { count };
     }
 
-    async getSubjectStudents(subjectId: string, prisma: any) {
-        // Estudiantes inscritos en aulas que tienen esta materia
-        // User -> StudentClassroom -> Classroom -> ClassroomSubject (subjectId)
-        // Es un poco complejo, simplificamos:
-        // Buscamos ClassroomSubjects con este subjectId, obtenemos las aulas, y de ahí los alumnos.
-
+    /**
+     * Los alumnos de las secciones donde se da esta materia.
+     *
+     * Solo los datos de una lista, nunca la fila entera: con `student: true`
+     * salía el resumen de la contraseña de cada alumno a cualquier profesor
+     * (`nada-de-mas-en-el-json.test.ts`). Y el profesor, solo de las secciones
+     * donde da la materia o es el guía (`soloDelProfesor`).
+     */
+    async getSubjectStudents(subjectId: string, prisma: any, soloDelProfesor?: string) {
         const classroomSubjects = await prisma.classroomSubject.findMany({
-            where: { subjectId },
-            include: {
+            where: {
+                subjectId,
+                ...(soloDelProfesor
+                    ? { OR: [{ teacherId: soloDelProfesor }, { classroom: { teacherId: soloDelProfesor } }] }
+                    : {}),
+            },
+            select: {
                 classroom: {
-                    include: {
+                    select: {
                         studentClassrooms: {
                             where: { isActive: true },
-                            include: {
-                                student: true
-                            }
-                        }
-                    }
-                }
-            }
+                            select: {
+                                student: {
+                                    select: {
+                                        id: true,
+                                        firstName: true,
+                                        lastName: true,
+                                        email: true,
+                                        studentCode: true,
+                                        avatar: true,
+                                        isActive: true,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
         });
 
-        // Aplanar resultados
         const students = classroomSubjects.flatMap((cs: any) =>
             cs.classroom.studentClassrooms.map((sc: any) => sc.student)
         );
