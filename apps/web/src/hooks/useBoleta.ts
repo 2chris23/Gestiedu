@@ -8,7 +8,7 @@ export interface Boleta {
     ciclo: { id: string; nombre: string };
     seccion: { id: string; grado: number; seccion: string; turno: string | null; guia: string | null };
     lapsos: Array<{ id: string; nombre: string; desde: string; hasta: string }>;
-    materias: Array<{ id: string; nombre: string; notas: Record<string, number | null>; definitiva: number | null; aprobada: boolean | null }>;
+    materias: Array<{ id: string; nombre: string; notas: Record<string, number | null>; definitiva: number | null; revision?: number | null; aprobada: boolean | null }>;
     inasistencias: Record<string, { injustificadas: number; justificadas: number; tardanzas: number }>;
     promedios: Record<string, number | null> & { definitivo: number | null };
     reglas: { notaMinima: number; redondeo: 'MPPE' | 'NINGUNO' };
