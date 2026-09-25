@@ -1,10 +1,18 @@
 import { platformPrisma as prisma } from '../config/database';
 import * as bcrypt from 'bcrypt';
+import { randomBytes } from 'crypto';
 import {
     generateSuperAdminTokenPair,
     verifySuperAdminRefreshToken
 } from '../config/jwt';
 import { logger } from '../utils/logger';
+
+let resumenListo: Promise<string> | null = null;
+/** Un resumen bcrypt que no abre nada, a 12 vueltas como los de verdad. */
+function resumenDeMentira(): Promise<string> {
+    if (!resumenListo) resumenListo = bcrypt.hash(randomBytes(24).toString('hex'), 12);
+    return resumenListo;
+}
 
 export class SuperAdminAuthService {
     /**
@@ -15,17 +23,15 @@ export class SuperAdminAuthService {
             where: { email }
         });
 
-        if (!superAdmin) {
+        // La contraseña, siempre y primero (sin cuenta, contra un resumen de
+        // mentira): ni el reloj ni «desactivada» dicen qué correos existen.
+        const isValidPassword = await bcrypt.compare(password, superAdmin?.password ?? (await resumenDeMentira()));
+        if (!superAdmin || !isValidPassword) {
             throw { statusCode: 401, message: 'Credenciales inválidas' };
         }
 
         if (!superAdmin.isActive) {
             throw { statusCode: 403, message: 'Cuenta de SuperAdmin desactivada' };
-        }
-
-        const isValidPassword = await bcrypt.compare(password, superAdmin.password);
-        if (!isValidPassword) {
-            throw { statusCode: 401, message: 'Credenciales inválidas' };
         }
 
         // Generar token pair
