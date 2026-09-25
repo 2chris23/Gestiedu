@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Save, GraduationCap, Globe, Calendar, Clock } from 'lucide-react';
+import { Save, GraduationCap, Globe, Calendar, Clock, FileText } from 'lucide-react';
 import { instituteService, type InstituteConfig } from '@/services/institute.service';
 import { toast } from 'sonner';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
@@ -18,6 +18,8 @@ export function AcademicSettings() {
         passingGrade: 10,
         asistenciaMinima: 80,
         redondeoDeDefinitivas: 'MPPE' as 'MPPE' | 'NINGUNO',
+        // Quién firma las constancias y el código del plantel (DEA).
+        documentos: { firmanteNombre: '', firmanteCedula: '', firmanteCargo: '', codigoDea: '' },
         language: 'es',
         dateFormat: 'DD/MM/YYYY',
         schedule: {
@@ -50,6 +52,12 @@ export function AcademicSettings() {
                     passingGrade: rawConfig.passingGrade ?? rawConfig.notaMinimaAprobatoria ?? 10,
                     asistenciaMinima: rawConfig.asistenciaMinima ?? 80,
                     redondeoDeDefinitivas: rawConfig.redondeoDeDefinitivas === 'NINGUNO' ? 'NINGUNO' : 'MPPE',
+                    documentos: {
+                        firmanteNombre: rawConfig.documentos?.firmanteNombre ?? '',
+                        firmanteCedula: rawConfig.documentos?.firmanteCedula ?? '',
+                        firmanteCargo: rawConfig.documentos?.firmanteCargo ?? '',
+                        codigoDea: rawConfig.documentos?.codigoDea ?? '',
+                    },
                     language: rawConfig.language || 'es',
                     dateFormat: rawConfig.dateFormat || 'DD/MM/YYYY',
                     schedule: rawConfig.schedule || {
@@ -288,6 +296,67 @@ export function AcademicSettings() {
                             <SelectItem value="MM/DD/YYYY">MM/DD/YYYY (12/31/2024)</SelectItem>
                         </SelectContent>
                     </Select>
+                </div>
+            </div>
+
+            {/* Constancias */}
+            <div className="pt-6 border-t border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    <FileText className="inline w-5 h-5 mr-2" />
+                    Constancias
+                </h3>
+                <p className="text-sm text-gray-600 mb-6">
+                    Lo que sale al pie de las constancias de estudio y de buena conducta. Si lo dejas en blanco, la línea de firma sale vacía.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label htmlFor="firmanteNombre" className="block text-sm font-medium text-gray-700 mb-2">Quién firma (nombre y apellido)</label>
+                        <input
+                            id="firmanteNombre"
+                            type="text"
+                            maxLength={120}
+                            placeholder="Carmen Rojas"
+                            value={academicConfig.documentos.firmanteNombre}
+                            onChange={(e) => setAcademicConfig(prev => ({ ...prev, documentos: { ...prev.documentos, firmanteNombre: e.target.value } }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="firmanteCedula" className="block text-sm font-medium text-gray-700 mb-2">Cédula de quien firma</label>
+                        <input
+                            id="firmanteCedula"
+                            type="text"
+                            maxLength={120}
+                            placeholder="V-9.876.543"
+                            value={academicConfig.documentos.firmanteCedula}
+                            onChange={(e) => setAcademicConfig(prev => ({ ...prev, documentos: { ...prev.documentos, firmanteCedula: e.target.value } }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="firmanteCargo" className="block text-sm font-medium text-gray-700 mb-2">Cargo</label>
+                        <input
+                            id="firmanteCargo"
+                            type="text"
+                            maxLength={120}
+                            placeholder="Director(a)"
+                            value={academicConfig.documentos.firmanteCargo}
+                            onChange={(e) => setAcademicConfig(prev => ({ ...prev, documentos: { ...prev.documentos, firmanteCargo: e.target.value } }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="codigoDea" className="block text-sm font-medium text-gray-700 mb-2">Código del plantel (DEA)</label>
+                        <input
+                            id="codigoDea"
+                            type="text"
+                            maxLength={120}
+                            placeholder="OD00000000"
+                            value={academicConfig.documentos.codigoDea}
+                            onChange={(e) => setAcademicConfig(prev => ({ ...prev, documentos: { ...prev.documentos, codigoDea: e.target.value } }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                        />
+                    </div>
                 </div>
             </div>
 

@@ -454,6 +454,22 @@ export default function UserProfilePage({ params }: PageProps) {
                                     <FileText className="h-4 w-4" /> Ver la boleta
                                 </Link>
                             )}
+                            {user.role === 'student' && (
+                                <div className="flex flex-wrap gap-2">
+                                    <Link
+                                        href={`/dashboard/constancia/${encodeURIComponent(user.cedula)}`}
+                                        className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                    >
+                                        <FileText className="h-4 w-4" /> Constancia de estudio
+                                    </Link>
+                                    <Link
+                                        href={`/dashboard/constancia/${encodeURIComponent(user.cedula)}?tipo=BUENA_CONDUCTA`}
+                                        className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                    >
+                                        <FileText className="h-4 w-4" /> Constancia de buena conducta
+                                    </Link>
+                                </div>
+                            )}
                             {user.role === 'student' && <RepresentantesDelAlumno studentId={user.cedula} />}
                             {user.role === 'student' && <TelefonoDeAsistencia studentId={user.cedula} />}
                             {user.role === 'tutor' && (

@@ -72,6 +72,12 @@ export function MisRepresentados() {
                                     className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
                                 >
                                     <FileText size={16} /> Ver la boleta
+                                </Link>{' '}
+                                <Link
+                                    href={`/dashboard/constancia/${encodeURIComponent(hijo.id)}`}
+                                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                >
+                                    <FileText size={16} /> Constancia de estudio
                                 </Link>
                                 <ActividadesDelAlumno studentId={hijo.id} titulo={`Actividades de ${hijo.fullName.split(' ')[0]}`} />
                             </div>
