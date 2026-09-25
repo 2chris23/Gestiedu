@@ -116,8 +116,10 @@ export default function HorariosPage() {
                 </div>
             </div>
 
-            {/* Controls */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            {/* Controls. `sm:flex-wrap`: en una tableta (768 px) los botones de
+                vista, el año y el buscador no caben en una fila y empujaban la
+                pantalla 4 px de lado (MOVIL-03); ahora el buscador baja. */}
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => setView('sections')}
@@ -143,10 +145,13 @@ export default function HorariosPage() {
                     </button>
                 </div>
 
-                <div className="flex items-center gap-3">
+                {/* En el teléfono esto se apila: el selector de año y el buscador
+                    medían juntos más que la pantalla y la empujaban hacia el
+                    lado, así que toda la pantalla se movía al arrastrar. */}
+                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
                     {/* Academic year selector */}
                     <Select value={activeYearId || undefined} onValueChange={setSelectedYearId}>
-                        <SelectTrigger className="min-w-[200px]">
+                        <SelectTrigger className="w-full sm:min-w-[200px]">
                             <SelectValue placeholder="Seleccionar año" />
                         </SelectTrigger>
                         <SelectContent>
@@ -159,14 +164,14 @@ export default function HorariosPage() {
                     </Select>
 
                     {/* Search */}
-                    <div className="relative">
+                    <div className="relative w-full sm:w-auto">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
                             type="text"
                             placeholder={view === 'sections' ? 'Buscar sección...' : 'Buscar profesor...'}
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm w-64 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm sm:w-64 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                         />
                     </div>
                 </div>

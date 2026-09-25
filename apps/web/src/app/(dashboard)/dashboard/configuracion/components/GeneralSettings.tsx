@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Save, Building2, Mail, Phone, MapPin } from 'lucide-react';
 import { instituteService, type InstituteConfig } from '@/services/institute.service';
 import { toast } from 'sonner';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export function GeneralSettings() {
     const [loading, setLoading] = useState(false);
@@ -36,7 +37,7 @@ export function GeneralSettings() {
             });
         } catch (error) {
             console.error(error);
-            toast.error('Error al cargar la configuración');
+            if (!esQueNoContesta(error)) toast.error('Error al cargar la configuración');
         } finally {
             setLoading(false);
         }

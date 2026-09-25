@@ -5,8 +5,12 @@ import { RequestUser } from '../types/fastify';
 import * as mammoth from 'mammoth';
 import * as cheerio from 'cheerio';
 import { planWeekNumberFromRange } from '../utils/plan-weeks';
-import { assertClassroomScope } from '../services/authorization.service';
+import { assertClassroomScope, assertCanSeeClassroom } from '../services/authorization.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
+import { versionDelPlan, filaSinCambios } from '../utils/version-del-plan';
+
+/** Alguien guardó este plan después de que quien guarda ahora lo abriera. */
+class PlanCambiadoEnOtroSitio extends Error {}
 
 // Helper para obtener el cliente DB del tenant.
 // SEGURIDAD: No hay fallback al platform DB. Si tenantPrisma no está resuelto,
@@ -33,6 +37,11 @@ export async function getEvaluationPlanMetadata(
     if (!classroomId || !subjectId || !lapso) {
       throw AppErrors.BadRequest('Faltan parámetros requeridos (classroomId, subjectId, lapso)');
     }
+
+    // La cabecera lleva la cédula, el teléfono y el correo del profesor: la
+    // consulta quien puede ver las filas del plan, ni uno más. Antes la leía
+    // cualquiera con sesión, un alumno de otra sección incluido.
+    await assertClassroomScope(db, request.user as any, classroomId, { subjectId, accion: 'consultar el plan' });
 
     // Obtener metadata guardada
     const metadata = await db.evaluationPlanMetadata.findUnique({
@@ -272,7 +281,7 @@ export async function getEvaluationPlanRows(
       grouped[row.weekNumber].push(row);
     }
 
-    return reply.send({ rows, grouped });
+    return reply.send({ rows, grouped, version: versionDelPlan(rows) });
   } catch (error) {
     logger.error('Error al obtener filas del plan', { error });
     if (error && typeof error === 'object' && 'statusCode' in error) throw error;
@@ -289,11 +298,13 @@ export async function batchUpsertRows(
     subjectId: string;
     lapso: string;
     rows: any[];
+    /** La versión del plan que tenía delante quien guarda (`GET /rows`). */
+    version?: string;
   } }>,
   reply: FastifyReply
 ) {
   try {
-    const { classroomId, subjectId, lapso, rows } = request.body ?? ({} as any);
+    const { classroomId, subjectId, lapso, rows, version } = request.body ?? ({} as any);
     const db = getDb(request);
     const user = request.user as RequestUser;
 
@@ -333,13 +344,24 @@ export async function batchUpsertRows(
       });
     }
 
-    // Obtener filas actuales
-    const currentRows = await db.evaluationPlanRow.findMany({
-      where: { classroomId, subjectId, lapso }
-    });
-
     const quien = quienBorra(request as any);
     const result = await db.$transaction(async (tx: any) => {
+      // Un plan se guarda de uno en uno: dos guardados a la vez del mismo plan
+      // leerían las mismas filas y el segundo borraría lo que añadió el primero.
+      await tx.$executeRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext(${`plan|${classroomId}|${subjectId}|${lapso}`}))`;
+
+      // Las filas de ahora se leen DENTRO de la transacción, después del
+      // candado: leídas antes, otro guardado podía colarse en medio.
+      const currentRows = await tx.evaluationPlanRow.findMany({
+        where: { classroomId, subjectId, lapso }
+      });
+
+      // Si quien guarda tenía delante otra versión, alguien guardó entretanto
+      // (otra pestaña, otro dispositivo). No se toca nada: ver `version-del-plan.ts`.
+      if (version && version !== versionDelPlan(currentRows)) {
+        throw new PlanCambiadoEnOtroSitio();
+      }
+
       const savedRows = [];
       const usedIds = new Set<string>();
 
@@ -384,7 +406,13 @@ export async function batchUpsertRows(
         }
 
         let savedRow;
-        if (existingMatch) {
+        let cambio = true;
+        if (existingMatch && filaSinCambios(existingMatch, rowData)) {
+          // Igual que la guardada: no se reescribe (ver `filaSinCambios`).
+          usedIds.add(existingMatch.id);
+          savedRow = existingMatch;
+          cambio = false;
+        } else if (existingMatch) {
           usedIds.add(existingMatch.id);
           savedRow = await tx.evaluationPlanRow.update({
             where: { id: existingMatch.id },
@@ -404,7 +432,6 @@ export async function batchUpsertRows(
             title: row.actividadEval || row.title || 'Actividad Evaluativa',
             type: row.tipoEvaluacion || 'OTHER',
             scope: 'CLASSROOM',
-            startDate: new Date(),
             maxGrade: rawPuntos || 20,
             weight: rawPuntos || 0, // Puntos como referencia de peso del criterio
             classroomId,
@@ -414,13 +441,18 @@ export async function batchUpsertRows(
           };
 
           if (savedRow.activityId) {
-            await tx.activity.update({
-              where: { id: savedRow.activityId },
-              data: actData
-            });
+            // Si la fila no cambió, su actividad tampoco. Y la fecha de la
+            // actividad es la de cuando se creó: antes cada guardado del plan
+            // la ponía en «hoy», a todas las actividades del lapso.
+            if (cambio) {
+              await tx.activity.update({
+                where: { id: savedRow.activityId },
+                data: actData
+              });
+            }
           } else {
             const newActivity = await tx.activity.create({
-              data: { ...actData, createdBy: user.userId }
+              data: { ...actData, startDate: new Date(), createdBy: user.userId }
             });
             await tx.evaluationPlanRow.update({
               where: { id: savedRow.id },
@@ -464,11 +496,28 @@ export async function batchUpsertRows(
         }
       }
 
-      return savedRows;
+      const despues = await tx.evaluationPlanRow.findMany({
+        where: { classroomId, subjectId, lapso },
+        select: { id: true, updatedAt: true },
+      });
+      return { savedRows, version: versionDelPlan(despues) };
+    }, {
+      // Un plan largo son decenas de filas: los 5 s de fábrica de Prisma se
+      // quedaban cortos con el servidor cargado, y entonces se perdía el
+      // guardado ENTERO. Mismo margen que el guardado de la clase en vivo.
+      timeout: 20000,
+      maxWait: 10000,
     });
 
-    return reply.send({ success: true, rows: result });
+    return reply.send({ success: true, rows: result.savedRows, version: result.version });
   } catch (error) {
+    if (error instanceof PlanCambiadoEnOtroSitio) {
+      return reply.status(409).send({
+        success: false,
+        error: 'Este plan se guardó desde otro sitio (otra pestaña u otro dispositivo) mientras lo editabas. No se ha cambiado nada: tus cambios siguen en pantalla.',
+        code: 'PLAN_CAMBIADO_EN_OTRO_SITIO',
+      });
+    }
     logger.error('Error al guardar filas del plan', { error });
     if (error && typeof error === 'object' && 'statusCode' in error) throw error;
     return reply.status(500).send({ error: 'Error interno del servidor' });
@@ -679,6 +728,15 @@ export async function getCalendarData(
       throw AppErrors.BadRequest('Faltan parámetros requeridos');
     }
 
+    /**
+     * ESTA LECTURA NO PREGUNTABA DE QUIÉN ERA LA SECCIÓN
+     *
+     * Bastaba estar identificado: cambiando el id en la dirección, cualquiera
+     * —un alumno, un representante— leía el horario y el plan de evaluación de
+     * una sección ajena. El calendario sí es de todos, pero el de lo SUYO.
+     */
+    await assertCanSeeClassroom(db, request.user as any, classroomId);
+
     // Obtener schedule blocks de la sección
     const scheduleBlocks = await db.scheduleBlock.findMany({
       where: { classroomId },
@@ -808,7 +866,29 @@ export async function parseWordFile(request: FastifyRequest, reply: FastifyReply
       throw AppErrors.BadRequest('No se ha subido ningún archivo');
     }
 
+    // SEGURIDAD: Validar extensión .docx (parser-docx-memory-exhaustion-eval-plan)
+    if (!data.filename || !data.filename.toLowerCase().endsWith('.docx')) {
+      throw AppErrors.BadRequest('Solo se admiten documentos en formato Word (.docx)');
+    }
+
     const buffer = await data.toBuffer();
+
+    // SEGURIDAD: Limitar tamaño del archivo a 2MB
+    if (buffer.length > 2 * 1024 * 1024) {
+      throw AppErrors.BadRequest('El documento excede el tamaño máximo permitido (2MB)');
+    }
+
+    // SEGURIDAD: Validar cabecera mágica PKZip (0x50, 0x4B, 0x03, 0x04)
+    if (
+      buffer.length < 4 ||
+      buffer[0] !== 0x50 ||
+      buffer[1] !== 0x4b ||
+      buffer[2] !== 0x03 ||
+      buffer[3] !== 0x04
+    ) {
+      throw AppErrors.BadRequest('El archivo subido no es un documento .docx válido');
+    }
+
     const result = await mammoth.convertToHtml({ buffer });
     const html = result.value;
 
@@ -817,6 +897,12 @@ export async function parseWordFile(request: FastifyRequest, reply: FastifyReply
 
     if (!table.length) {
       throw AppErrors.BadRequest('El documento no contiene ninguna tabla válida para procesar');
+    }
+
+    // SEGURIDAD: Limitar número máximo de filas para evitar bloqueo del bucle de eventos
+    const trElements = table.find('tr');
+    if (trElements.length > 500) {
+      throw AppErrors.BadRequest('El documento contiene demasiadas filas en la tabla (máximo 500)');
     }
 
     const rows: Record<string, string>[] = [];

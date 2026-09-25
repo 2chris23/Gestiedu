@@ -7,6 +7,14 @@ las partes difíciles, para no descubrirlas a mitad del trabajo.
 
 ## 1. Asistencia de tres formas
 
+> **Hecho el 2026-09-24**, tal como está escrito aquí (auditoría §58). Lo que
+> quedó decidido en «Lo que hay que decidir»: radio de 150 m y «por confirmar»
+> fuera de él, 2 minutos para llegar a tiempo contados desde el primer pase de
+> esa clase ese día, 7 días para corregir hacia atrás — todo configurable en
+> Configuración → Asistencia por QR. El pase no se cierra solo a los 2 minutos:
+> pasado ese tiempo quien escanea entra como tarde, y el profesor lo cierra
+> cuando quiere (y a las 3 horas deja de valer, por si se olvida).
+
 Cuando el profesor (o el admin) entra a su clase, tiene tres maneras de pasar lista:
 
 1. **A mano**: toca a cada alumno. Es la de siempre y **nunca se quita**: si se cae

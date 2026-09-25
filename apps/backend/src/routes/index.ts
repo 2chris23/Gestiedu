@@ -16,6 +16,8 @@ import { schedulesRoutes } from './schedules.routes';
 import { studentsRoutes } from './students.routes';
 import { teachersRoutes } from './teachers.routes';
 import { attendanceRoutes } from './attendance.routes';
+import { classReplacementsRoutes } from './class-replacements.routes';
+import { pagosRoutes } from './pagos.routes';
 import { cycleStatisticsRoutes } from './cycle-statistics.routes';
 import { classroomSubjectsRoutes } from './classroomSubjects.routes';
 import { scheduleBlocksRoutes } from './scheduleBlocks.routes';
@@ -29,6 +31,8 @@ import { cacheMetricsRoutes } from '../controllers/cache-metrics.controller';
 import { monitoringRoutes } from './monitoring.routes';
 import { schoolEventsRoutes } from './school-events.routes';
 import { schoolTimeRoutes } from './school-time.routes';
+import { appMovilRoutes } from './app-movil.routes';
+import { asistenciaQrRoutes } from './asistencia-qr.routes';
 
 // Función para registrar todas las rutas
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
@@ -50,9 +54,15 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(attendanceRoutes, { prefix: '/api/attendance' });
   // La hora oficial del liceo (el reloj del dispositivo no es de fiar)
   await fastify.register(schoolTimeRoutes, { prefix: '/api/time' });
+  // La versión nueva de la app del teléfono (ver `app-movil.routes.ts`).
+  await fastify.register(appMovilRoutes, { prefix: '/api/app-movil' });
+  // Pasar lista con QR (ver services/asistencia-qr.service.ts).
+  await fastify.register(asistenciaQrRoutes, { prefix: '/api/asistencia-qr' });
   await fastify.register(schedulesRoutes, { prefix: '/api/schedules' });
   await fastify.register(scheduleBlocksRoutes, { prefix: '/api' });
   await fastify.register(classSessionsRoutes, { prefix: '/api/sessions' });
+  await fastify.register(classReplacementsRoutes, { prefix: '/api/class-replacements' });
+  await fastify.register(pagosRoutes, { prefix: '/api/payments' });
   await fastify.register(observationsRoutes, { prefix: '/api/observations' });
 
   // Rutas por roles específicos

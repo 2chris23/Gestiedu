@@ -43,16 +43,22 @@ const classroomsRoutes: FastifyPluginAsync = async (fastify) => {
     // los guardias se adelantan a `onRequest` (ver `middleware/guardias.ts`):
     // sin él, `requireTeacher` corría antes de que nadie hubiera preguntado
     // quién llama y respondía 401 hasta al administrador.
+    //
+    // INSCRIBIR Y SACAR ALUMNOS ES DEL ADMINISTRADOR (control de estudios).
+    // Pedía solo «ser profesor»: cualquier profesor metía a un alumno en una
+    // sección ajena o lo sacaba de la suya (bastaba su propia contraseña), y
+    // con eso cambiaba quién ve sus notas y a quién se las pone
+    // (`quien-puede-que.test.ts`).
     protectedRoutes.post(
       '/:classroomId/students',
-      { preHandler: [authenticate, requireTeacher] },
+      { preHandler: [authenticate, requireAdmin] },
       enrollStudent as any
     );
 
     // DELETE /api/classrooms/:classroomId/students/:studentId
     protectedRoutes.delete(
       '/:classroomId/students/:studentId',
-      { preHandler: [authenticate, requireTeacher] },
+      { preHandler: [authenticate, requireAdmin] },
       unenrollStudent as any
     );
 

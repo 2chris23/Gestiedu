@@ -2,109 +2,598 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
-}
+/* ═══════════════════════════════════════════════════════════════════════════
+   GESTIEDU — LENGUAJE VISUAL
+   ═══════════════════════════════════════════════════════════════════════════
 
+   Soft UI sobre tarjetas, con rejilla tipo bento y los gestos de una app de
+   finanzas: bloques grandes, números enormes, esquinas muy redondeadas, sombras
+   suaves y mucho aire.
 
+   ─── LAS CINCO REGLAS ─────────────────────────────────────────────────────
+
+   1. CINCO COLORES. Ni uno más. Cada uno significa UNA cosa y siempre la misma:
+
+        índigo   lo que se puede pulsar, lo del liceo, lo primario
+        menta    va bien: aprobado, presente, al día
+        ámbar    ojo: en riesgo, pendiente, a medias
+        coral    va mal: reprobado, ausente, vencido
+        cian     información y gráficas, sin juicio de valor
+
+      El gris no cuenta como color: es el papel sobre el que se escribe.
+
+   2. NADA DEL NAVEGADOR. Ni un `<select>`, ni un `<input type="date">`, ni un
+      botón sin vestir. Lo que trae el navegador de fábrica se ve distinto en
+      cada teléfono y rompe el idioma. Está prohibido.
+
+   3. MISMO DISEÑO EN TODAS PARTES. Teléfono, tableta, escritorio y —cuando
+      llegue— la app. No hay "versión móvil": hay UNA pantalla que se reordena.
+      La app será esta misma web por dentro, así que un diseño, no tres.
+
+   4. NUNCA NEGRO PURO NI BLANCO PURO. El papel claro es hueso, el oscuro es
+      tinta azulada. El negro puro sobre una pantalla OLED vibra y cansa.
+
+   5. EL COLOR NO ES EL ÚNICO AVISO. Nada se distingue solo por el color: lleva
+      además su icono, su palabra o su forma. Uno de cada doce hombres no
+      distingue el rojo del verde.
+*/
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.375rem;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    /* ── EL PAPEL ─────────────────────────────────────────────────────────
+       Hueso, no blanco. Las tarjetas sí son blancas, y por eso flotan. */
+    --lienzo: 220 20% 97%;
+    --lienzo-hundido: 220 18% 94%;
+    --tarjeta: 0 0% 100%;
+    --tarjeta-alta: 0 0% 100%;
+
+    /* ── LA TINTA ─────────────────────────────────────────────────────── */
+    --tinta: 224 32% 12%;
+    --tinta-suave: 222 14% 42%;
+    /* 48%, no 60%: a 60% el pie de una tarjeta daba 3,01:1 y la norma
+       pide 4,5:1. Medido, no estimado. */
+    /* 44%: pasa 4,5:1 sobre tarjeta, lienzo Y lienzo hundido. Con 48% pasaba
+       solo sobre la tarjeta blanca, y se usa también sobre el fondo. */
+    --tinta-tenue: 220 12% 44%;
+
+    /* ── 1. ÍNDIGO — lo que se pulsa ──────────────────────────────────── */
+    --indigo-claro: 243 100% 97%;
+    --indigo-suave: 243 90% 92%;
+    --indigo: 243 75% 59%;
+    --indigo-hondo: 243 68% 48%;
+    --indigo-encima: 0 0% 100%;
+
+    /* ── 2. MENTA — va bien ───────────────────────────────────────────── */
+    --menta-claro: 160 70% 95%;
+    --menta-suave: 160 62% 86%;
+    --menta: 160 72% 38%;
+    --menta-hondo: 162 78% 28%;
+    --menta-encima: 0 0% 100%;
+
+    /* ── 3. ÁMBAR — ojo ───────────────────────────────────────────────── */
+    --ambar-claro: 42 100% 94%;
+    --ambar-suave: 40 95% 85%;
+    --ambar: 36 92% 50%;
+    --ambar-hondo: 30 90% 35%;   /* 40% daba 3,75:1 sobre ámbar claro */
+    --ambar-encima: 30 60% 12%;
+
+    /* ── 4. CORAL — va mal ────────────────────────────────────────────── */
+    --coral-claro: 5 100% 96%;
+    --coral-suave: 5 90% 90%;
+    /* 48%, no 57%: con 57% el blanco encima del botón de peligro daba
+       3,91:1. Es el botón de BORRAR: si algo tiene que leerse, es ese. */
+    --coral: 4 78% 48%;
+    --coral-hondo: 4 72% 38%;
+    --coral-encima: 0 0% 100%;
+
+    /* ── 5. CIAN — información ────────────────────────────────────────── */
+    --cian-claro: 190 90% 95%;
+    --cian-suave: 190 80% 86%;
+    --cian: 192 82% 40%;
+    --cian-hondo: 194 85% 30%;
+    --cian-encima: 0 0% 100%;
+
+    /* ── LÍNEAS ───────────────────────────────────────────────────────── */
+    --linea: 220 18% 90%;
+    /* El borde de un control cuenta como información: pide 3:1. A 82%
+       daba 1,57:1, o sea: el campo no se veía dónde empezaba. */
+    --linea-fuerte: 220 16% 60%;
+
+    /* ── ESQUINAS ─────────────────────────────────────────────────────────
+       Generosas. Es lo que más separa esto de un panel de administración. */
+    --curva-xs: 0.625rem;
+    --curva-sm: 0.875rem;
+    --curva: 1.25rem;
+    --curva-lg: 1.75rem;
+    --curva-xl: 2.25rem;
+    --curva-pastilla: 999px;
+
+    /* ── SOMBRAS ──────────────────────────────────────────────────────────
+       Suaves y en capas. Una sombra dura delata el panel de administración
+       de 2015. Llevan un punto de índigo para que no se vean sucias. */
+    --sombra-1: 0 1px 2px -1px hsl(243 40% 30% / 0.08), 0 2px 6px -2px hsl(243 40% 30% / 0.06);
+    --sombra-2: 0 2px 4px -2px hsl(243 40% 30% / 0.08), 0 8px 20px -6px hsl(243 40% 30% / 0.10);
+    --sombra-3: 0 4px 8px -4px hsl(243 40% 30% / 0.10), 0 16px 40px -12px hsl(243 40% 30% / 0.14);
+    --sombra-dentro: inset 0 1px 2px hsl(243 40% 30% / 0.06);
+    --sombra-pulsado: inset 0 2px 6px hsl(243 40% 30% / 0.14);
+
+    /* ── ANILLO DE FOCO ───────────────────────────────────────────────────
+       Quien navega con el teclado tiene que ver dónde está. Siempre visible,
+       nunca `outline: none` a secas. */
+    --anillo: 243 75% 59%;
+
+    /* ═══ PUENTE CON shadcn/ui ═════════════════════════════════════════════
+       Los componentes de Radix/shadcn leen estos nombres. Se mantienen para
+       que todo lo ya escrito siga funcionando, pero apuntan a lo de arriba:
+       una sola fuente de verdad. */
+    --background: var(--lienzo);
+    --foreground: var(--tinta);
+    --card: var(--tarjeta);
+    --card-foreground: var(--tinta);
+    --popover: var(--tarjeta-alta);
+    --popover-foreground: var(--tinta);
+    --primary: var(--indigo);
+    --primary-foreground: var(--indigo-encima);
+    --secondary: var(--lienzo-hundido);
+    --secondary-foreground: var(--tinta);
+    --muted: var(--lienzo-hundido);
+    --muted-foreground: var(--tinta-suave);
+    --accent: var(--indigo-claro);
+    --accent-foreground: var(--indigo-hondo);
+    --destructive: var(--coral);
+    --destructive-foreground: var(--coral-encima);
+    --border: var(--linea);
+    --input: var(--linea);
+    --ring: var(--anillo);
+    --radius: var(--curva);
+
+    /* Gráficas: los cinco, en el orden en que se leen mejor juntos. */
+    --chart-1: var(--indigo);
+    --chart-2: var(--menta);
+    --chart-3: var(--ambar);
+    --chart-4: var(--cian);
+    --chart-5: var(--coral);
   }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     MODO OSCURO
+     ═══════════════════════════════════════════════════════════════════════
+     No es "el claro con los grises al revés". En oscuro:
+
+       · el papel es tinta AZULADA, nunca negro puro;
+       · las tarjetas SUBEN (más claras que el fondo), no bajan;
+       · los colores pierden saturación y ganan luz, o vibran sobre el fondo;
+       · las sombras casi no valen: lo que separa una tarjeta del fondo es
+         que sea más clara, y un filo de luz arriba.
+  */
+  /* Los controles nativos (campos, casillas, barras) se pintan según esto. Si
+     se deja al sistema, un teléfono en modo oscuro pinta campos grises oscuros
+     con nuestra letra oscura encima: ilegible (medido: 1,54:1). */
+  :root { color-scheme: light; }
 
   .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    color-scheme: dark;
+    --lienzo: 226 26% 7%;
+    --lienzo-hundido: 226 24% 5%;
+    --tarjeta: 225 22% 11%;
+    --tarjeta-alta: 225 20% 14%;
+
+    --tinta: 220 22% 96%;
+    --tinta-suave: 220 14% 72%;
+    --tinta-tenue: 220 12% 54%;
+
+    --indigo-claro: 243 45% 18%;
+    --indigo-suave: 243 45% 26%;
+    --indigo: 243 90% 72%;
+    --indigo-hondo: 243 95% 80%;
+    --indigo-encima: 243 60% 10%;
+
+    --menta-claro: 162 45% 13%;
+    --menta-suave: 162 40% 22%;
+    --menta: 158 68% 55%;
+    --menta-hondo: 158 72% 65%;
+    --menta-encima: 162 70% 8%;
+
+    --ambar-claro: 35 55% 14%;
+    --ambar-suave: 35 50% 24%;
+    --ambar: 40 95% 62%;
+    --ambar-hondo: 42 98% 70%;
+    --ambar-encima: 30 70% 10%;
+
+    --coral-claro: 4 45% 16%;
+    --coral-suave: 4 42% 26%;
+    --coral: 5 90% 68%;
+    --coral-hondo: 5 95% 75%;
+    --coral-encima: 4 60% 10%;
+
+    --cian-claro: 194 50% 13%;
+    --cian-suave: 194 45% 22%;
+    --cian: 190 80% 58%;
+    --cian-hondo: 190 85% 68%;
+    --cian-encima: 194 70% 8%;
+
+    --linea: 225 16% 20%;
+    --linea-fuerte: 225 14% 43%;
+
+    --sombra-1: 0 1px 2px -1px hsl(0 0% 0% / 0.4);
+    --sombra-2: 0 4px 12px -4px hsl(0 0% 0% / 0.5);
+    --sombra-3: 0 12px 32px -8px hsl(0 0% 0% / 0.6);
+    --sombra-dentro: inset 0 1px 2px hsl(0 0% 0% / 0.3);
+    --sombra-pulsado: inset 0 2px 6px hsl(0 0% 0% / 0.45);
+
+    --anillo: 243 90% 72%;
   }
 }
-
-
 
 @layer base {
   * {
     @apply border-border;
   }
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     LA CAPA DE PLATAFORMA — LO QUE DELATA A UNA WEB EN UN TELÉFONO
+     ═══════════════════════════════════════════════════════════════════════
+     Nada de esto se reproduce en el navegador de escritorio con el modo
+     teléfono puesto: son comportamientos del aparato de verdad. Por eso se
+     escriben con su motivo al lado, y por eso hay que probarlos en un teléfono
+     antes de darlos por buenos. */
+
+  html {
+    /* Sin fondo propio, el rebote de iOS enseña el del navegador. */
+    background-color: hsl(var(--lienzo));
+
+    /* El teléfono hincha la letra al girar a horizontal si no se le dice que no. */
+    -webkit-text-size-adjust: 100%;
+
+    /**
+     * EL DESTELLO GRIS AL TOCAR
+     *
+     * iOS y Android pintan un recuadro translúcido encima de cualquier cosa que
+     * se toque. Es la señal más ruidosa de "esto es una página web", y encima
+     * pelea con la respuesta al pulsar que sí se diseñó.
+     *
+     * Al quitarlo hay que poner la nuestra: está en `:active` de cada control.
+     */
+    -webkit-tap-highlight-color: transparent;
+
+    /**
+     * EL TIRÓN DE RECARGAR
+     *
+     * Arrastrar hacia abajo desde arriba recarga la página en Android y hace
+     * rebotar toda la pantalla en iOS. En un documento está bien. En un sistema
+     * de gestión con sus propias listas, es que se recargue la app en mitad de
+     * pasar asistencia.
+     *
+     * `none` en la raíz; las listas de dentro llevan `contain`, que conserva su
+     * propio rebote pero no lo contagia a la página.
+     */
+    overscroll-behavior: none;
+  }
+
   body {
-    @apply bg-background text-foreground;
+    overscroll-behavior: none;
+  }
+
+  /**
+   * LA PANTALLA SE ACERCA SOLA AL TOCAR UN CAMPO
+   *
+   * iOS hace zoom cuando el foco cae en un campo con letra de menos de 16 px, y
+   * **no se vuelve a alejar** al salir: la persona se queda con la pantalla
+   * recortada y movida.
+   *
+   * La tentación es prohibir el zoom (`user-scalable=no`). Eso es una barrera
+   * para quien no ve bien, y además ataca al síntoma. La causa es el tamaño de
+   * la letra, y se arregla solo donde el dedo es el que manda: en el ratón la
+   * letra puede seguir siendo la del diseño.
+   */
+  @media (pointer: coarse) {
+    input,
+    textarea,
+    select {
+      font-size: 16px;
+    }
+  }
+
+  /**
+   * EL RETRASO DE LOS 300 ms, Y EL TEXTO QUE SE SELECCIONA SOLO
+   *
+   * `touch-action: manipulation` le dice al navegador que aquí no hay doble
+   * toque para acercar, así que no tiene que esperar a ver si viene el segundo:
+   * el toque responde al instante.
+   *
+   * `user-select: none` evita que dejar el dedo encima de un botón seleccione
+   * su texto o saque el menú de copiar. OJO: solo en CONTROLES. En el texto
+   * normal sería un defecto — la gente copia correos, cédulas y números de
+   * error, y tiene derecho a hacerlo.
+   */
+  button,
+  a,
+  [role='button'],
+  [role='tab'],
+  summary {
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    /* Los números de una tabla tienen que alinearse en columna. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── EL ANILLO DE FOCO, UNA SOLA VEZ Y PARA TODO ─────────────────────────
+     Solo aparece con teclado (`:focus-visible`), nunca al tocar con el dedo. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--anillo));
+    outline-offset: 2px;
+    border-radius: var(--curva-xs);
+  }
+
+  /* ── NADA DEL NAVEGADOR ──────────────────────────────────────────────────
+     Red de seguridad: si a alguien se le escapa un control nativo, al menos
+     no se verá como el de Windows. Lo correcto sigue siendo no usarlos. */
+  select,
+  input[type='date'],
+  input[type='time'],
+  input[type='datetime-local'],
+  input[type='month'],
+  input[type='week'],
+  input[type='number'] {
+    appearance: none;
+    -webkit-appearance: none;
+    background-color: hsl(var(--tarjeta));
+    color: hsl(var(--tinta));
+    border: 1px solid hsl(var(--linea));
+    border-radius: var(--curva-sm);
+    padding: 0.5rem 0.75rem;
+    font: inherit;
+  }
+
+  /* Las flechitas de los campos numéricos: fuera. */
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  /* El icono del calendario nativo, teñido para que no sea el gris de Chrome. */
+  ::-webkit-calendar-picker-indicator {
+    filter: invert(38%) sepia(12%) saturate(500%) hue-rotate(195deg);
+    cursor: pointer;
+  }
+  .dark ::-webkit-calendar-picker-indicator {
+    filter: invert(85%);
+  }
+
+  /* ── BARRAS DE DESPLAZAMIENTO ───────────────────────────────────────────── */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--linea-fuerte)) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--linea-fuerte));
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--tinta-tenue));
+  }
+
+  /* El texto seleccionado, en el color de la casa. */
+  ::selection {
+    background-color: hsl(var(--indigo) / 0.25);
+    color: hsl(var(--tinta));
+  }
+
+  /* ── QUIEN PIDE MENOS MOVIMIENTO, RECIBE MENOS MOVIMIENTO ────────────────
+      No es un detalle: a quien tiene vértigo o migraña, una animación le
+      arruina el día. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
-/* Scrollbars personalizados — sin scrollbar nativo del navegador */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: hsl(var(--border)) transparent;
+@layer components {
+  /* ── LO QUE SE COME EL TELÉFONO ──────────────────────────────────────────
+     Arriba, el reloj y la batería. Abajo, la barra de gestos. Un teléfono con
+     muesca se los queda, y lo que se pinte ahí NO se ve y NO se puede pulsar:
+     la cabecera quedaba partida por el reloj y «Cerrar Sesión» debajo de la
+     barra de gestos, tan cerca que el dedo pulsaba la barra.
+
+     `env()` no se escribe suelto por la app, sino a través de estas dos
+     variables, por un motivo concreto: en un ordenador `env()` vale 0 —no hay
+     muesca— y entonces esto no se puede MEDIR, ni antes ni después de
+     arreglarlo. La auditoría del teléfono (`npm run movil`) les pone el valor
+     de un Android de verdad y comprueba que no quede nada debajo. */
+  :root {
+    --zona-segura-arriba: env(safe-area-inset-top, 0px);
+    --zona-segura-abajo: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* El hueco de arriba, para lo que se pega al borde superior. */
+  .zona-segura-arriba {
+    padding-top: var(--zona-segura-arriba);
+  }
+  /* El hueco de abajo. */
+  .zona-segura-abajo {
+    padding-bottom: var(--zona-segura-abajo);
+  }
+  /* Una pantalla entera de teléfono, descontando lo que se come el sistema. */
+  .alto-util {
+    /* Primero en vh: un navegador que no conoce dvh (Safari antes de 15.4,
+       Chrome antes de 108) descarta la línea de abajo y se queda con esta. */
+    min-height: calc(100vh - var(--zona-segura-arriba) - var(--zona-segura-abajo));
+    min-height: calc(100dvh - var(--zona-segura-arriba) - var(--zona-segura-abajo));
+  }
+
+  /* ── LO QUE SE ARRASTRA ──────────────────────────────────────────────────
+     Carruseles: se lleva con el dedo, engancha en cada tarjeta, y la barra de
+     desplazamiento no se ve. */
+  .carril {
+    display: flex;
+    gap: 0.75rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 1rem;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .carril::-webkit-scrollbar {
+    display: none;
+  }
+  .carril > * {
+    scroll-snap-align: start;
+    flex: 0 0 auto;
+  }
+
+  /* ── LA REJILLA BENTO ────────────────────────────────────────────────────
+     En el teléfono, una columna y se acabó. A partir de tableta, la caja de
+     bento: piezas de distinto tamaño que encajan. */
+  /* La rejilla bento vive ahora en `components/ui/bento.tsx`, con las
+     variantes `@lg:` / `@4xl:` de Tailwind. Escrita a mano aquí, la consulta de
+     contenedor no resolvía contra la caja que se esperaba y el panel salía a
+     dos columnas dentro de un ancho de teléfono. Con las variantes sí, y además
+     queda a la vista de quien lee el componente. */
+
+  /* El número grande de una tarjeta: el protagonista, pero sin gritar. */
+  .cifra {
+    font-size: 1.625rem;
+    line-height: 1.1;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
 }
 
-*::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* ── EL DEDO Y LA LETRA, EN UN TELÉFONO ──────────────────────────────────
+
+   Dos reglas que se rompen en cada pantalla nueva, una por una, y que
+   ninguna prueba veía porque no dan error: botones de 36 px y letra de 10.
+
+   Se ponen aquí y no en cada sitio por lo mismo que la papelera o los
+   colores: una regla escrita treinta veces se queda vieja en veintinueve.
+
+   El alcance está medido a propósito:
+
+     · `pointer: coarse` — solo donde se toca con el dedo. Con ratón, un
+       icono de 32 px se pulsa sin fallar y agrandarlo solo estorba.
+     · `max-width: 699px` — solo de pie. A partir de ahí salen las rejillas
+       densas (el horario, el plan de evaluación), que son tablas de verdad
+       y no se tocan.
+
+   44 px es el mínimo de Apple; Google pide 48. Se exige el menor de los dos.
+   Lo comprueba `npm run movil`. */
+@media (pointer: coarse) and (max-width: 699px) {
+  button,
+  [role='button'],
+  select,
+  summary {
+    min-height: 44px;
+    /* También de ancho: un icono de 36 px de alto pero 27 de ancho sigue
+       siendo un botón que se falla. */
+    min-width: 44px;
+  }
+
+  /* Un enlace vestido de botón (con su relleno y su borde) también se pulsa.
+     Solo el alto: `min-height` no le hace nada a un enlace en mitad de una
+     frase, que es justo lo que se busca — ahí manda la línea de texto. */
+  a[href] {
+    min-height: 44px;
+    /* Solo si ya es un bloque: a un enlace en mitad de una frase, `min-width`
+       tampoco le hace nada, que es lo que se busca. */
+    min-width: 44px;
+  }
+
+  /* Los enlaces de una ruta de migas o de una barra de navegación son
+     destinos, no texto corrido: se pulsan. Un enlace suelto dentro de un
+     párrafo se queda como está, que ahí lo que importa es la línea. */
+  nav a[href] {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* La letra menuda. Estos tamaños están escritos a mano por toda la
+     aplicación para que quepa una tabla; de pie ya no hay tabla que
+     estrechar, así que se leen. */
+  .text-\[8px\],
+  .text-\[9px\],
+  .text-\[10px\],
+  .text-\[11px\],
+  .text-micro {
+    font-size: 0.75rem;
+    line-height: 1.05rem;
+  }
 }
 
-*::-webkit-scrollbar-track {
-  background: transparent;
+/* ── EL DEDO EN LA TABLETA Y EN EL TELÉFONO TUMBADO ─────────────────────
+
+   La regla de arriba se para en 699 px, y a partir de ahí la app se ponía a
+   medir para ratón aunque se usara con el dedo: en una tableta (768 px) o en
+   un teléfono tumbado (844 px), el filtro de usuarios medía 32 px de alto, las
+   cabeceras para ordenar 17 y los botones de «Expandir todos» 16. Medido con
+   MOVIL-03.
+
+   Lo mismo, con el dedo, a cualquier ancho. Menos dentro de las rejillas
+   densas (el horario, el plan de evaluación: `.rejilla-densa`), que son tablas
+   de verdad: agrandar cada celda las rompería, y para trabajar con ellas se
+   gira el teléfono a propósito. */
+@media (pointer: coarse) and (min-width: 700px) {
+  :where(button, [role='button'], select, summary):not(.rejilla-densa *) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  :where(.text-\[8px\], .text-\[9px\], .text-\[10px\], .text-\[11px\], .text-micro):not(.rejilla-densa *) {
+    font-size: 0.75rem;
+    line-height: 1.05rem;
+  }
 }
 
-*::-webkit-scrollbar-thumb {
-  background-color: hsl(var(--border));
-  border-radius: 8px;
+/* ── dvh EN NAVEGADORES QUE NO LO CONOCEN ─────────────────────────────────────
+   `dvh` es la altura que de verdad se ve en un teléfono (sin la barra del
+   navegador). Un navegador que no lo conoce ignora la regla entera, y un
+   diálogo con `max-h-[92dvh]` se quedaba SIN tope: más alto que la pantalla y
+   con el botón de guardar fuera de alcance. Ahí vale `vh`. */
+@supports not (height: 1dvh) {
+  .max-h-\[92dvh\] { max-height: 92vh; }
+  .max-h-\[88dvh\] { max-height: 88vh; }
+  .min-h-dvh { min-height: 100vh; }
 }
 
-*::-webkit-scrollbar-thumb:hover {
-  background-color: hsl(var(--muted-foreground) / 0.4);
+/* ── LA BARRA QUE CRECE ──────────────────────────────────────────────────────
+   Las barras de las cifras (`AcademicStats`) crecen desde cero al aparecer:
+   se ve de un vistazo cuánto está lleno cada cosa. Quien pidió menos
+   movimiento al teléfono las ve ya llenas. */
+@keyframes barra-crece {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
 }
-
-/* Focus visible consistente y accesible */
-:focus-visible {
-  outline: 2px solid hsl(var(--ring));
-  outline-offset: 2px;
+.barra-crece {
+  transform-origin: left center;
+  animation: barra-crece 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .barra-crece { animation: none; }
 }

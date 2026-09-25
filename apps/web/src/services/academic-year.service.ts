@@ -1,6 +1,7 @@
 import api from '@/lib/axios';
 import { getApiErrorMessage } from '@/lib/utils';
 import { AxiosError } from 'axios';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export interface Period {
     id?: string;
@@ -100,6 +101,10 @@ export const academicYearService = {
             });
             return statsMap;
         } catch (error) {
+            // Sin conexión NO se devuelve «vacío»: eso contaría como una
+            // respuesta buena y taparía las cifras guardadas en el teléfono
+            // con ceros. Se deja fallar y la pantalla sigue con las de antes.
+            if (esQueNoContesta(error)) throw error;
             console.error(error);
             return {}; // Return empty stats on error to avoid breaking UI
         }

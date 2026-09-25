@@ -7,6 +7,7 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { Card } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 interface AddStudentModalProps {
     isOpen: boolean;
@@ -197,11 +198,12 @@ export function AddStudentModal({
                                                     </div>
 
                                                     {/* Avatar */}
-                                                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0">
-                                                        <span className="text-white font-bold text-lg">
-                                                            {student.firstName[0]}{student.lastName[0]}
-                                                        </span>
-                                                    </div>
+                                                    <UserAvatar
+                                                        name={`${student.firstName} ${student.lastName}`}
+                                                        src={(student as any).avatar}
+                                                        className="h-12 w-12"
+                                                        initialsClassName="text-lg"
+                                                    />
 
                                                     {/* Info */}
                                                     <div className="flex-1 min-w-0">

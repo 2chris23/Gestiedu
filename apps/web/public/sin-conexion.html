@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>GestiEdu</title>
+    <!--
+        ESTA PANTALLA SOLO SE VE CUANDO NO HAY CONEXIÓN CON EL LICEO
+
+        La enseña el ayudante (`sw.js`) cuando la pantalla que se pidió no se
+        puede traer y tampoco está guardada. Sin esto saldría el error del
+        navegador, ese de "ERR_INTERNET_DISCONNECTED" con letra pequeña, que no
+        le dice nada a un representante.
+
+        Y si el teléfono tiene guardada la app (el panel), no se queda aquí:
+        al abrir la app sin conexión (su página de entrada) se va directo a lo
+        último guardado, y desde cualquier otra se ofrece con un botón.
+    -->
+    <style>
+        :root {
+            color-scheme: light;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            padding: 32px 24px calc(32px + env(safe-area-inset-bottom));
+            background: #f5f6f9;
+            color: #0f172a;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            text-align: center;
+        }
+
+        .marca {
+            width: 72px;
+            height: 72px;
+            border-radius: 20px;
+            background: #2563eb;
+            display: grid;
+            place-items: center;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 800;
+        }
+
+        p {
+            margin: 0;
+            max-width: 22rem;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            color: #475569;
+        }
+
+        button {
+            min-height: 48px;
+            padding: 0 24px;
+            border: 0;
+            border-radius: 14px;
+            background: #2563eb;
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        button:active {
+            background: #1d4ed8;
+        }
+
+        button.otro {
+            background: transparent;
+            color: #2563eb;
+            border: 2px solid #bfdbfe;
+        }
+
+        .oculto {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <span class="marca" aria-hidden="true">
+        <svg width="40" height="40" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M32 14L12 24L32 34L52 24L32 14Z" fill="#FFFFFF" />
+            <path d="M19 28.5V40.5C19 40.5 24 45 32 45C40 45 45 40.5 45 40.5V28.5L32 35L19 28.5Z" fill="#FFFFFF"
+                fill-opacity="0.9" />
+        </svg>
+    </span>
+
+    <h1>No hay conexión con el liceo</h1>
+    <p id="motivo">
+        No se puede llegar al servidor del liceo, y esta pantalla no está guardada en
+        este dispositivo. Cuando vuelva la conexión, se abrirá sola.
+    </p>
+    <button type="button" id="ver" class="oculto" onclick="location.href='/dashboard'">Ver lo último guardado</button>
+    <button type="button" id="reintentar" onclick="location.reload()">Reintentar</button>
+
+    <script>
+        (function () {
+            // ¿Está guardado el panel? Entonces hay algo que enseñar.
+            if (!('caches' in window)) return;
+            caches.match('/dashboard').then(function (guardado) {
+                if (!guardado) return;
+                var entrada = /^\/($|login|instituto\/[^/]+\/?(login)?\/?$)/.test(location.pathname);
+                if (entrada) {
+                    // Se abrió la app: directo a lo último guardado.
+                    location.replace('/dashboard');
+                    return;
+                }
+                document.getElementById('motivo').textContent =
+                    'Esta pantalla no se había abierto antes con conexión, así que no está guardada. Lo demás sí.';
+                document.getElementById('ver').classList.remove('oculto');
+                document.getElementById('reintentar').classList.add('otro');
+            });
+            // Y en cuanto vuelva la conexión, se intenta de nuevo sola.
+            setInterval(function () {
+                fetch(location.href, { method: 'HEAD', cache: 'no-store' })
+                    .then(function (r) { if (r.ok) location.reload(); })
+                    .catch(function () {});
+            }, 15000);
+        })();
+    </script>
+</body>
+
+</html>

@@ -1,17 +1,21 @@
 'use client';
 
 import { useState } from 'react';
-import { Settings, Building2, Palette, GraduationCap, Bell, Shield } from 'lucide-react';
+import { Settings, Building2, Palette, GraduationCap, Bell, Shield, Wallet, QrCode } from 'lucide-react';
 import { GeneralSettings } from './components/GeneralSettings';
 import { AppearanceSettings } from './components/AppearanceSettings';
 import { AcademicSettings } from './components/AcademicSettings';
 import { NotificationSettings } from './components/NotificationSettings';
 import { SecuritySettings } from './components/SecuritySettings';
+import { PaymentSettings } from './components/PaymentSettings';
+import { QrSettings } from './components/QrSettings';
 
 const tabs = [
     { id: 'general', label: 'Información General', icon: Building2, component: GeneralSettings },
     { id: 'appearance', label: 'Apariencia', icon: Palette, component: AppearanceSettings },
     { id: 'academic', label: 'Configuración Académica', icon: GraduationCap, component: AcademicSettings },
+    { id: 'payments', label: 'Pagos', icon: Wallet, component: PaymentSettings },
+    { id: 'qr', label: 'Asistencia por QR', icon: QrCode, component: QrSettings },
     { id: 'notifications', label: 'Notificaciones', icon: Bell, component: NotificationSettings },
     { id: 'security', label: 'Seguridad', icon: Shield, component: SecuritySettings },
 ];
@@ -37,7 +41,7 @@ export default function ConfiguracionPage() {
             {/* Tabs */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                 <div className="border-b border-gray-200">
-                    <nav className="-mb-px flex overflow-x-auto" aria-label="Tabs">
+                    <nav className="-mb-px flex flex-wrap" aria-label="Tabs">
                         {tabs.map((tab) => {
                             const Icon = tab.icon;
                             const isActive = activeTab === tab.id;

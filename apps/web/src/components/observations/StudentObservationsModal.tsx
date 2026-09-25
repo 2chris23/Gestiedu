@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useStudentObservations, useDeleteObservation, StudentObservationItem } from '@/hooks/useObservations';
 import { useAuthStore } from '@/store/auth.store';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 interface Props {
   isOpen: boolean;
@@ -57,13 +58,12 @@ export default function StudentObservationsModal({ isOpen, onClose, student }: P
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/80">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-sm">
-              {student.avatar ? (
-                <img src={student.avatar} alt="" className="w-full h-full rounded-full object-cover" />
-              ) : (
-                `${student.firstName?.[0] || ''}${student.lastName?.[0] || ''}`
-              )}
-            </div>
+            <UserAvatar
+              name={`${student.firstName ?? ''} ${student.lastName ?? ''}`.trim()}
+              src={student.avatar}
+              className="h-10 w-10"
+              initialsClassName="text-sm"
+            />
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-gray-900">

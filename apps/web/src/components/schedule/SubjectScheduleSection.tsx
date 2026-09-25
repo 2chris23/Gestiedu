@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { toast } from 'sonner';
 import {
-    Calendar, Clock, Printer, Edit, MapPin,
+    Calendar, Clock, Edit, MapPin,
     ChevronLeft, ChevronRight, BookOpen, CalendarDays
 } from 'lucide-react';
 import { ScheduleBlock } from '@/components/schedule/UniversalScheduleViewer';
+import { DescargarHorario } from '@/components/schedule/DescargarHorario';
 import ScheduleHistoryModal from '@/components/schedule/ScheduleHistoryModal';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -21,6 +21,8 @@ interface Props {
     showActions?: boolean;
     classroomId?: string;
     editUrl?: string;
+    /** Debajo del nombre de la materia en el horario descargado: la sección. */
+    subtitulo?: string;
 }
 
 const WORKING_DAYS = [
@@ -48,7 +50,8 @@ export default function SubjectScheduleSection({
     role,
     showActions = false,
     classroomId,
-    editUrl
+    editUrl,
+    subtitulo
 }: Props) {
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [selectedHistoryDate, setSelectedHistoryDate] = useState<string | null>(null);
@@ -272,16 +275,10 @@ export default function SubjectScheduleSection({
                         </div>
                     )}
 
+                    <DescargarHorario bloques={schedule} titulo={subject.name} subtitulo={subtitulo} />
+
                     {showActions && (
                         <div className="flex items-center gap-1 mr-1 pr-1 border-r border-gray-200">
-                            <button
-                                type="button"
-                                onClick={() => toast.info('Impresión de horario disponible')}
-                                className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                title="Imprimir horario de la materia"
-                            >
-                                <Printer size={15} />
-                            </button>
                             {editUrl && (
                                 <Link
                                     href={editUrl}
@@ -325,7 +322,9 @@ export default function SubjectScheduleSection({
             {/* VISTA DE CLASES SECUENCIALES (2 ANTERIORES + HOY + SIGUIENTES HASTA 10) */}
             <div
                 ref={carouselRef}
-                className="flex w-full gap-3 overflow-x-auto pb-2 pt-0.5 snap-x snap-mandatory scroll-smooth no-scrollbar"
+                /* De pie, en vertical: cinco tarjetas de 190 px no caben en 390,
+                   y arrastrar de lado para ver la clase de las 10 es un fastidio. */
+                className="flex w-full flex-col gap-3 pb-2 pt-0.5 min-[700px]:flex-row min-[700px]:snap-x min-[700px]:snap-mandatory min-[700px]:overflow-x-auto min-[700px]:scroll-smooth min-[700px]:no-scrollbar"
                 style={{
                     scrollbarWidth: 'none',
                     msOverflowStyle: 'none',
@@ -365,7 +364,7 @@ export default function SubjectScheduleSection({
                                           }
                                         : undefined
                                 }
-                                className={`snap-start flex-shrink-0 w-[calc((100%-48px)/5)] min-w-[190px] min-h-[160px] p-3.5 rounded-2xl border-2 transition-all flex flex-col justify-between ${
+                                className={`w-full min-h-[96px] min-[700px]:snap-start min-[700px]:flex-shrink-0 min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[190px] min-[700px]:min-h-[160px] p-3.5 rounded-2xl border-2 transition-all flex flex-col justify-between ${
                                     isClickable ? 'cursor-pointer hover:ring-2 hover:ring-indigo-400 hover:shadow-xs' : ''
                                 } ${
                                     isCurrent

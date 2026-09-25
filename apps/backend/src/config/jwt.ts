@@ -2,6 +2,7 @@ import { UserRole } from '../utils/prisma-enums';
 import * as jwt from 'jsonwebtoken';
 import { createSecretKey, KeyObject } from 'crypto';
 import { config } from './environment';
+import { randomUUID } from 'crypto';
 
 // =====================================================
 // Tipos para JWT de Instituto (usuarios normales)
@@ -13,6 +14,8 @@ export interface JWTPayload {
   email: string;
   role: UserRole;
   instituteId: string | null;
+  /** 'access' en toda llave de acceso; ver `CADA LLAVE PARA LO SUYO`. */
+  typ?: 'access';
   iat?: number;
   exp?: number;
 }
@@ -20,6 +23,7 @@ export interface JWTPayload {
 export interface RefreshTokenPayload {
   userId: string;
   tokenId: string;
+  typ?: 'refresh';
   iat?: number;
   exp?: number;
 }
@@ -111,17 +115,47 @@ const claveDeSuperadmin: KeyObject = createSecretKey(Buffer.from(superAdminJwtCo
 // Funciones JWT — Instituto
 // =====================================================
 
+/**
+ * CADA LLAVE PARA LO SUYO
+ *
+ * La de acceso y la de renovar se firman con la misma clave, el mismo emisor y
+ * el mismo destinatario. Sin nada más, el servidor no sabía cuál era cuál: la
+ * de RENOVAR (7 o 60 días, sin liceo dentro) se aceptaba como de ACCESO, y el
+ * liceo lo elegía la cabecera de quien llamaba. Seguía abriendo tras cerrar
+ * sesión, y con la cédula de alguien que está en dos liceos abría el otro
+ * (`la-llave-de-renovar-no-abre-puertas.test.ts`).
+ *
+ * Ahora cada una lleva su tipo (`typ`) y cada comprobación rechaza la otra.
+ * La de renovar se reconoce además por su `tokenId`, que la de acceso no lleva
+ * nunca: así las que ya estaban repartidas antes de este cambio también se
+ * distinguen, sin cerrar la sesión a nadie.
+ */
+function esLlaveDeRenovar(payload: any): boolean {
+  return payload?.typ === 'refresh' || (payload && 'tokenId' in payload);
+}
+
 export function generateAccessToken(payload: Omit<JWTPayload, 'iat' | 'exp'>): string {
-  return (jwt.sign as any)(payload, jwtConfig.secret, {
+  return (jwt.sign as any)({ ...payload, typ: 'access' }, jwtConfig.secret, {
     expiresIn: jwtConfig.expiresIn,
     algorithm: jwtConfig.algorithm,
     issuer: jwtConfig.issuer,
     audience: jwtConfig.audience,
+    /**
+     * CADA TOKEN, DISTINTO DE TODOS LOS DEMÁS
+     *
+     * La hora dentro del token va en segundos: dos sesiones de la MISMA persona
+     * abiertas en el mismo segundo salían con el token idéntico, letra por
+     * letra. Y como al cerrar sesión el token se anula por su huella, cerrar en
+     * el teléfono dejaba fuera también a la computadora.
+     *
+     * Con un número de serie propio no hay dos iguales.
+     */
+    jwtid: randomUUID(),
   });
 }
 
 export function generateRefreshToken(payload: Omit<RefreshTokenPayload, 'iat' | 'exp'>): string {
-  return (jwt.sign as any)(payload, jwtConfig.secret, {
+  return (jwt.sign as any)({ ...payload, typ: 'refresh' }, jwtConfig.secret, {
     expiresIn: jwtConfig.refreshExpiresIn,
     algorithm: jwtConfig.algorithm,
     issuer: jwtConfig.issuer,
@@ -131,11 +165,13 @@ export function generateRefreshToken(payload: Omit<RefreshTokenPayload, 'iat' | 
 
 export function verifyAccessToken(token: string): JWTPayload {
   try {
-    return jwt.verify(token, claveDeInstituto, {
+    const payload = jwt.verify(token, claveDeInstituto, {
       algorithms: [jwtConfig.algorithm],
       issuer: jwtConfig.issuer,
       audience: jwtConfig.audience,
     }) as JWTPayload;
+    if (esLlaveDeRenovar(payload) || !payload.userId) throw new Error('no es una llave de acceso');
+    return payload;
   } catch (error) {
     throw new Error('Token de acceso inválido');
   }
@@ -143,11 +179,13 @@ export function verifyAccessToken(token: string): JWTPayload {
 
 export function verifyRefreshToken(token: string): RefreshTokenPayload {
   try {
-    return jwt.verify(token, claveDeInstituto, {
+    const payload = jwt.verify(token, claveDeInstituto, {
       algorithms: [jwtConfig.algorithm],
       issuer: jwtConfig.issuer,
       audience: jwtConfig.audience,
     }) as RefreshTokenPayload;
+    if (!esLlaveDeRenovar(payload) || !payload.tokenId) throw new Error('no es una llave de renovar');
+    return payload;
   } catch (error) {
     throw new Error('Token de actualización inválido');
   }

@@ -30,12 +30,15 @@ export async function classSessionsRoutes(fastify: FastifyInstance) {
             getLiveClassDetail as any
         );
 
-        // Resumen en vivo (tema generador por materia) para el horario en vivo
-        authenticatedRoutes.get(
-            '/live-overview',
-            { onRequest: [requireTeacher] },
-            getLiveOverview as any
-        );
+        /**
+         * Resumen en vivo (tema de la semana y actividades) de una seccion.
+         *
+         * Sin `requireTeacher` A PROPOSITO: el alumno tiene que ver el contenido
+         * de SU horario y el representante el de su representado. Quien puede
+         * mirar esa seccion lo decide `assertCanSeeClassroom` dentro del
+         * controlador, que es donde se sabe de que seccion se habla.
+         */
+        authenticatedRoutes.get('/live-overview', getLiveOverview as any);
 
         // Guardar sesión + asistencia de una clase en vivo
         authenticatedRoutes.post(
@@ -71,10 +74,13 @@ export async function classSessionsRoutes(fastify: FastifyInstance) {
             deleteClassActivity as any
         );
 
-        // Suspender una clase (rota actividades a la próxima clase)
+        // Suspender una clase (rota actividades a la próxima clase). SOLO el
+        // admin: suspender deja a una sección sin su hora y mueve el plan de
+        // evaluación de la materia. Antes bastaba ser profesor — de cualquier
+        // sección, sin mirar si la clase era suya.
         authenticatedRoutes.post(
             '/suspend',
-            { onRequest: [requireTeacher] },
+            { onRequest: [requireAdmin] },
             suspendClassSession as any
         );
 

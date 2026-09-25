@@ -16,6 +16,7 @@ import { validateBody, validateParams, validateCUID } from '../middleware/valida
 import { platformPrisma } from '../config/database';
 import { INSTITUTE_TENANT_SELECT } from '../utils/institute-fields';
 import { extractTokenFromHeader, verifyAccessToken } from '../config/jwt';
+import { dibujarIconoDelLiceo } from '../services/icono-del-liceo.service';
 // Nota: no existen "instituteValidators" en utils/validators; usamos solo schemas JSON locales
 
 const institutesRoutes: FastifyPluginAsync = async (fastify) => {
@@ -292,6 +293,48 @@ const institutesRoutes: FastifyPluginAsync = async (fastify) => {
     'secondaryColor',
     'timezone',
   ] as const;
+
+  /**
+   * EL ICONO DE LA APP DEL LICEO
+   *
+   * Lo pide el teléfono al instalar la aplicación, y lo pide SIN SESIÓN: quien
+   * la instala todavía no ha entrado. Se enseña lo mismo que la portada —el
+   * logo, que ya es público—, solo que recortado en cuadrado para que el
+   * teléfono no lo deforme ni le coma los bordes.
+   */
+  fastify.get('/current/icono', async (request, reply) => {
+    const { tam, liceo } = request.query as { tam?: string; liceo?: string };
+    const tamano = Number(tam) === 192 ? 192 : 512;
+    // El teléfono pide el icono a pelo, sin cabeceras nuestras: por eso el
+    // liceo también puede venir en la dirección.
+    const slug = liceo || (request.headers['x-institute-slug'] as string) || '';
+
+    if (!slug) return reply.status(404).send({ success: false, message: 'Instituto no encontrado' });
+
+    const institute = await platformPrisma.institute.findFirst({
+      where: { OR: [{ slug }, { subdomain: slug }] },
+      select: { logo: true, primaryColor: true },
+    });
+    if (!institute) return reply.status(404).send({ success: false, message: 'Instituto no encontrado' });
+
+    try {
+      const { data, version } = await dibujarIconoDelLiceo(institute.logo, institute.primaryColor, tamano);
+      return reply
+        .header('Content-Type', 'image/png')
+        .header('Cache-Control', 'public, max-age=86400')
+        .header('ETag', `"${version}"`)
+        .header('Cross-Origin-Resource-Policy', 'cross-origin')
+        .send(data);
+    } catch (error: any) {
+      // Sin logo propio no es un fallo: el teléfono se queda con el icono de la
+      // plataforma, que va en el manifest justo antes que este.
+      if (error?.code === 'ICON_NOT_AVAILABLE') {
+        return reply.status(404).send({ success: false, message: error.message });
+      }
+      request.log.error(error);
+      return reply.status(500).send({ success: false, message: 'No se pudo dibujar el icono' });
+    }
+  });
 
   fastify.get('/current/config', async (request, reply) => {
     try {

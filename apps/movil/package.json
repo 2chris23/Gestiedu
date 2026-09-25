@@ -1,0 +1,30 @@
+{
+  "name": "gestiedu-movil",
+  "version": "1.0.0",
+  "private": true,
+  "description": "La app de teléfono: la misma web del liceo, instalada como aplicación (Capacitor).",
+  "scripts": {
+    "preparar": "node scripts/preparar-liceo.mjs",
+    "sincronizar": "cap sync android",
+    "abrir": "cap open android",
+    "apk:pruebas": "cd android && gradlew.bat assembleDebug",
+    "apk:firmada": "cd android && gradlew.bat assembleRelease",
+    "publicar": "node scripts/publicar-apk.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.4",
+    "@capacitor/app": "^7.1.0",
+    "@capacitor/browser": "^7.0.3",
+    "@capacitor/core": "^7.4.4",
+    "@capacitor/haptics": "^7.0.3",
+    "@capacitor/keyboard": "^7.0.4",
+    "@capacitor/screen-orientation": "^7.0.4",
+    "@capacitor/splash-screen": "^7.0.3",
+    "@capacitor/status-bar": "^7.0.3",
+    "capacitor-native-biometric": "^4.2.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.4",
+    "sharp": "^0.34.4"
+  }
+}

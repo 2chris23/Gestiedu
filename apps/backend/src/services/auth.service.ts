@@ -1,7 +1,7 @@
 import { UserRole } from '../utils/prisma-enums';
 import { PrismaClient } from '@prisma/client';
 import { generateTokenPair, verifyRefreshToken } from '../config/jwt';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes } from 'crypto';
 import { comparePassword, hashPassword } from '../utils/bcrypt';
 import { RedisSession } from '../config/redis';
 import { AppErrors } from '../middleware/error.middleware';
@@ -57,6 +57,24 @@ export interface RefreshTokenData {
   refreshToken: string;
 }
 
+/**
+ * Cuánto sigue valiendo la llave vieja después de cambiarla. Suficiente para
+ * que dos pestañas que renovaron a la vez terminen las dos; demasiado poco para
+ * que le sirva a nadie más.
+ */
+const GRACIA_DE_ROTACION_MS = 30_000;
+
+/**
+ * Un resumen bcrypt que no abre nada, con las mismas vueltas que los de
+ * verdad (se hace con `hashPassword`), para que comprobar contra él tarde lo
+ * mismo. Se prepara una vez.
+ */
+let resumenDeMentiraListo: Promise<string> | null = null;
+function resumenDeMentira(): Promise<string> {
+  if (!resumenDeMentiraListo) resumenDeMentiraListo = hashPassword(randomBytes(24).toString('hex'));
+  return resumenDeMentiraListo;
+}
+
 class AuthService {
   /**
    * Iniciar sesión
@@ -87,7 +105,18 @@ class AuthService {
       }
     });
 
-    if (!user) {
+    /**
+     * LA PANTALLA DE ENTRAR NO DICE QUIÉN EXISTE
+     *
+     * La contraseña se comprueba SIEMPRE y PRIMERO:
+     *   · sin cuenta, contra un resumen de mentira, para tardar lo mismo que
+     *     con cuenta: si no, el reloj decía qué correos existen;
+     *   · «desactivada» o «archivada» solo se le dice a quien trae la
+     *     contraseña buena. Antes bastaba el correo para saber que esa persona
+     *     estuvo en el liceo y ya no está (`el-login-no-dice-quien-existe`).
+     */
+    const isPasswordValid = await comparePassword(password, user?.password ?? (await resumenDeMentira()));
+    if (!user || !isPasswordValid) {
       throw AppErrors.InvalidCredentials();
     }
 
@@ -99,11 +128,34 @@ class AuthService {
       throw AppErrors.UserInactive();
     }
 
-    // Verificar contraseña
-    const isPasswordValid = await comparePassword(password, user.password);
-    if (!isPasswordValid) {
-      throw AppErrors.InvalidCredentials();
-    }
+    return this.abrirSesion(user, db, { keepSession, rememberMe }, instituteContextId, deviceMeta);
+  }
+
+  /**
+   * ABRIR LA SESIÓN DE ALGUIEN QUE YA SE HA IDENTIFICADO
+   *
+   * Todo lo que va DESPUÉS de comprobar quién es: el par de llaves, la fila de
+   * la sesión, la memoria rápida y la respuesta.
+   *
+   * Está aparte porque hay dos formas de identificarse y las dos terminan
+   * exactamente igual: con el correo y la contraseña (`login`) y con la llave
+   * que este teléfono guardó tras una entrada con contraseña
+   * (`llave-del-telefono.service.ts`). Escribirlo dos veces es garantizar que
+   * dentro de un mes una de las dos no invalide la sesión, o no la guarde en
+   * la memoria rápida, y nadie se entere.
+   *
+   * Aquí NO se comprueba ninguna credencial: quien llama ya lo hizo.
+   */
+  async abrirSesion(
+    user: { id: string; email: string; firstName: string; lastName: string; role: string; avatar?: string | null; instituteId?: string | null; institute?: unknown },
+    db: PrismaClient,
+    opciones: { keepSession?: boolean; rememberMe?: boolean },
+    instituteContextId?: string,
+    meta?: LoginDeviceMeta
+  ): Promise<LoginResponse> {
+    const keepSession = opciones.keepSession ?? false;
+    const rememberMe = opciones.rememberMe ?? false;
+    const deviceMeta = meta || {};
 
     // Generar ID único y tokens JWT (sin DB aún, evita race condition con token='')
     const tokenRecordId = randomUUID();
@@ -186,7 +238,11 @@ class AuthService {
    * Renovar token de acceso
    * SEGURIDAD: tenantDb es requerido — no hay fallback al singleton.
    */
-  async refreshToken(data: RefreshTokenData, tenantDb: PrismaClient): Promise<{ accessToken: string; expiresIn: string }> {
+  async refreshToken(
+    data: RefreshTokenData,
+    tenantDb: PrismaClient,
+    instituteContextId?: string
+  ): Promise<{ accessToken: string; refreshToken: string; expiresIn: string }> {
     const { refreshToken } = data;
 
     // Verificar refresh token
@@ -230,42 +286,96 @@ class AuthService {
       throw AppErrors.UserInactive();
     }
 
-    // ============================================================
-    // SLIDING EXPIRATION ("Recordar sesión"):
-    // Si el token tiene rememberMe=true, cada uso renueva su expiración a
-    // 60 días desde el ÚLTIMO USO. El dispositivo queda "persistente" mientras
-    // se use con frecuencia; si queda inactivo la ventana, expira.
-    // También actualizamos lastUsedAt en todos los casos (para el listado de
-    // sesiones activas).
-    // ============================================================
     const now = new Date();
-    if (refreshTokenRecord.rememberMe) {
-      const newExpiresAt = new Date(now.getTime() + SLIDING_SESSION_DAYS * 24 * 60 * 60 * 1000);
-      await tenantDb.refreshToken.update({
-        where: { id: refreshTokenRecord.id },
-        data: { expiresAt: newExpiresAt, lastUsedAt: now },
-      });
-    } else {
-      await tenantDb.refreshToken.update({
-        where: { id: refreshTokenRecord.id },
-        data: { lastUsedAt: now },
-      });
+
+    /**
+     * LA LLAVE DE VOLVER A ENTRAR SE CAMBIA CADA VEZ
+     *
+     * Cada renovación entrega una llave nueva y jubila la anterior. Si alguien
+     * copió la llave de un dispositivo, deja de servirle en cuanto su dueño la
+     * usa una vez —y ahí se nota el robo, porque el ladrón se queda fuera—, en
+     * lugar de servirle durante días.
+     *
+     * PERO NO SE TIRA DE GOLPE, Y ESTO IMPORTA
+     *
+     * Dos pestañas abiertas renuevan a la vez y mandan LA MISMA llave. Si la
+     * primera la borrara, la segunda recibiría "no autorizado" y al liceo le
+     * saltaría la pantalla de entrar en mitad del trabajo, sin haber hecho nada
+     * mal. Por eso la vieja se marca como cambiada y sigue valiendo unos
+     * segundos: el tiempo de que las dos terminen.
+     *
+     * Pasada esa gracia, la llave vieja no vale: es lo que cierra la puerta a
+     * quien la hubiera copiado.
+     */
+    const laGraciaYaEmpezo = refreshTokenRecord.replacedAt !== null;
+    if (laGraciaYaEmpezo) {
+      const desdeQueSeCambio = now.getTime() - refreshTokenRecord.replacedAt!.getTime();
+      if (desdeQueSeCambio > GRACIA_DE_ROTACION_MS) {
+        // Llave jubilada hace rato. Ni se renueva ni se avisa de qué pasó.
+        logger.warn('Refresh token reutilizado fuera de la gracia', {
+          userId: refreshTokenRecord.userId,
+          tokenId: refreshTokenRecord.id,
+        });
+        throw AppErrors.TokenInvalid();
+      }
     }
 
-    // Generar nuevo access token
+    // La sesión "recordada" se corre desde el último uso; la normal conserva su
+    // fecha de caducidad original.
+    const newExpiresAt = refreshTokenRecord.rememberMe
+      ? new Date(now.getTime() + SLIDING_SESSION_DAYS * 24 * 60 * 60 * 1000)
+      : refreshTokenRecord.expiresAt;
+
+    if (!laGraciaYaEmpezo) {
+      await tenantDb.refreshToken.update({
+        where: { id: refreshTokenRecord.id },
+        data: { replacedAt: now, lastUsedAt: now },
+      }).catch(() => undefined);
+    }
+
+    const newTokenRecordId = randomUUID();
+
+    // Generar nuevo par de tokens
     const tokens = generateTokenPair(
       {
         id: refreshTokenRecord.user.id,
         userId: refreshTokenRecord.user.id,
         email: refreshTokenRecord.user.email,
         role: refreshTokenRecord.user.role as UserRole,
-        instituteId: refreshTokenRecord.user.instituteId
+        // Igual que al entrar: en la base del liceo la columna suele ir vacía,
+        // y una llave sin liceo dejaba que la cabecera eligiera la base
+        // (`la-llave-de-renovar-no-abre-puertas.test.ts`, LLAVE-R-04/05).
+        instituteId: refreshTokenRecord.user.instituteId ?? instituteContextId ?? null
       },
-      refreshTokenRecord.id
+      newTokenRecordId
     );
+
+    // De paso, barrer las llaves ya jubiladas de esta persona: pasada la
+    // gracia no valen para nada y si no la tabla crece una fila por renovación.
+    await tenantDb.refreshToken.deleteMany({
+      where: {
+        userId: refreshTokenRecord.userId,
+        replacedAt: { lt: new Date(now.getTime() - GRACIA_DE_ROTACION_MS) },
+      },
+    }).catch(() => undefined);
+
+    // Guardar el nuevo refresh token en la BD del tenant
+    await tenantDb.refreshToken.create({
+      data: {
+        id: newTokenRecordId,
+        userId: refreshTokenRecord.user.id,
+        token: tokens.refreshToken,
+        expiresAt: newExpiresAt,
+        userAgent: refreshTokenRecord.userAgent,
+        ip: refreshTokenRecord.ip,
+        rememberMe: refreshTokenRecord.rememberMe,
+        lastUsedAt: now,
+      },
+    });
 
     return {
       accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
       expiresIn: tokens.expiresIn
     };
   }
@@ -334,7 +444,10 @@ class AuthService {
     isCurrent: boolean;
   }>> {
     const sessions = await tenantDb.refreshToken.findMany({
-      where: { userId },
+      // `replacedAt: null` = las llaves vivas. Como la llave se cambia en cada
+      // renovación, sin este filtro la lista de "dispositivos conectados" se
+      // llenaría de fantasmas: la misma sesión repetida una vez por renovación.
+      where: { userId, replacedAt: null },
       select: {
         id: true,
         userAgent: true,

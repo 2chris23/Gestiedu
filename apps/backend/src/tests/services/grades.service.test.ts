@@ -51,7 +51,9 @@ describe('GradesService', () => {
                 .mockResolvedValueOnce({ id: 'teacher-123', role: 'TEACHER', firstName: 'Prof', lastName: 'X' } as any)  // Teacher
                 .mockResolvedValueOnce({ id: 'teacher-123', role: 'TEACHER', firstName: 'Prof', lastName: 'X' } as any); // 3er lookup (eg. verificación adicional)
 
-            prismaMock.activity.findUnique.mockResolvedValue({ id: 'activity-123', title: 'Test', type: 'EXAM', maxGrade: 20, weight: 0.2 } as any);
+            prismaMock.activity.findUnique.mockResolvedValue({ id: 'activity-123', title: 'Test', type: 'EXAM', maxGrade: 20, weight: 0.2, classroomId: 'classroom-123' } as any);
+            prismaMock.studentClassroom.findFirst.mockResolvedValue({ id: 'enrollment-123', classroomId: 'classroom-123' } as any);
+            prismaMock.classroomSubject.findFirst.mockResolvedValue({ id: 'assignment-123' } as any);
             prismaMock.period.findUnique.mockResolvedValue({ id: 'period-123', name: 'Period 1' } as any);
             prismaMock.subject.findUnique.mockResolvedValue({ id: 'subject-123', name: 'Math', code: 'MAT101' } as any);
 

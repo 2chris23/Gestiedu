@@ -56,7 +56,7 @@ const SLUG_B = `otro-liceo-${SUFIJO}`;
 
 /** La clave exacta que construye `getGrades` cuando no se le pasa ningún filtro. */
 const CLAVE_DE_TODAS_LAS_NOTAS =
-    'grades:list|stu:-|sub:-|per:-|act:-|tch:-|cls:-|min:-|max:-|typ:-|df:-|dt:-|pg:1|lm:10|sb:createdAt|so:desc';
+    'grades:list|stu:-|sub:-|per:-|act:-|tch:-|cls:-|min:-|max:-|typ:-|df:-|dt:-|pg:1|lm:10|sb:createdAt|so:desc|prof:-';
 
 function datosDeConexion() {
     const url = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || '';
@@ -288,6 +288,10 @@ describe('La memoria rápida no mezcla liceos', () => {
         const MIRADAS: Record<string, string> = {
             'src/config/database.ts|tenantConnections':
                 'la clave es el liceo',
+            'src/config/database.ts|abriendo':
+                'la clave es el liceo: la conexión que se está abriendo para ESE liceo',
+            'src/utils/fallos-del-servidor.ts|pendientes':
+                'la clave empieza por el liceo; solo cuenta errores (ruta y veces), no datos de nadie',
             'src/config/redis.ts|memoryStore':
                 'es la memoria rápida misma: la clave ya lleva el liceo (getKey)',
             'src/plugins/anti-doble-envio.ts|enCurso':
@@ -300,6 +304,10 @@ describe('La memoria rápida no mezcla liceos', () => {
                 'son los métodos HTTP que escriben (POST, PUT...), no datos de nadie',
             'src/utils/papelera.ts|FUERA_DE_LA_PAPELERA':
                 'son dos nombres de tablas (refreshToken, notification), no datos de nadie',
+            'src/config/redis.ts|indicePorPersona':
+                'índice de memoryStore: sus claves son las claves completas, que ya llevan el liceo delante',
+            'src/services/foto-de-perfil.service.ts|FORMATOS_DE_FOTO':
+                'son los formatos de imagen aceptados (jpeg, png...), no datos de nadie',
             'src/scripts/medir-concurrencia.ts|credenciales':
                 'guion de medición, no corre en el servidor',
         };

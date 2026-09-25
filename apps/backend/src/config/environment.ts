@@ -134,11 +134,35 @@ export const config = {
       const raw = env.CORS_ORIGIN;
       // RegExp que acepta localhost y todos sus subdominios en cualquier puerto (para dev)
       const localhostRegex = /^https?:\/\/([a-z0-9-]+\.)?localhost(:\d+)?$/;
+
+      /**
+       * LA RED DE CASA, SOLO EN DESARROLLO
+       *
+       * Para ver la app en un teléfono de verdad (`npm run telefono`) hay que
+       * abrirla por la dirección del ordenador en el wifi —`192.168.1.156`—, y
+       * para el servidor eso es «otro sitio»: respondía sin la cabecera que
+       * deja leer la respuesta, el navegador del móvil la tiraba, y las
+       * pantallas salían vacías sin un solo error a la vista.
+       *
+       * Son las tres redes privadas de toda la vida (192.168.x.x, 10.x.x.x y
+       * 172.16–31.x.x), y **solo en desarrollo**: en producción vale lo que
+       * diga `CORS_ORIGIN`, que es el dominio del liceo y nada más.
+       *
+       * Ojo con dónde se pone: `.env.development` fija `CORS_ORIGIN` a
+       * localhost y los archivos ganan a las variables del entorno
+       * (`dotenv ... override: true`, unas líneas más arriba y a propósito).
+       * Por eso esto no se cuelga del valor de `CORS_ORIGIN`, sino del modo.
+       */
+      const redDeCasaRegex =
+        /^https?:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/;
+      const enDesarrollo = (process.env.NODE_ENV || 'development') !== 'production';
+      const deSiempre = enDesarrollo ? [localhostRegex, redDeCasaRegex] : [localhostRegex];
+
       if (raw === '*') {
         // En vez de true (que no funciona con credentials), refleja el Origin del request
-        return [localhostRegex];
+        return deSiempre;
       }
-      return [...raw.split(',').map(o => o.trim()), localhostRegex];
+      return [...raw.split(',').map(o => o.trim()), ...deSiempre];
     })(),
   },
 

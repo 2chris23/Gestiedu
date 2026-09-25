@@ -59,6 +59,12 @@ export async function teacherHandlesSubject(
     return n > 0;
 }
 
+/** Lo que el profesor guía puede en las materias de su sección que NO imparte. */
+const LO_DEL_GUIA = /asistencia|observaci|^ver /;
+function loQuePuedeElGuia(accion?: string): boolean {
+    return !!accion && LO_DEL_GUIA.test(accion);
+}
+
 /**
  * Corta la petición si el profesor no tiene nada que ver con esa sección.
  * El administrador pasa siempre; un estudiante o representante, nunca.
@@ -78,8 +84,12 @@ export async function assertClassroomScope(
 
     const permitido = opciones.subjectId
         ? (await teacherHandlesSubject(prisma, teacherId, classroomId, opciones.subjectId)) ||
-          // El profesor guía también puede sobre su sección (asistencia, observaciones)
-          (!opciones.accion?.startsWith('plan') &&
+          // El profesor guía también puede sobre su sección, pero SOLO en lo
+          // que es de guía: asistencia, observaciones y mirar. Notas, clase,
+          // actividades y plan son de quien imparte la materia. Antes se le
+          // dejaba todo menos el plan, y el guía corregía las notas de
+          // Matemática sin darla (`quien-puede-que.test.ts`).
+          (loQuePuedeElGuia(opciones.accion) &&
               (await prisma.classroom.count({ where: { id: classroomId, teacherId } })) > 0)
         : await teacherHandlesClassroom(prisma, teacherId, classroomId);
 
@@ -132,5 +142,56 @@ export async function assertCanSeeStudent(
 ): Promise<void> {
     if (!(await canSeeStudent(prisma, user, studentId))) {
         throw AppErrors.Forbidden('Solo puedes consultar a tus estudiantes');
+    }
+}
+
+/**
+ * ¿Puede este usuario MIRAR lo que pasa en esa sección?
+ *
+ * Mirar no es tocar. El horario en vivo de una sección —el tema de la semana y
+ * si hay actividades— lo ven también el alumno que estudia ahí y su
+ * representante; escribir sigue siendo del profesor de esa clase.
+ *
+ * Sin esto, el alumno no veía su propio horario con contenido (pantalla en
+ * blanco con guiones) y cualquier profesor podía asomarse a una sección ajena.
+ */
+export async function canSeeClassroom(
+    prisma: PrismaClient,
+    user: ActingUser | null | undefined,
+    classroomId: string
+): Promise<boolean> {
+    if (isAdmin(user)) return true;
+
+    const actorId = idOf(user);
+    if (!actorId) return false;
+
+    if (user?.role === UserRole.TEACHER) {
+        return teacherHandlesClassroom(prisma, actorId, classroomId);
+    }
+
+    if (user?.role === UserRole.STUDENT) {
+        const n = await prisma.studentClassroom.count({
+            where: { studentId: actorId, classroomId, isActive: true },
+        });
+        return n > 0;
+    }
+
+    if (user?.role === UserRole.TUTOR) {
+        const n = await prisma.studentClassroom.count({
+            where: { classroomId, isActive: true, student: { studentTutorings: { some: { tutorId: actorId } } } },
+        });
+        return n > 0;
+    }
+
+    return false;
+}
+
+export async function assertCanSeeClassroom(
+    prisma: PrismaClient,
+    user: ActingUser | null | undefined,
+    classroomId: string
+): Promise<void> {
+    if (!(await canSeeClassroom(prisma, user, classroomId))) {
+        throw AppErrors.Forbidden('Esa sección no es tuya');
     }
 }

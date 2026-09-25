@@ -1,6 +1,8 @@
 
+'use client';
+
 import React from 'react';
-import { MapPin, Edit2, User, GraduationCap, Briefcase } from 'lucide-react';
+import { MapPin, Edit2, User, GraduationCap, Briefcase, Camera, Loader2, Trash2 } from 'lucide-react';
 import UserAvatar from '@/components/ui/UserAvatar';
 
 export type UserRole = 'student' | 'teacher' | 'admin' | 'tutor';
@@ -18,10 +20,15 @@ export interface UserProfile {
 interface Props {
     user: UserProfile;
     onEdit?: () => void;
+    /** Solo el admin: la foto de cualquier persona la pone él. */
+    alCambiarFoto?: (archivo: File) => void;
+    alQuitarFoto?: () => void;
+    subiendoFoto?: boolean;
 }
 
-export default function ProfileHeader({ user, onEdit }: Props) {
+export default function ProfileHeader({ user, onEdit, alCambiarFoto, alQuitarFoto, subiendoFoto }: Props) {
     const isStudent = user.role === 'student';
+    const elegir = React.useRef<HTMLInputElement>(null);
 
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 flex flex-col md:flex-row items-start md:items-center gap-6 relative overflow-hidden">
@@ -39,9 +46,46 @@ export default function ProfileHeader({ user, onEdit }: Props) {
                         initialsClassName="text-2xl md:text-3xl"
                     />
                 </div>
-                <div className="absolute bottom-1 right-1 bg-white rounded-full p-1.5 shadow-md border border-gray-100">
-                    <User size={16} className={isStudent ? 'text-blue-500' : 'text-purple-600'} />
-                </div>
+                {alCambiarFoto ? (
+                    <>
+                        <button
+                            type="button"
+                            onClick={() => elegir.current?.click()}
+                            disabled={subiendoFoto}
+                            aria-label={user.photoUrl ? 'Cambiar foto' : 'Poner foto'}
+                            title={user.photoUrl ? 'Cambiar foto' : 'Poner foto'}
+                            className="absolute bottom-0 right-0 flex h-10 w-10 items-center justify-center rounded-full border-2 border-white bg-indigo-600 text-white shadow-md transition-transform hover:bg-indigo-700 active:scale-90 disabled:opacity-70"
+                        >
+                            {subiendoFoto ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
+                        </button>
+                        {user.photoUrl && alQuitarFoto && !subiendoFoto && (
+                            <button
+                                type="button"
+                                onClick={alQuitarFoto}
+                                aria-label="Quitar foto"
+                                title="Quitar foto"
+                                className="absolute bottom-0 left-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-white text-red-700 shadow-md hover:bg-red-50 active:scale-90"
+                            >
+                                <Trash2 size={14} />
+                            </button>
+                        )}
+                        <input
+                            ref={elegir}
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                            className="hidden"
+                            onChange={(e) => {
+                                const archivo = e.target.files?.[0];
+                                e.target.value = '';
+                                if (archivo) alCambiarFoto(archivo);
+                            }}
+                        />
+                    </>
+                ) : (
+                    <div className="absolute bottom-1 right-1 bg-white rounded-full p-1.5 shadow-md border border-gray-100">
+                        <User size={16} className={isStudent ? 'text-blue-500' : 'text-purple-600'} />
+                    </div>
+                )}
             </div>
 
             {/* Main Info */}

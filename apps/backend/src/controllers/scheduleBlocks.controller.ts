@@ -7,6 +7,8 @@ import {
     findScheduleConflicts,
     ScheduleConflictError,
 } from '../services/schedule-conflicts.service';
+import { assertCanSeeClassroom } from '../services/authorization.service';
+import { elTurnoDeLaSeccion } from '../services/turnos.service';
 
 interface GetScheduleRequest {
     Params: {
@@ -79,6 +81,16 @@ export async function getClassroomSchedule(
     try {
         const { classroomId } = request.params;
 
+        /**
+         * EL HORARIO DE SU SECCIÓN TAMBIÉN ES SUYO
+         *
+         * Esta lectura era solo de profesores, así que **el alumno no podía ver
+         * su propio horario**: la pantalla salía vacía. Ahora lo ven también el
+         * alumno de esa sección y su representante —y ningún otro—, y de paso
+         * un profesor ya no puede asomarse al horario de una sección ajena.
+         */
+        await assertCanSeeClassroom(request.tenantPrisma, request.user as any, classroomId);
+
         const scheduleBlocks = await request.tenantPrisma.scheduleBlock.findMany({
             where: {
                 classroomId,
@@ -113,8 +125,16 @@ export async function getClassroomSchedule(
         return reply.status(200).send({
             scheduleBlocks,
             total: scheduleBlocks.length,
+            // El turno decide a qué hora empieza la rejilla del horario.
+            shift: await elTurnoDeLaSeccion(request.tenantPrisma, classroomId),
         });
     } catch (error) {
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
         logger.error('Error al obtener horario', {
             error: error instanceof Error ? error.message : String(error),
             classroomId: request.params.classroomId,

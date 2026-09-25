@@ -9,7 +9,8 @@ import { fueModificadoPorOtro, versionVista, AVISO_MODIFICADO_POR_OTRO } from '.
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 import { sanitizeHTML } from '../utils/sanitize'; // ✅ SECURITY: XSS protection
 import { handlePrismaError } from '../utils/error-handler'; // ✅ SECURITY: Better error handling
-import { assertClassroomScope } from '../services/authorization.service';
+import { assertClassroomScope, canSeeStudent } from '../services/authorization.service';
+import { AppErrors } from '../middleware/error.middleware';
 
 /**
  * ¿PUEDE ESTA PERSONA TOCAR ESTA NOTA?
@@ -30,14 +31,41 @@ import { assertClassroomScope } from '../services/authorization.service';
 async function soloSiEsDeSuClase(request: FastifyRequest, gradeId: string) {
   const nota = await request.tenantPrisma.grade.findUnique({
     where: { id: gradeId },
-    select: { subjectId: true, activity: { select: { classroomId: true } } },
+    select: {
+      subjectId: true,
+      studentId: true,
+      activity: { select: { classroomId: true } },
+      student: {
+        select: {
+          studentClassrooms: {
+            where: { isActive: true },
+            take: 1,
+            select: { classroomId: true },
+          },
+        },
+      },
+    },
   });
-  if (!nota?.activity?.classroomId) return;
+  if (!nota) return;
+
+  const classroomId = nota.activity?.classroomId || nota.student?.studentClassrooms[0]?.classroomId;
+  if (!classroomId) {
+    const actor = request.user as any;
+    if (actor?.role === UserRole.ADMIN) return;
+    const actorId = actor?.userId ?? actor?.id;
+    const imparte = await request.tenantPrisma.classroomSubject.count({
+      where: { subjectId: nota.subjectId, teacherId: actorId },
+    });
+    if (imparte === 0) {
+      throw AppErrors.Forbidden('Solo puedes modificar notas de materias que impartes');
+    }
+    return;
+  }
 
   await assertClassroomScope(
     request.tenantPrisma,
     request.user as any,
-    nota.activity.classroomId,
+    classroomId,
     { subjectId: nota.subjectId, accion: 'poner notas' }
   );
 }
@@ -181,6 +209,11 @@ export async function getGrades(
       maxScore,
       dateFrom: dateFrom ? new Date(dateFrom) : undefined,
       dateTo: dateTo ? new Date(dateTo) : undefined,
+      // El administrador ve todas; el profesor, solo las de sus clases.
+      soloDelProfesor:
+        (request.user as any)?.role === UserRole.ADMIN
+          ? undefined
+          : ((request.user as any)?.userId ?? (request.user as any)?.id ?? '__nadie__'),
     });
 
     return reply.status(200).send({
@@ -256,6 +289,7 @@ export async function getGrade(
             type: true,
             weight: true,
             dueDate: true,
+            classroomId: true,
           },
         },
         subject: {
@@ -283,8 +317,61 @@ export async function getGrade(
       });
     }
 
+    // SEGURIDAD: Control de acceso para evitar IDOR (idor-single-grade-lookup)
+    const actor = request.user as any;
+    const actorId = actor?.userId ?? actor?.id;
+    const role = actor?.role;
+
+    if (role === UserRole.ADMIN) {
+      // El administrador tiene visibilidad completa sobre las notas de su liceo
+    } else if (role === UserRole.STUDENT) {
+      if (grade.studentId !== actorId) {
+        return reply.status(403).send({
+          error: 'Solo puedes consultar tus propias calificaciones',
+          code: 'FORBIDDEN',
+        });
+      }
+    } else if (role === UserRole.TUTOR) {
+      const relacionTutor = await request.tenantPrisma.studentTutor.count({
+        where: { tutorId: actorId, studentId: grade.studentId },
+      });
+      if (relacionTutor === 0) {
+        return reply.status(403).send({
+          error: 'Solo puedes consultar calificaciones de tus representados',
+          code: 'FORBIDDEN',
+        });
+      }
+    } else if (role === UserRole.TEACHER) {
+      const classroomId = grade.activity?.classroomId || grade.student?.studentClassrooms?.[0]?.classroom?.id;
+      if (classroomId) {
+        await assertClassroomScope(request.tenantPrisma, actor, classroomId, {
+          subjectId: grade.subjectId,
+          accion: 'ver notas',
+        });
+      } else {
+        const canSee = await canSeeStudent(request.tenantPrisma, actor, grade.studentId);
+        if (!canSee) {
+          return reply.status(403).send({
+            error: 'No tienes permiso para ver calificaciones de este estudiante',
+            code: 'FORBIDDEN',
+          });
+        }
+      }
+    } else {
+      return reply.status(403).send({
+        error: 'No tienes permisos para ver esta calificación',
+        code: 'FORBIDDEN',
+      });
+    }
+
     return reply.status(200).send({ grade });
   } catch (error) {
+    if ((error as any)?.statusCode) {
+      return reply.status((error as any).statusCode).send({
+        error: (error as any).message || 'Acceso denegado',
+        code: (error as any).code || 'FORBIDDEN',
+      });
+    }
     logger.error('Error al obtener calificación', { error, gradeId: request.params.id });
     return reply.status(500).send({
       error: 'Error en el servidor',

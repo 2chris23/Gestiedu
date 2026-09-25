@@ -124,15 +124,18 @@ const schedulesRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [authenticate, requireTeacher, validateUserId('teacherId')]
   }, getTeacherSchedules as any);
 
-  // Rutas para crear, actualizar, eliminar
+  // Rutas para crear, actualizar, eliminar. SOLO el administrador, como los
+  // bloques del horario (`scheduleBlocks.routes.ts`): con `requireTeacher` un
+  // profesor de 1.º B movía, cambiaba de aula o borraba la hora de 1.º A
+  // (`quien-puede-que.test.ts`, «PUT horario de A»). La web no usa estas tres.
   fastify.post('/', {
     schema: createScheduleSchema,
-    preHandler: [authenticate, requireTeacher, validateBody(zCreateScheduleSchema)]
+    preHandler: [authenticate, requireAdmin, validateBody(zCreateScheduleSchema)]
   }, createSchedule as any);
 
   fastify.put('/:id', {
     schema: updateScheduleSchema,
-    preHandler: [authenticate, requireTeacher, validateCUID('id'), validateBody(zUpdateScheduleSchema)]
+    preHandler: [authenticate, requireAdmin, validateCUID('id'), validateBody(zUpdateScheduleSchema)]
   }, updateSchedule as any);
 
   fastify.delete('/:id', {
@@ -145,7 +148,7 @@ const schedulesRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
     },
-    preHandler: [authenticate, requireTeacher, validateCUID('id')]
+    preHandler: [authenticate, requireAdmin, validateCUID('id')]
   }, deleteSchedule as any);
 };
 

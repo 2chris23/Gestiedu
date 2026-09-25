@@ -9,6 +9,7 @@ import {
     Printer, FileText
 } from 'lucide-react';
 import { academicYearService } from '@/services/academic-year.service';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 interface Suggestion {
     studentId: string;
@@ -205,7 +206,7 @@ export default function PromotionPage() {
                 setSelectedSection(sorted[0].currentSection || 'A');
             }
         } catch (e: any) {
-            toast.error(e?.response?.data?.error || 'Error al cargar el panel de promoción');
+            if (!esQueNoContesta(e)) toast.error(e?.response?.data?.error || 'Error al cargar el panel de promoción');
         } finally {
             setLoading(false);
         }
@@ -686,7 +687,7 @@ export default function PromotionPage() {
                                             {isGraduate ? (
                                                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 text-xs font-bold">
                                                     <GraduationCap className="w-4 h-4" />
-                                                    🎓 5to Año — Egresado del Liceo
+                                                    🎓 {s.gradeLevel}º Año — Egresado del Liceo
                                                 </span>
                                             ) : isRetired ? (
                                                 <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-red-50 text-red-700 border border-red-200 text-xs font-bold">
@@ -708,6 +709,7 @@ export default function PromotionPage() {
                                                             <option value={3}>3º Año</option>
                                                             <option value={4}>4º Año</option>
                                                             <option value={5}>5º Año</option>
+                                                            <option value={6}>6º Año</option>
                                                         </select>
                                                     </div>
 
@@ -886,7 +888,7 @@ export default function PromotionPage() {
                             <ul className="text-xs text-gray-600 space-y-1.5 list-disc list-inside bg-gray-50 p-3.5 rounded-xl border border-gray-100 font-medium">
                                 <li>Creará automáticamente el ciclo escolar siguiente (<strong>{suggestedNextYearName}</strong>) y las secciones destino.</li>
                                 <li>Promocionará a los estudiantes a sus años respectivos (1º → 2º, 2º → 3º).</li>
-                                <li>Registrará a los estudiantes de 5to año como <strong>Egresados</strong> y sellará su récord histórico.</li>
+                                <li>Registrará a los estudiantes de último año como <strong>Egresados</strong> y sellará su récord histórico.</li>
                                 <li>Marcará el ciclo <strong>{yearName}</strong> como finalizado.</li>
                             </ul>
 

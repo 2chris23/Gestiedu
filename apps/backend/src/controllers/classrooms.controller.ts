@@ -3,13 +3,34 @@ import { z } from 'zod';
 import { generateSlug } from '../utils/slug';
 import * as closeCycleService from '../services/promotion/close-cycle.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
+import { canSeeClassroom } from '../services/authorization.service';
+
+/**
+ * MIRAR UNA SECCIÓN ES DE QUIEN TIENE QUE VER CON ELLA
+ *
+ * La ficha de una sección y sus números los pedía cualquiera con sesión: el
+ * alumno de 1.º B la de 1.º A, y alumnos y representantes, el PROMEDIO de la
+ * sección, que es lo que el liceo había dicho que no ven
+ * (`quien-puede-que.test.ts`). La ficha, quien la mira (`canSeeClassroom`);
+ * los números, el administrador y el guía de esa sección.
+ */
+async function puedeMirarLaSeccion(request: FastifyRequest, classroomId: string): Promise<boolean> {
+  return canSeeClassroom(request.tenantPrisma, request.user as any, classroomId);
+}
+
+function puedeVerLosNumeros(request: FastifyRequest, classroom: { teacherId: string | null }): boolean {
+  const u = request.user as any;
+  if (u?.role === 'ADMIN') return true;
+  return u?.role === 'TEACHER' && !!classroom.teacherId && classroom.teacherId === (u.userId ?? u.id);
+}
 
 const classroomSchema = z.object({
   academicYearId: z.string().min(1, 'El Año Escolar es requerido'),
-  grade: z.coerce.number().min(1).max(5),
+  grade: z.coerce.number().min(1).max(6),
   section: z.string().min(1).regex(/^[A-Z]$/, 'La sección debe ser una letra mayúscula única (A-Z)'),
   teacherId: z.string().optional(),
   capacity: z.coerce.number().min(1).default(35),
+  shift: z.enum(['MANANA', 'TARDE', 'INTEGRAL']).default('MANANA'),
 });
 
 const updateClassroomSchema = classroomSchema.partial();
@@ -18,33 +39,37 @@ export const createClassroom = async (request: FastifyRequest, reply: FastifyRep
   try {
     const data = classroomSchema.parse(request.body);
 
-    // 1. Validar que no exista ya esa Sección para ese Grado en ese Año
+    // 1. Validar que no exista ya esa Sección para ese Grado y Turno en ese Año
     const existingClassroom = await request.tenantPrisma.classroom.findFirst({
       where: {
         academicYearId: data.academicYearId,
         grade: data.grade,
-        section: data.section
+        section: data.section,
+        shift: data.shift || 'MANANA',
       },
     });
 
     if (existingClassroom) {
+      const shiftLabel = data.shift === 'TARDE' ? ' (Turno Tarde)' : data.shift === 'INTEGRAL' ? ' (Turno Integral)' : ' (Turno Mañana)';
       return reply.status(409).send({
-        error: `Ya existe la sección ${data.section} para el ${data.grade}º año en este periodo escolar`,
+        error: `Ya existe la sección ${data.section} para el ${data.grade}º año${shiftLabel} en este periodo escolar`,
         code: 'SECTION_EXISTS',
       });
     }
 
     // 2. Generar nombre automático
-    // Mapeo simple: 1 -> "1er Año", 2 -> "2do Año", etc.
+    // Mapeo: 1 -> "1er Año", ..., 6 -> "6to Año"
     const gradeNames: Record<number, string> = {
       1: '1er Año',
       2: '2do Año',
       3: '3er Año',
       4: '4to Año',
       5: '5to Año',
+      6: '6to Año',
     };
     const gradeName = gradeNames[data.grade] || `${data.grade}º Año`;
-    const fullName = `${gradeName} ${data.section}`;
+    const shiftSuffix = data.shift === 'TARDE' ? ' (Tarde)' : data.shift === 'INTEGRAL' ? ' (Integral)' : '';
+    const fullName = `${gradeName} ${data.section}${shiftSuffix}`;
 
     // Obtener nombre del año académico para slug único
     const academicYear = await request.tenantPrisma.academicYear.findUnique({
@@ -61,6 +86,7 @@ export const createClassroom = async (request: FastifyRequest, reply: FastifyRep
         slug: uniqueSlug,
         section: data.section,
         grade: data.grade,
+        shift: data.shift || 'MANANA',
         capacity: data.capacity,
         academicYearId: data.academicYearId,
         teacherId: data.teacherId || null
@@ -110,16 +136,39 @@ export const createClassroom = async (request: FastifyRequest, reply: FastifyRep
 
 export const getClassrooms = async (request: FastifyRequest, reply: FastifyReply) => {
   try {
-    const { academicYearId, grade, section } = request.query as {
+    const { academicYearId, grade, section, shift } = request.query as {
       academicYearId?: string;
       grade?: number;
-      section?: string
+      section?: string;
+      shift?: string;
     };
 
     const where: any = {};
     if (academicYearId) where.academicYearId = academicYearId;
     if (grade) where.grade = Number(grade);
     if (section) where.section = section;
+    if (shift) where.shift = shift;
+
+    /**
+     * EL PROFESOR VE SUS SECCIONES, NO EL LICEO ENTERO
+     *
+     * Esta lista salía completa para cualquiera con sesión, y de ahí venía un
+     * fallo con cara de error del sistema: el calendario abre la PRIMERA
+     * sección de la lista, y al profesor le tocaba una que no es suya, así que
+     * el servidor —con razón— respondía 403 y la pantalla salía rota nada más
+     * entrar.
+     *
+     * Suyas son las que guía y aquellas en las que imparte alguna materia, que
+     * es lo mismo que mira `canSeeClassroom`. Al administrador no le cambia
+     * nada.
+     */
+    if (request.user?.role === 'TEACHER') {
+      const profesorId = request.user.userId;
+      where.OR = [
+        { teacherId: profesorId },
+        { subjects: { some: { teacherId: profesorId } } },
+      ];
+    }
 
     const classrooms = await request.tenantPrisma.classroom.findMany({
       where,
@@ -187,6 +236,9 @@ export const getClassroom = async (request: FastifyRequest, reply: FastifyReply)
     });
 
     if (!classroom) return reply.status(404).send({ error: 'Aula no encontrada' });
+    if (!(await puedeMirarLaSeccion(request, classroom.id))) {
+      return reply.status(403).send({ error: 'Esa sección no es tuya', code: 'FORBIDDEN' });
+    }
 
     return reply.send({
       ...classroom,
@@ -254,6 +306,9 @@ export const getClassroomBySlug = async (request: FastifyRequest, reply: Fastify
     if (!classroom) {
       return reply.status(404).send({ error: 'Aula no encontrada' });
     }
+    if (!(await puedeMirarLaSeccion(request, classroom.id))) {
+      return reply.status(403).send({ error: 'Esa sección no es tuya', code: 'FORBIDDEN' });
+    }
 
     return reply.send({
       ...classroom,
@@ -274,29 +329,53 @@ export const updateClassroom = async (request: FastifyRequest, reply: FastifyRep
     const { id } = request.params as { id: string };
     const data = updateClassroomSchema.parse(request.body);
 
-    // Si cambia grado/sección, verificar colisión
-    if (data.grade || data.section) {
+    // Si cambia grado/sección/turno, verificar colisión y recalcular nombre
+    let updatedName: string | undefined = undefined;
+    if (data.grade || data.section || data.shift) {
       const current = await request.tenantPrisma.classroom.findUnique({ where: { id } });
       if (!current) return reply.status(404).send({ error: 'Aula no encontrada' });
 
-      const targetGrade = data.grade || current.grade;
-      const targetSection = data.section || current.section;
-      const targetYear = data.academicYearId || current.academicYearId; // Should check if provided
+      const targetGrade = data.grade ?? current.grade;
+      const targetSection = data.section ?? current.section;
+      const targetShift = data.shift ?? current.shift;
+      const targetYear = data.academicYearId ?? current.academicYearId;
 
-      // Check collision logic here strictly if needed, usually updates on section are rare
+      const collision = await request.tenantPrisma.classroom.findFirst({
+        where: {
+          academicYearId: targetYear,
+          grade: targetGrade,
+          section: targetSection,
+          shift: targetShift,
+          NOT: { id }
+        }
+      });
+
+      if (collision) {
+        const shiftLabel = targetShift === 'TARDE' ? ' (Turno Tarde)' : targetShift === 'INTEGRAL' ? ' (Turno Integral)' : ' (Turno Mañana)';
+        return reply.status(409).send({
+          error: `Ya existe la sección ${targetSection} para el ${targetGrade}º año${shiftLabel} en este periodo escolar`,
+          code: 'SECTION_EXISTS',
+        });
+      }
+
+      const gradeNames: Record<number, string> = {
+        1: '1er Año',
+        2: '2do Año',
+        3: '3er Año',
+        4: '4to Año',
+        5: '5to Año',
+        6: '6to Año',
+      };
+      const gradeName = gradeNames[targetGrade] || `${targetGrade}º Año`;
+      const shiftSuffix = targetShift === 'TARDE' ? ' (Tarde)' : targetShift === 'INTEGRAL' ? ' (Integral)' : '';
+      updatedName = `${gradeName} ${targetSection}${shiftSuffix}`;
     }
 
     const updated = await request.tenantPrisma.classroom.update({
       where: { id },
       data: {
         ...data,
-        // Si cambiamos grado/sección, actualizar nombre
-        ...((data.grade || data.section) && {
-          name: `${data.grade ? (data.grade === 1 ? '1er Año' : `${data.grade}do Año` /* Simple mock logic fix later */) : ''} ${data.section || ''}`.trim()
-          // To keep it simple, let's just update fields provided. Name generation should be robust in real app.
-          // For MVP: If name update needed, recreate logic or allow name override. 
-          // Let's stick to update fields only for now.
-        })
+        ...(updatedName ? { name: updatedName } : {})
       }
     });
 
@@ -872,6 +951,9 @@ export const getClassroomStats = async (request: FastifyRequest, reply: FastifyR
 
     if (!classroom) {
       return reply.status(404).send({ error: 'Aula/Sección no encontrada' });
+    }
+    if (!puedeVerLosNumeros(request, classroom)) {
+      return reply.status(403).send({ error: 'Los promedios de la sección son de su guía y del administrador', code: 'FORBIDDEN' });
     }
 
     const classroomId = classroom.id;

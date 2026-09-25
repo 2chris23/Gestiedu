@@ -4,6 +4,7 @@ import { X, Search, UserPlus, Check } from 'lucide-react';
 import { useTeachers, useAssignTeacher } from '@/hooks/useTeachers';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { Teacher } from '@/services/teachers.service';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 interface AssignTeacherModalProps {
     isOpen: boolean;
@@ -108,19 +109,12 @@ export default function AssignTeacherModal({
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
                                                 {/* Avatar */}
-                                                <div className="relative w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
-                                                    {teacher.avatar ? (
-                                                        <Image
-                                                            src={teacher.avatar}
-                                                            alt={`${teacher.firstName} ${teacher.lastName}`}
-                                                            fill
-                                                            sizes="48px"
-                                                            className="rounded-full object-cover"
-                                                        />
-                                                    ) : (
-                                                        `${teacher.firstName[0]}${teacher.lastName[0]}`
-                                                    )}
-                                                </div>
+                                                <UserAvatar
+                                                    name={`${teacher.firstName} ${teacher.lastName}`}
+                                                    src={teacher.avatar}
+                                                    className="h-12 w-12 shadow-md"
+                                                    initialsClassName="text-sm"
+                                                />
 
                                                 {/* Info */}
                                                 <div>

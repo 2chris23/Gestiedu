@@ -3085,3 +3085,239 @@ y el sistema hacía bien en rechazar un identificador con formato inválido. Per
 durante meses hubo una causa inventada escrita en un documento, y eso **cerró la
 investigación**: nadie vuelve a mirar algo que ya tiene explicación. Un "no lo
 sé" honesto habría durado menos.
+
+## 55. Doscientos liceos, ningún dato perdido, cualquier aparato (septiembre 2026)
+
+El objetivo cambió: antes de las tiendas de aplicaciones, que el sistema aguante
+**200 liceos y 15.000 personas** sin ser él lo lento, que **no pierda ni invente
+un dato**, y que funcione **igual en cualquier aparato**. Lo que apareció al
+mirarlo con esos ojos, todo con su prueba y casi todo fallando antes con el
+código viejo:
+
+**Datos que se perdían sin que nadie se enterara**
+
+- Las notas de la clase en vivo se guardaban leyendo y reescribiendo el objeto
+  entero: dos guardados cruzados (el automático y otra pestaña) y el segundo
+  borraba lo del primero. Medido: se perdían **7 de 8** (NOPISA-01…04). Ahora
+  es una sola escritura atómica.
+- El plan de evaluación: el último que guardaba ganaba, y lo que no venía se
+  borraba. Ahora lleva versión: si otra pestaña guardó antes, **409 y no se
+  borra nada** (PLANV-01…05, PLANUI-01).
+- Dos borrados se saltaban la papelera («Retirar y eliminar» de la promoción y
+  quitar una materia de un año). Y una prueba vigila que no aparezca otro
+  (BORRA-01).
+- **La base de la plataforma no se respaldaba** —la que dice qué base es de qué
+  liceo y con qué llave—, y los respaldos no se hacían solos ni salían del
+  servidor. Ahora cada noche, la plataforma primero, y una copia a R2/S3
+  (RESP-01…07).
+- **El despliegue migraba la plataforma con las migraciones de los liceos**:
+  en un servidor nuevo no habría arrancado (PLAT-01…04).
+
+**Lo que hacía lento al sistema, no al servidor**
+
+- Con 200 liceos el proceso solo tenía sitio para 50, y veinte peticiones de
+  un liceo nuevo abrían veinte conexiones (CONN-10, CONN-11).
+- El panel del alumno hacía ~180 consultas; la lista de alumnos sin sección
+  calculaba alumno por alumno (y daba 0 de promedio a todos); la clase en vivo
+  pedía diez cosas una detrás de otra; la lista de usuarios recorría la tabla
+  entera en cada búsqueda.
+- El cupo de peticiones, el freno del doble clic y los logos vivían en la
+  memoria o el disco de UN proceso: con varios, no valían. Ahora en Redis y en
+  la base (CUPO, DOBLE, LOGO).
+- nginx le quitaba al tiempo real el `Host` y la dirección de quien llama.
+
+**Medido** en este PC (servidor, base y generador en la misma máquina, una
+conexión por liceo): **500 personas en 50 liceos, p95 124 ms, p99 277 ms, 0
+fallos**; ninguna ruta con p95 por encima de 211 ms. Antes del plan, con UN
+liceo, la cola llegaba a 9–20 s. La prueba en un servidor de verdad queda
+escrita en `docs/DESPLIEGUE.md` §10-bis.
+
+**Sin servidor, el teléfono sigue enseñando lo último** (APAGADO-01/02): la
+sesión ya no se cierra por un fallo de red, lo guardado no se borra al abrir y
+guardar avisa de que hace falta conexión.
+
+**Cualquier aparato**: la app instalada no giraba nunca (`portrait` en la ficha)
+y la APK no tenía el complemento de giro; la pantalla de «sin conexión» de la
+APK no se veía nunca (faltaba `errorPath`); el iPhone instalaba la app como
+«GestiEdu» y no con el nombre del liceo; sin `dvh` los diálogos se salían de la
+pantalla. Y ahora se mide también el teléfono tumbado, la tableta, el portátil
+y el escritorio (MOVIL-03).
+
+**Y que se compruebe solo**: `.github/` estaba en `.gitignore`, así que la
+integración continua y el despliegue automático no llegaron nunca a GitHub.
+Ahora `ci.yml` pasa tipos y pruebas en cada cambio, y el despliegue solo sale si
+eso está en verde.
+
+## 56. La APK en un teléfono de verdad: la franja negra y «sin conexión» (septiembre 2026)
+
+Probada en un Motorola G13, la app salía con **la franja del reloj negra** y,
+al quitar el wifi, **no enseñaba nada**. Reproducido en el emulador antes de
+tocar una línea, y eran cinco cosas:
+
+- **La franja negra.** Al irse la pantalla de arranque, Android repinta la
+  franja con lo que diga el tema de la app, y pisa lo que hubiera hecho el
+  código. El tema no decía nada: gris con el teléfono en claro, negra en modo
+  oscuro, con el reloj en blanco. Ahora lo dice el tema (blanco, reloj oscuro).
+- **La pantalla de error tapaba lo guardado.** Sin servidor, el ayudante sí
+  servía la app, pero Android avisaba de un error de red y Capacitor ponía
+  encima su pantalla de «No se llega al liceo». Ahora solo sale si de verdad
+  no hay nada que enseñar (y sale en 0,3 s, no el error de Android).
+- **La sesión se perdía al cerrar la app** si se cerraba en los 30 segundos
+  siguientes a entrar: Android no había escrito las cookies en el disco. Sin
+  sesión no hay nada guardado que enseñar. Ahora se escriben al salir.
+- **Una franja blanca del doble de alto** en Android 15 o más: la app y la web
+  apartaban las dos el hueco del reloj.
+- **«Error al cargar años escolares» en rojo** encima de los años que sí se
+  veían, guardados: el servicio envolvía el error y se perdía que era la
+  conexión. Lo mismo en otras diez pantallas.
+
+Y dos de la forma de probar, que explican por qué esto no se vio antes:
+
+- **Por la red de casa (`http://192.168.x.x`) la app no puede abrir sin
+  servidor**, haga lo que haga: Android solo deja funcionar al ayudante en
+  `https` o en `localhost`. En el liceo va por https. Para probarlo aquí,
+  `npm run telefono:usb` (el teléfono por el cable, `adb reverse`).
+- **`npm run telefono:compilado` no arrancaba nunca las pantallas**: el
+  `npm run start` que lanzaba se quedaba colgado sin abrir el puerto.
+
+Comprobado en el emulador (Android 17 y, con el tema de Android 14, lo que ve
+el Motorola; en claro y en oscuro): con servidor se entra y se navega; se
+corta el servidor, se cierra y se abre la app, y abre en el panel con lo
+último descargado y la franja «Sin conexión con el liceo»; Académico también.
+APAGADO-01/02 y SIN-01…03 en verde; 48 pruebas de la web en verde.
+
+## 57. Sin luz se sigue viendo todo, y la app se actualiza sola (septiembre 2026)
+
+Probada otra vez en el Motorola: se entró con wifi, se recorrió el sistema,
+se cerró la app, se quitó el wifi y al abrirla salía **«No hay conexión con
+el liceo»**. Lo que se pedía, en palabras del administrador: *se fue la luz;
+sé que no puedo cambiar nada, pero quiero ver el sistema tal como lo dejé*.
+Si a las 10:00 Carlos estaba presente y a las 10:30 el profesor lo marca
+ausente, el administrador sin conexión lo sigue viendo presente —es lo último
+que cargó— y al volver la conexión se pone al día solo.
+
+Qué fallaba, medido en el emulador antes de tocar nada:
+
+- **Las pantallas a las que se llegaba tocando no se guardaban.** Dentro de
+  la app Next no recarga la página: pide un trozo (`?_rsc=`). El ayudante
+  solo guardaba páginas enteras, así que «Académico», un ciclo o un perfil
+  no quedaban nunca guardados. Ahora la app le avisa de cada pantalla y él la
+  guarda entera (como mucho cada 10 min); al cerrar sesión se olvidan.
+- **El ciclo, los usuarios, un perfil y el calendario pedían sus datos a
+  mano**, fuera de la memoria que se guarda en el teléfono: sin conexión,
+  vacíos. Ahora van por la memoria y se ven tal como estaban.
+- **El perfil de un alumno sin notas inventaba un 16,5 de promedio.** Ahora
+  dice «—».
+
+Comprobado en el emulador con la APK, como un administrador: entrar, tocar
+Académico → el ciclo → bajar → Horarios → Usuarios → un alumno → Inicio;
+cortar el servidor, cerrar la app y abrirla. Abre en el panel con sus
+cifras, y el ciclo (tocando y recargando), Horarios, Usuarios y el perfil
+del alumno salen con los datos de antes y el aviso de sin conexión.
+
+**El aviso** ya no es una franja que tapa la cabecera: es un icono pequeño
+que late arriba a la derecha y, al tocarlo, dice de cuándo es lo que se ve.
+
+**La pantalla del ciclo, más corta.** Cinco tarjetas de 110 px, un selector
+de ciclo y tres filas de botones se comían el teléfono entero antes de
+llegar a los años. Ahora las cinco cifras van en un bloque de 119 px, el
+selector de ciclo se fue (se vuelve atrás y se entra en otro), y «Editar» y
+«Finalizar el ciclo escolar» están en el menú de los tres puntos: finalizar
+un ciclo es de una vez al año y no puede estar en rojo a un toque sin querer.
+
+**La barra de abajo**: cinco botones para el personal (el admin: Académico,
+Usuarios, Inicio, Horarios, Pagos), tres para alumno y representante (con
+«Mi cuenta»). Al bajar se esconde entera: la casita de Inicio se quedaba
+asomando.
+
+**La app se actualiza desde dentro.** Lo que cambia en la web se ve sin
+instalar nada, pero lo de dentro de la APK (la franja del reloj, la sesión al
+cerrar) obligaba a bajarla otra vez a mano. Ahora, al abrirse, pregunta al
+servidor si hay una versión nueva y la ofrece: la baja con su barra,
+comprueba su huella y abre el instalador de Android, que exige la misma
+firma. Probado en el emulador de principio a fin (versión 2 instalada, 3
+publicada): ventana, permiso de Android, descarga, instalador; y al cancelar
+el instalador, vuelve a ofrecerla. Dos avisos:
+
+- La app que ya está en los teléfonos **no sabe preguntar**: se cambia una
+  vez a mano y de ahí en adelante llegan solas.
+- **Google Play no lo permite**: la que se publique allí se actualiza por
+  Play, sin el permiso de instalar.
+
+No probado: la instalación en el Motorola (no se usó el teléfono) y el
+aviso de Google Play Protect más allá de verlo aparecer.
+
+## 58. La asistencia por QR, y cinco cosas del teléfono (septiembre 2026)
+
+**Asistencia por QR, entera.** El profesor abre el QR en su clase y lo deja
+sobre la mesa; cada alumno, desde su clase en la app, pulsa «Escanear
+asistencia» y queda presente. O al revés: el alumno enseña «Mi QR» y lo
+escanea el profesor. Todo lo que se decidió con el dueño
+(`docs/PROXIMAS-FUNCIONES.md` §1):
+
+- El QR **cambia cada 10 s**: la foto por WhatsApp no sirve.
+- **Un teléfono por alumno** (el primero desde el que escanea) y **un teléfono,
+  un alumno por clase**: cerrar sesión y entrar con la cuenta del amigo ya no
+  cuela, y el intento le sale al profesor en la lista. El admin desbloquea el
+  teléfono desde el perfil del alumno, y queda anotado.
+- **El faro**: el alumno tiene que estar cerca del teléfono del profesor
+  (150 m por defecto). Sin GPS, entra «por confirmar» y el profesor lo aprueba
+  de un toque. Una ubicación falsa (Android lo dice) se rechaza.
+- Debajo del QR van entrando los nombres en vivo, con su foto y su hora; el
+  profesor quita a quien no está de un toque. Arriba, «18 de 32». Al terminar
+  ve quién queda ausente antes de cerrar, y puede marcar «estaba».
+- Pasado el tiempo (2 min por defecto, desde el primer pase de esa clase),
+  entra como **tarde**.
+- **Corregir un día pasado** con el mismo QR («Corregir con QR»), hasta los días
+  que diga el liceo y nunca pasado el cierre del lapso.
+- Todo configurable en Configuración → Asistencia por QR.
+
+Probado: 14 pruebas del servidor, una por trampa (QR-01…14); y en el
+navegador, un alumno con una **cámara de mentira** que enseña el QR del
+profesor (Chrome le pasa un vídeo con el QR dibujado) queda presente, y su
+nombre aparece en la pantalla del profesor sin recargar (QRE-01/02). En el
+emulador, dentro de la APK: el aviso de permiso de ubicación, el QR, que
+cambia a los 10 s y que la pantalla no se apaga.
+
+Cuatro fallos que salieron probando, antes de que llegaran a nadie:
+- **La cámara no abría** si a la vez se pedía la ubicación: Android enseñaba
+  un aviso de permiso y el otro se perdía. Ahora se pide uno y luego el otro.
+- **Guardar las reglas de promoción borraba la escala de notas y el horario**
+  del liceo (`updateAcademicConfig` escribía solo sus campos). Ya no.
+- **El Inicio del alumno medía 1188 px de ancho** en un teléfono de 412: la
+  etiqueta escondida del tema (`sr-only`, que va `absolute`) se salía del
+  carril de «Hoy» y ensanchaba la página entera. El teléfono la enseñaba
+  alejada y el botón «Escanear asistencia» no se podía pulsar (QRE-01 en
+  rojo). El carril lleva ahora `relative`; medido: 412 px.
+- **Abrir un pase avisaba a todo el liceo** de que algo había cambiado, y las
+  pantallas de todos los alumnos se recargaban. Abrir no cambia la asistencia
+  de nadie: ahora solo se entera el personal de esa sección.
+
+**Cinco cosas del teléfono que pidió el dueño:**
+
+1. **Tumbado, la barra de abajo, no la lateral.** El Motorola de lado mide
+   1075 px de ancho y el corte era solo por ancho. Ahora la barra lateral es de
+   tableta u ordenador (ancho y además alto, o ratón).
+2. **Las cifras con barra**, como la ocupación: el promedio en la escala del
+   liceo con una rayita donde se aprueba, el riesgo como parte de los alumnos,
+   la asistencia con la rayita del mínimo. Crecen al aparecer.
+3. **La sección, sin caja gris propia** (se veía un rectángulo de otro gris), y
+   el horario de hoy **de lado otra vez**, como antes, pero más apretado: dos
+   fichas y media a la vista.
+4. **Los alumnos de la sección, una fila cada uno** (56 px en vez de 330): nombre,
+   cédula, riesgo (solo el número), promedio y asistencia.
+5. **El editor de horario**: al entrar se pone de lado y a pantalla completa,
+   con lo que falta a la izquierda y la semana entera a la derecha. Arrastrar
+   con el dedo no funcionaba nunca (el dedo movía la página); ahora se mantiene
+   pulsado y se arrastra, o se toca la materia y luego el hueco.
+
+Medido al cerrar: 14 pruebas del servidor del QR, QRE-01/02, MOVIL-01…04,
+APAGADO-01/02 y `npm run movil -- --exigir` (31 pantallas, 4 roles, 0 con algo
+que arreglar). En el emulador, la APK entera: permisos, QR que cambia, pantalla
+encendida, la cámara del alumno (720×1280, en marcha) y «Mi QR».
+
+No probado: nada en el Motorola del dueño —estaba bloqueado con su clave, y no
+se toca—. La versión 1.5 de la app quedó instalada en él. Tampoco dos teléfonos
+de verdad uno frente al otro: la cámara se probó con una de mentira (Chrome) y
+la del emulador; y el GPS del emulador no se deja mover, así que el faro del
+profesor se probó en el servidor (QR-06, QR-14).

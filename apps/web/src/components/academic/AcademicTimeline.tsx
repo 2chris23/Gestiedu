@@ -134,7 +134,7 @@ export default function AcademicTimeline({ years, loading, onRefresh }: Academic
                                                 Ciclo Escolar {year.name}
                                             </h3>
                                             {showActive && (
-                                                <span className="px-2 py-0.5 rounded-full bg-primary-100 text-primary-700 text-xs font-bold animate-pulse">
+                                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-claro text-indigo-hondo text-xs font-bold"><span className="h-1.5 w-1.5 rounded-full bg-indigo animate-pulse" aria-hidden="true" />
                                                     EN CURSO
                                                 </span>
                                             )}

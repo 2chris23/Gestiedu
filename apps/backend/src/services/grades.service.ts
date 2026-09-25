@@ -54,6 +54,12 @@ export interface GetGradesQuery {
   dateTo?: Date;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  /**
+   * Cédula del profesor que pide: solo salen las notas de sus clases (materia
+   * que imparte en esa sección) y de sus secciones guía. Sin esto, cualquier
+   * profesor listaba las notas de todo el liceo.
+   */
+  soloDelProfesor?: string;
 }
 
 export interface BulkGradeData {
@@ -176,26 +182,37 @@ class GradesService {
 
     // SEGURIDAD/AUTORIZACIÓN: Si la actividad pertenece a un aula, verificar que
     // (a) el estudiante esté inscrito en esa aula y (b) el profesor imparta la
-    // materia en esa aula. Evita calificar estudiantes de otras secciones.
-    if (activity.classroomId) {
-      const enrollment = await prisma.studentClassroom.findFirst({
-        where: {
-          studentId,
-          classroomId: activity.classroomId,
-          isActive: true,
-        },
-        select: { id: true },
-      });
+    // materia en esa aula. Si la actividad no tiene aula explícita, resolver el
+    // aula activa del estudiante para evitar el bypass de alcance (grades-null-classroom-scope-bypass).
+    const targetClassroomId = activity.classroomId || (await prisma.studentClassroom.findFirst({
+      where: {
+        studentId,
+        isActive: true,
+      },
+      select: { classroomId: true },
+    }))?.classroomId;
 
-      if (!enrollment) {
-        throw AppErrors.Forbidden(
-          'El estudiante no pertenece al aula de la actividad'
-        );
+    if (targetClassroomId) {
+      if (activity.classroomId) {
+        const enrollment = await prisma.studentClassroom.findFirst({
+          where: {
+            studentId,
+            classroomId: activity.classroomId,
+            isActive: true,
+          },
+          select: { id: true },
+        });
+
+        if (!enrollment) {
+          throw AppErrors.Forbidden(
+            'El estudiante no pertenece al aula de la actividad'
+          );
+        }
       }
 
       const teachingAssignment = await prisma.classroomSubject.findFirst({
         where: {
-          classroomId: activity.classroomId,
+          classroomId: targetClassroomId,
           subjectId: activity.subjectId || subjectId,
           teacherId,
         },
@@ -205,6 +222,20 @@ class GradesService {
       if (!teachingAssignment) {
         throw AppErrors.Forbidden(
           'El profesor no imparte esta materia en el aula de la actividad'
+        );
+      }
+    } else {
+      const hasSubjectAssignment = await prisma.classroomSubject.findFirst({
+        where: {
+          subjectId: activity.subjectId || subjectId,
+          teacherId,
+        },
+        select: { id: true },
+      });
+
+      if (!hasSubjectAssignment) {
+        throw AppErrors.Forbidden(
+          'El profesor no tiene asignada esta materia'
         );
       }
     }
@@ -367,37 +398,67 @@ class GradesService {
     }
 
     // ── 3. Permisos de la sección: una consulta para todos ──────────────────
-    const conSeccion = filas
-      .map((f, i) => ({ i, f, actividad: actividadDe.get(f.activityId)! }))
-      .filter((x) => Boolean(x.actividad.classroomId));
+    const alumnosSinClassroomDirecto = filas
+      .filter((f) => !actividadDe.get(f.activityId)?.classroomId)
+      .map((f) => f.studentId);
 
-    if (conSeccion.length > 0) {
-      const seccionesTocadas = Array.from(new Set(conSeccion.map((x) => x.actividad.classroomId!)));
-      const alumnosTocados = Array.from(new Set(conSeccion.map((x) => x.f.studentId)));
-
-      const [inscripciones, asignaciones] = await Promise.all([
-        prisma.studentClassroom.findMany({
+    const inscripcionesActivas = alumnosSinClassroomDirecto.length > 0
+      ? await prisma.studentClassroom.findMany({
           where: {
-            studentId: { in: alumnosTocados },
-            classroomId: { in: seccionesTocadas },
+            studentId: { in: Array.from(new Set(alumnosSinClassroomDirecto)) },
             isActive: true,
           },
           select: { studentId: true, classroomId: true },
-        }),
-        prisma.classroomSubject.findMany({
-          where: {
-            classroomId: { in: seccionesTocadas },
-            teacherId: { in: profesoresPedidos.filter((x): x is string => Boolean(x)) },
-          },
-          select: { classroomId: true, subjectId: true, teacherId: true },
-        }),
-      ]);
+        })
+      : [];
 
-      const inscrito = new Set(inscripciones.map((x) => `${x.studentId}|${x.classroomId}`));
-      const imparte = new Set(asignaciones.map((x) => `${x.classroomId}|${x.subjectId}|${x.teacherId}`));
+    const aulaActivaAlumno = new Map(inscripcionesActivas.map((x) => [x.studentId, x.classroomId]));
 
-      for (const { i, f, actividad } of conSeccion) {
-        if (!inscrito.has(`${f.studentId}|${actividad.classroomId}`)) {
+    const filasConAula = filas.map((f, i) => {
+      const actividad = actividadDe.get(f.activityId)!;
+      const targetClassroomId = actividad.classroomId || aulaActivaAlumno.get(f.studentId);
+      return { i, f, actividad, targetClassroomId };
+    });
+
+    const seccionesTocadas = Array.from(
+      new Set(filasConAula.map((x) => x.targetClassroomId).filter((x): x is string => Boolean(x)))
+    );
+    const alumnosTocados = Array.from(new Set(filasConAula.map((x) => x.f.studentId)));
+
+    const [inscripciones, asignaciones, asignacionesMateria] = await Promise.all([
+      prisma.studentClassroom.findMany({
+        where: {
+          studentId: { in: alumnosTocados },
+          classroomId: { in: seccionesTocadas },
+          isActive: true,
+        },
+        select: { studentId: true, classroomId: true },
+      }),
+      prisma.classroomSubject.findMany({
+        where: {
+          classroomId: { in: seccionesTocadas },
+          teacherId: { in: profesoresPedidos.filter((x): x is string => Boolean(x)) },
+        },
+        select: { classroomId: true, subjectId: true, teacherId: true },
+      }),
+      prisma.classroomSubject.findMany({
+        where: {
+          subjectId: { in: materiasPedidas },
+          teacherId: { in: profesoresPedidos.filter((x): x is string => Boolean(x)) },
+        },
+        select: { subjectId: true, teacherId: true },
+      }),
+    ]);
+
+    const inscrito = new Set(inscripciones.map((x) => `${x.studentId}|${x.classroomId}`));
+    const imparte = new Set(asignaciones.map((x) => `${x.classroomId}|${x.subjectId}|${x.teacherId}`));
+    const imparteMateriaGeneral = new Set(asignacionesMateria.map((x) => `${x.subjectId}|${x.teacherId}`));
+
+    for (const { i, f, actividad, targetClassroomId } of filasConAula) {
+      const materiaDeLaActividad = actividad.subjectId || f.subjectId;
+
+      if (targetClassroomId) {
+        if (actividad.classroomId && !inscrito.has(`${f.studentId}|${actividad.classroomId}`)) {
           throw fallo(
             i,
             AppErrors.Forbidden('El estudiante no pertenece al aula de la actividad'),
@@ -405,11 +466,19 @@ class GradesService {
             'ALUMNO_DE_OTRA_SECCION'
           );
         }
-        const materiaDeLaActividad = actividad.subjectId || f.subjectId;
-        if (!imparte.has(`${actividad.classroomId}|${materiaDeLaActividad}|${f.teacherId}`)) {
+        if (!imparte.has(`${targetClassroomId}|${materiaDeLaActividad}|${f.teacherId}`)) {
           throw fallo(
             i,
             AppErrors.Forbidden('El profesor no imparte esta materia en el aula de la actividad'),
+            403,
+            'NO_IMPARTE_LA_MATERIA'
+          );
+        }
+      } else {
+        if (!imparteMateriaGeneral.has(`${materiaDeLaActividad}|${f.teacherId}`)) {
+          throw fallo(
+            i,
+            AppErrors.Forbidden('El profesor no tiene asignada esta materia'),
             403,
             'NO_IMPARTE_LA_MATERIA'
           );
@@ -574,7 +643,8 @@ class GradesService {
         dateFrom,
         dateTo,
         sortBy = 'createdAt',
-        sortOrder = 'desc' } = query;
+        sortOrder = 'desc',
+        soloDelProfesor } = query;
 
       const offset = (page - 1) * limit;
       const appliedFilters: string[] = [];
@@ -622,6 +692,26 @@ class GradesService {
           }
         } as Prisma.UserWhereInput;
         appliedFilters.push('classroom');
+      }
+
+      if (soloDelProfesor) {
+        const [materias, guia] = await Promise.all([
+          prisma.classroomSubject.findMany({
+            where: { teacherId: soloDelProfesor },
+            select: { classroomId: true, subjectId: true },
+          }),
+          prisma.classroom.findMany({ where: { teacherId: soloDelProfesor }, select: { id: true } }),
+        ]);
+        const suyas: Prisma.GradeWhereInput[] = [
+          ...materias.map((m) => ({ subjectId: m.subjectId, activity: { classroomId: m.classroomId } })),
+          // Actividades sin sección: las de las materias que imparte.
+          ...(materias.length > 0
+            ? [{ subjectId: { in: materias.map((m) => m.subjectId) }, activity: { classroomId: null } }]
+            : []),
+          ...(guia.length > 0 ? [{ activity: { classroomId: { in: guia.map((g) => g.id) } } }] : []),
+        ];
+        where.AND = [{ OR: suyas.length > 0 ? suyas : [{ id: '__ninguna__' }] }];
+        appliedFilters.push('teacherScope');
       }
 
       // Filtro por rango de calificación
@@ -722,7 +812,8 @@ class GradesService {
         `pg:${page}`,
         `lm:${limit}`,
         `sb:${finalSortBy}`,
-        `so:${sortOrder}`
+        `so:${sortOrder}`,
+        `prof:${soloDelProfesor || '-'}`
       ];
       const cacheKey = keyParts.join('|');
       let cachedResult = await RedisCache.get<any>(cacheKey);
@@ -857,29 +948,6 @@ class GradesService {
     );
 
     return this.getGradeById(prisma, id);
-  }
-
-  /**
-   * Eliminar calificación
-   */
-  async deleteGrade(prisma: PrismaClient, id: string): Promise<void> {
-    // Verificar que la calificación existe
-    const grade = await prisma.grade.findUnique({
-      where: { id },
-      select: { id: true, studentId: true, subjectId: true, periodId: true }
-    });
-
-    if (!grade) {
-      throw new Error('Calificación no encontrada');
-    }
-
-    // Eliminar calificación
-    await prisma.grade.delete({
-      where: { id }
-    });
-
-    // Limpiar cache relacionado
-    await this.clearGradeCache(grade.studentId, grade.subjectId, grade.periodId);
   }
 
   /**
@@ -1821,53 +1889,6 @@ class GradesService {
       });
       throw new Error('Error al validar elegibilidad para calificación');
     }
-  }
-
-  /**
-   * Eliminar múltiples calificaciones
-   */
-  async deleteBulkGrades(prisma: PrismaClient, gradeIds: string[]): Promise<{
-    deleted: string[];
-    errors: Array<{
-      gradeId: string;
-      error: string;
-    }>;
-    summary: {
-      total: number;
-      success: number;
-      failed: number;
-    };
-  }> {
-    const deleted: string[] = [];
-    const errors: Array<{ gradeId: string; error: string }> = [];
-
-    logger.info('Starting bulk grade deletion', { totalGrades: gradeIds.length });
-
-    for (const gradeId of gradeIds) {
-      try {
-        await this.deleteGrade(prisma, gradeId);
-        deleted.push(gradeId);
-      } catch (error) {
-        errors.push({
-          gradeId,
-          error: error instanceof Error ? error.message : 'Error desconocido'
-        });
-      }
-    }
-
-    const summary = {
-      total: gradeIds.length,
-      success: deleted.length,
-      failed: errors.length
-    };
-
-    logger.info('Bulk grade deletion completed', summary);
-
-    return {
-      deleted,
-      errors,
-      summary
-    };
   }
 
   /**

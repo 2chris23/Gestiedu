@@ -64,9 +64,12 @@ const SheetContent = React.forwardRef<
       className={cn(sheetVariants({ side }), className)}
       {...props}
     >
-      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
+      {/* La equis medía 16 px. Un dedo necesita 44: se falla el toque, se
+          pulsa lo de detrás y la cortina no se cierra. El icono sigue
+          pequeño; lo que crece es la zona que escucha el dedo. */}
+      <SheetPrimitive.Close className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full text-gray-500 opacity-80 ring-offset-background transition hover:bg-gray-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+        <X className="h-5 w-5" />
+        <span className="sr-only">Cerrar</span>
       </SheetPrimitive.Close>
       {children}
     </SheetPrimitive.Content>
