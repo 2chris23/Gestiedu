@@ -59,6 +59,8 @@ export const metadata: Metadata = {
         ...(SITIO ? { images: [IMAGEN] } : {}),
     },
     robots: { index: true, follow: true },
+    // La portada es de la plataforma: su icono, aunque quede la cookie de un liceo.
+    icons: { icon: '/favicon.svg', shortcut: '/favicon.ico', apple: '/icons/apple-touch-icon.png' },
 };
 
 /** Lo que es, para los buscadores. Sin valoraciones ni precios: no los hay. */

@@ -3,7 +3,17 @@
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useInstituteConfig } from '@/hooks/useInstitute';
-import { BACKEND_URL } from '@/config/env';
+import { getAssetUrl } from '@/config/env';
+
+const TIPO_POR_EXTENSION: Record<string, string> = {
+    ico: 'image/x-icon',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    svg: 'image/svg+xml',
+};
 
 /**
  * EL ICONITO DE LA PESTAÑA, EL DEL LICEO
@@ -22,9 +32,13 @@ import { BACKEND_URL } from '@/config/env';
  * se seguía viendo el formulario de entrar hasta recargar a mano (AUTH-01).
  *
  * Regla: aquí solo se toca lo que se ha creado aquí, y por eso los enlaces
- * propios van marcados. Lo que puso React se queda donde está; el del liceo se
- * añade DESPUÉS, y de varios iconos válidos el navegador se queda con el
- * último.
+ * propios van marcados. Lo que puso React se queda donde está.
+ *
+ * Y NO se cuenta con que «el navegador se queda con el último»: Chrome puntúa
+ * los candidatos, y el birrete de la plataforma (un SVG) le ganaba al PNG del
+ * liceo. Por eso lo que declara React ya es el icono del liceo
+ * (`app/icono-de-pestana/route.ts`); esto solo sirve para que un icono recién
+ * subido se vea sin recargar.
  */
 
 /** La marca de los enlaces que pone esta pantalla, para no tocar los demás. */
@@ -48,12 +62,12 @@ export function DynamicFavicon() {
             return;
         }
 
-        const faviconUrl = config.favicon.startsWith('/uploads')
-            ? `${BACKEND_URL}${config.favicon}`
-            : config.favicon;
-
+        // Por la misma casa (`/uploads` pasa por Next): `localhost:3001` en un
+        // teléfono es el teléfono, y en la nube no existe.
+        const faviconUrl = getAssetUrl(config.favicon);
         const finalUrl = `${faviconUrl}?v=${encodeURIComponent(config.updatedAt || '1')}`;
-        const tipo = faviconUrl.endsWith('.ico') ? 'image/x-icon' : 'image/png';
+        const extension = faviconUrl.split('?')[0].split('.').pop()?.toLowerCase() ?? '';
+        const tipo = TIPO_POR_EXTENSION[extension] ?? 'image/png';
 
         quitarLosNuestros();
 

@@ -108,7 +108,8 @@ api.interceptors.request.use(
             }, {} as Record<string, string>);
 
             const slug = cookies['institute_slug'];
-            if (slug) {
+            // Si la petición ya dice de qué liceo es, manda la petición.
+            if (slug && !config.headers['X-Institute-Slug']) {
                 config.headers['X-Institute-Slug'] = slug;
             }
         }

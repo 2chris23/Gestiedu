@@ -77,8 +77,14 @@ export const instituteService = {
     /**
      * Obtener configuración del instituto
      */
-    getConfig: async (): Promise<InstituteConfig> => {
-        const response = await api.get('/institutes/current/config');
+    /**
+     * `slug`, cuando quien pregunta ya sabe de qué liceo es (la memoria de
+     * React Query guarda la respuesta con el liceo en la clave): así la
+     * respuesta es de ESE liceo y no del que diga la cookie, que puede ser otro
+     * si en el mismo navegador se entró antes en otro liceo.
+     */
+    getConfig: async (slug?: string | null): Promise<InstituteConfig> => {
+        const response = await api.get('/institutes/current/config', slug ? { headers: { 'X-Institute-Slug': slug } } : undefined);
         return response.data.data;
     },
 

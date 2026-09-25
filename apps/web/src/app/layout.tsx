@@ -31,9 +31,10 @@ export const metadata: Metadata = {
         title: 'GestiEdu',
         statusBarStyle: 'default',
     },
+    // El del liceo, ya en la primera pintada (`app/icono-de-pestana/route.ts`).
+    // La portada pone el de la plataforma en su propio `metadata`.
     icons: {
-        icon: '/favicon.svg',
-        shortcut: '/favicon.ico',
+        icon: '/icono-de-pestana',
         apple: '/icons/apple-touch-icon.png',
     },
 };

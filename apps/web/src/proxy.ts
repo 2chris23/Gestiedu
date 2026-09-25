@@ -139,6 +139,12 @@ export async function proxy(request: NextRequest) {
         pathname === '/sw.js' ||
         pathname === '/sin-conexion.html' ||
         pathname === '/favicon.svg' ||
+        // El icono de la pestaña del liceo: la pantalla de entrar también lo
+        // lleva, sin sesión. Y los logos del liceo, en el formato que sea
+        // (un favicon .webp se mandaba a entrar).
+        pathname === '/icono-de-pestana' ||
+        pathname.startsWith('/uploads/liceo/') ||
+        pathname.startsWith('/uploads/institute/') ||
         pathname.endsWith('.png') ||
         pathname.endsWith('.jpg') ||
         pathname.endsWith('.svg') ||

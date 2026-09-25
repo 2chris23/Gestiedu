@@ -15,12 +15,20 @@ function getActiveTenantSlug(): string | null {
     const slugParam = params.get('slug') || params.get('instituto') || params.get('institute');
     if (slugParam) return slugParam;
 
+    // La que deja la entrada: en `localhost:3000`, por la IP de casa o en un
+    // dominio único no hay subdominio, y sin esto el nombre y el icono del
+    // liceo no se pedían nunca (lo mismo que hace `lib/axios.ts`).
+    const deCookie = document.cookie.match(/(?:^|;\s*)institute_slug=([^;]+)/)?.[1];
+    if (deCookie) return decodeURIComponent(deCookie);
+
     return null;
 }
 
 // Query keys aisladas por inquilino
 export const instituteKeys = {
     all: ['institute'] as const,
+    /** Todas las configuraciones, de cualquier liceo: lo que se invalida al guardar. */
+    configs: () => [...instituteKeys.all, 'config'] as const,
     config: (slug?: string | null) => [...instituteKeys.all, 'config', slug || 'none'] as const,
     palette: (slug?: string | null) => [...instituteKeys.all, 'palette', slug || 'none'] as const,
 };
@@ -33,7 +41,7 @@ export function useInstituteConfig(options?: { enabled?: boolean; slug?: string 
     const slug = options?.slug || getActiveTenantSlug();
     return useQuery({
         queryKey: instituteKeys.config(slug),
-        queryFn: instituteService.getConfig,
+        queryFn: () => instituteService.getConfig(slug),
         staleTime: 5 * 60 * 1000, // 5 minutos
         retry: false,
         refetchOnWindowFocus: false,
@@ -50,7 +58,9 @@ export function useUpdateInstituteConfig() {
     return useMutation({
         mutationFn: (data: UpdateInstituteDto) => instituteService.updateConfig(data),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: instituteKeys.config() });
+            // `config()` a secas es la del liceo «none»: no coincidía con la de ningún
+            // liceo y, tras «Guardado», nada se volvía a pedir hasta recargar.
+            queryClient.invalidateQueries({ queryKey: instituteKeys.configs() });
             toast.success('Configuración actualizada exitosamente');
         },
         onError: (error: Error) => {
@@ -69,7 +79,9 @@ export function useUploadLogos() {
         mutationFn: ({ favicon, logo }: { favicon?: File; logo?: File }) =>
             instituteService.uploadLogos(favicon, logo),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: instituteKeys.config() });
+            // `config()` a secas es la del liceo «none»: no coincidía con la de ningún
+            // liceo y, tras «Guardado», nada se volvía a pedir hasta recargar.
+            queryClient.invalidateQueries({ queryKey: instituteKeys.configs() });
             toast.success('Logos actualizados exitosamente');
         },
         onError: (error: Error) => {
@@ -88,7 +100,9 @@ export function useUpdateColors() {
         mutationFn: ({ primaryColor, secondaryColor }: { primaryColor: string; secondaryColor: string }) =>
             instituteService.updateColors(primaryColor, secondaryColor),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: instituteKeys.config() });
+            // `config()` a secas es la del liceo «none»: no coincidía con la de ningún
+            // liceo y, tras «Guardado», nada se volvía a pedir hasta recargar.
+            queryClient.invalidateQueries({ queryKey: instituteKeys.configs() });
             toast.success('Colores actualizados exitosamente');
         },
         onError: (error: Error) => {
