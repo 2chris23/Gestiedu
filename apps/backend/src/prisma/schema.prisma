@@ -267,6 +267,7 @@ model User {
   // Asistencia por QR
   pasesDeListaAbiertos    PaseDeLista[]            @relation("PaseAbiertoPor")
   registrosDeAsistenciaQr RegistroDeAsistenciaQr[] @relation("RegistroQrAlumno")
+  notasDeRevision         NotaDeRevision[]         @relation("RevisionAlumno")
   aparatoDeAsistencia     AparatoDelAlumno?
 
   // Notificaciones
@@ -376,6 +377,7 @@ model AcademicYear {
   paymentPlans     StudentPaymentPlan[]
   payments         Payment[]
   schoolEvents     SchoolEvent[]
+  notasDeRevision  NotaDeRevision[]
   institute        Institute?           @relation(fields: [instituteId], references: [id])
   instituteId      String?
 
@@ -431,6 +433,7 @@ model Subject {
   replacedIn         ClassReplacement[]  @relation("ReplacementSuspendedSubject")
   replacingIn        ClassReplacement[]  @relation("ReplacementSubject")
   observations       Observation[]
+  notasDeRevision    NotaDeRevision[]
   institute          Institute?          @relation(fields: [instituteId], references: [id])
   instituteId        String?
 
@@ -1071,6 +1074,36 @@ model AcademicRecord {
 
   @@unique([studentId, academicYearId])
   @@map("academic_records")
+}
+
+/// LA REVISIÓN DE UNA MATERIA REPROBADA
+///
+/// Al terminar el tercer lapso, el alumno que reprobó una materia la presenta
+/// en revisión; esa nota es su definitiva para la promoción. Se registra ANTES
+/// de cerrar el ciclo y el cierre la usa. Ver `services/revision.service.ts`.
+model NotaDeRevision {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("RevisionAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  score         Float
+  fecha         DateTime @db.Date
+  registradaPor String
+  observaciones String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, subjectId, academicYearId])
+  @@index([academicYearId])
+  @@map("notas_de_revision")
 }
 
 // =====================================================
