@@ -30,6 +30,9 @@ async function abrirClase(page: Page, url: string) {
     await page.goto(url);
     await page.getByRole('button', { name: /Pasar asistencia/i }).first().waitFor({ state: 'visible', timeout: 30000 });
     await page.getByRole('button', { name: /Pasar asistencia/i }).first().click();
+    // En un teléfono pregunta cómo (a mano o con QR); en un ordenador va directo.
+    const eleccion = page.getByRole('dialog', { name: /Pasar asistencia/ });
+    if (await eleccion.isVisible().catch(() => false)) await eleccion.getByRole('button', { name: /Marcar a mano/ }).click();
 }
 
 async function marcar(page: Page, nombre: string, estado: 'Ausente' | 'Tardanza' | 'Presente') {

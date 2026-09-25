@@ -33,6 +33,8 @@ interface Props {
     fecha: string;
     /** Al cerrar el pase (o salir sin abrirlo). */
     alTerminar: (cerrado: boolean) => void;
+    /** Abrir ya con la cámara, para leer el QR de cada alumno. */
+    empezarEscaneando?: boolean;
 }
 
 const HORA = (iso: string) => new Date(iso).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
@@ -50,7 +52,7 @@ function Etiqueta({ r }: { r: RegistroDelPase }) {
     return <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-800">Rechazado</span>;
 }
 
-export function PaseDeListaQr({ classroomId, subjectId, fecha, alTerminar }: Props) {
+export function PaseDeListaQr({ classroomId, subjectId, fecha, alTerminar, empezarEscaneando = false }: Props) {
     const [vista, setVista] = React.useState<VistaDelPase | null>(null);
     const [error, setError] = React.useState<string | null>(null);
     const [trabajando, setTrabajando] = React.useState<string | null>(null);
@@ -58,6 +60,14 @@ export function PaseDeListaQr({ classroomId, subjectId, fecha, alTerminar }: Pro
     const [ultimoLeido, setUltimoLeido] = React.useState<{ nombre: string; foto: string | null; texto: string; bien: boolean } | null>(null);
     const [cerrando, setCerrando] = React.useState(false);
     const [estaban, setEstaban] = React.useState<Set<string>>(new Set());
+    // Quien eligió «Escanear el QR de cada alumno» entra con la cámara abierta,
+    // en cuanto el pase existe (sin pase no hay a qué apuntar lo leído).
+    const yaEscaneo = React.useRef(false);
+    React.useEffect(() => {
+        if (!empezarEscaneando || !vista || yaEscaneo.current) return;
+        yaEscaneo.current = true;
+        setEscaneando(true);
+    }, [empezarEscaneando, vista]);
     const paseId = vista?.pase.id;
 
     /**

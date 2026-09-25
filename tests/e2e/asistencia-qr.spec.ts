@@ -55,6 +55,8 @@ function videoConElQr(texto: string, archivo: string) {
 const conSesion = (token: string) => ({ Authorization: `Bearer ${token}`, 'X-Institute-Slug': TENANT_SLUG, 'Content-Type': 'application/json' });
 
 test.describe('Asistencia por QR', () => {
+    // El QR se ofrece en el teléfono (dedo): en un ordenador no hay cámara a mano.
+    test.use({ viewport: { width: 412, height: 860 }, isMobile: true, hasTouch: true });
     let clase: { classroom_id: string; subject_id: string; alumno_email: string; alumno_id: string; alumno_nombre: string };
     let tokenAdmin: string;
 
@@ -153,7 +155,8 @@ test.describe('Asistencia por QR', () => {
 
             await loginViaUI(page, ADMIN, CLAVE);
             await page.goto(`${WEB_BASE}/dashboard/clase-en-vivo/${clase.classroom_id}/${clase.subject_id}?date=${ayer}`);
-            await page.getByRole('button', { name: /Corregir con QR/ }).click();
+            await page.getByRole('button', { name: /Corregir asistencia/ }).click();
+            await page.getByRole('dialog', { name: /Corregir la asistencia/ }).getByRole('button', { name: /Enseñar el QR a la clase/ }).click();
 
             const pantalla = page.getByRole('dialog', { name: 'Pase de lista por QR' });
             await expect(pantalla.getByRole('img', { name: /Código del pase de lista/ })).toBeVisible({ timeout: 20000 });

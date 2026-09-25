@@ -121,7 +121,14 @@ test.describe('La clase en vivo', () => {
             // Antes de entrar en el modo, la tabla tiene sus columnas.
             await expect(page.getByRole('columnheader', { name: 'Observaciones' })).toBeVisible();
 
+            // Fuera del modo la asistencia solo se LEE: un toque sin querer al
+            // bajar la lista cambiaba la de alguien.
+            await expect(page.getByRole('button', { name: 'Ausente' })).toHaveCount(0);
+
+            // En un ordenador «Pasar asistencia» va directo a marcar a mano: el
+            // QR es cosa del teléfono (CLASE-UI-05 lo mira en uno).
             await botonModo.click();
+            await expect(page.getByRole('dialog', { name: /Pasar asistencia/ })).toHaveCount(0);
 
             // Dentro del modo, la tabla se queda en lo justo.
             await expect(page.getByRole('columnheader', { name: 'Observaciones' })).toHaveCount(0);

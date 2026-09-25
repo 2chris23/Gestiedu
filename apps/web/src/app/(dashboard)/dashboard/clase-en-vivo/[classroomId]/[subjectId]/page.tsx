@@ -7,7 +7,7 @@ import {
     ChevronLeft, Clock, User, Users, Save, Loader2, Calendar,
     Plus, Trash2, CheckCircle2, ListTodo, Ban, Search, X,
     ArrowUp, ShieldCheck, UserPlus, StickyNote, GraduationCap, CheckSquare, Square,
-    ArrowUpDown, ArrowUp as ArrowUpIcon, ArrowDown, Award, Check, ClipboardCheck, CloudUpload, QrCode
+    ArrowUpDown, ArrowUp as ArrowUpIcon, ArrowDown, Award, Check, ClipboardCheck, CloudUpload, QrCode, ScanLine
 } from 'lucide-react';
 import PaseDeListaQr from '@/components/asistencia/PaseDeListaQr';
 import { useConfigAsistenciaQr } from '@/lib/asistencia-qr';
@@ -27,7 +27,7 @@ import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { SuspenderClaseDialogo } from '@/components/schedule/SuspenderClaseDialogo';
 import { toast } from 'sonner';
 
-import AnimatedAttendancePicker, { ATTENDANCE_CONFIG, AttendanceStatusType } from '@/components/live-class/AnimatedAttendancePicker';
+import { ATTENDANCE_CONFIG, AttendanceStatusType } from '@/components/live-class/AnimatedAttendancePicker';
 import BotonesDeAsistencia from '@/components/live-class/BotonesDeAsistencia';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
@@ -95,6 +95,36 @@ function LiveClassPageInner() {
     const [modoAsistencia, setModoAsistencia] = useState(false);
 
     /**
+     * LA ASISTENCIA SE PASA A PROPÓSITO, NUNCA DE REFILÓN
+     *
+     * Los botones de asistencia estaban siempre a la vista en cada alumno, y
+     * un toque sin querer (al bajar la lista, al ir a poner una nota) le
+     * cambiaba la asistencia a alguien. Fuera de «Pasar asistencia» ahora
+     * solo se LEE; y «Pasar asistencia» pregunta cómo: a mano, enseñando el
+     * QR a la clase o escaneando el QR de cada alumno.
+     */
+    const [eligiendoAsistencia, setEligiendoAsistencia] = useState(false);
+    const [qrEscaneando, setQrEscaneando] = useState(false);
+    // El QR es cosa del teléfono (su cámara, su GPS, tenerlo en la mano): en
+    // un ordenador «Pasar asistencia» va directo a marcar a mano.
+    const [esTelefono, setEsTelefono] = useState(false);
+    useEffect(() => {
+        const mq = window.matchMedia('(pointer: coarse)');
+        const ver = () => setEsTelefono(mq.matches);
+        ver();
+        mq.addEventListener('change', ver);
+        return () => mq.removeEventListener('change', ver);
+    }, []);
+    useEffect(() => {
+        if (!eligiendoAsistencia) return;
+        const alTeclear = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setEligiendoAsistencia(false);
+        };
+        window.addEventListener('keydown', alTeclear);
+        return () => window.removeEventListener('keydown', alTeclear);
+    }, [eligiendoAsistencia]);
+
+    /**
      * EL PASE DE LISTA POR QR
      *
      * Mientras el QR está abierto, esta pantalla NO guarda la asistencia sola:
@@ -105,6 +135,7 @@ function LiveClassPageInner() {
      */
     const [paseQrAbierto, setPaseQrAbierto] = useState(false);
     const { data: configQr } = useConfigAsistenciaQr();
+    const conQr = esTelefono && configQr?.activa !== false;
 
     // Modal de observaciones
     const [isLiveObsModalOpen, setIsLiveObsModalOpen] = useState(false);
@@ -707,31 +738,17 @@ function LiveClassPageInner() {
                                     {canEdit && (
                                         <button
                                             type="button"
-                                            onClick={() => setModoAsistencia((v) => !v)}
+                                            onClick={() => (modoAsistencia ? setModoAsistencia(false) : conQr ? setEligiendoAsistencia(true) : setModoAsistencia(true))}
                                             aria-pressed={modoAsistencia}
-                                            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
+                                            aria-haspopup={modoAsistencia || !conQr ? undefined : 'dialog'}
+                                            className={`flex min-h-[44px] items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
                                                 modoAsistencia
                                                     ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
                                                     : 'bg-white border-gray-200 text-gray-800 hover:bg-gray-50'
                                             }`}
                                         >
                                             <ClipboardCheck className="w-4 h-4" />
-                                            {modoAsistencia ? 'Terminar asistencia' : 'Pasar asistencia'}
-                                        </button>
-                                    )}
-                                    {canEdit && configQr?.activa !== false && (
-                                        <button
-                                            type="button"
-                                            onClick={async () => {
-                                                // Lo marcado a mano que quedara por mandar, primero.
-                                                if (cambiosPorGuardar > 0) await guardarRef.current();
-                                                setCambiosPorGuardar(0);
-                                                setPaseQrAbierto(true);
-                                            }}
-                                            className="flex min-h-[44px] items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-bold text-indigo-800 hover:bg-indigo-100"
-                                        >
-                                            <QrCode className="h-4 w-4" />
-                                            {date < hoyDelLiceo ? 'Corregir con QR' : 'Asistencia por QR'}
+                                            {modoAsistencia ? 'Terminar asistencia' : date < hoyDelLiceo ? 'Corregir asistencia' : 'Pasar asistencia'}
                                         </button>
                                     )}
                                     {modoAsistencia && canEdit && (
@@ -773,7 +790,29 @@ function LiveClassPageInner() {
                             sigue siendo la misma tabla.
                         */}
                         <div className="p-3 sm:p-4">
+                            {/* Calificar: una actividad cada vez. En el teléfono la
+                                fila de cada alumno solo ENSEÑA sus notas (no cabe
+                                un botón por actividad); se entra a calificar desde
+                                aquí, y ahí sí cada alumno tiene su control. */}
+                            {canEdit && !modoAsistencia && !activeGradingActivity && currentActivitiesList.length > 0 && (
+                                <div className="mb-3 flex flex-wrap items-center gap-2">
+                                    <span className="text-xs font-semibold text-gray-600">Calificar:</span>
+                                    {currentActivitiesList.map((act, i) => (
+                                        <button
+                                            key={act.id}
+                                            type="button"
+                                            onClick={() => setActiveGradingActivity(act)}
+                                            title={act.title}
+                                            className="inline-flex min-h-[44px] max-w-[14rem] items-center gap-1.5 rounded-xl border border-indigo-200 bg-white px-3 text-xs font-bold text-indigo-700 hover:bg-indigo-50"
+                                        >
+                                            <Award className="h-3.5 w-3.5 shrink-0" />
+                                            <span className="truncate">Act #{i + 1} · {act.title}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                             <TablaAdaptable<(typeof sortedStudents)[number]>
+                                compacta={!modoAsistencia && !activeGradingActivity}
                                 datos={sortedStudents}
                                 clave={(a) => a.id}
                                 orden={sortColumn ? { por: sortColumn, hacia: sortDirection } : null}
@@ -792,6 +831,24 @@ function LiveClassPageInner() {
                                         tituloCorto: 'Nombre',
                                         principal: true,
                                         ordenable: true,
+                                        celdaCompacta: (student) => (
+                                            <div className="flex min-w-0 items-center gap-2">
+                                                <UserAvatar
+                                                    name={`${student.firstName} ${student.lastName}`}
+                                                    src={(student as any).avatar}
+                                                    className="h-8 w-8 shrink-0"
+                                                    initialsClassName="text-xs"
+                                                />
+                                                <div className="min-w-0">
+                                                    <p className="line-clamp-2 break-words text-sm font-medium leading-5 text-gray-900" title={`${student.firstName} ${student.lastName}`}>
+                                                        {student.firstName} {student.lastName}
+                                                    </p>
+                                                    <p className="truncate font-mono text-xs text-gray-500">
+                                                        {student.studentCode || student.id}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ),
                                         celda: (student) => (
                                             <div className="flex items-center gap-3">
                                                 <UserAvatar
@@ -829,21 +886,43 @@ function LiveClassPageInner() {
                                     {
                                         id: 'asistencia',
                                         titulo: 'Asistencia',
+                                        compacta: {
+                                            ancho: 'w-12',
+                                            titulo: 'Asist.',
+                                            celda: (student) => {
+                                                const def = ATTENDANCE_CONFIG[(attendance[student.id] || 'PRESENT') as AttendanceStatusType];
+                                                const Icono = def.icon;
+                                                return (
+                                                    <span
+                                                        role="img"
+                                                        aria-label={def.label}
+                                                        title={def.label}
+                                                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full border ${def.badgeBg}`}
+                                                    >
+                                                        <Icono className="h-3.5 w-3.5" />
+                                                    </span>
+                                                );
+                                            },
+                                        },
                                         celda: (student) => {
-                                            const currentAtt = attendance[student.id] || 'PRESENT';
-                                            return modoAsistencia ? (
-                                                <BotonesDeAsistencia
-                                                    estado={currentAtt}
-                                                    nombre={`${student.firstName} ${student.lastName}`}
-                                                    alCambiar={(nuevo) => handleAttendanceChange(student.id, nuevo)}
-                                                    desactivado={!canEdit}
-                                                />
-                                            ) : (
-                                                <AnimatedAttendancePicker
-                                                    status={currentAtt}
-                                                    onChange={(newSt) => handleAttendanceChange(student.id, newSt)}
-                                                    disabled={!canEdit}
-                                                />
+                                            const currentAtt = (attendance[student.id] || 'PRESENT') as AttendanceStatusType;
+                                            if (modoAsistencia) {
+                                                return (
+                                                    <BotonesDeAsistencia
+                                                        estado={currentAtt}
+                                                        nombre={`${student.firstName} ${student.lastName}`}
+                                                        alCambiar={(nuevo) => handleAttendanceChange(student.id, nuevo)}
+                                                        desactivado={!canEdit}
+                                                    />
+                                                );
+                                            }
+                                            const def = ATTENDANCE_CONFIG[currentAtt];
+                                            const Icono = def.icon;
+                                            return (
+                                                <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${def.badgeBg}`}>
+                                                    <Icono className="h-3.5 w-3.5" />
+                                                    {def.label}
+                                                </span>
                                             );
                                         },
                                     },
@@ -856,6 +935,36 @@ function LiveClassPageInner() {
                                                       ? 'Nota de Actividad (0 - 20 pts)'
                                                       : 'Calificaciones',
                                                   tituloCorto: 'Nota',
+                                                  compacta: {
+                                                      ancho: 'w-16',
+                                                      titulo: 'Notas',
+                                                      celda: (student: (typeof sortedStudents)[number]) => {
+                                                          if (currentActivitiesList.length === 0) {
+                                                              return <span className="text-xs text-gray-500">—</span>;
+                                                          }
+                                                          return (
+                                                              <span className="flex flex-col items-center gap-0.5">
+                                                                  {currentActivitiesList.map((act, actIdx) => {
+                                                                      const sc = (activityGradesDraft[act.id] || {})[student.id];
+                                                                      const hay = sc !== undefined && sc !== null;
+                                                                      const maxSc = act.maxScore || 20;
+                                                                      const ratio = hay ? (sc as number) / maxSc : 0;
+                                                                      return (
+                                                                          <span
+                                                                              key={act.id}
+                                                                              title={`Act #${actIdx + 1}: ${act.title}`}
+                                                                              className={`text-xs font-bold tabular-nums ${
+                                                                                  !hay ? 'text-gray-500' : ratio >= 0.5 ? 'text-indigo-700' : 'text-red-600'
+                                                                              }`}
+                                                                          >
+                                                                              {hay ? sc : '—'}
+                                                                          </span>
+                                                                      );
+                                                                  })}
+                                                              </span>
+                                                          );
+                                                      },
+                                                  },
                                                   celda: (student: (typeof sortedStudents)[number]) => {
                                                       const activeActId = activeGradingActivity?.id;
                                                       const currentScore = activeActId
@@ -916,6 +1025,36 @@ function LiveClassPageInner() {
                                                   id: 'observaciones',
                                                   titulo: 'Observaciones',
                                                   tituloCorto: 'Obs.',
+                                                  compacta: {
+                                                      ancho: 'w-12',
+                                                      titulo: 'Obs.',
+                                                      celda: (student: (typeof sortedStudents)[number]) => {
+                                                          const cuantas = (student as any).observationsCount || 0;
+                                                          return (
+                                                              <button
+                                                                  type="button"
+                                                                  onClick={() => {
+                                                                      setSelectedObsStudentId(student.id);
+                                                                      setIsLiveObsModalOpen(true);
+                                                                  }}
+                                                                  aria-label={
+                                                                      cuantas > 0
+                                                                          ? `${cuantas} ${cuantas === 1 ? 'observación' : 'observaciones'} de ${student.firstName} ${student.lastName}`
+                                                                          : `Añadir observación a ${student.firstName} ${student.lastName}`
+                                                                  }
+                                                                  className="inline-flex h-11 w-11 items-center justify-center rounded-full"
+                                                              >
+                                                                  {cuantas > 0 ? (
+                                                                      <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-amber-50 px-1.5 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
+                                                                          {cuantas}
+                                                                      </span>
+                                                                  ) : (
+                                                                      <Plus className="h-4 w-4 text-gray-500" />
+                                                                  )}
+                                                              </button>
+                                                          );
+                                                      },
+                                                  },
                                                   celda: (student: (typeof sortedStudents)[number]) => {
                                                       const cuantas = (student as any).observationsCount || 0;
                                                       return (
@@ -1065,11 +1204,97 @@ function LiveClassPageInner() {
                 />
             )}
 
+            {eligiendoAsistencia && (
+                <div
+                    className="fixed inset-0 z-[65] flex items-end justify-center bg-black/50 p-4 sm:items-center"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="como-pasar-asistencia"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) setEligiendoAsistencia(false);
+                    }}
+                >
+                    <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl sm:p-5">
+                        <div className="mb-3 flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <h3 id="como-pasar-asistencia" className="text-base font-bold text-gray-900">
+                                    {date < hoyDelLiceo ? 'Corregir la asistencia' : 'Pasar asistencia'}
+                                </h3>
+                                <p className="text-xs text-gray-600">¿Cómo quieres hacerlo?</p>
+                            </div>
+                            <button
+                                type="button"
+                                aria-label="Cerrar"
+                                onClick={() => setEligiendoAsistencia(false)}
+                                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            {[
+                                {
+                                    clave: 'mano',
+                                    Icono: ClipboardCheck,
+                                    titulo: 'Marcar a mano',
+                                    detalle: 'Presente, ausente, tarde o justificado, alumno por alumno.',
+                                    visible: true,
+                                },
+                                {
+                                    clave: 'mostrar',
+                                    Icono: QrCode,
+                                    titulo: 'Enseñar el QR a la clase',
+                                    detalle: 'Cada alumno lo escanea desde su teléfono.',
+                                    visible: conQr,
+                                },
+                                {
+                                    clave: 'escanear',
+                                    Icono: ScanLine,
+                                    titulo: 'Escanear el QR de cada alumno',
+                                    detalle: 'El alumno te enseña su QR y lo lees con la cámara.',
+                                    visible: conQr,
+                                },
+                            ]
+                                .filter((o) => o.visible)
+                                .map(({ clave, Icono, titulo, detalle }) => (
+                                    <button
+                                        key={clave}
+                                        type="button"
+                                        onClick={async () => {
+                                            setEligiendoAsistencia(false);
+                                            if (clave === 'mano') {
+                                                setModoAsistencia(true);
+                                                return;
+                                            }
+                                            // Lo marcado a mano que quedara por mandar, primero.
+                                            if (cambiosPorGuardar > 0) await guardarRef.current();
+                                            setCambiosPorGuardar(0);
+                                            setModoAsistencia(false);
+                                            setQrEscaneando(clave === 'escanear');
+                                            setPaseQrAbierto(true);
+                                        }}
+                                        className="flex min-h-[64px] w-full items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left hover:border-indigo-300 hover:bg-indigo-50/60"
+                                    >
+                                        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
+                                            <Icono className="h-5 w-5" />
+                                        </span>
+                                        <span className="min-w-0">
+                                            <span className="block text-sm font-bold text-gray-900">{titulo}</span>
+                                            <span className="block text-xs text-gray-600">{detalle}</span>
+                                        </span>
+                                    </button>
+                                ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {paseQrAbierto && (
                 <PaseDeListaQr
                     classroomId={classroomId}
                     subjectId={subjectId}
                     fecha={date}
+                    empezarEscaneando={qrEscaneando}
                     alTerminar={() => {
                         setPaseQrAbierto(false);
                         // Lo que quedó de verdad (lo escribió el servidor).
