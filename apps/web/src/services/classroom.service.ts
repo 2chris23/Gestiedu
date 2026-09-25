@@ -8,6 +8,7 @@ export interface Classroom {
     section: string;
     grade: number;
     capacity?: number;
+    shift?: 'MANANA' | 'TARDE' | 'INTEGRAL';
     academicYearId: string;
     teacherId?: string;
     _count?: {
@@ -30,6 +31,7 @@ export interface CreateClassroomDto {
     academicYearId: string;
     grade: number;
     section: string;
+    shift?: 'MANANA' | 'TARDE' | 'INTEGRAL';
     capacity?: number;
     teacherId?: string;
 }

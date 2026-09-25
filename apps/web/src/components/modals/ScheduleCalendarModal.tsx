@@ -17,7 +17,7 @@ export default function ScheduleCalendarModal({ isOpen, onClose, classroomId }: 
     // en Venezuela (UTC-4), a partir de las 8 de la noche pedía el día siguiente.
     const dateStr = toLocalYMD(selectedDate);
     
-    const { data: history, isLoading } = useClassroomHistory(classroomId, dateStr);
+    const { data: history, isLoading } = useClassroomHistory(classroomId, dateStr, isOpen);
 
     if (!isOpen) return null;
 

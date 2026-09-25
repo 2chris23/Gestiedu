@@ -6,20 +6,36 @@ import { useInstituteConfig } from '@/hooks/useInstitute';
 
 export function DynamicTitle() {
     const pathname = usePathname();
+    const isRoot = pathname === '/';
     const isSuperAdmin = pathname?.startsWith('/superadmin');
+    const isLogin = pathname === '/login';
 
-    // No cargar config si estamos en SuperAdmin
-    const { data: config, isLoading } = useInstituteConfig({ enabled: !isSuperAdmin });
+    const { data: config } = useInstituteConfig({ enabled: !isSuperAdmin && !isRoot && !isLogin });
 
     useEffect(() => {
-        // Actualizar el título inmediatamente cuando los datos estén disponibles o cambie la ruta
+        if (isRoot) {
+            document.title = 'GestiEdu | Sistema de Gestión Escolar para Liceos';
+            return;
+        }
+
+        if (isSuperAdmin) {
+            document.title = 'SuperAdmin | GestiEdu Plataforma';
+            return;
+        }
+
         if (config?.name) {
             document.title = config.name;
-        } else if (!isLoading && !config?.name) {
-            // Si no hay datos y no está cargando, usar título predeterminado
-            document.title = 'Sistema de Gestión Escolar';
+            // El iPhone no lee la ficha (manifest): el nombre con el que se
+            // instala en la pantalla de inicio sale de esta etiqueta, y decía
+            // «GestiEdu» para todos los liceos. Se lee al pulsar «Añadir a
+            // inicio», así que basta con cambiarla aquí.
+            document
+                .querySelector<HTMLMetaElement>("meta[name='apple-mobile-web-app-title']")
+                ?.setAttribute('content', config.name);
+        } else {
+            document.title = 'GestiEdu | Sistema de Gestión Escolar';
         }
-    }, [config?.name, isLoading, pathname]); // pathname como dependencia para actualizar en cada navegación
+    }, [config?.name, pathname, isRoot, isSuperAdmin]);
 
-    return null; // Este componente no renderiza nada;
+    return null;
 }

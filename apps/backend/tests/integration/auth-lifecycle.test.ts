@@ -110,23 +110,63 @@ describe('Flujo 1 — Ciclo de vida de autenticación', () => {
         expect(crossTenant.body.code).toBe('TENANT_MISMATCH');
     });
 
-    it('4. refresh válido genera nuevo access; el refresh NO rota (reutilizable)', async () => {
+    /**
+     * LA LLAVE DE VOLVER A ENTRAR SE CAMBIA CADA VEZ
+     *
+     * Antes la misma llave servía siempre: quien copiara una la tenía durante
+     * días. Ahora cada renovación entrega una nueva y jubila la anterior.
+     *
+     * La vieja no se tira de golpe: sigue valiendo unos segundos porque dos
+     * pestañas renuevan a la vez y mandan la misma. Lo que ya no se puede es
+     * usarla pasada esa gracia (ver el caso 4b, con el reloj adelantado).
+     */
+    it('4. renovar entrega una llave nueva, y la vieja aún vale unos segundos', async () => {
         const loginRes = await login(user.email, PASSWORD).expect(200);
         const refreshToken = loginRes.body.tokens.refreshToken;
 
         const res1 = await refresh(refreshToken).expect(200);
         expect(res1.body).toHaveProperty('accessToken');
         expect(res1.body).toHaveProperty('expiresIn');
+        expect(res1.body.refreshToken).toBeTruthy();
+        expect(res1.body.refreshToken).not.toBe(refreshToken);
 
         // El token emitido decodifica al usuario correcto
         const decoded = jwt.decode(res1.body.accessToken) as any;
         expect(decoded.userId).toBe(user.id);
-        // Nota: dos tokens firmados en el mismo segundo con el mismo payload son
-        // idénticos (iat en segundos) — no comparamos por diferencia.
 
-        // Documentado: no hay rotación — el mismo refresh token sigue funcionando
+        // La segunda pestaña, que llegó con la llave vieja, no se queda fuera.
         const res2 = await refresh(refreshToken).expect(200);
         expect(res2.body).toHaveProperty('accessToken');
+
+        // Y la nueva, por supuesto, sirve.
+        await refresh(res1.body.refreshToken).expect(200);
+    });
+
+    it('4b. pasada la gracia, la llave vieja ya no sirve', async () => {
+        const loginRes = await login(user.email, PASSWORD).expect(200);
+        const vieja = loginRes.body.tokens.refreshToken;
+
+        await refresh(vieja).expect(200);
+
+        // Envejecer la marca de "cambiada" un minuto: la gracia son 30 s.
+        await prisma.refreshToken.updateMany({
+            where: { userId: user.id, replacedAt: { not: null } },
+            data: { replacedAt: new Date(Date.now() - 60_000) },
+        });
+
+        await refresh(vieja).expect(401);
+    });
+
+    it('4c. dos pestañas que renuevan a la vez: ninguna se queda fuera', async () => {
+        const loginRes = await login(user.email, PASSWORD).expect(200);
+        const laMisma = loginRes.body.tokens.refreshToken;
+
+        // A la vez, con la MISMA llave: es lo que hacen dos pestañas abiertas.
+        const [a, b] = await Promise.all([refresh(laMisma), refresh(laMisma)]);
+
+        expect([a.status, b.status]).toEqual([200, 200]);
+        expect(a.body.refreshToken).toBeTruthy();
+        expect(b.body.refreshToken).toBeTruthy();
     });
 
     it('5. refresh con token basura → 401', async () => {
@@ -160,13 +200,19 @@ describe('Flujo 1 — Ciclo de vida de autenticación', () => {
 
         await refresh(d2.body.tokens.refreshToken).expect(401);
 
-        // Documentado: el access token NO se revoca (JWT stateless)
-        const profile = await request(server.server)
+        /**
+         * Y EL TOKEN DE ESA SESIÓN DEJA DE SERVIR EN EL ACTO
+         *
+         * Antes no: al cerrar sesión solo se anulaba la llave de volver a
+         * entrar, y el token que ya tenía el navegador seguía abriendo puertas
+         * hasta que caducaba —quince minutos de una sesión que el usuario creía
+         * cerrada—. Ahora se apunta como anulado y el guardia lo rechaza.
+         */
+        await request(server.server)
             .get('/api/auth/profile')
             .set('Authorization', `Bearer ${d2.body.tokens.accessToken}`)
             .set('X-Institute-Slug', INSTITUTE_SLUG)
-            .expect(200);
-        expect(profile.body.user.id).toBe(user.id);
+            .expect(401);
     });
 
     it('7. cambio de contraseña revoca TODAS las sesiones activas (2+ dispositivos)', async () => {

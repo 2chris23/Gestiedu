@@ -703,7 +703,8 @@ export const confirmAcademicYearClose = async (request: FastifyRequest, reply: F
         autoCreateNextYear: body.autoCreateNextYear ?? true,
         nextYearName: body.nextYearName || body.suggestedNextYearName,
       },
-      getRequestInstituteId(request)
+      getRequestInstituteId(request),
+      quienBorra(request as any)
     );
     await invalidateDashboardCache(request);
     return reply.status(200).send(result);

@@ -131,7 +131,7 @@ SISTEMA-DE-GESTION-ESCOLAR/          ← Raíz del monorepo (Turborepo)
 │   │       ├── plugins/             ← Fastify plugins (Prisma, Socket.io, Helmet)
 │   │       ├── prisma/
 │   │       │   ├── schema.prisma         ← Schema del tenant (BD por instituto)
-│   │       │   ├── platform-schema.prisma ← Schema de plataforma (SuperAdmin, Institute)
+│   │       │   ├── plataforma/           ← Schema de plataforma (SuperAdmin, Institute) y SUS migraciones
 │   │       │   ├── seed.ts               ← Seed general
 │   │       │   └── seeds/
 │   │       │       └── testing-institute.seed.ts  ← Datos de prueba completos
@@ -324,11 +324,11 @@ npm install
 # 3. Generar clientes Prisma
 cd apps/backend
 npx prisma generate --schema src/prisma/schema.prisma
-npx prisma generate --schema src/prisma/platform-schema.prisma
+npx prisma generate --schema src/prisma/plataforma/schema.prisma
 
 # 4. Crear bases de datos y aplicar migraciones
 npx prisma migrate dev --schema src/prisma/schema.prisma
-npx prisma migrate dev --schema src/prisma/platform-schema.prisma
+npm run migrate:plataforma   # la plataforma tiene sus propias migraciones
 
 # 5. Sembrar datos de prueba
 npx tsx src/prisma/seed.ts
@@ -457,7 +457,7 @@ El proyecto usa **dos esquemas Prisma independientes**:
 
 | Schema | Archivo | Base de datos |
 |---|---|---|
-| Plataforma | `src/prisma/platform-schema.prisma` | `gestion_escolar_platform` |
+| Plataforma | `src/prisma/plataforma/schema.prisma` | `gestion_escolar_platform` |
 | Tenant | `src/prisma/schema.prisma` | `tenant_<slug>` |
 
 ```bash

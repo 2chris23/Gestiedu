@@ -13,6 +13,8 @@ import {
   toggleUserStatus,
   getUserStats
 } from '../controllers/users.controller';
+import { listStudentTutors, assignStudentTutor, removeStudentTutor } from '../controllers/student-tutors.controller';
+import { getUserPhoto, putUserPhoto, deleteUserPhoto } from '../controllers/foto-de-perfil.controller';
 import { authenticate, requireAdmin, requireTeacher, requireSelfOrAdmin } from '../middleware/auth.middleware';
 import { validateBody, validateParams, validateQuery, validateCUID } from '../middleware/validation.middleware';
 import { createUserSchema as zCreateUserSchema, updateUserSchema as zUpdateUserSchema } from '../utils/validators';
@@ -201,6 +203,72 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
     },
     preHandler: [authenticate, requireAdmin]
   }, toggleUserStatus as any);
+
+  // Representantes de un alumno. Solo el administrador: quien decide qué
+  // representante ve a qué alumno decide quién ve sus notas.
+  const paramsDelAlumno = {
+    type: 'object',
+    required: ['studentId'],
+    properties: { studentId: { type: 'string', minLength: 1, maxLength: 64 } },
+  };
+
+  fastify.get('/:studentId/tutors', {
+    schema: { params: paramsDelAlumno },
+    preHandler: [authenticate, requireAdmin]
+  }, listStudentTutors as any);
+
+  fastify.post('/:studentId/tutors', {
+    schema: {
+      params: paramsDelAlumno,
+      body: {
+        type: 'object',
+        required: ['tutorId', 'relationship'],
+        additionalProperties: false,
+        properties: {
+          tutorId: { type: 'string', minLength: 1, maxLength: 64 },
+          relationship: { type: 'string', minLength: 2, maxLength: 40 },
+        },
+      },
+    },
+    preHandler: [authenticate, requireAdmin]
+  }, assignStudentTutor as any);
+
+  fastify.delete('/:studentId/tutors/:tutorId', {
+    schema: {
+      params: {
+        type: 'object',
+        required: ['studentId', 'tutorId'],
+        properties: {
+          studentId: { type: 'string', minLength: 1, maxLength: 64 },
+          tutorId: { type: 'string', minLength: 1, maxLength: 64 },
+        },
+      },
+    },
+    preHandler: [authenticate, requireAdmin]
+  }, removeStudentTutor as any);
+
+  // Foto de perfil. Verla: quien puede ver a esa persona. Ponerla o quitarla:
+  // solo el admin. Ver controllers/foto-de-perfil.controller.ts.
+  const paramsDeLaFoto = {
+    type: 'object',
+    required: ['id'],
+    properties: { id: { type: 'string', minLength: 1, maxLength: 64 } },
+  };
+
+  fastify.get('/:id/photo', {
+    schema: { params: paramsDeLaFoto },
+    preHandler: [authenticate]
+  }, getUserPhoto as any);
+
+  fastify.put('/:id/photo', {
+    schema: { params: paramsDeLaFoto },
+    preHandler: [authenticate, requireAdmin]
+  }, putUserPhoto as any);
+
+  fastify.delete('/:id/photo', {
+    schema: { params: paramsDeLaFoto },
+    preHandler: [authenticate, requireAdmin]
+  }, deleteUserPhoto as any);
 
   // Rutas de perfil personal
   fastify.get('/profile/me', {

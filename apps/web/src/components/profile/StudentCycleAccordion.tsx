@@ -143,7 +143,9 @@ export default function StudentCycleAccordion({
             const sessionParam = obs.classSessionId ? `&sessionId=${obs.classSessionId}` : '';
             router.push(`/dashboard/clase-en-vivo/${targetClassroomId}/${targetSubjectId}?date=${rawDate}${sessionParam}`);
         } else if (targetClassroomId) {
-            router.push(`/dashboard/academico/secciones/${targetClassroomId}`);
+            // Esta dirección no existía: «secciones» caía en el hueco del
+            // ciclo escolar y abría la pantalla equivocada.
+            router.push(`/dashboard/aulas/${targetClassroomId}`);
         }
     };
 

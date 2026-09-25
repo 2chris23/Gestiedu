@@ -69,10 +69,10 @@ export async function POST(request: NextRequest) {
 
         // Actualizar cookies seguras con el nuevo token pair
         responseNext.cookies.set('superadmin_access_token', data.accessToken, {
-            httpOnly: false,
+            httpOnly: true,
             secure: SOLO_POR_CONEXION_CIFRADA,
             sameSite: 'lax',
-            maxAge: 7 * 24 * 60 * 60,
+            maxAge: 1800, // 30 minutos
             path: '/',
         });
 

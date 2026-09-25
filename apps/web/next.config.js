@@ -1,6 +1,19 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+
+  /**
+   * Las dos pelotitas de desarrollo, fuera del pulgar.
+   *
+   * El indicador de Next se pinta abajo a la izquierda y las herramientas de
+   * React Query abajo a la derecha: justo encima de la barra de tareas del
+   * teléfono, tapando «Inicio» y «Horarios». Probando en un móvil parecía que
+   * la app estuviera mal hecha. Esto es solo de desarrollo —en el liceo no
+   * existe ninguna de las dos—, pero estorbaba justo donde se prueba.
+   */
+  devIndicators: {
+    position: 'top-left',
+  },
   transpilePackages: ['@repo/ui'],
 
   // Permite subdominios *.localhost en desarrollo y dominios de túnel público
@@ -19,6 +32,16 @@ const nextConfig = {
     '*.trycloudflare.com',
     '*.pinggy.link',
     '*.pinggy.io',
+    /**
+     * Y la red de casa, para probar en un teléfono de verdad (`npm run
+     * telefono`). Sin esto, el servidor de desarrollo corta lo que le pide una
+     * dirección que no sea `localhost` —y desde el móvil, TODO lo es—: la app
+     * se quedaba en blanco sin decir por qué. Es solo de desarrollo; en el
+     * servidor del liceo esta lista no pinta nada.
+     */
+    '192.168.*.*',
+    '10.*.*.*',
+    '172.*.*.*',
   ],
 
   // Configurar dominios permitidos para imágenes

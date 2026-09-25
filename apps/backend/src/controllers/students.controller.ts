@@ -178,6 +178,44 @@ export async function getStudents(
     // OPTIMIZACIÓN: Calcular estadísticas con query agregada en lugar de traer todos los datos
     const studentIds = students.map(s => s.id);
 
+    /**
+     * LA SECCIÓN DE CADA ALUMNO
+     *
+     * Con una sección elegida, es esa. Sin sección (la lista de todo el liceo,
+     * o la de un profesor con todas las suyas), es la sección activa de cada
+     * uno. Todo lo de abajo se calcula POR SECCIÓN y en bloque: sin esto, los
+     * promedios salían 0 para todo el mundo, el de una materia se hacía alumno
+     * por alumno, y las notas de Clase en Vivo se buscaban en el liceo entero.
+     * `lista-de-alumnos-en-bloque.test.ts`.
+     */
+    const seccionDe = new Map<string, string>();
+    for (const st of students as any[]) {
+      const suya = classroomId ?? st.studentClassrooms?.[0]?.classroom?.id;
+      if (suya) seccionDe.set(st.id, suya);
+    }
+    const secciones = [...new Set(seccionDe.values())];
+    const alumnosPorSeccion = new Map<string, string[]>();
+    for (const [sid, aula] of seccionDe) {
+      if (!alumnosPorSeccion.has(aula)) alumnosPorSeccion.set(aula, []);
+      alumnosPorSeccion.get(aula)!.push(sid);
+    }
+
+    /**
+     * El ciclo de esas secciones: sus lapsos (para las notas) y sus fechas
+     * (para la asistencia). Sin esto se miraba toda la vida escolar de cada
+     * alumno: en quinto año, cinco veces más filas para responder lo mismo, y
+     * un porcentaje de asistencia que arrastraba los años anteriores.
+     */
+    const ciclos = secciones.length
+      ? await request.tenantPrisma.academicYear.findMany({
+          where: { classrooms: { some: { id: { in: secciones } } } },
+          select: { startDate: true, endDate: true, periods: { select: { id: true } } },
+        })
+      : [];
+    const lapsosDelCiclo: string[] = ciclos.flatMap((c) => c.periods.map((p) => p.id));
+    const desde = ciclos.length ? new Date(Math.min(...ciclos.map((c) => c.startDate.getTime()))) : null;
+    const hasta = ciclos.length ? new Date(Math.max(...ciclos.map((c) => c.endDate.getTime()))) : null;
+
     // ============================================================
     // ASISTENCIA — query dedicada sobre daily_attendance (sin JOIN a grades).
     // CORRECCIÓN: antes el % se calculaba en la misma query que AVG(score) con el
@@ -195,16 +233,26 @@ export async function getStudents(
         ) AS FLOAT) as "attendancePercentage"
       FROM users u
       LEFT JOIN daily_attendance a ON a."studentId" = u.id
+        ${desde && hasta ? `AND a.date >= $${studentIds.length + 1} AND a.date <= $${studentIds.length + 2}` : ''}
       WHERE u.id IN (${studentIds.map((_, i) => `$${i + 1}`).join(',')})
       GROUP BY u.id
     `;
 
-    const attendanceStats = studentIds.length > 0
-      ? await request.tenantPrisma.$queryRawUnsafe<Array<{
+    /**
+     * LO QUE NO DEPENDE DE LO DEMÁS, A LA VEZ
+     *
+     * La asistencia, las materias con nota, las notas de Clase en Vivo, la
+     * nota mínima del liceo y las observaciones no se necesitan entre sí, y se
+     * pedían una detrás de otra: cada espera se sumaba a la siguiente. Con 500
+     * personas repartidas en 50 liceos, esta lista era la única pantalla con
+     * el p95 por encima de 300 ms (358 ms medidos). Ahora salen juntas.
+     */
+    const pedirAsistencia = studentIds.length > 0
+      ? request.tenantPrisma.$queryRawUnsafe<Array<{
         studentId: string;
         attendancePercentage: number;
-      }>>(attendanceQuery, ...studentIds)
-      : [];
+      }>>(attendanceQuery, ...studentIds, ...(desde && hasta ? [desde, hasta] : []))
+      : Promise.resolve([] as Array<{ studentId: string; attendancePercentage: number }>);
 
     // ============================================================
     // PROMEDIO — cálculo on-demand con la función unificada de la Fase 2.5
@@ -229,34 +277,85 @@ export async function getStudents(
      * Los años anteriores siguen enteros en la base; lo que cambia es qué se
      * mira para pintar esta lista.
      */
-    let lapsosDelCiclo: string[] = [];
-    if (classroomId) {
-      const seccion = await request.tenantPrisma.classroom.findUnique({
-        where: { id: classroomId },
-        select: { academicYear: { select: { periods: { select: { id: true } } } } },
-      });
-      lapsosDelCiclo = (seccion?.academicYear?.periods ?? []).map((p) => p.id);
+    // (Los lapsos del ciclo se sacan arriba, con la sección de cada alumno.)
+
+    // La materia pedida, por id, slug o código: hace falta para las
+    // observaciones, que salen a la vez que lo demás.
+    let targetSubjectId = request.query?.subjectId;
+    if (targetSubjectId) {
+      const isCuid = /^c[a-z0-9]{24}$/.test(targetSubjectId);
+      if (!isCuid) {
+        const foundSub = await request.tenantPrisma.subject.findFirst({
+          where: { OR: [{ id: targetSubjectId }, { slug: targetSubjectId }, { code: targetSubjectId }] },
+          select: { id: true },
+        });
+        if (foundSub) {
+          targetSubjectId = foundSub.id;
+        }
+      }
     }
 
-    if (studentIds.length > 0) {
+    // Nota mínima aprobatoria del instituto (10 solo como valor por defecto)
+    const pedirNotaMinima = (async () => {
+      try {
+        const instId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
+        if (!instId) return 10;
+        const config = await getAcademicConfig(instId);
+        return typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
+      } catch {
+        return 10;
+      }
+    })();
+
+    // Contar observaciones registradas por estudiante (filtradas por materia y lapso si aplica)
+    const pedirObservaciones = (async () => {
+      if (studentIds.length === 0) return [];
+      let obsPeriodFilter: any = {};
+      if (request.query?.periodId) {
+        const period = await request.tenantPrisma.period.findUnique({
+          where: { id: request.query.periodId },
+          select: { startDate: true, endDate: true },
+        });
+        if (period) {
+          obsPeriodFilter = { date: { gte: period.startDate, lte: period.endDate } };
+        }
+      }
+      return request.tenantPrisma.observation.groupBy({
+        by: ['studentId'],
+        where: {
+          studentId: { in: studentIds },
+          ...(targetSubjectId ? { subjectId: targetSubjectId } : {}),
+          ...(obsPeriodFilter.date ? obsPeriodFilter : {}),
+        },
+        _count: { id: true },
+      });
+    })();
+
+    const [attendanceStats, gradeSubjects, classActs, minPassing, observationsStats] = await Promise.all([
+      pedirAsistencia,
       // Materias con grades por estudiante
-      const gradeSubjects = await request.tenantPrisma.grade.groupBy({
+      studentIds.length === 0 ? Promise.resolve([] as Array<{ studentId: string; subjectId: string }>) : request.tenantPrisma.grade.groupBy({
         by: ['studentId', 'subjectId'],
         where: {
           studentId: { in: studentIds },
           ...(lapsosDelCiclo.length > 0 ? { periodId: { in: lapsosDelCiclo } } : {}),
         },
-      });
+      }),
+      // Materias con ClassActivity scoreadas (JSON scores) por estudiante
+      studentIds.length === 0 || secciones.length === 0 ? Promise.resolve([] as Array<{ subjectId: string; scores: any }>) : request.tenantPrisma.classActivity.findMany({
+        where: { classroomId: { in: secciones }, scores: { not: undefined } },
+        select: { subjectId: true, scores: true },
+      }),
+      pedirNotaMinima,
+      pedirObservaciones,
+    ]);
+
+    if (studentIds.length > 0) {
       gradeSubjects.forEach(g => {
         if (!subjectIdsByStudent.has(g.studentId)) subjectIdsByStudent.set(g.studentId, new Set());
         subjectIdsByStudent.get(g.studentId)!.add(g.subjectId);
       });
 
-      // Materias con ClassActivity scoreadas (JSON scores) por estudiante
-      const classActs = await request.tenantPrisma.classActivity.findMany({
-        where: { classroomId, scores: { not: undefined } },
-        select: { subjectId: true, scores: true },
-      });
       classActs.forEach(ca => {
         let parsed: Record<string, number | null> = {};
         try { parsed = typeof ca.scores === 'string' ? JSON.parse(ca.scores) : (ca.scores || {}); } catch { return; }
@@ -273,49 +372,29 @@ export async function getStudents(
     // de lo contrario, calcular promedio general sobre todas sus materias.
     const averages = new Map<string, number>();
 
-    let targetSubjectId = request.query?.subjectId;
-    if (targetSubjectId) {
-      const isCuid = /^c[a-z0-9]{24}$/.test(targetSubjectId);
-      if (!isCuid) {
-        const foundSub = await request.tenantPrisma.subject.findFirst({
-          where: { OR: [{ id: targetSubjectId }, { slug: targetSubjectId }, { code: targetSubjectId }] },
-          select: { id: true },
-        });
-        if (foundSub) {
-          targetSubjectId = foundSub.id;
-        }
-      }
-    }
-
     const studentFailedSubjectsMap = new Map<string, Array<{ subjectId: string; average: number }>>();
 
-    // Nota mínima aprobatoria del instituto (10 solo como valor por defecto)
-    let minPassing = 10;
-    try {
-      const instId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
-      if (instId) {
-        const config = await getAcademicConfig(instId);
-        minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
-      }
-    } catch {
-      minPassing = 10;
-    }
-
     if (targetSubjectId) {
-      // En bloque: 4 consultas para toda la sección en vez de ~20 por estudiante
-      const bulk = classroomId
-        ? await bulkSubjectAverages(request.tenantPrisma, {
-            classroomId,
-            studentIds,
-            subjectIds: [targetSubjectId],
+      // En bloque, una vez por sección: 4 consultas por sección en vez de ~20
+      // por estudiante.
+      const bulk = new Map<string, Map<string, number>>();
+      const porSeccion = await Promise.all(
+        [...alumnosPorSeccion].map(([aula, deEsta]) =>
+          bulkSubjectAverages(request.tenantPrisma, {
+            classroomId: aula,
+            studentIds: deEsta,
+            subjectIds: [targetSubjectId!],
             periodId: request.query?.periodId,
           })
-        : null;
+        )
+      );
+      for (const r of porSeccion) r.forEach((v, k) => bulk.set(k, v));
 
       await Promise.all(
         studentIds.map(async (sid) => {
           try {
-            const stuAvg = bulk
+            // Solo quien no tiene sección se calcula aparte.
+            const stuAvg = bulk.has(sid)
               ? bulk.get(sid)?.get(targetSubjectId!) ?? 0
               : await gradesService.calculateWeightedSubjectAverage(
                   request.tenantPrisma,
@@ -341,14 +420,20 @@ export async function getStudents(
         new Set(Array.from(subjectIdsByStudent.values()).flatMap(set => Array.from(set)))
       );
 
-      const bulk = classroomId && todasLasMaterias.length > 0
-        ? await bulkSubjectAverages(request.tenantPrisma, {
-            classroomId,
-            studentIds,
-            subjectIds: todasLasMaterias,
-            periodId: request.query?.periodId,
-          })
-        : null;
+      const bulk = new Map<string, Map<string, number>>();
+      if (todasLasMaterias.length > 0) {
+        const porSeccion = await Promise.all(
+          [...alumnosPorSeccion].map(([aula, deEsta]) =>
+            bulkSubjectAverages(request.tenantPrisma, {
+              classroomId: aula,
+              studentIds: deEsta,
+              subjectIds: todasLasMaterias,
+              periodId: request.query?.periodId,
+            })
+          )
+        );
+        for (const r of porSeccion) r.forEach((v, k) => bulk.set(k, v));
+      }
 
       studentIds.forEach(sid => {
         const materias = Array.from(subjectIdsByStudent.get(sid) ?? []);
@@ -376,30 +461,6 @@ export async function getStudents(
       attendanceStats.map(s => [s.studentId, Math.round(Number(s.attendancePercentage || 0))])
     );
 
-    // Filtro de fecha para observaciones si se pasó periodId
-    let obsPeriodFilter: any = {};
-    if (request.query?.periodId) {
-      const period = await request.tenantPrisma.period.findUnique({
-        where: { id: request.query.periodId },
-        select: { startDate: true, endDate: true },
-      });
-      if (period) {
-        obsPeriodFilter = { date: { gte: period.startDate, lte: period.endDate } };
-      }
-    }
-
-    // Contar observaciones registradas por estudiante (filtradas por materia y lapso si aplica)
-    const observationsStats = studentIds.length > 0
-      ? await request.tenantPrisma.observation.groupBy({
-          by: ['studentId'],
-          where: {
-            studentId: { in: studentIds },
-            ...(targetSubjectId ? { subjectId: targetSubjectId } : {}),
-            ...(obsPeriodFilter.date ? obsPeriodFilter : {}),
-          },
-          _count: { id: true },
-        })
-      : [];
     const observationsMap = new Map(observationsStats.map(o => [o.studentId, o._count.id]));
 
     // Combinar datos de estudiantes con estadísticas

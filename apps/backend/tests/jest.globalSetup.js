@@ -154,10 +154,19 @@ module.exports = async function globalSetup() {
     if (platformUrl) {
         const creds = parseDbUrl(platformUrl);
         await ensureDatabase(platformUrl);
-        runPrisma(
-            ['db', 'push', '--skip-generate', '--schema', path.join(__dirname, '..', 'src', 'prisma', 'platform-schema.prisma')],
-            { PLATFORM_DATABASE_URL: platformUrl }
-        );
+        // El mismo migrador que el despliegue (antes, `db push`: por eso nadie
+        // vio que el despliegue migraba la plataforma con las migraciones de
+        // los liceos). Ver src/scripts/migrar-plataforma.ts.
+        try {
+            execFileSync(process.execPath, [require.resolve('tsx/cli'), path.join(__dirname, '..', 'src', 'scripts', 'migrar-plataforma.ts')], {
+                env: { ...process.env, PLATFORM_DATABASE_URL: platformUrl },
+                stdio: 'pipe',
+            });
+        } catch (error) {
+            console.error(`[jest-setup] migrar la plataforma falló:
+${(error.stdout || '').toString()}${(error.stderr || '').toString()}`);
+            throw error;
+        }
         console.log(`[jest-setup] PLATFORM_DATABASE_URL → ${creds.db}`);
     }
 };

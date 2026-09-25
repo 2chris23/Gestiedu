@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, ChevronLeft, ChevronRight, Filter, FolderArchive, Users, RotateCcw, AlertTriangle } from 'lucide-react';
 import { Input, Button } from '@/components/ui';
 import { UsersTable } from '@/components/users/UsersTable';
@@ -9,27 +9,24 @@ import { Modal } from '@/components/ui/Modal';
 import { userService } from '@/services/user.service';
 import { User, CreateUserData } from '@/types/user';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 import { UserProfileModal } from '@/components/users/UserProfileModal';
 import { useRouter } from 'next/navigation';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export default function UsersPage() {
     const queryClient = useQueryClient();
-    const [users, setUsers] = useState<User[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [viewMode, setViewMode] = useState<'active' | 'archived'>('active');
-    const [archivedCount, setArchivedCount] = useState<number>(0);
 
     // Pagination & Filter States
     const [page, setPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
-    const [totalUsers, setTotalUsers] = useState(0);
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('ALL');
 
@@ -37,62 +34,57 @@ export default function UsersPage() {
     const [sortField, setSortField] = useState<'name' | 'email' | 'role' | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
-    const loadUsers = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const data = await userService.getUsers({
-                page,
-                limit: 10,
-                search: searchTerm,
-                role: roleFilter,
-                status: viewMode === 'archived' ? 'ARCHIVED' : 'ACTIVE'
-            });
-            setUsers(data.users);
-            setTotalPages(data.pagination.totalPages);
-            setTotalUsers(data.pagination.total);
+    /**
+     * LA LISTA, DE LA MEMORIA DE LA APP
+     *
+     * Se pedía a mano y vivía solo mientras la pantalla estaba abierta: sin
+     * conexión, «Usuarios» salía vacía aunque se hubiera mirado un minuto
+     * antes. Pasando por React Query entra en lo que se guarda en el teléfono
+     * (`MemoriaDelTelefono`), página por página y búsqueda por búsqueda.
+     */
+    const busqueda = useDebouncedValue(searchTerm, 500);
+    // Buscar otra cosa vuelve a la primera página.
+    useEffect(() => setPage(1), [busqueda]);
 
-            if (viewMode === 'active') {
-                userService.getUsers({ limit: 1, status: 'ARCHIVED' })
-                    .then(res => setArchivedCount(res.pagination.total))
-                    .catch(() => {});
-            }
-        } catch (error) {
-            console.error('Error loading users:', error);
-            toast.error('Error al cargar usuarios');
-        } finally {
-            setIsLoading(false);
-        }
-    }, [page, searchTerm, roleFilter, viewMode]);
+    const status = viewMode === 'archived' ? 'ARCHIVED' : 'ACTIVE';
+    const lista = useQuery({
+        queryKey: ['usuarios', 'lista', { page, busqueda, roleFilter, status }],
+        queryFn: () => userService.getUsers({ page, limit: 10, search: busqueda, role: roleFilter, status }),
+        // Al pasar de página se sigue viendo la anterior hasta que llegue la nueva.
+        placeholderData: (anterior) => anterior,
+    });
+    const users: User[] = lista.data?.users ?? [];
+    const totalPages = lista.data?.pagination.totalPages ?? 1;
+    const totalUsers = lista.data?.pagination.total ?? 0;
+    const isLoading = lista.isLoading;
+
+    const archivados = useQuery({
+        queryKey: ['usuarios', 'archivados'],
+        queryFn: () => userService.getUsers({ limit: 1, status: 'ARCHIVED' }).then((r) => r.pagination.total),
+    });
+    const archivedCount = archivados.data ?? 0;
 
     useEffect(() => {
-        loadUsers();
-    }, [page, roleFilter, viewMode, loadUsers]);
+        if (lista.error && !esQueNoContesta(lista.error)) toast.error('Error al cargar usuarios');
+    }, [lista.error]);
 
-    // Debounce search could be added here, for now using a search button or confirm
-    // Or simple effect on search term if we want instant search
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            setPage(1); // Reset to page 1 on search
-            loadUsers();
-        }, 500);
-        return () => clearTimeout(timer);
-    }, [searchTerm]); // eslint-disable-line react-hooks/exhaustive-deps -- el debounce depende solo de searchTerm a propósito: loadUsers usa el valor más reciente y page como dep rompería la paginación
+    /** Tras guardar, archivar o borrar: que la lista y el contador se vuelvan a pedir. */
+    const refrescar = () => queryClient.invalidateQueries({ queryKey: ['usuarios'] });
 
     const handleSaveUser = async (data: CreateUserData) => {
         setIsSaving(true);
         try {
             if (editingUser) {
-                const updatedUser = await userService.updateUser(editingUser.id, data);
-                setUsers((prev) => prev.map(u => u.id === editingUser.id ? updatedUser : u));
+                await userService.updateUser(editingUser.id, data);
                 toast.success('Usuario actualizado correctamente');
             } else {
-                const newUser = await userService.createUser(data);
-                setUsers((prev) => [newUser, ...prev]);
+                await userService.createUser(data);
                 toast.success('Usuario creado correctamente');
             }
             // Invalidar lista de profesores (React Query) para que los modales
             // de asignación reflejen inmediatamente al usuario nuevo/actualizado
             queryClient.invalidateQueries({ queryKey: ['teachers'] });
+            refrescar();
             setIsModalOpen(false);
             setEditingUser(null);
         } catch (error) {
@@ -116,8 +108,7 @@ export default function UsersPage() {
 
         try {
             await userService.archiveUser(userToArchive.id);
-            setUsers((prev) => prev.filter(u => u.id !== userToArchive.id));
-            setArchivedCount((prev) => prev + 1);
+            refrescar();
             toast.success(`Usuario ${userToArchive.firstName} ${userToArchive.lastName} archivado correctamente`);
         } catch (error) {
             console.error('Error archiving user:', error);
@@ -130,8 +121,7 @@ export default function UsersPage() {
     const handleUnarchiveUser = async (user: User) => {
         try {
             await userService.unarchiveUser(user.id);
-            setUsers((prev) => prev.filter(u => u.id !== user.id));
-            setArchivedCount((prev) => Math.max(0, prev - 1));
+            refrescar();
             toast.success(`Usuario ${user.firstName} ${user.lastName} restaurado a Activo`);
         } catch (error) {
             console.error('Error unarchiving user:', error);
@@ -144,10 +134,7 @@ export default function UsersPage() {
 
         try {
             await userService.deleteUser(userToDelete.id);
-            setUsers((prev) => prev.filter(u => u.id !== userToDelete.id));
-            if (viewMode === 'archived') {
-                setArchivedCount((prev) => Math.max(0, prev - 1));
-            }
+            refrescar();
             toast.success(`Usuario ${userToDelete.firstName} ${userToDelete.lastName} eliminado correctamente`);
         } catch (error) {
             console.error('Error deleting user:', error);
@@ -222,7 +209,9 @@ export default function UsersPage() {
                             : 'Gestiona administradores, profesores, estudiantes y personal.'}
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
+                {/* Que se repartan en dos filas en el teléfono: en una sola,
+                    «Nuevo Usuario» se salía de la pantalla. */}
+                <div className="flex flex-wrap items-center gap-2">
                     {viewMode === 'active' ? (
                         <Button
                             variant="outline"
@@ -277,7 +266,8 @@ export default function UsersPage() {
                             <Filter className="h-4 w-4 text-gray-400" />
                         </div>
                         <Select value={roleFilter} onValueChange={setRoleFilter}>
-                            <SelectTrigger className="w-full">
+                            {/* pl-9: el embudo va encima, a la izquierda, y tapaba la «T» de «Todos». */}
+                            <SelectTrigger className="w-full pl-9">
                                 <SelectValue placeholder="Filtrar por rol" />
                             </SelectTrigger>
                             <SelectContent>

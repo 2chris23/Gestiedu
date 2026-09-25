@@ -24,12 +24,14 @@ export async function scheduleBlocksRoutes(fastify: FastifyInstance) {
     fastify.register(async (authenticatedRoutes) => {
         authenticatedRoutes.addHook('onRequest', authenticate);
 
-        // Obtener horario completo de una sección (profesores y admins)
-        authenticatedRoutes.get(
-            '/schedules/classroom/:classroomId',
-            { onRequest: [requireTeacher] },
-            getClassroomSchedule as any
-        );
+        /**
+         * Horario completo de una sección.
+         *
+         * Sin `requireTeacher` a propósito: el alumno tiene que poder ver el
+         * horario de SU sección y el representante el de su representado. Quién
+         * puede mirar cuál lo decide `assertCanSeeClassroom` dentro.
+         */
+        authenticatedRoutes.get('/schedules/classroom/:classroomId', getClassroomSchedule as any);
 
         // Obtener historial de clases por fecha
         authenticatedRoutes.get(
