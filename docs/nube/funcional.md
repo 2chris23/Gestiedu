@@ -5,11 +5,11 @@ Informe para el dueño del liceo. Se actualiza y se sube en cada arreglo que que
 ## Para revisar
 
 - **Rama:** `claude/busy-bohr-000kvi` (sale de `nube/base`, 8b4219f). No toca `main`, `trabajo/*` ni `nube/*`.
-- **En qué punto quedé:** ocho arreglos y una función nueva (la boleta), en la tabla. La tanda completa del
-  servidor con los siete primeros: 893 pruebas, 886 pasan; solo fallan las 7 de `tenant-mismatch` que ya
-  fallaban antes. Línea base del navegador medida (abajo). Falta: repetir la tanda del navegador con la web
-  recompilada (mis pruebas de navegador ASIS-DOS-01, RELOJ-01 y BOL-UI-01…03 aún no han corrido sobre el código
-  nuevo), el teléfono (`npm run movil -- --exigir`), la constancia de estudio y el recorrido completo por rol.
+- **En qué punto quedé (tercera vuelta):** hecha la constancia de estudio y la de buena conducta (servidor,
+  pantalla y pruebas), y un sembrado con las cuentas que esperan las pruebas de navegador. La web recompilada y
+  las ocho pruebas `funcional-*` del navegador en verde (ASIS-DOS-01, BOL-UI-01…03, RELOJ-01, CONS-UI-01…03).
+  Siguiente: la tanda entera del navegador y del servidor, el teléfono (`npm run movil -- --exigir`) y seguir
+  con las funciones que faltan (materia pendiente y revisión, resumen final).
 - **Commits** (uno por arreglo):
 
 | Commit | Qué cambia |
@@ -24,9 +24,18 @@ Informe para el dueño del liceo. Se actualiza y se sube en cada arreglo que que
 | `14c7e86` | «Hoy» es el día del liceo, no el del reloj del teléfono: horario del alumno, de la materia, historial, calendario y eventos. |
 | `e6c5221` | **Nuevo:** la boleta del alumno en el servidor (notas por lapso, definitiva, inasistencias), con el redondeo del liceo. |
 | `1b0ac6b` | **Nuevo:** la pantalla de la boleta, para ver e imprimir: el alumno («Mi boleta»), su representante y el admin. |
+| `4ad976b` | Sembrado: el liceo de pruebas se registra en su propia base y crear usuarios deja de dar 500. |
+| `4f59050` | Clase en vivo: el rol lo dice el servidor; con el almacén vacío el profesor no podía pasar lista. |
+| `b03ff73` | **Nuevo:** constancias de estudio y de buena conducta en el servidor (CONS-01…05). |
+| `492855f` | **Nuevo:** la hoja de la constancia para imprimir; quién firma y el código DEA en Configuración → Académico. |
+| `f0b4b61` | Pruebas de navegador de las constancias (CONS-UI-01…03). |
+| `7aafc47` | Sembrado con las cuentas que esperan las pruebas de navegador (`cuentas-de-las-pruebas.seed.ts`). |
 
 - **Cómo probarlo:**
   ```bash
+  # entorno: testing-institute.seed.ts, luego (opcional) scripts/seed-full-testing-institute.ts y
+  cd apps/backend && npx tsx src/prisma/seeds/cuentas-de-las-pruebas.seed.ts                # cuentas del navegador
+  TEST_DB_URL=postgresql://postgres:<clave>@localhost:5432/tenant_instituto_testing npx playwright test funcional-
   cd apps/backend && REDIS_PRUEBAS_URL=redis://127.0.0.1:6391 npx jest funcional-   # las pruebas nuevas
   cd apps/backend && REDIS_PRUEBAS_URL=redis://127.0.0.1:6391 npx jest             # todo el servidor
   ```
