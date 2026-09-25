@@ -41,6 +41,14 @@ const NOMBRE_DEL_ROL: Record<string, string> = {
     TUTOR: 'TUTOR',
 };
 
+/** En la fila del teléfono, el rol en una palabra corta. */
+const ROL_CORTO: Record<string, string> = {
+    ADMIN: 'Admin',
+    TEACHER: 'Prof.',
+    STUDENT: 'Alumno',
+    TUTOR: 'Repr.',
+};
+
 const COLOR_DEL_ROL: Record<string, string> = {
     ADMIN: 'bg-yellow-50 text-yellow-700 ring-yellow-600/20',
     TEACHER: 'bg-blue-50 text-blue-700 ring-blue-600/20',
@@ -66,6 +74,10 @@ export function UsersTable({
 }: UsersTableProps) {
     return (
         <TablaAdaptable<User>
+            // En el teléfono, UNA FILA por persona (como los alumnos de una
+            // sección): nombre y correo, y al lado el rol y si está activo. Las
+            // acciones, tras «Editar»; la ficha, tocando la fila.
+            compacta
             datos={users}
             cargando={isLoading}
             clave={(u) => u.id}
@@ -79,6 +91,18 @@ export function UsersTable({
                     titulo: 'Nombre',
                     principal: true,
                     ordenable: true,
+                    celdaCompacta: (u) => (
+                        <div className="min-w-0">
+                            <p className="line-clamp-2 break-words text-sm font-semibold leading-5 text-gray-900" title={`${u.firstName} ${u.lastName}`}>
+                                {u.firstName} {u.lastName}
+                            </p>
+                            <p className="truncate text-xs text-gray-600">
+                                <span className="font-mono">{u.studentCode || u.id}</span>
+                                {u.classroom ? <span className="font-semibold text-indigo-700"> · {u.classroom.name}</span> : null}
+                            </p>
+                            <p className="truncate text-xs text-gray-500">{u.email}</p>
+                        </div>
+                    ),
                     celda: (u) => (
                         <div className="min-w-0">
                             {/* Se parte en dos líneas, no se corta: con `truncate`, un
@@ -114,6 +138,19 @@ export function UsersTable({
                     id: 'role',
                     titulo: 'Rol',
                     ordenable: true,
+                    compacta: {
+                        ancho: 'w-16',
+                        celda: (u) => (
+                            <span
+                                className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${
+                                    COLOR_DEL_ROL[u.role] ?? COLOR_DEL_ROL.STUDENT
+                                }`}
+                                title={NOMBRE_DEL_ROL[u.role] ?? u.role}
+                            >
+                                {ROL_CORTO[u.role] ?? u.role}
+                            </span>
+                        ),
+                    },
                     celda: (u) => (
                         <span
                             className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
@@ -127,6 +164,17 @@ export function UsersTable({
                 {
                     id: 'estado',
                     titulo: 'Estado',
+                    compacta: {
+                        ancho: 'w-11',
+                        celda: (u) =>
+                            u.status === 'ARCHIVED' ? (
+                                <span role="img" aria-label="Archivado" title="Archivado" className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-amber-50 ring-1 ring-amber-200">
+                                    <FolderArchive className="h-3.5 w-3.5 text-amber-600" />
+                                </span>
+                            ) : (
+                                <span role="img" aria-label="Activo" title="Activo" className="inline-flex h-3 w-3 rounded-full bg-emerald-500 ring-4 ring-emerald-100" />
+                            ),
+                    },
                     celda: (u) =>
                         u.status === 'ARCHIVED' ? (
                             <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
@@ -144,6 +192,9 @@ export function UsersTable({
                     titulo: 'Acciones',
                     acciones: true,
                     alinear: 'derecha',
+                    // Tres botones de 44 px: en el teléfono ocupan la fila
+                    // mientras se edita (ver `ListaCompacta`).
+                    compacta: { ancho: 'w-[8.5rem]' },
                     celda: (u) => (
                         <span className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                             {u.status === 'ARCHIVED' ? (

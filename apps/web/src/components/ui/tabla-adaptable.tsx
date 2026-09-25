@@ -386,7 +386,11 @@ function ListaCompacta<T>({
     editando: boolean;
     alEditar: () => void;
 }) {
-    const estrechas = columnas.filter((c) => c.compacta && c !== principal && !c.acciones);
+    // Unas acciones anchas (varios botones, con `compacta.ancho`) no caben al
+    // lado de las columnas estrechas: mientras se edita, ocupan su sitio.
+    const accionesAnchas = editando && deAcciones.some((c) => c.compacta?.ancho);
+    const estrechas = accionesAnchas ? [] : columnas.filter((c) => c.compacta && c !== principal && !c.acciones);
+    const anchoDeAcciones = (c: ColumnaAdaptable<T>) => c.compacta?.ancho ?? 'w-11';
     const sePulsa = Boolean(alPulsar) && !editando;
 
     const cabecera = (col: ColumnaAdaptable<T>, className?: string) => {
@@ -437,7 +441,7 @@ function ListaCompacta<T>({
                         {cabecera(col, 'justify-center')}
                     </div>
                 ))}
-                {editando && deAcciones.length > 0 && <div className="w-11 shrink-0" aria-hidden />}
+                {editando && deAcciones.map((col) => <div key={col.id} className={cn('shrink-0', anchoDeAcciones(col))} aria-hidden />)}
             </div>
 
             {datos.map((fila, i) => (
@@ -474,8 +478,8 @@ function ListaCompacta<T>({
                     ))}
                     {editando &&
                         deAcciones.map((col) => (
-                            <div key={col.id} role="cell" className="flex w-11 shrink-0 justify-center">
-                                {col.celda(fila, i)}
+                            <div key={col.id} role="cell" className={cn('flex shrink-0 justify-end', anchoDeAcciones(col))}>
+                                {(col.compacta?.celda ?? col.celda)(fila, i)}
                             </div>
                         ))}
                 </div>
