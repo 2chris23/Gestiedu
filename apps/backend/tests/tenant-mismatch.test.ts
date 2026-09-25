@@ -157,6 +157,24 @@ describe('Tenant mismatch — claim instituteId del JWT', () => {
         }
     });
 
+    it('rechaza con 401 cuando el dominio propio pertenece al Instituto A', async () => {
+        // El cuarto camino por el que una petición nombra un liceo: su dominio
+        // propio (gestion.miliceo.edu.ve). Los otros tres ya estaban probados.
+        const dominio = `gestion-${Date.now()}.liceo-a.test`;
+        const { platformPrisma } = await import('../src/config/database');
+        await platformPrisma.institute.update({ where: { id: 'institute' }, data: { customDomain: dominio } });
+        try {
+            const res = await request(server.server)
+                .get(`/api/students/${userBId}/dashboard`)
+                .set('Authorization', `Bearer ${tokenB}`)
+                .set('Host', dominio)
+                .expect(401);
+            expect(res.body.code).toBe('TENANT_MISMATCH');
+        } finally {
+            await platformPrisma.institute.update({ where: { id: 'institute' }, data: { customDomain: null } });
+        }
+    });
+
     it('permite el acceso cuando el contexto coincide con el Instituto B (control positivo)', async () => {
         const res = await request(server.server)
             .get(`/api/students/${userBId}/dashboard`)
