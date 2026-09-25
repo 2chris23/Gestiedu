@@ -291,11 +291,20 @@ export function Escaparate() {
         return () => ro.disconnect();
     }, []);
 
-    /** Saltar a una escena: desde su principio o, con «menos movimiento», ya hecha. */
+    /**
+     * Saltar a una escena: desde su principio o, con «menos movimiento», ya hecha.
+     *
+     * En una transición: pintar las tres pantallas de la escena nueva cuesta
+     * 90–100 ms en un teléfono lento (medido, «Cifras del lapso»), y hecho de
+     * golpe dentro del toque, la respuesta tardaba 200–230 ms en verse (INP).
+     * Así React pinta por tandas y el navegador responde al toque entre medias.
+     */
     const irA = (id: IdDeEscena) => {
         const e = ESCENAS.find((x) => x.id === id)!;
-        if (reducir) setPasoQuieto(INICIO_DE[id] + e.pasos - 1);
-        else setMedios(INICIO_DE[id] * 2);
+        React.startTransition(() => {
+            if (reducir) setPasoQuieto(INICIO_DE[id] + e.pasos - 1);
+            else setMedios(INICIO_DE[id] * 2);
+        });
     };
     const [pasoQuieto, setPasoQuieto] = React.useState<number | null>(null);
     const pasoVisto = reducir && pasoQuieto !== null ? pasoQuieto : paso;
@@ -403,7 +412,8 @@ export function Escaparate() {
                                 <button
                                     type="button"
                                     onClick={() => setPausado((p) => !p)}
-                                    aria-pressed={pausado}
+                                    // Sin `aria-pressed`: el nombre ya cambia («Pausar» / «Seguir»),
+                                    // y los dos juntos se leían «Seguir, pulsado» (APG, botón conmutador).
                                     className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-900"
                                 >
                                     {pausado ? <Play className="h-4 w-4" aria-hidden /> : <Pause className="h-4 w-4" aria-hidden />}
