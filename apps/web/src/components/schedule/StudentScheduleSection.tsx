@@ -2,13 +2,12 @@
 
 import React, { useMemo } from 'react';
 import {
-    Calendar, Clock, Coffee, Edit, Search, MapPin, User,
+    Calendar, Clock, Coffee, Edit, MapPin, User,
     ChevronLeft, ChevronRight, ListTodo, BookOpen, CalendarDays
 } from 'lucide-react';
 import { ScheduleBlock } from '@/components/schedule/UniversalScheduleViewer';
 import { DescargarHorario } from '@/components/schedule/DescargarHorario';
 import { useClassReplacements } from '@/hooks/useClassReplacements';
-import ScheduleCalendarModal from '@/components/modals/ScheduleCalendarModal';
 import ScheduleHistoryModal from '@/components/schedule/ScheduleHistoryModal';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -100,7 +99,6 @@ const MODERN_SUBJECT_STYLES = [
 
 export default function StudentScheduleSection({ schedule, role, showActions = false, classroomId, editUrl, titulo = 'Horario semanal', subtitulo, teacherId }: Props) {
     const [viewMode, setViewMode] = React.useState<'day' | 'week'>('day');
-    const [isCalendarModalOpen, setIsCalendarModalOpen] = React.useState(false);
     /**
      * EL TURNO MANDA EN LAS HORAS
      *
@@ -474,21 +472,12 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
 
                         {showActions && (
                             <div className="flex items-center gap-1 mr-1 pr-1 border-r border-gray-200">
-                                {classroomId && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsCalendarModalOpen(true)}
-                                        className="p-1.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors shadow-2xs"
-                                        title="Historial de Clases"
-                                    >
-                                        <Search size={15} />
-                                    </button>
-                                )}
                                 {editUrl && (
                                     <Link
                                         href={editUrl}
-                                        className="p-1.5 text-indigo-600 hover:bg-indigo-100 bg-indigo-50 rounded-lg transition-colors shadow-2xs"
+                                        className="inline-flex h-9 w-9 items-center justify-center text-indigo-600 hover:bg-indigo-100 bg-indigo-50 rounded-lg transition-colors shadow-2xs"
                                         title="Editar horario"
+                                        aria-label="Editar horario"
                                     >
                                         <Edit size={15} />
                                     </Link>
@@ -501,7 +490,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             <button
                                 type="button"
                                 onClick={() => { setViewMode('day'); setHistDate(null); setDayViewKey(getDisplayDay()); }}
-                                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                                className={`inline-flex items-center justify-center px-3 py-1 text-xs font-bold rounded-lg transition-all ${
                                     viewMode === 'day' && !histDate
                                         ? 'bg-indigo-600 text-white shadow-xs'
                                         : 'text-gray-600 hover:text-gray-900'
@@ -512,7 +501,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             <button
                                 type="button"
                                 onClick={() => { setViewMode('week'); setHistDate(null); }}
-                                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                                className={`inline-flex items-center justify-center px-3 py-1 text-xs font-bold rounded-lg transition-all ${
                                     viewMode === 'week'
                                         ? 'bg-indigo-600 text-white shadow-xs'
                                         : 'text-gray-600 hover:text-gray-900'
@@ -523,7 +512,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             <button
                                 type="button"
                                 onClick={() => setIsHistoryOpen(true)}
-                                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all inline-flex items-center gap-1 ${
+                                className={`inline-flex items-center justify-center gap-1 px-3 py-1 text-xs font-bold rounded-lg transition-all ${
                                     histDate
                                         ? 'bg-indigo-600 text-white shadow-xs'
                                         : 'text-gray-600 hover:text-gray-900'
@@ -703,35 +692,30 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                             )}
                                         </div>
 
-                                        {/*
-                                          * Pie del bloque. Solo se enseña lo que hay:
-                                          *   · «1 para hoy» — lo que toca en esta clase;
-                                          *   · «1 para otro día» — lo que se DEJÓ aquí para más adelante;
-                                          *   · el aula, si la sección tiene aula asignada.
-                                          * Los ceros y el «Sin aula» se fueron: ocupaban sitio para
-                                          * decir que no hay nada que decir.
-                                          */}
-                                        {classItem && (todayActivitiesCount > 0 || nextActivitiesCount > 0 || classItem.location) && (
+                                        {/* Hoy y Próx., siempre a la vista (el dueño los quiere aunque
+                                            estén en 0: así se sabe de un vistazo que no hay nada). «Hoy» es
+                                            lo que toca en esta clase; «Próx.» lo que se DEJÓ en ella para
+                                            otro día (ver CLAUDE.md, «La clase en vivo»). */}
+                                        {classItem && (
                                             <div className="pt-2 border-t border-gray-100/80 flex items-center justify-between gap-1 mt-auto flex-wrap">
-                                                <div className="flex items-center gap-1 flex-wrap">
-                                                    {todayActivitiesCount > 0 && (
-                                                        <span
-                                                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-blue-100 text-blue-900"
-                                                            title={`${todayActivitiesCount} actividad(es) para esta clase`}
-                                                        >
-                                                            {todayActivitiesCount} para hoy
-                                                        </span>
-                                                    )}
-                                                    {nextActivitiesCount > 0 && (
-                                                        <span
-                                                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-purple-100 text-purple-900"
-                                                            title={`En esta clase se dejaron ${nextActivitiesCount} actividad(es) para otro día`}
-                                                        >
-                                                            {nextActivitiesCount} para otro día
-                                                        </span>
-                                                    )}
+                                                <div className="flex items-center gap-1">
+                                                    <span
+                                                        className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                                                            todayActivitiesCount > 0 ? 'bg-blue-100 text-blue-900' : 'bg-gray-100 text-gray-600'
+                                                        }`}
+                                                        title={`${todayActivitiesCount} actividad(es) para esta clase`}
+                                                    >
+                                                        Hoy: {todayActivitiesCount}
+                                                    </span>
+                                                    <span
+                                                        className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                                                            nextActivitiesCount > 0 ? 'bg-purple-100 text-purple-900' : 'bg-gray-100 text-gray-600'
+                                                        }`}
+                                                        title={`En esta clase se dejaron ${nextActivitiesCount} actividad(es) para la próxima`}
+                                                    >
+                                                        Próx: {nextActivitiesCount}
+                                                    </span>
                                                 </div>
-
                                                 {classItem.location && (
                                                     <span className="text-[10px] text-gray-600 truncate max-w-[70px]">
                                                         {classItem.location}
@@ -946,13 +930,6 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
             />
 
             {/* Modal de Calendario e Historial */}
-            {classroomId && (
-                <ScheduleCalendarModal
-                    isOpen={isCalendarModalOpen}
-                    onClose={() => setIsCalendarModalOpen(false)}
-                    classroomId={classroomId}
-                />
-            )}
 
             {/* Fase 3.5 Parte B — Historial por fecha (misma vista "Hoy", fecha parametrizada) */}
             {isHistoryOpen && (
