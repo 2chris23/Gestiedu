@@ -17,7 +17,11 @@ import { MEDIR, BANDA_ARRIBA, BANDA_ABAJO, DEDO, LETRA, ZONAS_DE_UN_TELEFONO } f
  *   PORTADA-06  el botón abre el portal del liceo y lleva a su login;
  *   PORTADA-07  el contraste pasa axe (WCAG AA), en claro y en oscuro;
  *   PORTADA-08  lo decorativo está escondido a los lectores de pantalla y el
- *               mensaje es texto de verdad.
+ *               mensaje es texto de verdad;
+ *   PORTADA-09  en el teléfono, «Qué resuelve» enseña cuatro tarjetas y un
+ *               «Ver 4 más» que abre el resto; desde la tableta, las ocho;
+ *   PORTADA-10  sin contacto ni dirección del sitio configurados, no hay botón
+ *               que no lleve a nadie ni imagen para compartir con `localhost`.
  *
  * Las bandas del teléfono (reloj y barra de gestos) no se miden aquí: la
  * portada es una página que se desplaza entera, sin barras fijas abajo, y lo
@@ -194,5 +198,44 @@ test.describe('Portada', () => {
         const fallos = r.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
         expect(fallos, fallos.join('\n')).toEqual([]);
         await expect(page).toHaveTitle(/GestiEdu/);
+    });
+
+    test('PORTADA-09: en el teléfono, cuatro tarjetas y «Ver 4 más»', async ({ browser }) => {
+        const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+        const page = await ctx.newPage();
+        await abrir(page);
+        const tarjetas = page.locator('#funciones-lista > li');
+        await expect(tarjetas).toHaveCount(8);
+        await expect(tarjetas.filter({ visible: true })).toHaveCount(4);
+        const boton = page.getByRole('button', { name: 'Ver 4 más' });
+        await expect(boton).toHaveAttribute('aria-expanded', 'false');
+        await expect(boton).toHaveAttribute('aria-controls', 'funciones-lista');
+        const antes = await page.evaluate(() => document.documentElement.scrollHeight);
+        await boton.click();
+        await expect(tarjetas.filter({ visible: true })).toHaveCount(8);
+        await expect(page.getByRole('button', { name: 'Ver menos' })).toHaveAttribute('aria-expanded', 'true');
+        // Plegado ahorra de verdad: al abrir, la página crece más de mil píxeles.
+        const despues = await page.evaluate(() => document.documentElement.scrollHeight);
+        expect(despues - antes).toBeGreaterThan(1000);
+        await ctx.close();
+
+        const ctx2 = await browser.newContext({ viewport: { width: 768, height: 1024 } });
+        const tableta = await ctx2.newPage();
+        await abrir(tableta);
+        await expect(tableta.locator('#funciones-lista > li').filter({ visible: true })).toHaveCount(8);
+        await expect(tableta.getByRole('button', { name: /Ver 4 más/ })).toBeHidden();
+        await ctx2.close();
+    });
+
+    test('PORTADA-10: sin configurar, ni botón vacío ni imagen con localhost', async ({ page }) => {
+        // La web de las pruebas se compila sin NEXT_PUBLIC_CONTACTO_DEMO ni
+        // NEXT_PUBLIC_SITIO_URL. Con ellos, lo cubre `contacto.test.ts`.
+        test.skip(!!process.env.NEXT_PUBLIC_CONTACTO_DEMO || !!process.env.NEXT_PUBLIC_SITIO_URL, 'web compilada con contacto o sitio');
+        await abrir(page);
+        await expect(page.getByRole('link', { name: /Pide una demostración/ })).toHaveCount(0);
+        await expect(page.locator('meta[property="og:image"]')).toHaveCount(0);
+        await expect(page.locator('meta[property="og:title"]')).toHaveCount(1);
+        const localhost = await page.locator('head').evaluate((h) => h.innerHTML.includes('localhost'));
+        expect(localhost).toBe(false);
     });
 });
