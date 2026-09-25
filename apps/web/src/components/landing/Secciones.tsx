@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { BookOpenCheck, ChevronDown, GraduationCap, HeartHandshake, School, UserRound } from 'lucide-react';
 import { BotonDelPortal } from './BotonDelPortal';
+import { BotonDeContacto } from './BotonDeContacto';
 
 /**
  * EL RESTO DE LA PORTADA, DESPUÉS DE LAS FUNCIONES
@@ -197,7 +198,7 @@ export function Preguntas() {
 
 // ─── Final y pie ───────────────────────────────────────────────────────────
 
-export function Llamada() {
+export function Llamada({ contacto }: { contacto?: string }) {
     return (
         <section className="bg-white px-4 py-20 sm:px-6 lg:px-8">
             <div className="relative mx-auto max-w-5xl overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-700 via-indigo-600 to-blue-700 px-6 py-14 text-center text-white shadow-xl sm:px-14">
@@ -205,10 +206,13 @@ export function Llamada() {
                 <div className="relative mx-auto max-w-2xl">
                     <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Tu liceo, al día desde el primer lapso</h2>
                     <p className="mt-4 text-base leading-7 text-indigo-100">
-                        Si tu liceo ya está en Gestiedu, entra por su portal con tu correo. Cada liceo tiene el suyo.
+                        {contacto
+                            ? 'Escríbenos para verlo funcionando. Si tu liceo ya está en Gestiedu, entra por su portal con tu correo.'
+                            : 'Si tu liceo ya está en Gestiedu, entra por su portal con tu correo. Cada liceo tiene el suyo.'}
                     </p>
-                    <div className="mt-8 flex justify-center">
-                        <BotonDelPortal variante="claro" className="px-8 text-base">
+                    <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
+                        {contacto && <BotonDeContacto enlace={contacto} variante="claro" className="px-8 text-base" />}
+                        <BotonDelPortal variante={contacto ? 'sobre-color' : 'claro'} className="px-8 text-base">
                             Entrar a mi liceo
                         </BotonDelPortal>
                     </div>

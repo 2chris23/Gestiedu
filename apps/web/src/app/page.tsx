@@ -4,6 +4,8 @@ import { ArrowDown, GraduationCap } from 'lucide-react';
 import { Escaparate } from '@/components/landing/escaparate/Escaparate';
 import { FeaturesSection } from '@/components/landing/FeaturesSection';
 import { BotonDelPortal, ProveedorDelPortal } from '@/components/landing/BotonDelPortal';
+import { BotonDeContacto } from '@/components/landing/BotonDeContacto';
+import { contactoDemo, direccionDelSitio } from '@/components/landing/contacto';
 import { ComoSeEmpieza, HechoParaVenezuela, Llamada, ParaQuien, Pie, Preguntas } from '@/components/landing/Secciones';
 
 /**
@@ -21,7 +23,23 @@ const TITULO = 'GestiEdu | Sistema de Gestión Escolar para Liceos';
 const DESCRIPCION =
     'Sistema de gestión escolar para liceos de Venezuela: asistencia desde el teléfono o por QR, notas y promedios por lapso con la escala del 1 al 20, horarios de mañana y tarde sin choques, mensualidades en dólares o bolívares y representantes al tanto.';
 
+const TITULO_AL_COMPARTIR = 'Gestiedu — tu liceo al día, desde el teléfono de cada profesor';
+
+/**
+ * La imagen para compartir es la propia portada (`public/portada-compartir.jpg`,
+ * la saca `docs/nube/portada/imagen-para-compartir.mjs`). Solo se anuncia con
+ * la dirección del sitio: ver `contacto.ts`.
+ */
+const SITIO = direccionDelSitio();
+const IMAGEN = {
+    url: '/portada-compartir.jpg',
+    width: 1200,
+    height: 630,
+    alt: 'La portada de Gestiedu: un portátil, una tableta y un teléfono con el sistema abierto.',
+};
+
 export const metadata: Metadata = {
+    ...(SITIO ? { metadataBase: SITIO, alternates: { canonical: '/' } } : {}),
     // El mismo título que pone `DynamicTitle` en `/`: si no, parpadea al cargar.
     title: TITULO,
     description: DESCRIPCION,
@@ -30,13 +48,15 @@ export const metadata: Metadata = {
         type: 'website',
         locale: 'es_VE',
         siteName: 'Gestiedu',
-        title: 'Gestiedu — tu liceo al día, desde el teléfono de cada profesor',
+        title: TITULO_AL_COMPARTIR,
         description: DESCRIPCION,
+        ...(SITIO ? { url: '/', images: [IMAGEN] } : {}),
     },
     twitter: {
-        card: 'summary',
-        title: 'Gestiedu — tu liceo al día, desde el teléfono de cada profesor',
+        card: SITIO ? 'summary_large_image' : 'summary',
+        title: TITULO_AL_COMPARTIR,
         description: DESCRIPCION,
+        ...(SITIO ? { images: [IMAGEN] } : {}),
     },
     robots: { index: true, follow: true },
 };
@@ -50,6 +70,7 @@ const DATOS_ESTRUCTURADOS = {
     operatingSystem: 'Web, Android',
     inLanguage: 'es-VE',
     description: DESCRIPCION,
+    ...(SITIO ? { url: SITIO.href } : {}),
 };
 
 function Cabecera() {
@@ -81,6 +102,7 @@ function Cabecera() {
 }
 
 export default function Portada() {
+    const contacto = contactoDemo();
     return (
         <ProveedorDelPortal>
             <script
@@ -111,14 +133,30 @@ export default function Portada() {
                                 tu plantel, y la dirección y los representantes lo ven en el momento.
                             </p>
                             <div className="mt-9 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
-                                <BotonDelPortal className="h-12 px-7 text-base">Entrar a mi liceo</BotonDelPortal>
-                                <a
-                                    href="#funciones"
-                                    className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-7 text-base font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50"
-                                >
-                                    Qué resuelve
-                                    <ArrowDown className="h-4 w-4" aria-hidden />
-                                </a>
+                                {/*
+                                 * Una llamada llena y una de contorno, nunca tres. Con un
+                                 * contacto configurado, la llena es para quien aún no es
+                                 * cliente; si no, la de entrar, y la otra baja a leer.
+                                 */}
+                                {contacto ? (
+                                    <>
+                                        <BotonDeContacto enlace={contacto} className="h-12 px-7 text-base" />
+                                        <BotonDelPortal variante="contorno" className="h-12 px-7 text-base">
+                                            Entrar a mi liceo
+                                        </BotonDelPortal>
+                                    </>
+                                ) : (
+                                    <>
+                                        <BotonDelPortal className="h-12 px-7 text-base">Entrar a mi liceo</BotonDelPortal>
+                                        <a
+                                            href="#funciones"
+                                            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-7 text-base font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50"
+                                        >
+                                            Qué resuelve
+                                            <ArrowDown className="h-4 w-4" aria-hidden />
+                                        </a>
+                                    </>
+                                )}
                             </div>
                         </div>
 
@@ -132,7 +170,7 @@ export default function Portada() {
                     <ParaQuien />
                     <ComoSeEmpieza />
                     <Preguntas />
-                    <Llamada />
+                    <Llamada contacto={contacto} />
                 </main>
 
                 <Pie />
