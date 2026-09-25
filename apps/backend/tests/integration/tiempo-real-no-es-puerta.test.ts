@@ -250,6 +250,16 @@ describe('El tiempo real no es una puerta trasera', () => {
         expect(delBuzonPropio).not.toBeNull();
     }, 40000);
 
+    it('SOCKET-09: la llave de una sesión cerrada ya no abre el socket', async () => {
+        // Al cerrar sesión la llave de acceso queda anulada en el acto para la
+        // API; el tiempo real la seguía aceptando sus 15 minutos de vida.
+        const { revokeAccessToken } = await import('../../src/middleware/auth.middleware');
+        const llave = generateTestToken(estudiante.id, UserRole.STUDENT, 'institute');
+        expect((await entrarAlSocket(llave)).entro).toBe(true);
+        await revokeAccessToken('institute', llave);
+        expect((await entrarAlSocket(llave)).entro).toBe(false);
+    }, 30000);
+
     it('SOCKET-07: una cuenta desactivada no puede abrir el socket', async () => {
         const desactivado = (await createTestUser(prisma, UserRole.TEACHER)).user;
         const token = generateTestToken(desactivado.id, UserRole.TEACHER, 'institute');
