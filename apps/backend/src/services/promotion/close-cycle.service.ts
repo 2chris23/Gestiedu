@@ -105,8 +105,21 @@ export interface StudentSuggestion {
     defaultTargetSection: string | null;
     defaultTargetShift?: string | null;
     /** `conNotas`: si tiene alguna nota en la materia. Un 0 es una nota; «sin notas», no. */
-    subjectGrades: Array<{ subjectId: string; subjectName: string; average: number; approved: boolean; conNotas?: boolean }>;
-    failedSubjects: Array<{ name: string; average: number }>;
+    /**
+     * `average` es la definitiva que cuenta para la promoción: la de los
+     * lapsos o, si la reprobó y presentó revisión, la nota de la revisión
+     * (`revision`, y `definitivaDeLapsos` guarda la de antes).
+     */
+    subjectGrades: Array<{
+        subjectId: string;
+        subjectName: string;
+        average: number;
+        approved: boolean;
+        conNotas?: boolean;
+        revision?: number | null;
+        definitivaDeLapsos?: number;
+    }>;
+    failedSubjects: Array<{ subjectId?: string; name: string; average: number; revision?: number | null }>;
     pendingCount: number;
     finalAverage: number;
     suggestedStatus: SuggestionStatus;
@@ -147,6 +160,17 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
         },
     });
 
+    // Las notas de revisión del ciclo (`services/revision.service.ts`): la de
+    // una materia reprobada es su definitiva para la promoción (REV-*).
+    const revisiones = new Map<string, number>(
+        (
+            await prisma.notaDeRevision.findMany({
+                where: { academicYearId },
+                select: { studentId: true, subjectId: true, score: true },
+            })
+        ).map((r: any) => [`${r.studentId}|${r.subjectId}`, r.score])
+    );
+
     const suggestions: StudentSuggestion[] = [];
     const chunkSize = 25;
     for (let i = 0; i < enrollments.length; i += chunkSize) {
@@ -161,12 +185,17 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                         const { promedio: avg, conNotas } = await gradesService.promedioDeLaMateria(
                             prisma, enr.studentId, cs.subjectId, undefined, undefined, config.redondeoDeDefinitivas
                         );
+                        const revision = revisiones.get(`${enr.studentId}|${cs.subjectId}`);
+                        const usaRevision = conNotas && avg < config.notaMinimaAprobatoria && revision !== undefined;
+                        const definitiva = usaRevision ? (revision as number) : avg;
                         return {
                             subjectId: cs.subjectId,
                             subjectName: cs.subject.name,
-                            average: avg,
-                            approved: avg >= config.notaMinimaAprobatoria,
+                            average: definitiva,
+                            approved: definitiva >= config.notaMinimaAprobatoria,
                             conNotas,
+                            revision: usaRevision ? (revision as number) : null,
+                            definitivaDeLapsos: avg,
                         };
                     })
                 );
@@ -216,7 +245,7 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                     defaultTargetSection: classroom.section,
                     defaultTargetShift: classroom.shift || 'MANANA',
                     subjectGrades,
-                    failedSubjects: failed.map(f => ({ name: f.subjectName, average: f.average })),
+                    failedSubjects: failed.map(f => ({ subjectId: f.subjectId, name: f.subjectName, average: f.average, revision: f.revision ?? null })),
                     pendingCount,
                     finalAverage,
                     suggestedStatus,
@@ -409,7 +438,7 @@ export async function confirmClose(
                     status: 'RETIRADO',
                     finalResult: 'NO_PROMOVIDO',
                     pendingSubjects: s.failedSubjects.map(f => f.name),
-                    subjectGrades: s.subjectGrades.map(sg => ({ subjectId: sg.subjectId, subjectName: sg.subjectName, average: sg.average })),
+                    subjectGrades: s.subjectGrades.map(sg => ({ subjectId: sg.subjectId, subjectName: sg.subjectName, average: sg.average, ...(sg.revision != null ? { revision: sg.revision, definitivaDeLapsos: sg.definitivaDeLapsos } : {}) })),
                     assignedClassroomId: null,
                 });
                 records.push({ studentId: s.studentId, finalResult: 'RETIRADO', assignedClassroomId: null });
@@ -427,7 +456,7 @@ export async function confirmClose(
                     status: 'COMPLETED',
                     finalResult: decision.finalResult === 'NO_PROMOVIDO' ? 'NO_PROMOVIDO' : 'PROMOVIDO',
                     pendingSubjects: s.failedSubjects.map(f => f.name),
-                    subjectGrades: s.subjectGrades.map(sg => ({ subjectId: sg.subjectId, subjectName: sg.subjectName, average: sg.average })),
+                    subjectGrades: s.subjectGrades.map(sg => ({ subjectId: sg.subjectId, subjectName: sg.subjectName, average: sg.average, ...(sg.revision != null ? { revision: sg.revision, definitivaDeLapsos: sg.definitivaDeLapsos } : {}) })),
                     assignedClassroomId: null,
                 });
                 records.push({ studentId: s.studentId, finalResult: 'GRADUATED', assignedClassroomId: null });
@@ -518,7 +547,7 @@ export async function confirmClose(
                 status: 'COMPLETED',
                 finalResult: decision.finalResult,
                 pendingSubjects: s.failedSubjects.map(f => f.name),
-                subjectGrades: s.subjectGrades.map(sg => ({ subjectId: sg.subjectId, subjectName: sg.subjectName, average: sg.average })),
+                subjectGrades: s.subjectGrades.map(sg => ({ subjectId: sg.subjectId, subjectName: sg.subjectName, average: sg.average, ...(sg.revision != null ? { revision: sg.revision, definitivaDeLapsos: sg.definitivaDeLapsos } : {}) })),
                 assignedClassroomId: targetClassroomId,
             });
 

@@ -17,6 +17,8 @@ import { AppErrors } from '../middleware/error.middleware';
  *   - la definitiva es la de todo el ciclo, igual que al cerrarlo;
  *   - una materia sin notas sale vacía (null), no en 0: un 0 es una nota y
  *     «sin notas» no (CERO-*);
+ *   - si reprobó una materia y la presentó en revisión, la nota de la
+ *     revisión es la que cuenta (`revision`; `services/revision.service.ts`);
  *   - las inasistencias salen de la asistencia diaria de las fechas del lapso:
  *     sin justificar (ABSENT), justificadas (EXCUSED) y tardanzas (LATE).
  *
@@ -37,6 +39,8 @@ export interface BoletaDelAlumno {
         nombre: string;
         notas: Record<string, number | null>;
         definitiva: number | null;
+        /** La nota de la revisión, si la reprobó y la presentó: es la que cuenta. */
+        revision: number | null;
         aprobada: boolean | null;
     }>;
     inasistencias: Record<string, { injustificadas: number; justificadas: number; tardanzas: number }>;
@@ -106,6 +110,15 @@ export async function boletaDelAlumno(
         .map((s) => s.subject)
         .sort((a, b) => a.name.localeCompare(b.name, 'es'));
 
+    const revisiones = new Map<string, number>(
+        (
+            await (prisma as any).notaDeRevision.findMany({
+                where: { studentId, academicYearId: inscripcion.academicYearId },
+                select: { subjectId: true, score: true },
+            })
+        ).map((r: any) => [r.subjectId, r.score])
+    );
+
     const materias = await Promise.all(
         materiasDeLaSeccion.map(async (m) => {
             const notas: Record<string, number | null> = {};
@@ -115,12 +128,17 @@ export async function boletaDelAlumno(
             }
             const def = await gradesService.promedioDeLaMateria(prisma, studentId, m.id, undefined, idsDeLapsos, redondeo);
             const definitiva = def.conNotas ? def.promedio : null;
+            // La revisión solo cuenta sobre una materia reprobada (como al cerrar).
+            const revision =
+                definitiva !== null && definitiva < config.notaMinimaAprobatoria ? (revisiones.get(m.id) ?? null) : null;
+            const queCuenta = revision ?? definitiva;
             return {
                 id: m.id,
                 nombre: m.name,
                 notas,
                 definitiva,
-                aprobada: definitiva === null ? null : definitiva >= config.notaMinimaAprobatoria,
+                revision,
+                aprobada: queCuenta === null ? null : queCuenta >= config.notaMinimaAprobatoria,
             };
         })
     );
@@ -145,7 +163,7 @@ export async function boletaDelAlumno(
         };
     }
 
-    const promedios = { definitivo: media(materias.map((m) => m.definitiva).filter((n): n is number => n !== null)) } as BoletaDelAlumno['promedios'];
+    const promedios = { definitivo: media(materias.map((m) => m.revision ?? m.definitiva).filter((n): n is number => n !== null)) } as BoletaDelAlumno['promedios'];
     for (const l of lapsos) {
         promedios[l.id] = media(materias.map((m) => m.notas[l.id]).filter((n): n is number => n !== null));
     }

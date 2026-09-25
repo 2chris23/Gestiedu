@@ -14,6 +14,7 @@ import {
     previewPromotionStrategy
 } from '../controllers/academic-years.controller';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
+import { listarRevisiones, guardarRevision, borrarRevision } from '../controllers/revision.controller';
 
 const academicYearsRoutes: FastifyPluginAsync = async (fastify) => {
     // Rutas públicas o protegidas nivel usuario básico (si las hubiera)
@@ -40,6 +41,11 @@ const academicYearsRoutes: FastifyPluginAsync = async (fastify) => {
             adminRoutes.get('/close/strategies', getCloseStrategies);
             adminRoutes.post('/:id/close/prepare', prepareAcademicYearClose);
             adminRoutes.post('/:id/close', confirmAcademicYearClose);
+            // La revisión de las materias reprobadas, antes del cierre
+            // (services/revision.service.ts).
+            adminRoutes.get('/:id/revisiones', listarRevisiones as any);
+            adminRoutes.put('/:id/revisiones', guardarRevision as any);
+            adminRoutes.delete('/:id/revisiones/:revisionId', borrarRevision as any);
             // Fase 3.5 Parte 2 — página de promoción
             adminRoutes.get('/:id/promotion-context', getPromotionContext);
             adminRoutes.post('/:id/promotion/strategy-preview', previewPromotionStrategy);
