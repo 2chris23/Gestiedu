@@ -45,13 +45,13 @@ module.exports = {
              * altura; una tableta tumbada pasa de 600 px de alto.
              *
              * `lateral:` = hay sitio para la barra lateral: ancho de ordenador
-             * con ratón, o ancho de tableta y además alto de tableta.
+             * con ratón, o ancho de tableta y además alto de tableta. Es una
+             * VARIANTE (abajo, en `plugins`), no un tamaño de `screens`: un
+             * `screens` con `raw` apaga en todo el proyecto los `min-[700px]:`
+             * y `max-[…]:` (Tailwind solo los genera si todos los tamaños son
+             * un ancho simple). Pasó: el horario en vivo del ordenador salió
+             * con las fichas del teléfono y el plan perdió sus columnas.
              */
-            screens: {
-                lateral: {
-                    raw: '(min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (min-height: 600px)',
-                },
-            },
             colors: {
                 // ── El papel y la tinta ──────────────────────────────────
                 lienzo: {
@@ -262,5 +262,9 @@ module.exports = {
         // ventana. Es lo que hace que una tabla metida en una columna estrecha
         // se comporte como en un teléfono, aunque la pantalla sea enorme.
         require('@tailwindcss/container-queries'),
+        // `lateral:` — ver el comentario de arriba, en `theme.extend`.
+        function ({ addVariant }) {
+            addVariant('lateral', '@media (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (min-height: 600px)');
+        },
     ],
 };
