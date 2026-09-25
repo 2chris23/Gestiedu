@@ -93,6 +93,17 @@ export async function updateAcademicConfig(instituteId: string, patch: Partial<A
 
 export type SuggestionStatus = 'PROMOVIDO' | 'PROMOVIDO_CON_PENDIENTES' | 'NO_PROMOVIDO';
 
+/**
+ * Lo que le toca al alumno según cuántas materias reprobó y las reglas del
+ * liceo. La usan el cierre y el resumen final, para que digan lo mismo.
+ */
+export function condicionSugerida(pendientes: number, esUltimoAno: boolean, config: AcademicConfig): SuggestionStatus {
+    if (pendientes === 0) return 'PROMOVIDO';
+    if (esUltimoAno && !config.permitePendientesEnUltimoAno) return 'NO_PROMOVIDO';
+    if (pendientes <= config.maxMateriasPendientesParaPromover) return 'PROMOVIDO_CON_PENDIENTES';
+    return 'NO_PROMOVIDO';
+}
+
 export interface StudentSuggestion {
     studentId: string;
     name: string;
@@ -213,16 +224,7 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                 const ultimoAno = config.maxGradeLevel ?? (config.modalidad === 'MEDIA_TECNICA' ? 6 : 5);
                 const isLastGrade = classroom.grade >= ultimoAno;
 
-                let suggestedStatus: SuggestionStatus;
-                if (pendingCount === 0) {
-                    suggestedStatus = 'PROMOVIDO';
-                } else if (isLastGrade && !config.permitePendientesEnUltimoAno) {
-                    suggestedStatus = 'NO_PROMOVIDO';
-                } else if (pendingCount <= config.maxMateriasPendientesParaPromover) {
-                    suggestedStatus = 'PROMOVIDO_CON_PENDIENTES';
-                } else {
-                    suggestedStatus = 'NO_PROMOVIDO';
-                }
+                const suggestedStatus = condicionSugerida(pendingCount, isLastGrade, config);
 
                 let defaultTargetGrade: number | null = null;
                 if (isLastGrade) {
