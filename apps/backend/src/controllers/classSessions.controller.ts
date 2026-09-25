@@ -76,6 +76,9 @@ export async function getClassSessionById(
         if (!session) {
             return reply.status(404).send({ error: 'Sesión no encontrada' });
         }
+        // La clase, con la asistencia de cada alumno, es de quien la da (y del
+        // guía de la sección, que la mira). Antes la leía cualquier profesor.
+        await exigirClasePropia(request, session.classroomId, session.subjectId, 'ver la clase');
 
         return reply.status(200).send(session);
     } catch (error) {
@@ -144,6 +147,17 @@ export async function updateClassSession(
         const { sessionId } = request.params;
         const { topic, observations, startTime, endTime } = request.body;
         const prisma = request.tenantPrisma;
+
+        // Antes cualquier profesor le cambiaba el tema y las observaciones a
+        // una clase ajena solo con su id.
+        const actual = await prisma.classSession.findUnique({
+            where: { id: sessionId },
+            select: { classroomId: true, subjectId: true },
+        });
+        if (!actual) {
+            return reply.status(404).send({ error: 'Sesión no encontrada' });
+        }
+        await exigirClasePropia(request, actual.classroomId, actual.subjectId, 'dar clase');
 
         const session = await prisma.classSession.update({
             where: { id: sessionId },
@@ -622,6 +636,10 @@ export async function createClassSession(
         const { classroomId, subjectId, date, topic, observations, startTime, endTime } = request.body;
         const prisma = request.tenantPrisma;
 
+        // Abrir la clase es darla: solo quien la imparte. Antes bastaba ser
+        // profesor, de cualquier sección.
+        await exigirClasePropia(request, classroomId, subjectId, 'dar clase');
+
         // La fecha la decide el servidor: con el reloj del dispositivo adelantado
         // (a mano o por VPN) se podría abrir la clase de un día que no ha llegado.
         const zonaLiceo = await instituteTimezone(prisma);
@@ -704,6 +722,23 @@ export async function saveLiveClassSession(
         }
 
         await exigirClasePropia(request, classroomId, subjectId, 'dar clase');
+
+        // La lista que se pasa es la de ESTA sección. Sin mirarlo, el profesor
+        // de 1.º A ponía ausente a un alumno de 1.º B —y le pisaba lo que su
+        // profesor ya hubiera marcado ese día—, igual que ya no puede por
+        // `/attendance` (`quien-puede-que.test.ts`).
+        if (attendances.length > 0) {
+            const ids = Array.from(new Set(attendances.map((a) => a.studentId)));
+            const deLaSeccion = await prisma.studentClassroom.count({
+                where: { classroomId, isActive: true, studentId: { in: ids } },
+            });
+            if (deLaSeccion !== ids.length) {
+                return reply.status(403).send({
+                    error: 'Solo se pasa asistencia a los alumnos de esta sección',
+                    code: 'STUDENT_NOT_IN_CLASSROOM',
+                });
+            }
+        }
 
         const parsedDate = new Date(date);
         const startOfDay = new Date(parsedDate);
@@ -865,6 +900,8 @@ export async function getClassActivities(
             select: { id: true },
         });
         if (sub) targetSubjectId = sub.id;
+
+        await exigirClasePropia(request, classroomId, targetSubjectId, 'ver las actividades');
 
         const activities = await prisma.classActivity.findMany({
             where: { classroomId, subjectId: targetSubjectId },
