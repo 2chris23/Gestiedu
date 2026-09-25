@@ -8,7 +8,7 @@ import {
     ChevronLeft, Calendar, Clock,
     BookOpen, Users, GraduationCap, Bell, Search,
     Filter, UserPlus, Trash2,
-    CheckCircle2
+    CheckCircle2, FileText
 } from 'lucide-react';
 import Link from 'next/link';
 import { useStudents, useAvailableStudents, useAssignStudent } from '@/hooks/useStudents';
@@ -26,6 +26,7 @@ import AssignTeacherModal from '@/components/academic/AssignTeacherModal';
 import { AssignSubjectModal } from '@/components/academic/AssignSubjectModal';
 import { SubjectCard } from '@/components/academic/SubjectCard';
 import { useAuthStore } from '@/store/auth.store';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
 import StudentScheduleSection from '@/components/schedule/StudentScheduleSection';
 import EvaluationPlanSection from '@/components/evaluation/EvaluationPlanSection';
 import LapsoSelector from '@/components/academic/LapsoSelector'; // Fase 3.5 — filtro por lapso
@@ -94,6 +95,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     const { data: scheduleData } = useClassroomSchedule(classroomId || '');
     const scheduleBlocks = transformScheduleData(scheduleData);
     const { user } = useAuthStore();
+    const { yo } = useQuienSoy();
 
     const filteredStudents = students.filter((student: SectionStudent) => {
         if (!searchTerm) return true;
@@ -337,6 +339,15 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                             <span className="flex items-center gap-1 text-sm">
                                 <Users className="w-4 h-4" /> {students.length} Estudiantes
                             </span>
+                            {/* El resumen final: el admin y el guía de la sección (lo decide el servidor). */}
+                            {classroomId && (yo?.role === 'ADMIN' || (yo?.role === 'TEACHER' && ((classroom as any)?.teacherId ?? (classroom?.teacher as any)?.id) === yo?.id)) && (
+                                <Link
+                                    href={`/dashboard/resumen-final/${encodeURIComponent(classroomId)}`}
+                                    className="inline-flex min-h-[44px] items-center gap-1 rounded-lg px-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                >
+                                    <FileText className="w-4 h-4" /> Resumen final
+                                </Link>
+                            )}
                             <span className="ml-2">
                                 <LapsoSelector
                                     periods={((classroom as any)?.academicYear?.periods || []).map((p: any) => ({ id: p.id, name: p.name }))}
