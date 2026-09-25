@@ -108,6 +108,9 @@ test.describe('Portada', () => {
         await page.waitForTimeout(2500);
         expect(await loQueSeVe(page)).toEqual(pausado);
 
+        // El nombre dice el estado; un `aria-pressed` encima se leía «Seguir, pulsado».
+        await expect(page.getByRole('button', { name: 'Seguir' })).not.toHaveAttribute('aria-pressed', /.*/);
+
         // Y se puede saltar a una escena: el QR.
         await page.getByRole('button', { name: 'Seguir' }).click();
         await page.getByRole('button', { name: 'Asistencia por QR' }).click();
