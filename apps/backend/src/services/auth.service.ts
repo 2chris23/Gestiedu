@@ -1,7 +1,7 @@
 import { UserRole } from '../utils/prisma-enums';
 import { PrismaClient } from '@prisma/client';
 import { generateTokenPair, verifyRefreshToken } from '../config/jwt';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes } from 'crypto';
 import { comparePassword, hashPassword } from '../utils/bcrypt';
 import { RedisSession } from '../config/redis';
 import { AppErrors } from '../middleware/error.middleware';
@@ -64,6 +64,17 @@ export interface RefreshTokenData {
  */
 const GRACIA_DE_ROTACION_MS = 30_000;
 
+/**
+ * Un resumen bcrypt que no abre nada, con las mismas vueltas que los de
+ * verdad (se hace con `hashPassword`), para que comprobar contra él tarde lo
+ * mismo. Se prepara una vez.
+ */
+let resumenDeMentiraListo: Promise<string> | null = null;
+function resumenDeMentira(): Promise<string> {
+  if (!resumenDeMentiraListo) resumenDeMentiraListo = hashPassword(randomBytes(24).toString('hex'));
+  return resumenDeMentiraListo;
+}
+
 class AuthService {
   /**
    * Iniciar sesión
@@ -94,7 +105,18 @@ class AuthService {
       }
     });
 
-    if (!user) {
+    /**
+     * LA PANTALLA DE ENTRAR NO DICE QUIÉN EXISTE
+     *
+     * La contraseña se comprueba SIEMPRE y PRIMERO:
+     *   · sin cuenta, contra un resumen de mentira, para tardar lo mismo que
+     *     con cuenta: si no, el reloj decía qué correos existen;
+     *   · «desactivada» o «archivada» solo se le dice a quien trae la
+     *     contraseña buena. Antes bastaba el correo para saber que esa persona
+     *     estuvo en el liceo y ya no está (`el-login-no-dice-quien-existe`).
+     */
+    const isPasswordValid = await comparePassword(password, user?.password ?? (await resumenDeMentira()));
+    if (!user || !isPasswordValid) {
       throw AppErrors.InvalidCredentials();
     }
 
@@ -104,12 +126,6 @@ class AuthService {
 
     if (!user.isActive) {
       throw AppErrors.UserInactive();
-    }
-
-    // Verificar contraseña
-    const isPasswordValid = await comparePassword(password, user.password);
-    if (!isPasswordValid) {
-      throw AppErrors.InvalidCredentials();
     }
 
     return this.abrirSesion(user, db, { keepSession, rememberMe }, instituteContextId, deviceMeta);
