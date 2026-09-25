@@ -11,6 +11,9 @@
  *                  (lo que Lighthouse llama TBT), hasta 6 s después de cargar.
  *   · JS         — los kilobytes de JavaScript que baja (comprimidos).
  *   · Imágenes   — los kilobytes de imágenes que baja.
+ *   · INP        — lo que tarda en pintarse la respuesta a un toque, el peor
+ *                  de: cada botón de escena, «Pausar», «Ver 4 más» (solo en
+ *                  el teléfono) y abrir una pregunta. Bueno: 200 ms o menos.
  *
  * Qué NO mide: un teléfono de verdad, la red de verdad de un liceo, ni el
  * primer arranque en frío del servidor (se hace una carga de calentamiento
@@ -66,7 +69,10 @@ async function unaVez(browser, perfil) {
     });
 
     await page.addInitScript(() => {
-        window.__m = { lcp: 0, cls: 0, bloqueo: 0, fcp: 0 };
+        window.__m = { lcp: 0, cls: 0, bloqueo: 0, fcp: 0, inp: 0 };
+        new PerformanceObserver((l) => {
+            for (const e of l.getEntries()) if (e.interactionId) window.__m.inp = Math.max(window.__m.inp, e.duration);
+        }).observe({ type: 'event', buffered: true, durationThreshold: 16 });
         new PerformanceObserver((l) => {
             for (const e of l.getEntries()) window.__m.lcp = e.startTime;
         }).observe({ type: 'largest-contentful-paint', buffered: true });
@@ -85,6 +91,21 @@ async function unaVez(browser, perfil) {
     await page.waitForTimeout(6000);
     // El LCP se congela con la primera interacción; se lee antes.
     const m = await page.evaluate(() => window.__m);
+
+    // Ahora, los toques. Uno detrás de otro, con aire para que se pinte.
+    const tocar = async (loc) => {
+        if (!(await loc.isVisible())) return;
+        await loc.scrollIntoViewIfNeeded();
+        await (perfil.movil ? loc.tap() : loc.click());
+        await page.waitForTimeout(400);
+    };
+    const escenas = page.getByRole('group', { name: 'Escenas de la demostración' }).getByRole('button');
+    for (let i = 0; i < (await escenas.count()); i++) await tocar(escenas.nth(i));
+    await tocar(page.getByRole('button', { name: /^(Pausar|Seguir)/ }).first());
+    await tocar(page.getByRole('button', { name: /^Ver \d+ más/ }));
+    await tocar(page.locator('#preguntas summary').first());
+    await page.waitForTimeout(500);
+    m.inp = await page.evaluate(() => window.__m.inp);
     await context.close();
     return { ...m, js: bytes.js / 1024, img: bytes.img / 1024, total: bytes.total / 1024 };
 }
@@ -104,7 +125,7 @@ for (const perfil of PERFILES) {
     console.log(
         `${etiqueta} ${perfil.nombre.padEnd(10)} FCP ${r('fcp').toFixed(0)} ms · LCP ${r('lcp').toFixed(0)} ms · ` +
             `CLS ${r('cls').toFixed(3)} · bloqueo ${r('bloqueo').toFixed(0)} ms · ` +
-            `JS ${r('js').toFixed(0)} KB · imágenes ${r('img').toFixed(0)} KB · total ${r('total').toFixed(0)} KB`
+            `INP ${r('inp').toFixed(0)} ms · JS ${r('js').toFixed(0)} KB · imágenes ${r('img').toFixed(0)} KB · total ${r('total').toFixed(0)} KB`
     );
 }
 await browser.close();
