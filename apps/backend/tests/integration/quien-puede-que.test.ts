@@ -295,9 +295,9 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
      * rojo el día que alguien lo cierre sin quitarlo de esta lista. Al
      * arreglarlo, se quita de aquí en el mismo commit.
      */
-    const HUECOS_ABIERTOS = new Set<string>([
-        'GET buscar alumnos',
-    ]);
+    // Las rutas que se sabe que dejan pasar a quien no debe (se miden con
+    // `it.failing` hasta que se cierran). Hoy, ninguna.
+    const HUECOS_ABIERTOS = new Set<string>([]);
 
     for (const caso of CASOS) {
         const prueba = HUECOS_ABIERTOS.has(caso.que) ? it.failing : it;

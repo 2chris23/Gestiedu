@@ -82,10 +82,40 @@ const nextConfig = {
     ];
   },
 
-  // Headers para permitir acceso desde subdominios de localhost en desarrollo
+  /**
+   * LAS PANTALLAS NO SE DEJAN METER DENTRO DE OTRA PÁGINA
+   *
+   * La API ya llevaba estas cabeceras (helmet); las pantallas, ninguna. Sin
+   * ellas, cualquier página podía poner el login del liceo dentro de un marco
+   * invisible y hacer que la gente escribiera su clave creyendo que estaba en
+   * otra cosa (clickjacking). Van en TODAS las rutas, en desarrollo también:
+   * así las pruebas miden lo mismo que se despliega (SEG-WEB-01).
+   *
+   * La cámara (escanear el QR de asistencia) y la ubicación (el faro) solo
+   * para la propia app; micrófono, pagos y USB, para nadie.
+   */
+  poweredByHeader: false,
+
   async headers() {
+    const seguridad = [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(self), geolocation=(self), microphone=(), payment=(), usb=(), browsing-topics=()',
+          },
+        ],
+      },
+    ];
+    // Acceso desde subdominios de localhost en desarrollo
     if (process.env.NODE_ENV === 'development') {
       return [
+        ...seguridad,
         {
           source: '/api/:path*',
           headers: [
@@ -96,7 +126,7 @@ const nextConfig = {
         },
       ];
     }
-    return [];
+    return seguridad;
   },
 
   // Nota: la copia de shared/ a public/_shared la realiza scripts/copy-shared.js

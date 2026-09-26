@@ -29,7 +29,7 @@ async function planDeLaFecha(
     return { meta, sem };
 }
 import { instituteTimezone, isFutureDate, todayInTimezone } from '../utils/school-time';
-import { assertClassroomScope, assertCanSeeClassroom, assertCanSeeStudent } from '../services/authorization.service';
+import { assertClassroomScope, assertCanSeeClassroom, assertCanSeeStudent, teacherClassroomIds } from '../services/authorization.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 import { revisarNotas, sumarNotas, arreglarNotasGuardadasComoTexto, Notas } from '../utils/notas-de-clase';
 
@@ -1794,6 +1794,17 @@ export async function searchStudentsForSession(
         const prisma = request.tenantPrisma;
 
         const where: any = { role: 'STUDENT', isActive: true };
+        /**
+         * El profesor encuentra a los alumnos de las secciones donde da clase o
+         * es guía; el admin, a todos. Antes cualquier profesor sacaba el nombre,
+         * la cédula, la foto y la sección de cualquier alumno del liceo con solo
+         * escribir una letra (HUECOS_ABIERTOS de `quien-puede-que.test.ts`).
+         */
+        const quien = request.user as any;
+        if (quien?.role !== 'ADMIN') {
+            const secciones = await teacherClassroomIds(prisma, quien?.userId ?? quien?.id ?? '');
+            where.studentClassrooms = { some: { isActive: true, classroomId: { in: secciones } } };
+        }
         if (search) {
             where.OR = [
                 { firstName: { contains: search, mode: 'insensitive' } },
