@@ -284,3 +284,62 @@ test.describe('Las fotos', () => {
         }
     });
 });
+
+test.describe('El carril del horario en vivo', () => {
+    /**
+     * «Cuando arrastras el horario en vivo no se mueve con suavidad.» El
+     * arrastre estaba programado a mano sobre el desplazamiento del navegador,
+     * que enganchaba cada ficha MIENTRAS se arrastraba; y tras pasar a Semana y
+     * volver a Hoy, el ratón ya no lo movía. Ahora lo lleva Embla (`Carril`).
+     */
+    test('CARRIL-01: se arrastra con el ratón, arrastrar no abre la clase, y sigue funcionando tras Semana → Hoy', async ({ page }, testInfo) => {
+        try {
+            const [profe] = await queryTenantDb(
+                `SELECT cs."teacherId" AS id
+                   FROM schedule_blocks b JOIN classroom_subjects cs ON cs.id = b."classroomSubjectId"
+                  WHERE b."blockType" = 'CLASS' AND cs."teacherId" IS NOT NULL
+                  GROUP BY cs."teacherId" ORDER BY count(*) DESC LIMIT 1`
+            );
+            await loginViaUI(page, 'admin@testing.edu.ve', '123456');
+            await page.setViewportSize({ width: 1280, height: 900 });
+            await page.goto(`${WEB_BASE}/dashboard/usuarios/${profe.id}`);
+
+            const carril = page.getByRole('group', { name: /^Horas de/ });
+            await expect(carril).toBeVisible({ timeout: 30000 });
+            const pista = carril.locator('> div').first();
+            const desplazamiento = async () =>
+                pista.evaluate((el) => new DOMMatrixReadOnly(getComputedStyle(el).transform).m41);
+
+            const arrastrar = async (hacia: number) => {
+                const caja = (await carril.boundingBox())!;
+                const y = caja.y + caja.height / 2;
+                const x = caja.x + caja.width * 0.8;
+                await page.mouse.move(x, y);
+                await page.mouse.down();
+                for (let i = 1; i <= 12; i++) await page.mouse.move(x + (hacia * i) / 12, y);
+                await page.mouse.up();
+                await page.waitForTimeout(900);
+            };
+
+            // Al principio del carril, para tener hacia dónde ir.
+            await page.getByRole('button', { name: 'Hoy' }).click();
+            const antes = await desplazamiento();
+            await arrastrar(-400);
+            const despues = await desplazamiento();
+            expect(despues).toBeLessThan(antes - 50);
+            // Arrastrar no es tocar: seguimos en el perfil.
+            await expect(page).toHaveURL(/\/dashboard\/usuarios\//);
+
+            // Semana y vuelta a Hoy: el ratón lo sigue moviendo.
+            await page.getByRole('button', { name: 'Semana' }).click();
+            await page.getByRole('button', { name: 'Hoy' }).click();
+            await expect(carril).toBeVisible();
+            const otraVez = await desplazamiento();
+            await arrastrar(400);
+            expect(await desplazamiento()).not.toBe(otraVez);
+        } catch (error) {
+            await captureEvidence(testInfo, page, 'CARRIL-01', 'El carril del horario en vivo se arrastra', error);
+            throw error;
+        }
+    });
+});

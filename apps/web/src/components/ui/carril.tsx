@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
-import type { EmblaOptionsType } from 'embla-carousel';
+import type { EmblaCarouselType, EmblaOptionsType } from 'embla-carousel';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -44,10 +44,32 @@ interface Props {
     conFlechas?: boolean;
     /** Deja de enganchar y corre libre. Para listas muy largas. */
     libre?: boolean;
+    /**
+     * El ancho de cada elemento (clases de Tailwind). Va en la caja de cada
+     * uno, no dentro: un `w-[44%]` dentro de una caja que mide lo que su
+     * contenido no significa nada.
+     */
+    anchoDeCada?: string;
+    /** El hueco entre elementos (clases de Tailwind). */
+    hueco?: string;
+    /** Dónde empieza: el horario del día arranca en la hora que va, no en la primera. */
+    inicio?: number;
+    /** Para quien quiera mover el carril desde fuera (flechas en otra parte). */
+    alListo?: (api: EmblaCarouselType) => void;
     className?: string;
 }
 
-export function Carril({ children, etiqueta, conFlechas = true, libre = false, className }: Props) {
+export function Carril({
+    children,
+    etiqueta,
+    conFlechas = true,
+    libre = false,
+    anchoDeCada,
+    hueco = 'gap-3',
+    inicio,
+    alListo,
+    className,
+}: Props) {
     const opciones: EmblaOptionsType = {
         align: 'start',
         containScroll: 'trimSnaps',
@@ -58,7 +80,17 @@ export function Carril({ children, etiqueta, conFlechas = true, libre = false, c
         skipSnaps: false,
     };
 
-    const [refCarril, embla] = useEmblaCarousel(opciones);
+    const [refCarril, embla] = useEmblaCarousel({ ...opciones, ...(inicio ? { startIndex: inicio } : {}) });
+
+    React.useEffect(() => {
+        if (embla && alListo) alListo(embla);
+    }, [embla, alListo]);
+
+    // Si cambia dónde empezar (llega la hora del servidor, se cambia de día),
+    // se salta ahí sin animación: no es un desplazamiento que haya pedido nadie.
+    React.useEffect(() => {
+        if (embla && inicio !== undefined) embla.scrollTo(inicio, true);
+    }, [embla, inicio]);
     const [puedeIzquierda, setPuedeIzquierda] = React.useState(false);
     const [puedeDerecha, setPuedeDerecha] = React.useState(false);
     const arrastrando = React.useRef(false);
@@ -169,9 +201,9 @@ export function Carril({ children, etiqueta, conFlechas = true, libre = false, c
                     ratón. Queda sucio y encima deja el texto seleccionado al
                     soltar.
                 */}
-                <div className="flex cursor-grab select-none gap-3 py-1 active:cursor-grabbing">
+                <div className={cn('flex cursor-grab select-none py-1 active:cursor-grabbing', hueco)}>
                     {React.Children.map(children, (hijo, i) => (
-                        <div key={i} className="min-w-0 shrink-0 grow-0">
+                        <div key={i} className={cn('min-w-0 shrink-0 grow-0', anchoDeCada)}>
                             {hijo}
                         </div>
                     ))}

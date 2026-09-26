@@ -14,7 +14,8 @@ import { useRouter } from 'next/navigation';
 import { useSchedulePeriods } from '@/hooks/useSchedulePeriods';
 import { useLiveOverviews, LiveOverviewSubject } from '@/hooks/useLiveClass';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
-import { useArrastrarParaDesplazar } from '@/hooks/useArrastrarParaDesplazar';
+import { Carril } from '@/components/ui/carril';
+import type { EmblaCarouselType } from 'embla-carousel';
 import TurnoBadge from '@/components/common/TurnoBadge';
 import { turnoDeLaHora } from '@/lib/turnos';
 import { toLocalYMD } from '@/utils/date.utils';
@@ -118,8 +119,9 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
     );
     const router = useRouter();
 
-    // El carril de bloques: se arrastra con el ratón, además de las flechas.
-    const { ref: carouselRef, arrastrando } = useArrastrarParaDesplazar<HTMLDivElement>();
+    // El carril de las horas (Embla, `components/ui/carril.tsx`): sigue al dedo
+    // y al ratón, con inercia al soltar. Las flechas de arriba lo mueven.
+    const [carril, setCarril] = React.useState<EmblaCarouselType | null>(null);
 
     // El día y la hora del LICEO, no los del aparato: con el reloj del
     // teléfono adelantado o en otra zona, «Hoy» enseñaba las clases de otro
@@ -207,17 +209,10 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
         );
     };
 
-    // Scroll por bloque completo en el carrusel
+    // Una hora más o una menos, desde las flechas de arriba.
     const scrollByBlock = (direction: 'prev' | 'next') => {
-        if (!carouselRef.current) return;
-        const container = carouselRef.current;
-        // Ancho de un bloque más el gap
-        const firstChild = container.firstElementChild as HTMLElement;
-        const blockWidth = firstChild ? firstChild.offsetWidth + 12 : 220;
-        container.scrollBy({
-            left: direction === 'next' ? blockWidth : -blockWidth,
-            behavior: 'smooth',
-        });
+        if (direction === 'next') carril?.scrollNext();
+        else carril?.scrollPrev();
     };
 
     // Determinar el día a mostrar
@@ -325,12 +320,6 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
     // El carril arranca en la hora que va (o la siguiente), no en la primera
     // de la mañana: a las diez nadie viene a ver la clase de las siete.
     const primeraQueQueda = timeline.findIndex((p) => getPeriodStatus(p.startTime, p.endTime) !== 'past');
-    React.useEffect(() => {
-        if (viewMode !== 'day' || primeraQueQueda <= 0) return;
-        const carril = carouselRef.current;
-        const ficha = carril?.children[primeraQueQueda] as HTMLElement | undefined;
-        if (carril && ficha) carril.scrollTo({ left: ficha.offsetLeft - carril.offsetLeft, behavior: 'auto' });
-    }, [viewMode, primeraQueQueda, timeline.length, carouselRef]);
 
     // Mapeo consistente de estilo moderno por materia
     const subjectStyleMap = useMemo(() => {
@@ -553,44 +542,39 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                 {/* 1. VISTA DE HOY (5 BLOQUES EXACTOS + SNAP SCROLL POR BLOQUE) */}
                 {/* ───────────────────────────────────────────────────────────── */}
                 {viewMode === 'day' && (
-                    <div
-                        ref={carouselRef}
-                        /*
-                            EL DÍA, EN UN CARRIL DE LADO (TAMBIÉN EN EL TELÉFONO)
+                    /*
+                        EL DÍA, EN UN CARRIL DE LADO (TAMBIÉN EN EL TELÉFONO)
 
-                            Estuvo una temporada en vertical —una hora debajo de
-                            otra, 140 px cada una— y el dueño lo quiso de vuelta
-                            de lado, como antes: el día cabe en un vistazo y se
-                            pasa con el dedo. Pero más apretado: en el teléfono
-                            cada ficha mide menos de la mitad del ancho, así que
-                            se ven dos y se asoma la tercera (eso dice «hay
-                            más»), y el carril arranca en la hora que va.
+                        Estuvo una temporada en vertical —una hora debajo de
+                        otra, 140 px cada una— y el dueño lo quiso de vuelta
+                        de lado, como antes: el día cabe en un vistazo y se
+                        pasa con el dedo. Pero más apretado: en el teléfono
+                        cada ficha mide menos de la mitad del ancho, así que
+                        se ven dos y se asoma la tercera (eso dice «hay
+                        más»), y el carril arranca en la hora que va.
 
-                            `data-carril-a-proposito`: la regla `arrastre` de
-                            `npm run movil` no lo cuenta como fallo; es a
-                            propósito.
-
-                            `relative`: la etiqueta escondida del tema
-                            (`sr-only`, que es `absolute`) se salía del carril
-                            y ensanchaba la PÁGINA entera a 1188 px; el
-                            teléfono la enseñaba alejada y los botones de la
-                            ventana de la clase no se podían pulsar.
-                        */
-                        data-carril-a-proposito=""
-                        className={`relative flex w-full gap-2.5 overflow-x-auto snap-x snap-mandatory no-scrollbar pb-2 pt-0.5 select-none min-[700px]:gap-3 ${
-                            arrastrando ? 'cursor-grabbing scroll-auto' : 'cursor-grab scroll-smooth'
-                        }`}
-                        style={{
-                            scrollbarWidth: 'none',
-                            msOverflowStyle: 'none',
-                        }}
+                        Lo mueve Embla (`Carril`), no el desplazamiento del
+                        navegador con un arrastre programado a mano: aquel
+                        enganchaba cada ficha MIENTRAS se arrastraba (las dos
+                        fuerzas peleaban: «no se mueve con suavidad»), no tenía
+                        inercia, y tras pasar a Semana y volver a Hoy el ratón
+                        ya no lo movía.
+                    */
+                    isLoading ? (
+                        <div className="w-full py-6 text-center text-xs font-medium text-gray-400">
+                            Cargando horario en vivo...
+                        </div>
+                    ) : (
+                    <Carril
+                        etiqueta={`Horas de ${displayDay.fullLabel}`}
+                        conFlechas={false}
+                        anchoDeCada="w-[44%] min-w-[148px] min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[170px]"
+                        hueco="gap-2.5 min-[700px]:gap-3"
+                        inicio={Math.max(0, primeraQueQueda)}
+                        alListo={setCarril}
+                        className="pb-1"
                     >
-                        {isLoading ? (
-                            <div className="w-full text-center py-6 text-gray-400 text-xs font-medium">
-                                Cargando horario en vivo...
-                            </div>
-                        ) : (
-                            timeline.map((period, index) => {
+                        {timeline.map((period, index) => {
                                 const status = getPeriodStatus(period.startTime, period.endTime);
 
                                 // ☕ Bloque de Descanso / Recreo
@@ -598,7 +582,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                     return (
                                         <div
                                             key={index}
-                                            className={`snap-start flex-shrink-0 w-[44%] min-w-[148px] min-h-[104px] p-2.5 min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[170px] min-[700px]:min-h-[145px] min-[700px]:p-3 rounded-2xl border transition-all flex flex-col justify-center items-center text-center ${
+                                            className={`h-full w-full min-h-[104px] p-2.5 min-[700px]:min-h-[145px] min-[700px]:p-3 rounded-2xl border transition-all flex flex-col justify-center items-center text-center ${
                                                 status === 'current'
                                                     ? 'bg-amber-50 border-amber-300 shadow-xs ring-2 ring-amber-200'
                                                     : status === 'past'
@@ -648,7 +632,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                                   }
                                                 : undefined
                                         }
-                                        className={`snap-start flex-shrink-0 w-[44%] min-w-[148px] min-h-[104px] p-2.5 min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[170px] min-[700px]:min-h-[145px] min-[700px]:p-3 rounded-2xl border-2 transition-all flex flex-col justify-between ${
+                                        className={`h-full w-full min-h-[104px] p-2.5 min-[700px]:min-h-[145px] min-[700px]:p-3 rounded-2xl border-2 transition-all flex flex-col justify-between ${
                                             isClickable ? 'cursor-pointer hover:ring-2 hover:ring-indigo-400 hover:shadow-xs' : ''
                                         } ${
                                             !classItem?.color
@@ -748,9 +732,9 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                         )}
                                     </div>
                                 );
-                            })
-                        )}
-                    </div>
+                            })}
+                    </Carril>
+                    )
                 )}
 
                 {/* ───────────────────────────────────────────────────────────── */}
