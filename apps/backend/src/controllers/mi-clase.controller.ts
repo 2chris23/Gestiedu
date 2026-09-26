@@ -49,7 +49,7 @@ export async function miClase(
                                 id: true,
                                 status: true,
                                 startDate: true,
-                                periods: { select: { id: true, name: true, startDate: true, endDate: true } },
+                                periods: { select: { id: true, name: true, startDate: true, endDate: true, inicioDelPlan: true } },
                             },
                         },
                     },
@@ -182,14 +182,17 @@ export async function miClase(
 
         // Las semanas del lapso, contadas igual que la rejilla del profesor
         // (`getEvaluationPlanMetadata`): así la «Semana 5» es la misma en las dos.
+        // Desde que empieza el PLAN, que puede ser después del inicio del lapso
+        // (semanas de diagnóstico, `Period.inicioDelPlan`).
         const delLapso = lapsos[Number(lapso) - 1];
-        const semanas = delLapso
-            ? Math.max(1, Math.ceil((delLapso.endDate.getTime() - delLapso.startDate.getTime()) / (7 * 24 * 60 * 60 * 1000)))
+        const inicioDelPlan = delLapso ? delLapso.inicioDelPlan ?? delLapso.startDate : null;
+        const semanas = delLapso && inicioDelPlan
+            ? Math.max(1, Math.ceil((delLapso.endDate.getTime() - inicioDelPlan.getTime()) / (7 * 24 * 60 * 60 * 1000)))
             : null;
 
         return reply.status(200).send({
             alumnoId: studentId,
-            inicioDelLapso: delLapso ? ymd(delLapso.startDate) : null,
+            inicioDelLapso: inicioDelPlan ? ymd(inicioDelPlan) : null,
             semanas,
             seccion: { id: seccion.id, name: seccion.name },
             materia: materiaDeLaSeccion.subject,

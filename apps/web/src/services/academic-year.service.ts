@@ -9,6 +9,10 @@ export interface Period {
     startDate: string;
     endDate: string;
     isActive?: boolean;
+    /** Cuándo empieza el contenido del plan de evaluación (vacío = con el lapso). */
+    inicioDelPlan?: string | null;
+    /** Cómo se llaman las semanas de antes («Diagnóstico» si no dice nada). */
+    nombreAntesDelPlan?: string | null;
 }
 
 export interface AcademicYear {

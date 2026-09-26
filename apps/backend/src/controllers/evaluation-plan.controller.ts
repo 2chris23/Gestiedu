@@ -4,7 +4,7 @@ import { AppErrors } from '../middleware/error.middleware';
 import { RequestUser } from '../types/fastify';
 import * as mammoth from 'mammoth';
 import * as cheerio from 'cheerio';
-import { planWeekNumberFromRange } from '../utils/plan-weeks';
+import { semanaDelPlanCon, NOMBRE_ANTES_DEL_PLAN } from '../services/semana-del-plan.service';
 import { assertClassroomScope, assertCanSeeClassroom } from '../services/authorization.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 import { versionDelPlan, filaSinCambios } from '../utils/version-del-plan';
@@ -145,10 +145,17 @@ export async function getEvaluationPlanMetadata(
             const lapsoIndex = parseInt(lapso) - 1;
             const period = activePeriods[lapsoIndex];
             if (period) {
-              autoPopulated.lapsoStartDate = period.startDate;
+              // Las semanas del plan cuentan desde que EMPIEZA EL PLAN, que el
+              // liceo puede poner después del inicio del lapso (semanas de
+              // diagnóstico: `Period.inicioDelPlan`). Igual que la clase en
+              // vivo (`services/semana-del-plan.service.ts`).
+              const inicioDelPlan = (period as any).inicioDelPlan ?? period.startDate;
+              autoPopulated.lapsoStartDate = inicioDelPlan;
               autoPopulated.lapsoEndDate = period.endDate;
+              autoPopulated.inicioDelLapso = period.startDate;
+              autoPopulated.nombreAntesDelPlan = (period as any).nombreAntesDelPlan?.trim() || NOMBRE_ANTES_DEL_PLAN;
               // Calcular semanas asegurando que los dias sobrantes cuenten como semana (Math.ceil)
-              const start = new Date(period.startDate);
+              const start = new Date(inicioDelPlan);
               const end = new Date(period.endDate);
               const diffMs = end.getTime() - start.getTime();
               const diffWeeks = Math.ceil(diffMs / (7 * 24 * 60 * 60 * 1000));
@@ -761,6 +768,22 @@ export async function getCalendarData(
       where: { classroomId }
     });
 
+    // Los lapsos del año de la sección: la semana del plan de cada día se
+    // cuenta igual que en la rejilla y en la clase en vivo.
+    const seccion = await db.classroom.findUnique({
+      where: { id: classroomId },
+      select: {
+        academicYear: {
+          select: {
+            startDate: true,
+            periods: { select: { id: true, startDate: true, endDate: true, inicioDelPlan: true, nombreAntesDelPlan: true } },
+          },
+        },
+      },
+    });
+    const lapsosDelAno = seccion?.academicYear?.periods ?? [];
+    const inicioDelAno = seccion?.academicYear?.startDate ?? null;
+
     // Generar calendario
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -780,23 +803,28 @@ export async function getCalendarData(
         const subjectId = block.classroomSubject?.subject?.id;
         if (!subjectId) continue;
 
-        // Encontrar lapso activo para esta fecha
-        const meta = allMetadata.find((m: any) => 
+        /**
+         * El plan de ese día: el de su LAPSO. Antes solo se encontraba si el
+         * plan tenía `fechaDesde` y `fechaHasta`, que ninguna pantalla
+         * escribe: el calendario casi nunca enseñaba la semana.
+         */
+        const semanaDelDia = semanaDelPlanCon(new Date(d), lapsosDelAno, inicioDelAno);
+        const meta = allMetadata.find((m: any) =>
           m.subjectId === subjectId &&
-          m.fechaDesde && m.fechaHasta &&
-          new Date(m.fechaDesde) <= d && d <= new Date(m.fechaHasta)
+          (semanaDelDia.lapso ? m.lapso === semanaDelDia.lapso : true)
         );
+        const sem = meta?.fechaDesde
+          ? semanaDelPlanCon(new Date(d), lapsosDelAno, inicioDelAno, new Date(meta.fechaDesde))
+          : semanaDelDia;
 
         let weekNumber: number | undefined;
         let planContent: any = undefined;
         let hasEvaluation = false;
         let evaluationCount = 0;
 
-        if (meta && meta.fechaDesde) {
-          // Calcular semana (CORRECCIÓN: alineada a LUNES — Semana 2 inicia en
-          // el primer lunes posterior a la semana inicial; utils/plan-weeks.ts)
-          const lapsoStart = new Date(meta.fechaDesde);
-          weekNumber = planWeekNumberFromRange(lapsoStart, d);
+        if (meta && sem.inicioDelPlan && !sem.antesDelPlan) {
+          // Semanas alineadas a LUNES (utils/plan-weeks.ts)
+          weekNumber = sem.semana;
 
           // Obtener contenido de esa semana
           const weekRows = allPlanRows.filter((r: any) =>

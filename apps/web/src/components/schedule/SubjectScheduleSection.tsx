@@ -343,7 +343,9 @@ export default function SubjectScheduleSection({
                         const isToday = session.status === 'today';
                         const isPast = session.status === 'past';
 
-                        const temaGenerador = subjectInfo?.temaGenerador || 'Tema de clase programado';
+                        const temaGenerador = subjectInfo?.antesDelPlan
+                            ? subjectInfo.nombreAntesDelPlan || 'Diagnóstico'
+                            : subjectInfo?.temaGenerador || 'Tema de clase programado';
                         const firstColLabel = subjectInfo?.firstColumnLabel || 'Tema Generador';
                         const todayActCount = subjectInfo?.todayActivitiesCount ?? 0;
                         const nextActCount = subjectInfo?.nextActivitiesCount ?? 0;

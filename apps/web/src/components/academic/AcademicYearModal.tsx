@@ -59,6 +59,13 @@ const autoSplitPeriods = (startStr: string, endStr: string, existingPeriods?: Pe
     });
 };
 
+/** Semanas (redondeadas hacia arriba) entre el inicio del lapso y el del plan. */
+const semanasAntesDelPlan = (p: Period): number => {
+    if (!p.inicioDelPlan || !p.startDate || p.inicioDelPlan <= p.startDate) return 0;
+    const dias = (new Date(p.inicioDelPlan).getTime() - new Date(p.startDate).getTime()) / 864e5;
+    return Math.ceil(dias / 7);
+};
+
 const fmtShort = (iso: string): string => {
     if (!iso) return '—';
     const [y, m, d] = iso.split('-');
@@ -99,6 +106,8 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                         startDate: p.startDate.split('T')[0],
                         endDate: p.endDate.split('T')[0],
                         isActive: p.isActive,
+                        inicioDelPlan: p.inicioDelPlan ? p.inicioDelPlan.split('T')[0] : null,
+                        nombreAntesDelPlan: p.nombreAntesDelPlan ?? null,
                     })));
                     setLapsoSplitMode('manual');
                 } else {
@@ -139,7 +148,11 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
         if (lapsoSplitMode === 'auto' && watchStartDate && watchEndDate) {
             const split = autoSplitPeriods(watchStartDate, watchEndDate, yearToEdit?.periods);
             if (split.length > 0) {
-                setPeriods(split);
+                // Repartir las fechas no borra cuándo empieza el plan de cada lapso.
+                setPeriods(prev => split.map(p => {
+                    const antes = prev.find(x => x.name === p.name);
+                    return { ...p, inicioDelPlan: antes?.inicioDelPlan ?? null, nombreAntesDelPlan: antes?.nombreAntesDelPlan ?? null };
+                }));
             }
         }
     }, [lapsoSplitMode, watchStartDate, watchEndDate, yearToEdit]);
@@ -207,6 +220,12 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                 return false;
             }
 
+            // El plan empieza dentro de su lapso (o con él, si no se dice).
+            if (p.inicioDelPlan && (p.inicioDelPlan < p.startDate || p.inicioDelPlan > p.endDate)) {
+                toast.error(`En el ${p.name}, el plan de evaluación tiene que empezar dentro del lapso (${fmtShort(p.startDate)} a ${fmtShort(p.endDate)}).`);
+                return false;
+            }
+
             // check overlap with next period
             if (i < periods.length - 1) {
                 const nextP = periods[i + 1];
@@ -234,7 +253,9 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                 name: p.name,
                 startDate: p.startDate,
                 endDate: p.endDate,
-                isActive: p.isActive
+                isActive: p.isActive,
+                inicioDelPlan: p.inicioDelPlan || null,
+                nombreAntesDelPlan: p.inicioDelPlan ? (p.nombreAntesDelPlan?.trim() || null) : null,
             }));
 
             if (yearToEdit) {
@@ -500,9 +521,9 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
 
                             <div className="space-y-2.5">
                                 {periods.map((period, index) => (
+                                    <div key={period.name} className="rounded-xl bg-gray-50/70 border border-gray-100 hover:border-gray-200 transition-colors">
                                     <div
-                                        key={period.name}
-                                        className="flex items-center gap-3.5 px-4 py-3 rounded-xl bg-gray-50/70 border border-gray-100 hover:border-gray-200 transition-colors"
+                                        className="flex items-center gap-3.5 px-4 py-3"
                                     >
                                         <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColors[index]}`} />
                                         <div className="w-36 flex-shrink-0">
@@ -538,6 +559,47 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                                                 />
                                             </div>
                                         )}
+                                    </div>
+                                    {/*
+                                        CUÁNDO EMPIEZA EL PLAN EN ESTE LAPSO
+                                        Muchos liceos dejan una o dos semanas (diagnóstico,
+                                        adaptación) con contenido del profesor antes de
+                                        empezar el plan de evaluación. Libre: cada liceo lo
+                                        pone donde le toque. Vacío = con el lapso.
+                                    */}
+                                    <div className="grid gap-2 border-t border-gray-100 px-4 py-3 sm:grid-cols-2">
+                                        <label htmlFor={`period-plan-${index}`} className="block">
+                                            <span className="mb-1 block text-xs font-semibold text-gray-600">El plan de evaluación empieza el</span>
+                                            <input
+                                                id={`period-plan-${index}`}
+                                                type="date"
+                                                value={period.inicioDelPlan ?? ''}
+                                                min={period.startDate || undefined}
+                                                max={period.endDate || undefined}
+                                                onChange={(e) => handlePeriodChange(index, 'inicioDelPlan', e.target.value || null)}
+                                                className="w-full min-h-[44px] px-3 text-sm rounded-lg border border-gray-200 bg-white outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                            />
+                                            <span className="mt-1 block text-xs text-gray-500">
+                                                {semanasAntesDelPlan(period) > 0
+                                                    ? `Antes: ${semanasAntesDelPlan(period) === 1 ? '1 semana' : `${semanasAntesDelPlan(period)} semanas`} con contenido del profesor.`
+                                                    : 'Vacío: el plan empieza con el lapso.'}
+                                            </span>
+                                        </label>
+                                        {period.inicioDelPlan && period.inicioDelPlan > period.startDate && (
+                                            <label htmlFor={`period-antes-${index}`} className="block">
+                                                <span className="mb-1 block text-xs font-semibold text-gray-600">Esas semanas se llaman</span>
+                                                <input
+                                                    id={`period-antes-${index}`}
+                                                    type="text"
+                                                    maxLength={40}
+                                                    placeholder="Diagnóstico"
+                                                    value={period.nombreAntesDelPlan ?? ''}
+                                                    onChange={(e) => handlePeriodChange(index, 'nombreAntesDelPlan', e.target.value)}
+                                                    className="w-full min-h-[44px] px-3 text-sm rounded-lg border border-gray-200 bg-white outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                                />
+                                            </label>
+                                        )}
+                                    </div>
                                     </div>
                                 ))}
                             </div>

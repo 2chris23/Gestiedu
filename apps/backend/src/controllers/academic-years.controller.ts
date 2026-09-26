@@ -10,12 +10,40 @@ const validDateSchema = z.union([
 ]).transform((val) => new Date(val));
 
 // Esquema de validación para Periodo (Lapso)
-const periodSchema = z.object({
-  id: z.string().optional(),
-  name: z.string(),
-  startDate: validDateSchema,
-  endDate: validDateSchema,
-  isActive: z.boolean().optional().default(false),
+const periodSchema = z
+  .object({
+    id: z.string().optional(),
+    name: z.string(),
+    startDate: validDateSchema,
+    endDate: validDateSchema,
+    isActive: z.boolean().optional().default(false),
+    /**
+     * Cuándo empieza el contenido del plan de evaluación en este lapso (las
+     * semanas de antes son de diagnóstico, con contenido del profesor). Libre:
+     * cada liceo lo pone donde le toque, siempre dentro del lapso. `null` o
+     * vacío = empieza con el lapso.
+     */
+    inicioDelPlan: z
+      .union([validDateSchema, z.literal('').transform(() => null), z.null()])
+      .optional(),
+    nombreAntesDelPlan: z
+      .string()
+      .trim()
+      .max(40, 'El nombre de las semanas de antes del plan es muy largo (máximo 40 letras)')
+      .nullable()
+      .optional()
+      // Sin el campo, no se toca; vacío, se borra.
+      .transform((v) => (v === undefined ? undefined : v ? v : null)),
+  })
+  .refine(
+    (p) => !p.inicioDelPlan || (p.inicioDelPlan >= p.startDate && p.inicioDelPlan <= p.endDate),
+    { message: 'El plan de un lapso tiene que empezar dentro del lapso', path: ['inicioDelPlan'] }
+  );
+
+/** Lo del plan que se guarda con el lapso (solo si vino en la petición). */
+const delPlan = (p: z.infer<typeof periodSchema>) => ({
+  ...(p.inicioDelPlan !== undefined ? { inicioDelPlan: p.inicioDelPlan } : {}),
+  ...(p.nombreAntesDelPlan !== undefined ? { nombreAntesDelPlan: p.nombreAntesDelPlan } : {}),
 });
 
 // Esquema de validación para crear/actualizar Año Escolar
@@ -93,6 +121,7 @@ export const createAcademicYear = async (request: FastifyRequest, reply: Fastify
             startDate: p.startDate,
             endDate: p.endDate,
             isActive: p.isActive,
+            ...delPlan(p),
           }))
         : lapsosPorDefecto();
 
@@ -288,6 +317,7 @@ export const updateAcademicYear = async (request: FastifyRequest, reply: Fastify
               startDate: p.startDate,
               endDate: p.endDate,
               isActive: p.isActive,
+              ...delPlan(p),
             },
           });
         } else {
@@ -300,6 +330,7 @@ export const updateAcademicYear = async (request: FastifyRequest, reply: Fastify
                 startDate: p.startDate,
                 endDate: p.endDate,
                 isActive: p.isActive,
+                ...delPlan(p),
               },
             });
           } else {
@@ -310,6 +341,7 @@ export const updateAcademicYear = async (request: FastifyRequest, reply: Fastify
                 startDate: p.startDate,
                 endDate: p.endDate,
                 isActive: p.isActive,
+                ...delPlan(p),
                 academicYearId: id,
               },
             });

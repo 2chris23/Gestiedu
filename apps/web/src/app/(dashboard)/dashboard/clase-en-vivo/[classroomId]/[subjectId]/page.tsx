@@ -444,11 +444,15 @@ function LiveClassPageInner() {
                             </div>
                             <h1 className="text-seccion sm:text-pantalla font-bold text-gray-900 truncate flex items-center gap-2.5">
                                 {data?.subject?.name || 'Materia'}
-                                {data?.weekNumber && (
+                                {data?.antesDelPlan ? (
+                                    <span className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full shadow-2xs">
+                                        {data.nombreAntesDelPlan || 'Diagnóstico'}
+                                    </span>
+                                ) : data?.weekNumber ? (
                                     <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100/80 px-2.5 py-0.5 rounded-full shadow-2xs">
                                         Semana {data.weekNumber}
                                     </span>
-                                )}
+                                ) : null}
                             </h1>
                             <div className="text-xs text-gray-500 flex items-center gap-3.5 flex-wrap mt-1">
                                 <span className="flex items-center gap-1 font-medium text-gray-700">
@@ -652,6 +656,9 @@ function LiveClassPageInner() {
                                 subjectId={subjectId}
                                 date={date}
                                 weekNumber={data?.weekNumber}
+                                antesDelPlan={data?.antesDelPlan}
+                                nombreAntesDelPlan={data?.nombreAntesDelPlan}
+                                inicioDelPlan={data?.inicioDelPlan}
                                 weekRow={data?.weekRow}
                                 planContent={data?.planContent}
                                 planColumns={data?.planColumns}

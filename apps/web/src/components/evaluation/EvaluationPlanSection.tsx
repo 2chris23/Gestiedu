@@ -1052,6 +1052,14 @@ export default function EvaluationPlanSection({
             <BookOpen className="w-4 h-4 text-indigo-600" /> Plan de Evaluación
             <span className="text-xs font-normal text-gray-400 ml-1">— {LAPSOS.find(l => l.id === selectedLapso)?.name}</span>
           </h2>
+          {/* El liceo puso semanas antes del plan (diagnóstico): se dice desde
+              cuándo cuenta la Semana 1. */}
+          {autoPopulated?.inicioDelLapso && autoPopulated?.lapsoStartDate &&
+            String(autoPopulated.lapsoStartDate).slice(0, 10) > String(autoPopulated.inicioDelLapso).slice(0, 10) && (
+            <p className="mt-0.5 text-xs text-amber-800">
+              Semana 1: desde el {String(autoPopulated.lapsoStartDate).slice(0, 10).split('-').reverse().join('/')}. Antes, {(autoPopulated.nombreAntesDelPlan || 'Diagnóstico').toLowerCase()} (contenido del profesor).
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => window.print()} className="flex items-center px-3 py-1.5 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs">

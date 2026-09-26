@@ -44,7 +44,11 @@ export interface AutoPopulatedData {
     ministryLogo?: string;
     ministryText?: string;
     academicYearName?: string;
+    /** Desde cuándo cuentan las semanas: el inicio del PLAN (puede ser después del lapso). */
     lapsoStartDate?: string;
+    /** El inicio del lapso de verdad (antes del plan: semanas de diagnóstico). */
+    inicioDelLapso?: string;
+    nombreAntesDelPlan?: string;
     lapsoEndDate?: string;
     lapsoWeeks?: number;
 }

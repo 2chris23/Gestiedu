@@ -392,6 +392,13 @@ model Period {
   endDate   DateTime
   isActive  Boolean  @default(false)
 
+  /// Cuándo empieza el contenido del plan de evaluación en este lapso. Antes,
+  /// semanas de diagnóstico o adaptación con contenido del profesor. Vacía =
+  /// empieza con el lapso. La Semana 1 del plan es la que contiene esta fecha.
+  inicioDelPlan      DateTime?
+  /// Cómo se llaman esas semanas de antes en el liceo («Diagnóstico» si no dice).
+  nombreAntesDelPlan String?
+
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
 

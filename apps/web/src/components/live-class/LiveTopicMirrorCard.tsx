@@ -13,6 +13,10 @@ interface Props {
     subjectId: string;
     date: string;
     weekNumber?: number;
+    /** Semanas antes de que empiece el plan del lapso (diagnóstico). */
+    antesDelPlan?: boolean;
+    nombreAntesDelPlan?: string;
+    inicioDelPlan?: string | null;
     weekRow?: any;
     planContent?: LiveClassPlanContent;
     planColumns?: PlanColumnDef[] | null;
@@ -24,6 +28,9 @@ export default function LiveTopicMirrorCard({
     subjectId,
     date,
     weekNumber,
+    antesDelPlan,
+    nombreAntesDelPlan,
+    inicioDelPlan,
     weekRow,
     planContent,
     planColumns,
@@ -151,6 +158,36 @@ export default function LiveTopicMirrorCard({
 
     // Título principal (TEMA GENERADOR) — únicamente del campo 'title'
     const displayTitle = (formValues['title'] !== undefined ? formValues['title'] : weekRow?.title || '')?.trim();
+
+    /**
+     * SEMANAS ANTES DEL PLAN
+     *
+     * El liceo puso que el plan de este lapso empieza más tarde (diagnóstico,
+     * adaptación): estas semanas son con contenido del profesor, no hay fila
+     * del plan que enseñar ni que editar (el servidor tampoco la guardaría).
+     */
+    if (antesDelPlan) {
+        const nombre = nombreAntesDelPlan || 'Diagnóstico';
+        const fecha = inicioDelPlan ? inicioDelPlan.split('-').reverse().join('/') : null;
+        return (
+            <div className="flex h-full flex-col rounded-2xl border border-amber-200 bg-amber-50/60 p-5 shadow-sm">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
+                        <BookOpen className="h-5 w-5" aria-hidden />
+                    </div>
+                    <div>
+                        <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-800">
+                            {nombre}
+                        </span>
+                        <h2 className="mt-0.5 text-base font-bold text-gray-900">Semana de {nombre.toLowerCase()}</h2>
+                    </div>
+                </div>
+                <p className="mt-3 text-sm text-gray-800">
+                    Contenido del profesor. {fecha ? `El plan de evaluación de este lapso empieza el ${fecha}.` : ''}
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">

@@ -615,7 +615,11 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
 
                                 // Datos enriquecidos desde el Plan de Evaluación y Actividades
                                 const subjectInfo = infoDe(classItem);
-                                const temaGenerador = subjectInfo?.temaGenerador || null;
+                                // Antes de que empiece el plan del lapso, el nombre de esas
+                                // semanas («Diagnóstico»): no hay tema del plan todavía.
+                                const temaGenerador = subjectInfo?.antesDelPlan
+                                    ? subjectInfo.nombreAntesDelPlan || 'Diagnóstico'
+                                    : subjectInfo?.temaGenerador || null;
                                 const firstColLabel = subjectInfo?.firstColumnLabel || 'Tema Generador';
                                 const todayActivitiesCount = subjectInfo?.todayActivitiesCount ?? 0;
                                 const nextActivitiesCount = subjectInfo?.nextActivitiesCount ?? 0;

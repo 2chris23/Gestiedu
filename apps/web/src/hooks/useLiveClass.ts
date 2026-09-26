@@ -61,6 +61,11 @@ export interface LiveClassDetail {
     teacher: { id: string; firstName: string; lastName: string } | null;
     students: LiveClassStudent[];
     weekNumber?: number;
+    /** Antes de que empiece el plan del lapso: semanas de diagnóstico (o como las llame el liceo). */
+    antesDelPlan?: boolean;
+    nombreAntesDelPlan?: string;
+    /** "YYYY-MM-DD" */
+    inicioDelPlan?: string | null;
     planContent?: LiveClassPlanContent;
     planColumns?: PlanColumnDef[] | null;
     planLapso?: string;
@@ -138,6 +143,9 @@ export interface LiveOverviewSubject {
     todayActivitiesCount?: number;
     nextActivitiesCount?: number;
     suspendida?: boolean;
+    /** Antes de que empiece el plan del lapso (semanas de diagnóstico). */
+    antesDelPlan?: boolean;
+    nombreAntesDelPlan?: string;
     actividades?: ActividadDelDia[];
 }
 

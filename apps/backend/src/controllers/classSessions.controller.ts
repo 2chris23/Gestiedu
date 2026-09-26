@@ -5,7 +5,29 @@ import { parseDay } from '../services/school-events.service';
 import { logger } from '../utils/logger';
 import { randomUUID } from 'crypto';
 import { RequestUser } from '../types/fastify';
-import { planWeekNumberFromRange, planWeekRangeFromRange } from '../utils/plan-weeks';
+import { planWeekRangeFromRange } from '../utils/plan-weeks';
+import { semanaDelPlan, semanaDelPlanCon, type SemanaDelPlan } from '../services/semana-del-plan.service';
+
+/**
+ * El plan de una materia en una fecha: el del LAPSO de esa fecha (antes se
+ * cogía el primero que saliera, de cualquier lapso) y su semana, contada como
+ * la cuenta la rejilla (`services/semana-del-plan.service.ts`). Semana 0 =
+ * antes de que empiece el plan (diagnóstico).
+ */
+async function planDeLaFecha(
+    prisma: any,
+    classroomId: string,
+    subjectId: string,
+    fecha: Date
+): Promise<{ meta: any | null; sem: SemanaDelPlan }> {
+    const [base, metas] = await Promise.all([
+        semanaDelPlan(prisma, classroomId, fecha),
+        prisma.evaluationPlanMetadata.findMany({ where: { classroomId, subjectId }, orderBy: { lapso: 'asc' } }),
+    ]);
+    const meta = base.lapso ? metas.find((m: any) => m.lapso === base.lapso) ?? null : metas[0] ?? null;
+    const sem = meta?.fechaDesde ? await semanaDelPlan(prisma, classroomId, fecha, new Date(meta.fechaDesde)) : base;
+    return { meta, sem };
+}
 import { instituteTimezone, isFutureDate, todayInTimezone } from '../utils/school-time';
 import { assertClassroomScope, assertCanSeeClassroom, assertCanSeeStudent } from '../services/authorization.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
@@ -251,7 +273,7 @@ export async function getLiveClassDetail(
          * de abajo salen juntas; lo que sí depende de otra cosa (la semana del
          * plan, los alumnos de fuera) sigue después.
          */
-        const [session, classroomSubject, enrollments, attendances, meta, activities] = await Promise.all([
+        const [session, classroomSubject, enrollments, attendances, planDelDia, activities] = await Promise.all([
             // 1. Sesión de clase existente para esta materia y fecha
             prisma.classSession.findFirst({
                 where: { classroomId, subjectId: targetSubjectId, date: { gte: startOfDay, lte: endOfDay } },
@@ -278,10 +300,8 @@ export async function getLiveClassDetail(
             prisma.dailyAttendance.findMany({
                 where: { classroomId, date: { gte: startOfDay, lte: endOfDay } },
             }),
-            // 5. Metadatos del plan de evaluación
-            prisma.evaluationPlanMetadata.findFirst({
-                where: { classroomId, subjectId: targetSubjectId },
-            }),
+            // 5. El plan de la materia en ESE lapso, y su semana
+            planDeLaFecha(prisma, classroomId, targetSubjectId, dayDate),
             // 6. Actividades/tareas de la materia
             prisma.classActivity.findMany({
                 where: { classroomId, subjectId: targetSubjectId },
@@ -310,9 +330,10 @@ export async function getLiveClassDetail(
         });
 
         // 5. Contenido del plan de evaluación de la semana
+        const { meta, sem: semanaDeHoy } = planDelDia;
         let weekNumber: number | undefined;
         let planContent: any = undefined;
-        let planLapso: string | null = null;
+        let planLapso: string | null = semanaDeHoy.lapso;
         let planColumns: any = null;
         let weekRow: any = null;
 
@@ -326,22 +347,10 @@ export async function getLiveClassDetail(
                 } catch { /* ignorar columnas inválidas */ }
             }
 
-            // Calcular la semana usando fechaDesde del plan; si no existe, usar el inicio del año académico
-            let lapsoStart: Date | null = meta.fechaDesde ? new Date(meta.fechaDesde) : null;
-
-            if (!lapsoStart) {
-                const classroom = await prisma.classroom.findUnique({
-                    where: { id: classroomId },
-                    select: { academicYear: { select: { startDate: true } } },
-                });
-                if (classroom?.academicYear?.startDate) {
-                    lapsoStart = new Date(classroom.academicYear.startDate);
-                }
-            }
-
-            if (lapsoStart) {
-                // CORRECCIÓN: semanas alineadas a LUNES (ver utils/plan-weeks.ts)
-                weekNumber = planWeekNumberFromRange(lapsoStart, dayDate);
+            // Antes de que empiece el plan (diagnóstico) no hay fila que enseñar.
+            if (semanaDeHoy.inicioDelPlan && !semanaDeHoy.antesDelPlan) {
+                // Semanas alineadas a LUNES (ver utils/plan-weeks.ts)
+                weekNumber = semanaDeHoy.semana;
 
                 const weekRows = await prisma.evaluationPlanRow.findMany({
                     where: { classroomId, subjectId: targetSubjectId, lapso: meta.lapso, weekNumber },
@@ -602,6 +611,11 @@ export async function getLiveClassDetail(
                 : null,
             students: involvedStudents,
             weekNumber,
+            // Antes de que empiece el plan del lapso: semanas de diagnóstico
+            // (o como las llame el liceo), con contenido del profesor.
+            antesDelPlan: semanaDeHoy.antesDelPlan,
+            nombreAntesDelPlan: semanaDeHoy.nombreAntesDelPlan,
+            inicioDelPlan: semanaDeHoy.inicioDelPlan ? semanaDeHoy.inicioDelPlan.toISOString().slice(0, 10) : null,
             planContent,
             planColumns,
             planLapso: planLapso || '1',
@@ -1278,9 +1292,17 @@ export async function getLiveOverview(
             }),
             prisma.classroom.findUnique({
                 where: { id: classroomId },
-                select: { shift: true, academicYear: { select: { startDate: true } } },
+                select: {
+                    shift: true,
+                    academicYear: {
+                        select: {
+                            startDate: true,
+                            periods: { select: { id: true, startDate: true, endDate: true, inicioDelPlan: true, nombreAntesDelPlan: true } },
+                        },
+                    },
+                },
             }),
-            prisma.evaluationPlanMetadata.findMany({ where: { classroomId } }),
+            prisma.evaluationPlanMetadata.findMany({ where: { classroomId }, orderBy: { lapso: 'asc' } }),
             prisma.classSession.findMany({
                 where: { classroomId, date: { gte: inicioDelDia, lte: finDelDia } },
                 select: { id: true, subjectId: true, status: true },
@@ -1288,7 +1310,15 @@ export async function getLiveOverview(
         ]);
 
         const yearStart = classroom?.academicYear?.startDate ? new Date(classroom.academicYear.startDate) : null;
-        const metaPorMateria = new Map(metas.map((m) => [m.subjectId, m]));
+        const lapsos = classroom?.academicYear?.periods ?? [];
+        // La semana del plan de ese día, contada como la rejilla. El plan de
+        // cada materia es el del LAPSO de ese día (antes, el primero que saliera).
+        const semanaDelDia = semanaDelPlanCon(dayDate, lapsos, yearStart);
+        const metaPorMateria = new Map<string, (typeof metas)[number]>();
+        for (const m of metas) {
+            if (semanaDelDia.lapso && m.lapso !== semanaDelDia.lapso) continue;
+            if (!metaPorMateria.has(m.subjectId)) metaPorMateria.set(m.subjectId, m);
+        }
         const sesionPorMateria = new Map(sesionesDelDia.map((s) => [s.subjectId, s]));
         const idsDeSesion = sesionesDelDia.map((s) => s.id);
 
@@ -1297,10 +1327,12 @@ export async function getLiveOverview(
         const semanaPorMateria = new Map<string, number>();
         for (const cs of subjects) {
             const meta = metaPorMateria.get(cs.subject.id);
-            const lapsoStart = meta?.fechaDesde ? new Date(meta.fechaDesde) : yearStart;
-            if (meta && lapsoStart) {
-                semanaPorMateria.set(cs.subject.id, planWeekNumberFromRange(lapsoStart, dayDate));
-            }
+            if (!meta) continue;
+            const sem = meta.fechaDesde
+                ? semanaDelPlanCon(dayDate, lapsos, yearStart, new Date(meta.fechaDesde))
+                : semanaDelDia;
+            // Semana 0: antes de que empiece el plan. No hay tema que buscar.
+            if (sem.inicioDelPlan && !sem.antesDelPlan) semanaPorMateria.set(cs.subject.id, sem.semana);
         }
 
         // Las filas del plan de todas las materias, de un tirón (antes era una
@@ -1351,6 +1383,8 @@ export async function getLiveOverview(
             todayActivitiesCount?: number;
             nextActivitiesCount?: number;
             suspendida?: boolean;
+            antesDelPlan?: boolean;
+            nombreAntesDelPlan?: string;
             actividades?: Array<{
                 id: string;
                 title: string;
@@ -1418,6 +1452,8 @@ export async function getLiveOverview(
                 color: cs.subject.color || undefined,
                 weekNumber: semanaPorMateria.get(materiaId),
                 temaGenerador: filaPorMateria.get(materiaId)?.title || undefined,
+                antesDelPlan: semanaDelDia.antesDelPlan,
+                nombreAntesDelPlan: semanaDelDia.nombreAntesDelPlan,
                 firstColumnLabel,
                 activitiesCount: listaDelDia.length,
                 todayActivitiesCount,
@@ -1580,29 +1616,11 @@ async function getPlanWeekNumber(
     classroomId: string,
     subjectId: string,
     date: Date
-): Promise<number | null> {
-    const meta = await prisma.evaluationPlanMetadata.findFirst({
-        where: { classroomId, subjectId },
-    });
-    if (!meta) return null;
-
-    let lapsoStart: Date | null = meta.fechaDesde ? new Date(meta.fechaDesde) : null;
-
-    if (!lapsoStart) {
-        const classroom = await prisma.classroom.findUnique({
-            where: { id: classroomId },
-            select: { academicYear: { select: { startDate: true } } },
-        });
-        if (classroom?.academicYear?.startDate) {
-            lapsoStart = new Date(classroom.academicYear.startDate);
-        }
-    }
-
-    if (!lapsoStart) return null;
-
-    // CORRECCIÓN: semanas alineadas a LUNES (Semana 2 inicia en el primer lunes
-    // posterior a la semana inicial; ver utils/plan-weeks.ts).
-    return planWeekNumberFromRange(lapsoStart, date);
+): Promise<{ semana: number; lapso: string; meta: any } | null> {
+    const { meta, sem } = await planDeLaFecha(prisma, classroomId, subjectId, date);
+    // Sin plan en ese lapso, o antes de que empiece (diagnóstico): no hay semana.
+    if (!meta || !sem.inicioDelPlan || sem.antesDelPlan) return null;
+    return { semana: sem.semana, lapso: meta.lapso, meta };
 }
 
 /**
@@ -1617,11 +1635,14 @@ async function mergeTemaGeneradorOnSuspend(
     subjectId: string,
     date: Date
 ): Promise<{ mergedWeek: number | null; mergedTemaGenerador: boolean }> {
-    const currentWeek = await getPlanWeekNumber(prisma, classroomId, subjectId, date);
-    if (!currentWeek) return { mergedWeek: null, mergedTemaGenerador: false };
+    const semana = await getPlanWeekNumber(prisma, classroomId, subjectId, date);
+    if (!semana) return { mergedWeek: null, mergedTemaGenerador: false };
+    const currentWeek = semana.semana;
 
+    // Las filas de ESE lapso: antes se buscaba la semana en cualquier lapso y
+    // se podía fusionar el tema del lapso equivocado.
     const currentHeader = await prisma.evaluationPlanRow.findFirst({
-        where: { classroomId, subjectId, weekNumber: currentWeek, rowType: 'HEADER' },
+        where: { classroomId, subjectId, lapso: semana.lapso, weekNumber: currentWeek, rowType: 'HEADER' },
         orderBy: { orderIndex: 'asc' },
     });
 
@@ -1637,7 +1658,7 @@ async function mergeTemaGeneradorOnSuspend(
 
     const nextWeek = currentWeek + 1;
     const nextHeader = await prisma.evaluationPlanRow.findFirst({
-        where: { classroomId, subjectId, weekNumber: nextWeek, rowType: 'HEADER' },
+        where: { classroomId, subjectId, lapso: semana.lapso, weekNumber: nextWeek, rowType: 'HEADER' },
         orderBy: { orderIndex: 'asc' },
     });
 
@@ -1795,15 +1816,20 @@ export async function savePlanWeekRow(
             return reply.status(400).send({ error: 'Fecha inválida' });
         }
 
-        // 1. Metadata del plan (para lapso y columnas)
-        let meta = await prisma.evaluationPlanMetadata.findFirst({
-            where: { classroomId, subjectId },
-        });
+        // 1. El plan de ESE lapso (para lapso y columnas)
+        const { meta: delLapso, sem } = await planDeLaFecha(prisma, classroomId, subjectId, parsedDate);
+        if (sem.antesDelPlan) {
+            return reply.status(400).send({
+                error: `Esta semana es de ${sem.nombreAntesDelPlan.toLowerCase()}: el plan de evaluación empieza el ${sem.inicioDelPlan!.toISOString().slice(0, 10).split('-').reverse().join('/')}.`,
+                code: 'ANTES_DEL_PLAN',
+            });
+        }
+        let meta = delLapso;
 
-        // Si no existe metadata, crearla mínima
+        // Si no existe metadata, crearla mínima, del lapso de esa fecha
         if (!meta) {
             meta = await prisma.evaluationPlanMetadata.create({
-                data: { classroomId, subjectId, lapso: '1' },
+                data: { classroomId, subjectId, lapso: sem.lapso ?? '1' },
             });
         }
 
@@ -1817,7 +1843,7 @@ export async function savePlanWeekRow(
         }
 
         // 3. Calcular semana
-        const weekNumber = await getPlanWeekNumber(prisma, classroomId, subjectId, parsedDate);
+        const weekNumber = (await getPlanWeekNumber(prisma, classroomId, subjectId, parsedDate))?.semana;
         if (!weekNumber) {
             return reply.status(400).send({ error: 'No se pudo determinar la semana del plan (falta fecha de inicio del ciclo)' });
         }
