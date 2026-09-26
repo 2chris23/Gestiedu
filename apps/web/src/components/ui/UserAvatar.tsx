@@ -49,11 +49,34 @@ export default function UserAvatar({ name, src, className = '', initialsClassNam
     const color = COLORS[hashCode(name) % COLORS.length];
     // Las fotos subidas al sistema piden sesión: se traen con la credencial y
     // mientras llegan se ven las iniciales, nunca un cuadro roto.
-    const { data: fotoEnMemoria } = useFotoDePerfil(src);
+    // Y solo cuando el avatar está a punto de verse (200 px antes).
+    const caja = React.useRef<HTMLDivElement>(null);
+    const [visto, setVisto] = React.useState(false);
+    React.useEffect(() => {
+        if (visto || !esFotoDelSistema(src)) return;
+        const el = caja.current;
+        if (!el || typeof IntersectionObserver === 'undefined') {
+            setVisto(true);
+            return;
+        }
+        const observador = new IntersectionObserver(
+            (entradas) => {
+                if (entradas.some((e) => e.isIntersecting)) {
+                    setVisto(true);
+                    observador.disconnect();
+                }
+            },
+            { rootMargin: '200px' }
+        );
+        observador.observe(el);
+        return () => observador.disconnect();
+    }, [src, visto]);
+    const { data: fotoEnMemoria } = useFotoDePerfil(src, visto);
     const imagen = esFotoDelSistema(src) ? fotoEnMemoria : src;
 
     return (
         <div
+            ref={caja}
             className={`relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full ${color} ${className}`}
         >
             {imagen ? (

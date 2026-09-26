@@ -108,6 +108,9 @@ export function BotonIcono({
     if (conTexto) return boton;
 
     return (
+        // Cada botón lleva su propio proveedor de globos: así el armazón no tiene
+        // que cargar los globos (y su posicionador) en todas las pantallas.
+        <Tooltip.Provider delayDuration={350}>
         <Tooltip.Root delayDuration={350}>
             <Tooltip.Trigger asChild>{boton}</Tooltip.Trigger>
             <Tooltip.Portal>
@@ -120,13 +123,9 @@ export function BotonIcono({
                 </Tooltip.Content>
             </Tooltip.Portal>
         </Tooltip.Root>
+        </Tooltip.Provider>
     );
 }
 
-/**
- * El envoltorio que necesitan los globos. Va una sola vez, arriba del todo del
- * armazón de la aplicación.
- */
-export function ProveedorDeGlobos({ children }: { children: React.ReactNode }) {
-    return <Tooltip.Provider delayDuration={350}>{children}</Tooltip.Provider>;
-}
+/** El envoltorio de los globos vive en su propio archivo (lo importa el armazón). */
+export { ProveedorDeGlobos } from './proveedor-de-globos';

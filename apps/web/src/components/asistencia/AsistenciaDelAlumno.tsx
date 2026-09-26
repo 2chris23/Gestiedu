@@ -3,10 +3,13 @@
 import * as React from 'react';
 import { CheckCircle2, Clock, Loader2, QrCode, ScanLine, X, XCircle } from 'lucide-react';
 import { asistenciaQr, elAparato, elMotivo, laUbicacion, useConfigAsistenciaQr, type Ubicacion } from '@/lib/asistencia-qr';
-import EscanerDeQr from '@/components/asistencia/EscanerDeQr';
+import { diferido } from '@/components/common/Diferido';
 import CodigoQr from '@/components/asistencia/CodigoQr';
 import { mantenerLaPantallaEncendida } from '@/lib/pantalla-encendida';
 import { cn } from '@/lib/utils';
+
+// La cámara y su lector bajan al abrir el escáner, no con cada pantalla.
+const EscanerDeQr = diferido(() => import('@/components/asistencia/EscanerDeQr'), { sinEsqueleto: true });
 
 /**
  * LA ASISTENCIA POR QR, DEL LADO DEL ALUMNO

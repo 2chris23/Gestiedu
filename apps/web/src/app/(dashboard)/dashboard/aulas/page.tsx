@@ -8,11 +8,14 @@ import { useRouter } from 'next/navigation';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, BookOpen, Users, Trash2, Edit } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
-import ClassroomModal from '@/components/classrooms/ClassroomModal';
 import { classroomService, Classroom } from '@/services/classroom.service';
 import { academicYearService, AcademicYear } from '@/services/academic-year.service';
 import TurnoBadge from '@/components/common/TurnoBadge';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
+import { diferido } from '@/components/common/Diferido';
+
+// Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
+const ClassroomModal = diferido(() => import('@/components/classrooms/ClassroomModal'), { sinEsqueleto: true });
 
 export default function ClassroomsPage() {
     const confirmDialog = useConfirm();
@@ -194,12 +197,14 @@ export default function ClassroomsPage() {
                 </div>
             )}
 
-            <ClassroomModal
-                isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                onSuccess={fetchData}
-                classroomToEdit={selectedClassroom}
-            />
+            {isModalOpen && (
+                <ClassroomModal
+                    isOpen
+                    onClose={() => setIsModalOpen(false)}
+                    onSuccess={fetchData}
+                    classroomToEdit={selectedClassroom}
+                />
+            )}
         </div>
     );
 }

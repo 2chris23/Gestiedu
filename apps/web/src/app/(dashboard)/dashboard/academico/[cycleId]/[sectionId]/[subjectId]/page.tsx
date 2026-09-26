@@ -13,21 +13,23 @@ import {
 import { useClassroomBySlug } from '@/hooks/useClassrooms';
 import { useClassroomSubjectDetail, useClassroomSubjectsStats } from '@/hooks/useClassroomSubjects';
 import AcademicStats from '@/components/academic/AcademicStats';
-import { AssignSubjectTeacherModal } from '@/components/subject/AssignSubjectTeacherModal';
 import { useStudents } from '@/hooks/useStudents';
 import { SectionStudent } from '@/services/students.service';
 import { Pagination } from '@/components/ui';
 import { useAuthStore } from '@/store/auth.store';
-import EvaluationPlanSection from '@/components/evaluation/EvaluationPlanSection';
-import CalendarDayView from '@/components/evaluation/CalendarDayView';
 import { useAcademicConfig } from '@/hooks/useAcademicConfig';
 import { getAcademicRisk } from '@/utils/academicRisk';
 import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
-import SubjectActivitiesTab from '@/components/subject/SubjectActivitiesTab';
-import SubjectObservationsTab from '@/components/subject/SubjectObservationsTab';
-import StudentObservationsModal from '@/components/observations/StudentObservationsModal';
 import LapsoSelector from '@/components/academic/LapsoSelector';
 import SubjectScheduleSection from '@/components/schedule/SubjectScheduleSection';
+import { diferido } from '@/components/common/Diferido';
+
+// Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
+const AssignSubjectTeacherModal = diferido(() => import('@/components/subject/AssignSubjectTeacherModal').then((m) => ({ default: m.AssignSubjectTeacherModal })), { sinEsqueleto: true });
+const EvaluationPlanSection = diferido(() => import('@/components/evaluation/EvaluationPlanSection'), { alto: 400 });
+const SubjectActivitiesTab = diferido(() => import('@/components/subject/SubjectActivitiesTab'), { alto: 300 });
+const SubjectObservationsTab = diferido(() => import('@/components/subject/SubjectObservationsTab'), { alto: 300 });
+const StudentObservationsModal = diferido(() => import('@/components/observations/StudentObservationsModal'), { sinEsqueleto: true });
 
 const DAY_ABBR: Record<number, string> = {
     0: 'Dom',
@@ -658,11 +660,13 @@ export default function SectionSubjectDashboard() {
             </div>
 
             {/* Modal de Detalle de Observaciones del Estudiante */}
-            <StudentObservationsModal
-                isOpen={Boolean(selectedStudentForObs)}
-                onClose={() => setSelectedStudentForObs(null)}
-                student={selectedStudentForObs}
-            />
+            {selectedStudentForObs && (
+                <StudentObservationsModal
+                    isOpen
+                    onClose={() => setSelectedStudentForObs(null)}
+                    student={selectedStudentForObs}
+                />
+            )}
 
             {isAssignModalOpen && classroomId && (
                 <AssignSubjectTeacherModal

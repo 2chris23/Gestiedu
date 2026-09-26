@@ -10,7 +10,6 @@ import {
     ArrowUp, ShieldCheck, UserPlus, StickyNote, GraduationCap, CheckSquare, Square,
     ArrowUpDown, ArrowUp as ArrowUpIcon, ArrowDown, Award, Check, ClipboardCheck, CloudUpload, QrCode, ScanLine
 } from 'lucide-react';
-import PaseDeListaQr from '@/components/asistencia/PaseDeListaQr';
 import { useConfigAsistenciaQr } from '@/lib/asistencia-qr';
 import {
     useLiveClassDetail,
@@ -25,7 +24,6 @@ import {
     ClassActivity,
 } from '@/hooks/useLiveClass';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
-import { SuspenderClaseDialogo } from '@/components/schedule/SuspenderClaseDialogo';
 import { toast } from 'sonner';
 
 import { ATTENDANCE_CONFIG, AttendanceStatusType } from '@/components/live-class/AnimatedAttendancePicker';
@@ -36,10 +34,15 @@ import TurnoBadge from '@/components/common/TurnoBadge';
 import LiveTopicMirrorCard from '@/components/live-class/LiveTopicMirrorCard';
 import LiveActivitiesCard from '@/components/live-class/LiveActivitiesCard';
 import LiveGradesSliderInput from '@/components/live-class/LiveGradesSliderInput';
-import StudentObservationsModal from '@/components/observations/StudentObservationsModal';
-import LiveClassObservationModal from '@/components/observations/LiveClassObservationModal';
+import { diferido } from '@/components/common/Diferido';
 import { toLocalYMD } from '@/utils/date.utils';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
+
+// Lo que se abre al pulsar baja al pulsarlo, no con la clase (carga diferida).
+const PaseDeListaQr = diferido(() => import('@/components/asistencia/PaseDeListaQr'), { sinEsqueleto: true });
+const SuspenderClaseDialogo = diferido(() => import('@/components/schedule/SuspenderClaseDialogo').then((m) => ({ default: m.SuspenderClaseDialogo })), { sinEsqueleto: true });
+const StudentObservationsModal = diferido(() => import('@/components/observations/StudentObservationsModal'), { sinEsqueleto: true });
+const LiveClassObservationModal = diferido(() => import('@/components/observations/LiveClassObservationModal'), { sinEsqueleto: true });
 
 function LiveClassPageInner() {
     const params = useParams();
@@ -1195,15 +1198,18 @@ function LiveClassPageInner() {
             )}
 
             {/* Modal de Detalle de Observaciones del Estudiante */}
-            <StudentObservationsModal
-                isOpen={Boolean(selectedStudentForObs)}
-                onClose={() => setSelectedStudentForObs(null)}
-                student={selectedStudentForObs}
-            />
+            {selectedStudentForObs && (
+                <StudentObservationsModal
+                    isOpen
+                    onClose={() => setSelectedStudentForObs(null)}
+                    student={selectedStudentForObs}
+                />
+            )}
 
             {/* Modal para Crear y Gestionar Observaciones de esta Clase */}
+            {isLiveObsModalOpen && (
             <LiveClassObservationModal
-                isOpen={isLiveObsModalOpen}
+                isOpen
                 onClose={() => {
                     setIsLiveObsModalOpen(false);
                     setSelectedObsStudentId(null);
@@ -1217,10 +1223,11 @@ function LiveClassPageInner() {
                 initialStudentId={selectedObsStudentId}
                 onObservationAdded={() => refetch()}
             />
+            )}
 
-            {user?.role === 'ADMIN' && (
+            {user?.role === 'ADMIN' && suspendiendo && (
                 <SuspenderClaseDialogo
-                    abierto={suspendiendo}
+                    abierto
                     alCerrar={() => setSuspendiendo(false)}
                     classroomId={classroomId}
                     subjectId={subjectId}

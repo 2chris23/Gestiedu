@@ -4,12 +4,16 @@ import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import { useState } from 'react';
 import { Building2, Palette, GraduationCap, Bell, Shield, Wallet, QrCode } from 'lucide-react';
 import { GeneralSettings } from './components/GeneralSettings';
-import { AppearanceSettings } from './components/AppearanceSettings';
-import { AcademicSettings } from './components/AcademicSettings';
-import { NotificationSettings } from './components/NotificationSettings';
-import { SecuritySettings } from './components/SecuritySettings';
-import { PaymentSettings } from './components/PaymentSettings';
-import { QrSettings } from './components/QrSettings';
+import { diferido } from '@/components/common/Diferido';
+
+// Se abre en «Información General»; cada una de las demás pestañas baja al
+// pulsarla (carga diferida), no con la pantalla.
+const AppearanceSettings = diferido(() => import('./components/AppearanceSettings').then((m) => ({ default: m.AppearanceSettings })), { alto: 480 });
+const AcademicSettings = diferido(() => import('./components/AcademicSettings').then((m) => ({ default: m.AcademicSettings })), { alto: 480 });
+const NotificationSettings = diferido(() => import('./components/NotificationSettings').then((m) => ({ default: m.NotificationSettings })), { alto: 480 });
+const SecuritySettings = diferido(() => import('./components/SecuritySettings').then((m) => ({ default: m.SecuritySettings })), { alto: 480 });
+const PaymentSettings = diferido(() => import('./components/PaymentSettings').then((m) => ({ default: m.PaymentSettings })), { alto: 480 });
+const QrSettings = diferido(() => import('./components/QrSettings').then((m) => ({ default: m.QrSettings })), { alto: 480 });
 
 const tabs = [
     { id: 'general', label: 'Información General', icon: Building2, component: GeneralSettings },

@@ -16,8 +16,11 @@ import {
     EventScope,
     SchoolEvent,
 } from '@/hooks/useSchoolEvents';
-import EventModal from '@/components/events/EventModal';
 import type { Period } from '@/utils/schedule.utils';
+import { diferido } from '@/components/common/Diferido';
+
+// Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
+const EventModal = diferido(() => import('@/components/events/EventModal'), { sinEsqueleto: true });
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -365,9 +368,9 @@ export default function EventosPage() {
                 </div>
             </div>
 
-            {day && (
+            {day && modalPeriod && (
                 <EventModal
-                    open={Boolean(modalPeriod)}
+                    open
                     day={day}
                     startPeriod={modalPeriod}
                     classPeriods={classPeriods}

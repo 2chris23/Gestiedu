@@ -10,11 +10,9 @@ import StudentScheduleSection from '@/components/schedule/StudentScheduleSection
 import LapsoSelector from '@/components/academic/LapsoSelector'; // Fase 3.5 — filtro por lapso
 // ObservationTray moved to AcademicOverview
 import AcademicOverview from '@/components/profile/AcademicOverview';
-import StudentCycleAccordion from '@/components/profile/StudentCycleAccordion';
 import { ScheduleBlock } from '@/components/schedule/UniversalScheduleViewer';
 import { notFound } from 'next/navigation';
 import { User, Calendar, FileText, AlertCircle, Edit, GraduationCap, ChevronLeft, Clock } from 'lucide-react';
-import GuideHistoryModal from '@/components/modals/GuideHistoryModal';
 import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { useTeacherScheduleBlocks, transformTeacherScheduleData, useClassroomSchedule, transformScheduleData } from '@/hooks/useSchedules';
 import Link from 'next/link';
@@ -36,6 +34,11 @@ interface PageProps {
 import { userService } from '@/services/user.service';
 import { studentsService } from '@/services/students.service';
 import { StudentDashboardStats } from '@/types/student';
+import { diferido } from '@/components/common/Diferido';
+
+// Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
+const StudentCycleAccordion = diferido(() => import('@/components/profile/StudentCycleAccordion'), { alto: 300 });
+const GuideHistoryModal = diferido(() => import('@/components/modals/GuideHistoryModal'), { sinEsqueleto: true });
 
 // ScheduleEntry type kept for compatibility
 interface ScheduleEntry {
@@ -743,9 +746,9 @@ export default function UserProfilePage({ params }: PageProps) {
             </div>
 
             {/* Guide History Modal */}
-            {user?.role === 'teacher' && (
+            {user?.role === 'teacher' && showGuideHistoryModal && (
                 <GuideHistoryModal
-                    isOpen={showGuideHistoryModal}
+                    isOpen
                     onClose={() => setShowGuideHistoryModal(false)}
                     guideSections={(() => {
                         // Solo mostrar los años en los que el docente SÍ fue guía titular

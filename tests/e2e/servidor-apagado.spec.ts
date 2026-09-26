@@ -148,6 +148,55 @@ test.describe('Con el servidor apagado', () => {
     });
 
     /**
+     * LO QUE BAJA AL ABRIRLO (carga diferida), SIN SERVIDOR
+     *
+     * Una pestaña de Configuración baja su trozo al pulsarla, no con la
+     * pantalla. La que se abrió con servidor queda guardada y se vuelve a ver
+     * sin él; la que no se abrió nunca no está, y lo dice en vez de romper la
+     * pantalla entera.
+     */
+    test('APAGADO-03: una pestaña diferida abierta con servidor se ve sin él; una nunca abierta avisa', async ({ page, context }) => {
+        test.setTimeout(180_000);
+        const html = await (await fetch(`http://127.0.0.1:${DESTINO}/login`)).text().catch(() => '');
+        test.skip(html.includes('hmr-client') || html.includes('webpack-hmr'), 'Necesita la web COMPILADA (WEB_DESTINO=3108)');
+
+        const puerta = await abrirPuerta(PUERTO, DESTINO);
+        try {
+            await page.goto(`${WEB}/login?slug=${TENANT_SLUG}`);
+            await page.fill('input[type="email"]', 'admin@testing.edu.ve');
+            await page.fill('input[type="password"]', '123456');
+            await Promise.all([
+                page.waitForURL('**/dashboard**', { timeout: 60_000 }),
+                page.getByRole('button', { name: /^Ingresar$/ }).click(),
+            ]);
+            await page.waitForFunction(() => !!navigator.serviceWorker?.controller, null, { timeout: 60_000 });
+
+            // Con servidor: Configuración y su pestaña «Apariencia».
+            await page.goto(`${WEB}/dashboard/configuracion`);
+            await page.getByRole('button', { name: /Apariencia/ }).click();
+            await expect(page.getByText('Logos del Instituto')).toBeVisible({ timeout: 30_000 });
+            await expect.poll(() => lleganDatosGuardados(page), { timeout: 20_000 }).toBe(true);
+
+            // Sin servidor: se vuelve a abrir la pantalla.
+            await puerta.cerrar();
+            await apagarLaApi(context);
+            await page.reload();
+            await expect(page.getByText('Sin conexión con el liceo').first()).toBeVisible({ timeout: 20_000 });
+
+            await page.getByRole('button', { name: /Apariencia/ }).click();
+            await expect(page.getByText('Logos del Instituto')).toBeVisible({ timeout: 15_000 });
+
+            // «Seguridad» no se abrió nunca: no está guardada, y se dice.
+            await page.getByRole('button', { name: /Seguridad/ }).click();
+            await expect(page.getByText(/no está guardada en el teléfono/)).toBeVisible({ timeout: 15_000 });
+            await expect(page.getByRole('button', { name: /Apariencia/ })).toBeVisible(); // la pantalla sigue viva
+        } finally {
+            await puerta.cerrar().catch(() => undefined);
+            await context.unroute(`${API}/**`).catch(() => undefined);
+        }
+    });
+
+    /**
      * Sin ayudante: es lo que pasa en una APK de pruebas por http (los
      * navegadores solo registran el ayudante por https o en localhost). La app
      * ya estaba abierta cuando se fue el servidor: tiene que seguir igual.

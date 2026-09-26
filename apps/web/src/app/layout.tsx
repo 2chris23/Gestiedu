@@ -10,7 +10,6 @@ import { DynamicTitle } from '@/components/common/DynamicTitle';
 import { DynamicColors } from '@/components/common/DynamicColors';
 import { FichaDeLaApp } from '@/components/common/FichaDeLaApp';
 import { AyudanteDeLaApp } from '@/components/common/AyudanteDeLaApp';
-import { ProveedorDeGlobos } from '@/components/ui/boton-icono';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -83,16 +82,14 @@ export default function RootLayout({
             <body className={inter.className} suppressHydrationWarning={true}>
                 <QueryProvider>
                     <ConfirmProvider>
-                        <ProveedorDeGlobos>
-                            <DynamicFavicon />
-                            <DynamicTitle />
-                            <DynamicColors />
-                            <Suspense fallback={null}>
-                                <FichaDeLaApp />
-                            </Suspense>
-                            <AyudanteDeLaApp />
-                            {children}
-                        </ProveedorDeGlobos>
+                        <DynamicFavicon />
+                        <DynamicTitle />
+                        <DynamicColors />
+                        <Suspense fallback={null}>
+                            <FichaDeLaApp />
+                        </Suspense>
+                        <AyudanteDeLaApp />
+                        {children}
                     </ConfirmProvider>
                 </QueryProvider>
                 <Toaster richColors position="top-right" />

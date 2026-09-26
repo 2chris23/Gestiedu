@@ -3,7 +3,8 @@
 import { Card } from '@/components/ui';
 import { CifraCompacta, RejillaDeCifras, type ColorDeCifra } from '@/components/dashboard/CifraCompacta';
 import { AccesosDelLiceo } from '@/components/dashboard/AccesosDelLiceo';
-import { TrendChart, StatusBadge } from '@/components/dashboard';
+import { StatusBadge } from '@/components/dashboard/StatusBadge';
+import { diferido } from '@/components/common/Diferido';
 import { useAuthStore } from '@/store/auth.store';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
@@ -24,6 +25,10 @@ import {
     School,
     type LucideIcon,
 } from 'lucide-react';
+
+// La gráfica (recharts, lo más pesado del Inicio) solo la ve el alumno: baja
+// cuando se pinta, no con el Inicio de todos.
+const TrendChart = diferido(() => import('@/components/dashboard/TrendChart').then((m) => ({ default: m.TrendChart })), { alto: 250 });
 
 // Tipos para el dashboard de admin
 interface AdminDashboardData {

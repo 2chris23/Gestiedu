@@ -13,14 +13,17 @@ import {
     UserCog
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
-import { AddStudentModal } from '@/components/modals';
-import AssignTeacherModal from '@/components/academic/AssignTeacherModal';
 import { classroomService, Classroom } from '@/services/classroom.service';
 import { studentsService } from '@/services/students.service';
 import { Card } from '@/components/ui';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
+import { diferido } from '@/components/common/Diferido';
+
+// Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
+const AddStudentModal = diferido(() => import('@/components/modals/AddStudentModal').then((m) => ({ default: m.AddStudentModal })), { sinEsqueleto: true });
+const AssignTeacherModal = diferido(() => import('@/components/academic/AssignTeacherModal'), { sinEsqueleto: true });
 
 interface Student {
     id: string;
@@ -325,8 +328,9 @@ export default function ClassroomDetailPage() {
             </Card>
 
             {/* Modals */}
+            {isAddStudentModalOpen && (
             <AddStudentModal
-                isOpen={isAddStudentModalOpen}
+                isOpen
                 onClose={() => setIsAddStudentModalOpen(false)}
                 classroomId={classroomId}
                 academicYearId={classroom.academicYearId || ''}
@@ -335,9 +339,11 @@ export default function ClassroomDetailPage() {
                     toast.success('Estudiante agregado exitosamente');
                 }}
             />
+            )}
 
+            {isAssignTeacherModalOpen && (
             <AssignTeacherModal
-                isOpen={isAssignTeacherModalOpen}
+                isOpen
                 onClose={() => setIsAssignTeacherModalOpen(false)}
                 classroomId={classroomId}
                 classroomName={classroom.name}
@@ -347,6 +353,7 @@ export default function ClassroomDetailPage() {
                     toast.success('Profesor asignado exitosamente');
                 }}
             />
+            )}
         </div>
     );
 }

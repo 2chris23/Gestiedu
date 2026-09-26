@@ -7,8 +7,11 @@ import UserAvatar from '@/components/ui/UserAvatar';
 import { cn } from '@/lib/utils';
 import { asistenciaQr, elMotivo, laUbicacion, QUE_PASO, type RegistroDelPase, type VistaDelPase } from '@/lib/asistencia-qr';
 import CodigoQr from '@/components/asistencia/CodigoQr';
-import EscanerDeQr from '@/components/asistencia/EscanerDeQr';
+import { diferido } from '@/components/common/Diferido';
 import { mantenerLaPantallaEncendida } from '@/lib/pantalla-encendida';
+
+// La cámara y su lector bajan al abrir el escáner, no con cada pantalla.
+const EscanerDeQr = diferido(() => import('@/components/asistencia/EscanerDeQr'), { sinEsqueleto: true });
 
 /**
  * EL PASE DE LISTA POR QR, EN EL TELÉFONO DEL PROFESOR

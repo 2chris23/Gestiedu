@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { io, Socket } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 import { API_URL } from '@/config/env';
 import { conseguirCredencial } from '@/lib/credencial-en-memoria';
 import { elServidorContesto } from '@/lib/estado-del-servidor';
@@ -67,7 +67,7 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
          * eso, se abriría un socket que ya no tiene quien lo escuche.
          */
         let cancelado = false;
-        let socket: ReturnType<typeof io> | null = null;
+        let socket: Socket | null = null;
 
         const pedirDeNuevoLoQueSeVe = () => {
             ultimoRefresco.current = Date.now();
@@ -141,6 +141,19 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
             }
 
             if (!token || cancelado) return; // sin sesión no hay nada que escuchar
+
+            // El cliente del tiempo real (≈40 KB) se baja solo con sesión: la
+            // portada y el login no lo necesitan. Si no se puede bajar es que
+            // el servidor ya no contesta: se pregunta, como cuando el canal se
+            // corta, para que salga el aviso de «estás viendo lo de antes».
+            let io: typeof import('socket.io-client').io;
+            try {
+                ({ io } = await import('socket.io-client'));
+            } catch {
+                if (!cancelado) void preguntarAlServidor();
+                return;
+            }
+            if (cancelado) return;
 
             const base = API_URL.replace(/\/api\/?$/, '');
             socket = io(base, {

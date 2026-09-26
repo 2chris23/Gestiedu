@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, ChevronLeft, ChevronRight, Filter, FolderArchive, Users, RotateCcw, AlertTriangle } from 'lucide-react';
 import { Input, Button } from '@/components/ui';
 import { UsersTable } from '@/components/users/UsersTable';
-import { UserForm } from '@/components/users/UserForm';
 import { Modal } from '@/components/ui/Modal';
 import { userService } from '@/services/user.service';
 import { User, CreateUserData } from '@/types/user';
@@ -12,10 +11,13 @@ import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
-import { UserProfileModal } from '@/components/users/UserProfileModal';
 import { useRouter } from 'next/navigation';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
+import { diferido } from '@/components/common/Diferido';
+
+// Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
+const UserForm = diferido(() => import('@/components/users/UserForm').then((m) => ({ default: m.UserForm })), { alto: 420 });
 
 export default function UsersPage() {
     const queryClient = useQueryClient();

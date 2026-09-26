@@ -30,7 +30,11 @@ interface ClassroomScheduleEditorProps {
 }
 
 import HorarioPorDias from '@/components/schedule/HorarioPorDias';
-import EditorDeHorarioTumbado from '@/components/schedule/EditorDeHorarioTumbado';
+import { diferido } from '@/components/common/Diferido';
+
+// Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
+// Solo en el teléfono: en el ordenador no baja.
+const EditorDeHorarioTumbado = diferido(() => import('@/components/schedule/EditorDeHorarioTumbado'), { alto: 400 });
 
 /**
  * ¿Es un teléfono? El dedo, y el lado corto de la pantalla por debajo de 600

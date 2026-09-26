@@ -4,12 +4,15 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useAcademicYears } from '@/hooks/useAcademicYears';
-import AcademicYearModal from '@/components/academic/AcademicYearModal';
 import AcademicTimeline from '@/components/academic/AcademicTimeline';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
+import { diferido } from '@/components/common/Diferido';
+
+// Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
+const AcademicYearModal = diferido(() => import('@/components/academic/AcademicYearModal'), { sinEsqueleto: true });
 
 export default function AcademicPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -47,8 +50,9 @@ export default function AcademicPage() {
             {/* Timeline View */}
             <AcademicTimeline years={years} loading={loading} onRefresh={loadYears} />
 
+            {isModalOpen && (
             <AcademicYearModal
-                isOpen={isModalOpen}
+                isOpen
                 onClose={() => setIsModalOpen(false)}
                 existingYears={years}
                 onSuccess={() => {
@@ -57,6 +61,7 @@ export default function AcademicPage() {
                     toast.success('Año escolar creado correctamente');
                 }}
             />
+            )}
         </div>
     );
 }

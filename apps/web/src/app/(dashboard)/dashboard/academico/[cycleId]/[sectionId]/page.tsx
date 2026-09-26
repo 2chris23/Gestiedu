@@ -18,25 +18,27 @@ import { useClassroomSubjects, useClassroomSubjectsStats } from '@/hooks/useClas
 import { SectionStudent } from '@/services/students.service';
 import { API_URL } from '@/config/env';
 import { useClassroomSchedule, transformScheduleData } from '@/hooks/useSchedules';
-import ClassroomScheduleEditor from '@/components/schedule/ClassroomScheduleEditor';
 import { Pagination } from '@/components/ui';
 import { toast } from 'sonner';
-import RemoveStudentSecureModal from '@/components/academic/RemoveStudentSecureModal';
-import AssignTeacherModal from '@/components/academic/AssignTeacherModal';
-import { AssignSubjectModal } from '@/components/academic/AssignSubjectModal';
 import { SubjectCard } from '@/components/academic/SubjectCard';
 import { useAuthStore } from '@/store/auth.store';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
 import StudentScheduleSection from '@/components/schedule/StudentScheduleSection';
-import EvaluationPlanSection from '@/components/evaluation/EvaluationPlanSection';
 import LapsoSelector from '@/components/academic/LapsoSelector'; // Fase 3.5 — filtro por lapso
 import { useAcademicConfig } from '@/hooks/useAcademicConfig';
 import { getAcademicRisk } from '@/utils/academicRisk';
-import SectionObservationsTab from '@/components/classroom/SectionObservationsTab';
-import StudentObservationsModal from '@/components/observations/StudentObservationsModal';
 import { useRouter } from 'next/navigation';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
+import { diferido } from '@/components/common/Diferido';
+
+// Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
+const RemoveStudentSecureModal = diferido(() => import('@/components/academic/RemoveStudentSecureModal'), { sinEsqueleto: true });
+const AssignTeacherModal = diferido(() => import('@/components/academic/AssignTeacherModal'), { sinEsqueleto: true });
+const AssignSubjectModal = diferido(() => import('@/components/academic/AssignSubjectModal').then((m) => ({ default: m.AssignSubjectModal })), { sinEsqueleto: true });
+const EvaluationPlanSection = diferido(() => import('@/components/evaluation/EvaluationPlanSection'), { alto: 400 });
+const SectionObservationsTab = diferido(() => import('@/components/classroom/SectionObservationsTab'), { alto: 300 });
+const StudentObservationsModal = diferido(() => import('@/components/observations/StudentObservationsModal'), { sinEsqueleto: true });
 
 // Params refactored: year -> cycleId, slug -> sectionId
 export default function SectionPage({ params }: { params: Promise<{ cycleId: string, sectionId: string }> }) {
@@ -993,8 +995,9 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                 </div>
             )}
 
+            {removeModalOpen && (
             <RemoveStudentSecureModal
-                isOpen={removeModalOpen}
+                isOpen
                 onClose={() => {
                     setRemoveModalOpen(false);
                     setStudentToRemove(null);
@@ -1003,27 +1006,34 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                 studentName={studentToRemove?.name || ''}
                 onConfirm={handleRemoveStudent}
             />
+            )}
 
+            {isAssignTeacherModalOpen && (
             <AssignTeacherModal
-                isOpen={isAssignTeacherModalOpen}
+                isOpen
                 onClose={() => setIsAssignTeacherModalOpen(false)}
                 classroomId={classroomId || ''}
                 classroomName={classroom?.name || ''}
                 currentTeacher={classroom?.teacher}
             />
+            )}
 
+            {isAssignSubjectModalOpen && (
             <AssignSubjectModal
-                isOpen={isAssignSubjectModalOpen}
+                isOpen
                 onClose={() => setIsAssignSubjectModalOpen(false)}
                 classroomId={classroomId || ''}
                 onSuccess={handleSubjectAssignSuccess}
             />
+            )}
 
-            <StudentObservationsModal
-                isOpen={Boolean(selectedStudentForObs)}
-                onClose={() => setSelectedStudentForObs(null)}
-                student={selectedStudentForObs}
-            />
+            {selectedStudentForObs && (
+                <StudentObservationsModal
+                    isOpen
+                    onClose={() => setSelectedStudentForObs(null)}
+                    student={selectedStudentForObs}
+                />
+            )}
         </div>
     );
 }

@@ -17,14 +17,17 @@ import {
 import GradeAccordion from '@/components/academic/GradeAccordion';
 import TurnoBadge from '@/components/common/TurnoBadge';
 import { Turno } from '@/lib/turnos';
-import ClassroomModal from '@/components/classrooms/ClassroomModal';
-import AcademicYearModal from '@/components/academic/AcademicYearModal';
 import { toast } from 'sonner';
 import AcademicStats from '@/components/academic/AcademicStats';
 import LapsoSelector from '@/components/academic/LapsoSelector';
 import { useAuthStore } from '@/store/auth.store';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
+import { diferido } from '@/components/common/Diferido';
+
+// Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
+const ClassroomModal = diferido(() => import('@/components/classrooms/ClassroomModal'), { sinEsqueleto: true });
+const AcademicYearModal = diferido(() => import('@/components/academic/AcademicYearModal'), { sinEsqueleto: true });
 
 export default function AcademicYearDashboard() {
     const confirmDialog = useConfirm();
@@ -382,8 +385,9 @@ export default function AcademicYearDashboard() {
                 </div>
             </div>
 
+            {isClassroomModalOpen && (
             <ClassroomModal
-                isOpen={isClassroomModalOpen}
+                isOpen
                 onClose={handleModalClose}
                 onSuccess={handleModalSuccess}
                 defaultYearId={year.id}
@@ -392,9 +396,11 @@ export default function AcademicYearDashboard() {
                 existingClassrooms={classroomsByGrade[selectedGradeForCreation] || []}
                 existingSections={(classroomsByGrade[selectedGradeForCreation] || []).map(c => c.section)}
             />
+            )}
 
+            {isYearModalOpen && (
             <AcademicYearModal
-                isOpen={isYearModalOpen}
+                isOpen
                 onClose={() => setYearModalOpen(false)}
                 existingYears={[]}
                 yearToEdit={year}
@@ -403,6 +409,7 @@ export default function AcademicYearDashboard() {
                     fetchData();
                 }}
             />
+            )}
         </div>
     );
 }
