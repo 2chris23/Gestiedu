@@ -11,7 +11,8 @@ import {
   getUserProfile,
   updateUserProfile,
   toggleUserStatus,
-  getUserStats
+  getUserStats,
+  cambiarCedula
 } from '../controllers/users.controller';
 import { listStudentTutors, assignStudentTutor, removeStudentTutor } from '../controllers/student-tutors.controller';
 import { getUserPhoto, putUserPhoto, deleteUserPhoto } from '../controllers/foto-de-perfil.controller';
@@ -37,6 +38,10 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
         birthDate: { type: 'string' },
         gender: { type: 'string', enum: ['MASCULINO', 'FEMENINO', 'OTRO'] },
         address: { type: 'string' },
+        nacionalidad: { type: 'string', enum: ['V', 'E', ''] },
+        lugarDeNacimiento: { type: 'string', maxLength: 120 },
+        entidadDeNacimiento: { type: 'string', maxLength: 40 },
+        tipoDeCedula: { type: 'string', enum: ['IDENTIDAD', 'ESCOLAR', ''] },
         isActive: { type: 'boolean', default: true }
       }
     },
@@ -77,7 +82,11 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
         phone: { type: 'string' },
         birthDate: { type: 'string', format: 'date' },
         gender: { type: 'string', enum: ['MASCULINO', 'FEMENINO', 'OTRO'] },
-        address: { type: 'string' }
+        address: { type: 'string' },
+        nacionalidad: { type: 'string', enum: ['V', 'E', ''] },
+        lugarDeNacimiento: { type: 'string', maxLength: 120 },
+        entidadDeNacimiento: { type: 'string', maxLength: 40 },
+        tipoDeCedula: { type: 'string', enum: ['IDENTIDAD', 'ESCOLAR', ''] }
       }
     }
   };
@@ -144,6 +153,25 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
     schema: updateUserSchema,
     preHandler: [authenticate, requireAdmin, validateBody(zUpdateUserSchema)]
   }, updateUser as any);
+
+  // Cambiar la cédula (la escolar por la de identidad, o corregirla). Arrastra
+  // todo lo suyo y cierra sus sesiones (services/cambiar-cedula.service.ts).
+  fastify.put('/:id/cedula', {
+    schema: {
+      params: { type: 'object', required: ['id'], properties: { id: { type: 'string', minLength: 1, maxLength: 64 } } },
+      body: {
+        type: 'object',
+        required: ['nueva', 'confirmacion'],
+        additionalProperties: false,
+        properties: {
+          nueva: { type: 'string', minLength: 1, maxLength: 20 },
+          confirmacion: { type: 'string', minLength: 1, maxLength: 20 },
+          tipo: { type: 'string', enum: ['IDENTIDAD', 'ESCOLAR'] },
+        },
+      },
+    },
+    preHandler: [authenticate, requireAdmin]
+  }, cambiarCedula as any);
 
   fastify.delete('/:id', {
     schema: {

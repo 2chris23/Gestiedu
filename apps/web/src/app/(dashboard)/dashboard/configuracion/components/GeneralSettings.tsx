@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Save, Building2, Mail, Phone, MapPin, Landmark } from 'lucide-react';
 import { Lista } from '@/components/ui/lista';
+import { ENTIDADES_FEDERALES } from '@/lib/entidades-federales';
 import { useQueryClient } from '@tanstack/react-query';
 import { membreteKey } from '@/hooks/useMembrete';
 import { instituteKeys } from '@/hooks/useInstitute';
@@ -17,12 +18,6 @@ import { instituteKeys } from '@/hooks/useInstitute';
  * final y el plan de evaluación (`components/documentos/MembreteOficial.tsx`).
  * El servidor revisa los formatos al guardar.
  */
-const ENTIDADES_FEDERALES = [
-    'Amazonas', 'Anzoátegui', 'Apure', 'Aragua', 'Barinas', 'Bolívar', 'Carabobo', 'Cojedes',
-    'Delta Amacuro', 'Distrito Capital', 'Falcón', 'Guárico', 'La Guaira', 'Lara', 'Mérida',
-    'Miranda', 'Monagas', 'Nueva Esparta', 'Portuguesa', 'Sucre', 'Táchira', 'Trujillo',
-    'Yaracuy', 'Zulia', 'Dependencias Federales',
-];
 const SIN_ENTIDAD = '__ninguna';
 
 const DATOS_VACIOS = {

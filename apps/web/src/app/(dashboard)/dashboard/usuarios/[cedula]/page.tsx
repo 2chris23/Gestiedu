@@ -18,6 +18,7 @@ import { useTeacherScheduleBlocks, transformTeacherScheduleData, useClassroomSch
 import Link from 'next/link';
 import { RepresentantesDelAlumno } from '@/components/users/RepresentantesDelAlumno';
 import { TelefonoDeAsistencia } from '@/components/users/TelefonoDeAsistencia';
+import { CambiarCedula } from '@/components/users/CambiarCedula';
 import ActividadesDelAlumno from '@/components/profile/ActividadesDelAlumno';
 import api from '@/lib/axios';
 import { comprimirFotoEnElDispositivo, pesoLegible } from '@/lib/foto-comprimida';
@@ -433,6 +434,10 @@ export default function UserProfilePage({ params }: PageProps) {
                             <div className="grid gap-1">
                                 <span className="text-gray-400 text-xs uppercase font-bold tracking-wider">Cédula</span>
                                 <span className="font-medium text-gray-700">{user.cedula}</span>
+                                {dbUser?.cedulaEscolar && (
+                                    <span className="text-xs text-gray-500">Cédula escolar: {dbUser.cedulaEscolar}</span>
+                                )}
+                                <CambiarCedula cedula={user.cedula} />
                             </div>
                             <div className="grid gap-1">
                                 <span className="text-gray-400 text-xs uppercase font-bold tracking-wider">Correo Electrónico</span>

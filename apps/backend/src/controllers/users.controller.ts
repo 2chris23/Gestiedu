@@ -8,6 +8,25 @@ import bcrypt from 'bcrypt';
 import { RequestUser } from '../types/fastify';
 import { invalidateUserSession } from '../middleware/auth.middleware';
 import { fueModificadoPorOtro, versionVista, AVISO_MODIFICADO_POR_OTRO } from '../utils/concurrencia';
+import { esCedulaEscolar } from '../utils/cedula-escolar';
+import { cambiarLaCedula } from '../services/cambiar-cedula.service';
+
+/**
+ * Lo que piden los documentos del Ministerio (nacionalidad, lugar y entidad de
+ * nacimiento, tipo de cédula). Un campo que viene vacío se borra; uno que no
+ * viene, no se toca. Si no dice el tipo de cédula y la cédula tiene la forma
+ * de una escolar, se anota como escolar.
+ */
+function datosParaElMinisterio(entrada: Record<string, unknown>, cedula?: string) {
+  const datos: Record<string, string | null> = {};
+  for (const campo of ['nacionalidad', 'lugarDeNacimiento', 'entidadDeNacimiento', 'tipoDeCedula'] as const) {
+    if (!(campo in entrada)) continue;
+    const v = typeof entrada[campo] === 'string' ? (entrada[campo] as string).trim() : '';
+    datos[campo] = v || null;
+  }
+  if (!('tipoDeCedula' in entrada) && cedula && esCedulaEscolar(cedula)) datos.tipoDeCedula = 'ESCOLAR';
+  return datos;
+}
 
 /**
  * Cuánto cuesta cifrar una contraseña.
@@ -163,6 +182,7 @@ export async function createUser(
         phone: userData.phone,
         address: userData.address,
         birthDate: userData.birthDate ? new Date(userData.birthDate) : undefined,
+        ...datosParaElMinisterio(userData as any, userData.id),
         isActive: true,
       },
       select: {
@@ -442,6 +462,11 @@ export async function getUser(
         birthDate: true,
         gender: true,
         avatar: true,
+        nacionalidad: true,
+        lugarDeNacimiento: true,
+        entidadDeNacimiento: true,
+        tipoDeCedula: true,
+        cedulaEscolar: true,
         // Datos específicos de estudiante
         studentCode: true,
         studentClassrooms: {
@@ -1050,6 +1075,7 @@ export async function updateUser(
     if (dataToUpdate.birthDate && typeof dataToUpdate.birthDate === 'string') {
       dataToUpdate.birthDate = new Date(dataToUpdate.birthDate);
     }
+    Object.assign(dataToUpdate, datosParaElMinisterio(updateData as any));
 
     // 3. Mapear Rol si existe
     if (dataToUpdate.role) {
@@ -1077,6 +1103,10 @@ export async function updateUser(
           phone: true,
           address: true,
           birthDate: true,
+          nacionalidad: true,
+          lugarDeNacimiento: true,
+          entidadDeNacimiento: true,
+          tipoDeCedula: true,
           specialization: true,
           isActive: true,
           updatedAt: true,
@@ -1823,5 +1853,29 @@ export async function assignStudentToClassroom(
       error: 'Error en el servidor',
       code: 'INTERNAL_SERVER_ERROR',
     });
+  }
+}
+
+/**
+ * PUT /users/:id/cedula — cambia la cédula de una persona (la escolar por la de
+ * identidad, o una mal escrita). Se escribe dos veces, como se hace con lo que
+ * no tiene vuelta atrás fácil.
+ */
+export async function cambiarCedula(
+  request: FastifyRequest<{ Params: { id: string }; Body: { nueva: string; confirmacion: string; tipo?: 'IDENTIDAD' | 'ESCOLAR' } }>,
+  reply: FastifyReply
+) {
+  const { nueva, confirmacion, tipo } = request.body;
+  if (String(nueva).trim().toUpperCase() !== String(confirmacion).trim().toUpperCase()) {
+    return reply.status(400).send({ error: 'La cédula nueva y su confirmación no son iguales.', code: 'CONFIRMACION_DISTINTA' });
+  }
+  const instituteId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
+  const quien = (request.user as any)?.userId ?? (request.user as any)?.id;
+  try {
+    const hecho = await cambiarLaCedula(request.tenantPrisma, instituteId, { vieja: request.params.id, nueva, tipo, quien });
+    return reply.send({ success: true, data: hecho });
+  } catch (error: any) {
+    if (error?.statusCode) return reply.status(error.statusCode).send({ error: error.message, code: error.code });
+    throw error;
   }
 }

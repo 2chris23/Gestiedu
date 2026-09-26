@@ -26,33 +26,8 @@ import { platformPrisma } from '../config/database';
  * (`academicConfig.documentos`, en la base de la plataforma: una sola copia).
  */
 
-export const ENTIDADES_FEDERALES = [
-    'Amazonas',
-    'Anzoátegui',
-    'Apure',
-    'Aragua',
-    'Barinas',
-    'Bolívar',
-    'Carabobo',
-    'Cojedes',
-    'Delta Amacuro',
-    'Distrito Capital',
-    'Falcón',
-    'Guárico',
-    'La Guaira',
-    'Lara',
-    'Mérida',
-    'Miranda',
-    'Monagas',
-    'Nueva Esparta',
-    'Portuguesa',
-    'Sucre',
-    'Táchira',
-    'Trujillo',
-    'Yaracuy',
-    'Zulia',
-    'Dependencias Federales',
-] as const;
+export { ENTIDADES_FEDERALES } from '../utils/entidades-federales';
+import { ENTIDADES_FEDERALES } from '../utils/entidades-federales';
 
 export const TEXTO_DEL_MINISTERIO =
     'República Bolivariana de Venezuela\nMinisterio del Poder Popular para la Educación';

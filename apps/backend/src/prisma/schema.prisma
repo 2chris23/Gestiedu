@@ -208,6 +208,13 @@ model User {
   address    String?
   gender     Gender?
   avatar     String?
+
+  // Lo que piden los documentos del Ministerio (Resumen Final, certificación).
+  nacionalidad        String? // 'V' | 'E'
+  lugarDeNacimiento   String?
+  entidadDeNacimiento String? // una de ENTIDADES_DE_NACIMIENTO
+  tipoDeCedula        String? // 'IDENTIDAD' | 'ESCOLAR'
+  cedulaEscolar       String? // la escolar de antes, si la cambió por la de identidad
   role       UserRole
   isActive   Boolean   @default(true)
   status     String    @default("ACTIVE") // ACTIVE, ARCHIVED, DELETED

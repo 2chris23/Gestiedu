@@ -1,4 +1,5 @@
 import { UserRole, ActivityType, AttendanceStatus, ActivityScope, DayOfWeek, Gender } from './/prisma-enums';
+import { esEntidadDeNacimiento } from './entidades-federales';
 import { z } from 'zod';
 import { VALIDATION_RULES, GRADE_SYSTEM } from './constants';
 
@@ -84,6 +85,14 @@ export const createUserSchema = z.object({
   gender: z.nativeEnum(Gender).optional(),
   role: z.nativeEnum(UserRole),
   avatar: z.string().url('Avatar debe ser una URL válida').optional(),
+  // Lo que piden los documentos del Ministerio. Vacío = se borra.
+  nacionalidad: z.enum(['V', 'E', '']).optional(),
+  lugarDeNacimiento: z.string().trim().max(120, 'El lugar de nacimiento no puede pasar de 120 caracteres').optional(),
+  entidadDeNacimiento: z
+    .string()
+    .refine((v) => v === '' || esEntidadDeNacimiento(v), 'Elige la entidad de nacimiento de la lista')
+    .optional(),
+  tipoDeCedula: z.enum(['IDENTIDAD', 'ESCOLAR', '']).optional(),
 });
 
 export const updateUserSchema = createUserSchema.partial().omit({ id: true, password: true });

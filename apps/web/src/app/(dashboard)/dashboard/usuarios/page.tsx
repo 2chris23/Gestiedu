@@ -97,10 +97,22 @@ export default function UsersPage() {
         }
     };
 
-    const handleEditUser = (user: User) => {
-        setEditingUser(user);
-        setIsModalOpen(true);
-    }
+    /**
+     * EDITAR CON LA FICHA COMPLETA, NO CON LA FILA DE LA LISTA
+     *
+     * La lista no trae el género, la fecha de nacimiento ni los datos para el
+     * Ministerio. El formulario se rellenaba con lo que había, ponía «Otro» en
+     * el género y, al guardar, se lo cambiaba a quien se editara. Se pide la
+     * ficha entera antes de abrirlo.
+     */
+    const handleEditUser = async (user: User) => {
+        try {
+            setEditingUser(await userService.getUserById(user.id));
+            setIsModalOpen(true);
+        } catch (error) {
+            if (!esQueNoContesta(error)) toast.error('No se pudo abrir la ficha de este usuario');
+        }
+    };
 
     const [userToDelete, setUserToDelete] = useState<User | null>(null);
     const [userToArchive, setUserToArchive] = useState<User | null>(null);
