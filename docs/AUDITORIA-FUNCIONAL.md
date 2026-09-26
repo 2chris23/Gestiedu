@@ -3321,3 +3321,128 @@ se toca—. La versión 1.5 de la app quedó instalada en él. Tampoco dos telé
 de verdad uno frente al otro: la cámara se probó con una de mentira (Chrome) y
 la del emulador; y el GPS del emulador no se deja mover, así que el faro del
 profesor se probó en el servidor (QR-06, QR-14).
+
+## 59. Lo que pidió el dueño probando en el teléfono (25 y 26 de septiembre de 2026)
+
+Cada cosa que pidió, con lo que le pasaba al liceo y cómo quedó.
+
+**Lo que se veía roto**
+
+- **La pestaña enseñaba el birrete azul de la plataforma**, no el logo del
+  liceo, aunque Configuración dijera «Guardado». El armazón declaraba
+  `/favicon.svg` y el navegador lo prefería. Ahora `/icono-de-pestana` sirve el
+  del liceo desde la primera pintada (FAV-01/02).
+- **El horario en vivo del perfil de un profesor salía sin tema ni contadores**
+  («—» y 0): se pedía el resumen de una sola sección. Ahora de cada sección del
+  día.
+- **Tocar una clase en el horario del alumno abría una ventanita**, no la
+  clase. Ahora el alumno y su representante van a **Mi clase**: el plan de
+  evaluación, sus actividades con su nota y sus observaciones, nada de los
+  compañeros (MICLASE-01…06, ALUM-UI-01/03). El personal va a la clase en vivo.
+- De paso, **una fuga**: en las observaciones de grupo el alumno y su
+  representante recibían el nombre, el código y la foto de los compañeros
+  implicados (OBS-GRUPO-01).
+- **El horario en vivo no se arrastraba suave**, y tras pasar a «Semana» y
+  volver a «Hoy» ya no se movía con el ratón. Ahora usa el mismo carril que el
+  resto de la app (CARRIL-01).
+- **Quedaban listas con la ventana negra de Android** (promoción y eventos).
+
+**Lo nuevo**
+
+- **El horario del liceo, por turno y a prueba de errores.** Solo se podía
+  poner la hora de inicio de la mañana; la tarde empezaba a las 13:00 fijas.
+  Ahora mañana y tarde con inicio, fin, duración y recreos, y no se guarda lo
+  que no cuadra: «horas de 40 min hasta las 12:30» dice cuánto sobra y a qué
+  hora acabar (FRANJA-01…07, HORARIO-API-01…06, HORARIO-CFG-01).
+- **Cuándo empieza el plan en cada lapso**, libre, con las semanas de antes
+  («Diagnóstico»). Y una sola cuenta de semanas: la clase en vivo contaba desde
+  el inicio del año y la rejilla desde el del lapso, así que en el 2º y 3er
+  lapso la «Semana N» no coincidía (SEMANA-01…05, PLANINI-01…06).
+- **Evaluar a un alumno de otra forma** (cuaderno en vez de deporte): cuenta
+  igual y queda el método a la vista de él y su representante (OTRA-01…05,
+  OTRA-UI-01).
+- **Los datos oficiales del plantel** (código DEA, estadístico, dependencia,
+  zona, entidad, municipio, parroquia) y **un solo membrete** en la boleta, la
+  constancia, el resumen final, el plan y el acta de compromiso, que no decía
+  de qué liceo era (PLANTEL-01…04, MEMB-UI-01/02). Lo que falta para Venezuela,
+  para decidir: `docs/VENEZUELA-LO-QUE-FALTA.md`.
+- **El representante sin representados** veía su Inicio en blanco. Ahora se le
+  dice que el liceo aún no se los asignó.
+
+**Seguridad**
+
+- **Las pantallas se podían meter dentro de otra página** (la API tenía sus
+  cabeceras, las pantallas ninguna): alguien podía poner el login del liceo en
+  un marco invisible. Ahora ninguna pantalla se deja enmarcar (SEG-WEB-01/02).
+- **Cualquier profesor encontraba a cualquier alumno del liceo** (nombre,
+  cédula, foto, sección) con escribir una letra en «involucrar alumno». Ahora
+  solo a los de sus secciones; `quien-puede-que.test.ts` ya no tiene huecos
+  abiertos.
+
+**Carga diferida**
+
+Medido con la web compilada, en un navegador limpio (CARGA-01), el javascript
+que el teléfono tiene que leer la primera vez:
+
+| Pantalla | Antes | Después |
+|---|---|---|
+| Portada | 900 KB | 762 KB (−15 %) |
+| Login del liceo | 805 KB | 647 KB (−20 %) |
+| Inicio (admin, profesor, representante) | 1455 KB | 981 KB (−33 %) |
+| Usuarios | 1095 KB | 942 KB (−14 %) |
+| Sección | 1194 KB | 1013 KB (−15 %) |
+| Clase en vivo | 1016 KB | 922 KB (−9 %) |
+| Inicio (alumno) | 1455 KB | 1402 KB (−4 %) |
+
+Por la red (comprimido), el Inicio del personal pasó de 448 a 311 KB. El del
+alumno apenas baja porque su gráfica sí se ve: son ~400 KB de recharts para
+tres puntos. Cambiarla por un dibujo propio ya no es carga diferida; queda
+propuesto.
+
+Sin señal se sigue viendo lo último, como pidió el dueño (ver, no hacer): lo
+diferido que se abrió con internet queda guardado; lo que no, lo dice sin
+romper la pantalla (APAGADO-03). Salió un fallo al medirlo: con el cliente del
+tiempo real bajando aparte, si el servidor se iba antes de bajarlo, el aviso
+de «sin conexión» no salía (APAGADO-02 en rojo). Ahora, si no baja, se
+pregunta al servidor.
+
+**Tres fallos míos que salieron al pasar las pruebas de navegador**, antes de
+llegar a nadie:
+
+- **Tocar una clase del horario en vivo no abría nada**, ni para el alumno ni
+  para el personal. Al pasar el horario al carril suave (C4), entró en un
+  freno de clics que el carril ya tenía: marcaba «arrastrando» en cualquier
+  pulsación y se comía el toque. Embla ya anula por sí mismo el clic tras un
+  arrastre; el freno propio se quitó (ALUM-UI-01, CARRIL-01).
+- **El alumno se quedó sin «Escanear asistencia»**: los botones del QR solo
+  estaban en la ventanita de la clase, que se quitó al hacer Mi clase. Ahora
+  están arriba en Mi clase (QRE-01/02).
+- **Información General perdía lo escrito** si se escribía antes de que llegara
+  la configuración: el formulario salía vacío un instante y luego se rellenaba
+  encima. Ahora empieza en «Cargando» (MEMB-UI-01).
+
+Y cinco pruebas que medían mal o dependían del sembrado: la cifra
+«Observaciones» ya no va en mayúsculas (TR-03); el representante ya no tiene
+«Ir a» desde que se quitó el calendario (DISENO-04/05); el medidor de textos
+pisados contaba las líneas que `line-clamp` esconde (DISENO-03); y dos pruebas
+buscaban un profesor y un alumno concretos del sembrado (ASIS-DOS-01,
+BOL-UI-*/CONS-UI-*). El enlace «Inicio» de Materias medía 35×20 en tableta y
+teléfono tumbado: ahora 44 px (MOVIL-03).
+
+La revisión del teléfono encontró el selector de lapso a 36 px de alto (del
+día 25) en cinco pantallas: ahora 44.
+
+**Medido al cerrar:** servidor, 1043 de 1043 (127 archivos, 5 saltadas: las
+que piden un Redis de verdad); web, 60 de 60; navegador, **254 de 254** (3
+saltadas: las de servidor apagado, que piden la web compilada, y con ella
+APAGADO-01/02/03 en verde); `npm run movil -- --exigir`: 27 pantallas, 4
+roles, 0 con algo que arreglar (eran 31: las del calendario se fueron con él).
+
+**No probado:** nada en un teléfono de verdad hoy. El prestado nunca terminó de
+vincularse y el Motorola del dueño se desconectó; todo lo del teléfono se midió
+con Chrome haciendo de teléfono.
+
+**No reproducido:** `redis-caido.test.ts` falló una vez el 25 con la máquina
+cargada (la tanda completa y el teléfono por cable a la vez). Siete veces
+seguidas en verde, una dentro de la tanda completa (1043 de 1043); no se toca
+sin un fallo que mirar.

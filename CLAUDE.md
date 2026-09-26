@@ -23,8 +23,8 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
 ```bash
 cd apps/backend && npm run dev      # API en :3001
 cd apps/web && npm run dev          # web en :3000
-cd apps/backend && npx jest         # 849 pruebas en 101 archivos (integración + cálculo)
-npm run test:e2e                    # 198 pruebas de navegador (Playwright), con los dos servidores arriba
+cd apps/backend && npx jest         # 1048 pruebas en 127 archivos (integración + cálculo)
+npm run test:e2e                    # 257 pruebas de navegador (Playwright), con los dos servidores arriba
 cd apps/backend && npm run typecheck
 cd apps/backend && npm run migrate:plataforma        # la base de la plataforma
 cd apps/backend && npm run migrate:tenants[:status]   # migra todos los liceos
@@ -277,12 +277,115 @@ paletas distintas para lo mismo.
 - **Se guarda sola.** No hay botón «Guardar»: lo marcado se manda solo, agrupando
   lo que cae seguido (una tanda de treinta alumnos es UNA petición), y al salir de
   la pantalla se manda lo que quedara pendiente. Arriba se ve «Guardado 07:45».
-- **«Pasar asistencia»** cambia la tabla entera: fuera notas y observaciones, y
-  cada alumno con sus cuatro botones a la vista, de un toque.
+- **«Pasar asistencia»** pregunta primero cómo (a mano, con el QR en la mesa o
+  escaneando a cada alumno) y, a mano, cambia la tabla entera: fuera notas y
+  observaciones, y cada alumno con sus cuatro botones a la vista, de un toque.
+- **Evaluar a un alumno de otra forma** («no puede hacer deporte: se le evalúa
+  con el cuaderno»): botón «Otra forma» en su casilla al calificar. Su nota
+  cuenta igual; queda anotado el método (`ClassActivity.evaluadoDeOtraForma`,
+  por alumno) y lo ven él y su representante («Evaluado con: Cuaderno»).
 - **Los dos contadores del horario en vivo no son lo mismo**, y esto se confundió
   una vez: *Hoy* es lo que toca hacer en esa clase; *Próx.* es lo que se DEJÓ en
   esa clase para otro día. `Próx.` solo cuenta lo que nació en la sesión de ESE
   día (`classActivity.classSessionId`), no toda actividad pendiente de la materia.
+
+## El horario del liceo
+
+Configuración → Académica: **mañana y tarde por separado**, cada una con hora de
+inicio, hora de FIN, duración de la clase y sus recreos. El sistema cuenta las
+horas de clase y **no deja guardar lo que no cuadra** («sobran 35 min: que
+acabe a las 11:55 o a las 12:35»); el servidor lo revisa igual (400
+`HORARIO_NO_CUADRA`) y, si el cambio deja clases ya puestas fuera de la
+rejilla, pide confirmarlo (409 `HORARIO_DEJA_CLASES_FUERA`). Una sola cuenta,
+copiada en los dos lados como `plan-weeks`: `utils/franjas-del-horario.ts` y
+`lib/franjas-del-horario.ts` (FRANJA-01…07). La forma vieja (plana) se lee
+como la mañana.
+
+## Las semanas del plan
+
+Cada lapso dice **cuándo empieza el plan de evaluación** (`Period.inicioDelPlan`)
+y cómo se llaman las semanas de antes (`nombreAntesDelPlan`, «Diagnóstico» por
+defecto): es libre, cada liceo es distinto. Antes de esa fecha la semana es la
+**0**. Una sola cuenta: `services/semana-del-plan.service.ts`; la usan la clase
+en vivo, el horario en vivo, la rejilla del plan y el calendario. La clase en
+vivo contaba desde el inicio del AÑO y la rejilla desde el del LAPSO: en el 2º
+y 3er lapso su «Semana N» no era la misma.
+
+## Lo que ve el alumno de su clase
+
+Al tocar una clase en su horario, el alumno (y su representante, con
+`?alumno=`) va a **Mi clase** (`/dashboard/mi-clase/<materia>`): el plan de
+evaluación, sus actividades con **su** nota y **sus** observaciones. Nada de
+los compañeros: el servidor filtra las notas del mapa de la actividad
+(`controllers/mi-clase.controller.ts`, MICLASE-01…06). El personal, al tocar,
+va a la clase en vivo. Quién mira lo dice `useQuienSoy`, no el perfil abierto.
+Arriba en Mi clase van los botones del QR de asistencia («Escanear asistencia»
+y «Mi QR»), solo para el alumno: antes vivían en la ventanita que se quitó, y
+el alumno se quedó un día sin poder escanear (QRE-01).
+
+**El clic tras un arrastre lo anula Embla** (`components/ui/carril.tsx`). El
+carril tenía un freno propio que marcaba «arrastrando» en cualquier pulsación
+y se comía los toques: con el horario dentro, tocar una clase no abría nada.
+No volver a poner uno.
+
+Las observaciones de grupo daban al alumno y a su representante el nombre, el
+código y la foto de los compañeros implicados: `otherInvolved` es ya solo
+para el personal (OBS-GRUPO-01).
+
+## Los documentos del liceo
+
+**Datos oficiales del plantel** en Configuración → Información General: nombre
+oficial, código DEA, estadístico (6 dígitos), de dependencia (9), zona
+educativa, entidad federal, municipio, parroquia y las líneas del ministerio
+(`services/datos-del-plantel.service.ts`, PLANTEL-01…04). Van en
+`academicConfig.documentos`, en la plataforma, y se **mezclan** con lo que
+había: General y Académico (la firma) ya no se borran lo del otro.
+
+**Un solo membrete** (`components/documentos/MembreteOficial.tsx`, de
+`GET /institutes/current/membrete`) en la boleta, la constancia, el resumen
+final, el plan de evaluación y el acta de compromiso; el horario descargado
+lleva el nombre y el DEA (MEMB-UI-01/02). Lo que falta para Venezuela está en
+`docs/VENEZUELA-LO-QUE-FALTA.md`.
+
+## Carga diferida
+
+Lo que no se ve al abrir una pantalla —un modal, una pestaña, la gráfica del
+alumno, el escáner del QR— baja al abrirlo: `diferido(() => import(...))`
+(`components/common/Diferido.tsx`). Dos reglas:
+
+- **El modal se pinta solo abierto**: `{abierto && <Modal isOpen … />}`. Un
+  diferido que se pinta cerrado (aunque devuelva `null`) baja igual.
+- **Sin señal**: lo abierto alguna vez con internet está guardado (`sw.js`
+  guarda todo `/_next/static/`) y se ve igual; lo que no, dice que no está
+  guardado y ofrece reintentar, sin romper la pantalla (APAGADO-03).
+
+Además, fuera del armazón común: los globos (cada `BotonIcono` trae el suyo),
+la ventana de «¿seguro?» (baja la primera vez que se pregunta), el tiempo real
+(`socket.io-client`, solo con sesión; si no se puede bajar, se pregunta al
+servidor para que salga el aviso de sin conexión) y `qrcode`. Las fotos de
+perfil se piden cuando el avatar llega a la pantalla.
+
+Se mide con `tests/e2e/medir-carga.spec.ts` (CARGA-01, contra la web
+compilada; la cabecera dice cómo). Septiembre 2026, javascript a ejecutar la
+primera vez: login 805 → 647 KB, Inicio del personal y del representante
+1455 → 981 KB, sección 1194 → 1013 KB. El Inicio del alumno sigue en 1402 KB:
+su gráfica (recharts) sí se ve.
+
+## Las pantallas no se dejan enmarcar
+
+`next.config.js` pone en TODAS las rutas `X-Frame-Options: DENY`,
+`frame-ancestors 'none'`, `nosniff`, `Referrer-Policy` y `Permissions-Policy`
+(cámara y ubicación solo para la app), y quita `X-Powered-By`. La API ya las
+traía (helmet); las pantallas, ninguna: el login se podía meter en un marco
+invisible de otra página (SEG-WEB-01/02). Y el profesor, al buscar alumnos para
+una observación, encuentra solo a los de sus secciones.
+
+## El icono de la pestaña
+
+`/icono-de-pestana` (`app/icono-de-pestana/route.ts`) sirve el favicon del
+liceo de la petición (el de `?liceo`, la cabecera, la cookie o el subdominio) o,
+si no tiene, el genérico. El `/favicon.svg` que declaraba el armazón le ganaba
+siempre al logo que subía el liceo (FAV-01/02).
 
 ## La sesión
 
@@ -299,9 +402,10 @@ paletas distintas para lo mismo.
 Barra de tareas abajo (`components/layout/BarraInferiorMovil.tsx`), donde está el
 pulgar, con **Inicio en el centro** y a cada lado lo que ese rol abre cada día
 (`losDeLaBarra` en `lib/el-menu.ts`): cinco para el personal (admin: Académico,
-Usuarios, Horarios y Pagos, o Calendario sin pagos; profesor: Académico,
-Materias, Horarios, Calendario), tres para el alumno y el representante
-(Calendario y «Mi cuenta»). Se esconde donde hay barra lateral —tableta u
+Usuarios, Horarios y Pagos, o Eventos sin pagos; profesor: Académico,
+Materias, Horarios, «Mi cuenta»), tres para el alumno («Mi boleta» y «Mi
+cuenta») y dos para el representante. **El calendario se quitó** (lo pidió el
+liceo: el horario en vivo ya dice qué toca). Se esconde donde hay barra lateral —tableta u
 ordenador, `lateral:` en `tailwind.config.js`; **un teléfono tumbado NO**, aunque
 pase de 1024 px de ancho—, respeta la barra de
 gestos del teléfono (`env(safe-area-inset-bottom)`) y cada botón mide 44 px de
@@ -315,7 +419,7 @@ sobre el contenido (visto en un Motorola; MOVIL-02 lo mide).
 ## En el teléfono, lo que se comprueba cada vez
 
 ```bash
-npm run movil            # 31 pantallas, los 4 roles, con foto de cada una
+npm run movil            # 27 pantallas (31 antes de quitar el calendario), los 4 roles, con foto de cada una
 npm run movil -- --exigir   # y acaba en rojo si algo incumple
 ```
 

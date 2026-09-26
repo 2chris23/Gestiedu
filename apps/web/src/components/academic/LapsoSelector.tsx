@@ -35,7 +35,7 @@ export default function LapsoSelector({ periods, value, onChange, compact = fals
         <Select value={value || TODO} onValueChange={(v) => onChange(v === TODO ? undefined : v)}>
             <SelectTrigger
                 aria-label="Selector de lapso / momento"
-                className={`h-auto min-h-[36px] w-auto gap-1.5 rounded-xl border-gray-200 bg-white text-xs font-bold text-gray-700 shadow-2xs focus:ring-2 focus:ring-indigo-500 ${
+                className={`h-auto min-h-11 w-auto gap-1.5 rounded-xl border-gray-200 bg-white text-xs font-bold text-gray-700 shadow-2xs focus:ring-2 focus:ring-indigo-500 ${
                     compact ? 'px-2.5 sm:px-3' : 'px-3'
                 }`}
             >
