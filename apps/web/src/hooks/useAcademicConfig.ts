@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { instituteService } from '@/services/institute.service';
-import { ScheduleConfig } from '@/utils/schedule.utils';
+import type { HorarioDelLiceo } from '@/lib/franjas-del-horario';
 
 export interface GradeScale {
     min: number;
@@ -18,7 +18,8 @@ export interface AcademicConfig {
     asistenciaMinima: number;
     language?: string;
     dateFormat?: string;
-    schedule: ScheduleConfig;
+    /** Por turno (`turnos`), y la forma vieja de la mañana para lo guardado antes. */
+    schedule: HorarioDelLiceo;
 }
 
 const DEFAULT_CONFIG: AcademicConfig = {

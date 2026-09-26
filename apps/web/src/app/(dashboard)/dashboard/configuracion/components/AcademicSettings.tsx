@@ -6,11 +6,15 @@ import { Save, GraduationCap, Globe, Calendar, Clock, FileText } from 'lucide-re
 import { instituteService, type InstituteConfig } from '@/services/institute.service';
 import { toast } from 'sonner';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
+import { useConfirm } from '@/hooks/useConfirm';
+import { calcularTurno, erroresDelHorario, turnosDeLaConfig, type HorarioDelLiceo } from '@/lib/franjas-del-horario';
+import { HorarioDelLiceoEditor } from './HorarioDelLiceoEditor';
 
 export function AcademicSettings() {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [config, setConfig] = useState<InstituteConfig | null>(null);
+    const confirmar = useConfirm();
 
     const [academicConfig, setAcademicConfig] = useState({
         timezone: 'America/Caracas',
@@ -22,13 +26,8 @@ export function AcademicSettings() {
         documentos: { firmanteNombre: '', firmanteCedula: '', firmanteCargo: '', codigoDea: '' },
         language: 'es',
         dateFormat: 'DD/MM/YYYY',
-        schedule: {
-            startTime: '07:00',
-            blockDuration: 45,
-            totalBlocks: 7,
-            breakAfterBlock: 3,
-            breakDuration: 15
-        }
+        // Por turno: inicio, fin, duración y recreos (`lib/franjas-del-horario.ts`).
+        schedule: { turnos: turnosDeLaConfig(null) } as HorarioDelLiceo,
     });
 
     useEffect(() => {
@@ -60,13 +59,8 @@ export function AcademicSettings() {
                     },
                     language: rawConfig.language || 'es',
                     dateFormat: rawConfig.dateFormat || 'DD/MM/YYYY',
-                    schedule: rawConfig.schedule || {
-                        startTime: '07:00',
-                        blockDuration: 45,
-                        totalBlocks: 7,
-                        breakAfterBlock: 3,
-                        breakDuration: 15
-                    }
+                    // Lo guardado a la vieja (solo la mañana) se lee con sus dos turnos.
+                    schedule: { ...(rawConfig.schedule || {}), turnos: turnosDeLaConfig(rawConfig.schedule) },
                 });
             } else if (data.timezone) {
                 setAcademicConfig(prev => ({ ...prev, timezone: data.timezone || prev.timezone }));
@@ -102,17 +96,40 @@ export function AcademicSettings() {
             return;
         }
 
-        try {
-            setSaving(true);
-            await instituteService.updateConfig({
-                configuration: academicConfig,
+        const noCuadra = erroresDelHorario(academicConfig.schedule);
+        if (noCuadra.length) {
+            toast.error(noCuadra[0]);
+            return;
+        }
+
+        const guardar = (confirmarClasesFuera = false) =>
+            instituteService.updateConfig({
+                configuration: { ...academicConfig, ...(confirmarClasesFuera ? { confirmarClasesFuera: true } : {}) } as any,
                 timezone: academicConfig.timezone,
             });
+
+        try {
+            setSaving(true);
+            try {
+                await guardar();
+            } catch (error: any) {
+                // Clases puestas que dejarían de caer en una hora del día: se
+                // pregunta antes de dejarlas fuera de la rejilla.
+                if (error?.response?.status !== 409 || error?.response?.data?.code !== 'HORARIO_DEJA_CLASES_FUERA') throw error;
+                const seguir = await confirmar({
+                    title: '¿Cambiar el horario igualmente?',
+                    description: `${error.response.data.error} Esas clases no se borran, pero ninguna pantalla las enseñará hasta que se muevan a una hora del nuevo horario.`,
+                    confirmLabel: 'Cambiar el horario',
+                    cancelLabel: 'No, revisar',
+                });
+                if (!seguir) return;
+                await guardar(true);
+            }
             toast.success('Configuración académica actualizada exitosamente');
             await loadConfig();
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            toast.error('Error al guardar la configuración');
+            toast.error(error?.response?.data?.error || 'Error al guardar la configuración');
         } finally {
             setSaving(false);
         }
@@ -369,66 +386,10 @@ export function AcademicSettings() {
                 <p className="text-sm text-gray-600 mb-6">
                     Configura la estructura diaria del horario de clases y recreos.
                 </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div>
-                        <label htmlFor="scheduleStartTime" className="block text-sm font-medium text-gray-700 mb-2">Hora de Inicio</label>
-                        <input
-                            id="scheduleStartTime"
-                            type="time"
-                            value={academicConfig.schedule.startTime}
-                            onChange={(e) => setAcademicConfig(prev => ({ ...prev, schedule: { ...prev.schedule, startTime: e.target.value } }))}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                        />
-                    </div>
-                    <div>
-                        <label htmlFor="blockDuration" className="block text-sm font-medium text-gray-700 mb-2">Duración de clase (min)</label>
-                        <input
-                            id="blockDuration"
-                            type="number"
-                            min="15"
-                            max="180"
-                            value={academicConfig.schedule.blockDuration}
-                            onChange={handleNumberChange((blockDuration) => setAcademicConfig(prev => ({ ...prev, schedule: { ...prev.schedule, blockDuration } })))}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                        />
-                    </div>
-                    <div>
-                        <label htmlFor="totalBlocks" className="block text-sm font-medium text-gray-700 mb-2">Total horas al día</label>
-                        <input
-                            id="totalBlocks"
-                            type="number"
-                            min="1"
-                            max="15"
-                            value={academicConfig.schedule.totalBlocks}
-                            onChange={handleNumberChange((totalBlocks) => setAcademicConfig(prev => ({ ...prev, schedule: { ...prev.schedule, totalBlocks } })))}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                        />
-                    </div>
-                    <div>
-                        <label htmlFor="breakAfterBlock" className="block text-sm font-medium text-gray-700 mb-2">Recreo después de la hora Nº</label>
-                        <input
-                            id="breakAfterBlock"
-                            type="number"
-                            min="1"
-                            max="10"
-                            value={academicConfig.schedule.breakAfterBlock}
-                            onChange={handleNumberChange((breakAfterBlock) => setAcademicConfig(prev => ({ ...prev, schedule: { ...prev.schedule, breakAfterBlock } })))}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                        />
-                    </div>
-                    <div>
-                        <label htmlFor="breakDuration" className="block text-sm font-medium text-gray-700 mb-2">Duración del recreo (min)</label>
-                        <input
-                            id="breakDuration"
-                            type="number"
-                            min="5"
-                            max="120"
-                            value={academicConfig.schedule.breakDuration}
-                            onChange={handleNumberChange((breakDuration) => setAcademicConfig(prev => ({ ...prev, schedule: { ...prev.schedule, breakDuration } })))}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                        />
-                    </div>
-                </div>
+                <HorarioDelLiceoEditor
+                    valor={academicConfig.schedule}
+                    alCambiar={(schedule) => setAcademicConfig((prev) => ({ ...prev, schedule }))}
+                />
             </div>
 
             {/* Preview */}
@@ -440,8 +401,16 @@ export function AcademicSettings() {
                     <p>• Zona horaria: {academicConfig.timezone}</p>
                     <p>• Idioma: {academicConfig.language === 'es' ? 'Español' : academicConfig.language === 'en' ? 'English' : 'Português'}</p>
                     <p className="mt-2 font-semibold">Horario:</p>
-                    <p>• {academicConfig.schedule.totalBlocks} bloques de {academicConfig.schedule.blockDuration} min. Inicio: {academicConfig.schedule.startTime}</p>
-                    <p>• Recreo: {academicConfig.schedule.breakDuration} min después de la {academicConfig.schedule.breakAfterBlock}ra hora</p>
+                    {(['MANANA', 'TARDE'] as const).map((t) => {
+                        const turno = turnosDeLaConfig(academicConfig.schedule)[t];
+                        const cuenta = calcularTurno(turno, t);
+                        return (
+                            <p key={t}>
+                                • {t === 'MANANA' ? 'Mañana' : 'Tarde'}: {turno.inicio} a {turno.fin}
+                                {cuenta.errores.length ? ' (no cuadra)' : `, ${cuenta.bloques} horas de ${turno.duracion} min`}
+                            </p>
+                        );
+                    })}
                 </div>
             </div>
 

@@ -1,4 +1,6 @@
 /// <reference path="../types/fastify.d.ts" />
+import { franjasDelTurno } from '../utils/franjas-del-horario';
+import { platformPrisma } from '../config/database';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { logger } from '../utils/logger';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
@@ -593,38 +595,43 @@ export async function autoGenerateSchedule(
             });
         }
 
-        // Estructura de 7 bloques estándar matutinos (Lunes=1 ... Viernes=5)
-        const STANDARD_PERIODS = [
-            { index: 0, startTime: '07:00', endTime: '07:45' }, // 1ra Hora
-            { index: 1, startTime: '07:45', endTime: '08:30' }, // 2da Hora
-            { index: 2, startTime: '08:30', endTime: '09:15' }, // 3ra Hora
-            // Recreo: 09:15 - 09:30
-            { index: 3, startTime: '09:30', endTime: '10:15' }, // 4ta Hora
-            { index: 4, startTime: '10:15', endTime: '11:00' }, // 5ta Hora
-            { index: 5, startTime: '11:00', endTime: '11:45' }, // 6ta Hora
-            { index: 6, startTime: '11:45', endTime: '12:30' }, // 7ma Hora
-        ];
+        /**
+         * LAS HORAS DEL DÍA SON LAS DEL LICEO, Y LAS DE SU TURNO
+         *
+         * Estaban escritas aquí: 07:00 a 12:30 con el recreo a las 09:15. Una
+         * sección de la tarde recibía un horario de mañana, y un liceo con
+         * horas de 40 minutos, clases que no caían en ninguna hora de su día.
+         * Ahora salen de su configuración (`utils/franjas-del-horario.ts`).
+         */
+        const seccion = await prisma.classroom.findUnique({ where: { id: classroomId }, select: { shift: true } });
+        const instituteId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
+        const liceo = instituteId
+            ? await platformPrisma.institute.findUnique({ where: { id: instituteId }, select: { academicConfig: true } })
+            : null;
+        const STANDARD_PERIODS = franjasDelTurno((liceo?.academicConfig as any)?.schedule, seccion?.shift)
+            .filter((f) => f.type === 'class')
+            .map((f, index) => ({ index, startTime: f.startTime, endTime: f.endTime }));
         const DAYS = [1, 2, 3, 4, 5];
+        const CAPACIDAD = STANDARD_PERIODS.length * DAYS.length;
 
-        // Capacidad matutina máxima: 7 bloques x 5 días = 35
         let totalBlocksNeeded = subjects.reduce((sum, s) => sum + (s.weeklyBlocks || 0), 0);
 
-        // Ajustar bloques si excede los 35 de la jornada matutina
+        // Ajustar bloques si exceden lo que cabe en la semana del turno
         const adjustedSubjects = subjects.map(s => {
             let blocks = s.weeklyBlocks || 0;
-            if (totalBlocksNeeded > 35) {
-                blocks = Math.max(1, Math.round((blocks / totalBlocksNeeded) * 35));
+            if (totalBlocksNeeded > CAPACIDAD) {
+                blocks = Math.max(1, Math.round((blocks / totalBlocksNeeded) * CAPACIDAD));
             }
             return { ...s, effectiveBlocks: blocks };
         });
 
         let adjustedTotal = adjustedSubjects.reduce((sum, s) => sum + s.effectiveBlocks, 0);
-        while (adjustedTotal > 35) {
+        while (adjustedTotal > CAPACIDAD) {
             adjustedSubjects.sort((a, b) => b.effectiveBlocks - a.effectiveBlocks);
             adjustedSubjects[0].effectiveBlocks--;
             adjustedTotal--;
         }
-        while (adjustedTotal < Math.min(totalBlocksNeeded, 30)) {
+        while (adjustedTotal < Math.min(totalBlocksNeeded, CAPACIDAD - DAYS.length)) {
             adjustedSubjects.sort((a, b) => a.effectiveBlocks - b.effectiveBlocks);
             adjustedSubjects[0].effectiveBlocks++;
             adjustedTotal++;

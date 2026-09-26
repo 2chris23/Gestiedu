@@ -9,6 +9,36 @@ import { platformPrisma } from '../config/database';
 import { revisarImagen } from '../utils/archivos-que-se-aceptan';
 import { guardarArchivoDelLiceo } from '../services/archivos-del-liceo.service';
 import { limpiarDatosDeDocumentos } from '../services/constancias.service';
+import {
+  erroresDelHorario,
+  franjasDelTurno,
+  horarioParaGuardar,
+  type HorarioDelLiceo,
+} from '../utils/franjas-del-horario';
+
+/**
+ * Las clases del horario que caben en la rejilla de antes y dejarían de caber
+ * en la nueva. Las que ya estaban fuera no cuentan: si no, guardar cualquier
+ * otra cosa de la configuración pediría confirmar siempre.
+ */
+async function clasesQueSeQuedanFuera(
+  prisma: any,
+  antes: HorarioDelLiceo | undefined,
+  despues: HorarioDelLiceo
+): Promise<number> {
+  const bloques: Array<{ startTime: string; endTime: string; classroom: { shift: string | null } | null }> =
+    await prisma.scheduleBlock.findMany({
+      where: {
+        blockType: 'CLASS',
+        classroomId: { not: null },
+        classroom: { academicYear: { status: { not: 'COMPLETED' } } },
+      },
+      select: { startTime: true, endTime: true, classroom: { select: { shift: true } } },
+    });
+  const cabe = (h: HorarioDelLiceo | undefined, turno: string | null | undefined, b: { startTime: string; endTime: string }) =>
+    franjasDelTurno(h, turno).some((f) => f.type === 'class' && f.startTime === b.startTime && f.endTime === b.endTime);
+  return bloques.filter((b) => cabe(antes, b.classroom?.shift, b) && !cabe(despues, b.classroom?.shift, b)).length;
+}
 
 const institutesService = new InstitutesService();
 
@@ -83,6 +113,9 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
     const currentAcademicConfig = (currentInstitute?.academicConfig as any) || {};
     let nextAcademicConfig = { ...currentAcademicConfig };
     let hasAcademicChanges = false;
+    // El horario del liceo se mira aparte: tiene que cuadrar (ver abajo).
+    let horarioPedido: HorarioDelLiceo | undefined;
+    let confirmarClasesFuera = data.confirmarClasesFuera === true;
 
     // Manejar payload `configuration` (usado por AcademicSettings, NotificationSettings y SecuritySettings)
     if (data.configuration !== undefined) {
@@ -113,7 +146,8 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
         if (configObj.documentos !== undefined) {
           nextAcademicConfig.documentos = limpiarDatosDeDocumentos(configObj.documentos);
         }
-        if (configObj.schedule) nextAcademicConfig.schedule = configObj.schedule;
+        if (configObj.schedule) horarioPedido = configObj.schedule;
+        if (configObj.confirmarClasesFuera === true) confirmarClasesFuera = true;
         if (configObj.language) nextAcademicConfig.language = configObj.language;
         if (configObj.dateFormat) nextAcademicConfig.dateFormat = configObj.dateFormat;
         if (configObj.notifications) nextAcademicConfig.notifications = configObj.notifications;
@@ -124,13 +158,53 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
     // Manejar payload `academicConfig` directo
     if (data.academicConfig && typeof data.academicConfig === 'object') {
       hasAcademicChanges = true;
-      nextAcademicConfig = { ...nextAcademicConfig, ...data.academicConfig };
+      const { schedule: horarioDirecto, ...resto } = data.academicConfig;
+      if (horarioDirecto) horarioPedido = horarioDirecto;
+      nextAcademicConfig = { ...nextAcademicConfig, ...resto };
       if (data.academicConfig.notaMinimaAprobatoria !== undefined) {
         nextAcademicConfig.passingGrade = Number(data.academicConfig.notaMinimaAprobatoria);
       }
       if (data.academicConfig.passingGrade !== undefined) {
         nextAcademicConfig.notaMinimaAprobatoria = Number(data.academicConfig.passingGrade);
       }
+    }
+
+    /**
+     * EL HORARIO TIENE QUE CUADRAR
+     *
+     * El admin pone por turno el inicio, el fin, la duración de la clase y los
+     * recreos; las horas las cuenta el sistema. Si sobran o faltan minutos no
+     * se guarda: se dice cuánto y a qué hora tendría que acabar
+     * (`utils/franjas-del-horario.ts`). Antes se guardaba cualquier cosa.
+     *
+     * Y si hay clases puestas en el horario que dejarían de caer en una hora
+     * del día, se pregunta antes (409): se quedarían fuera de la rejilla, sin
+     * que ninguna pantalla las enseñe.
+     */
+    if (horarioPedido !== undefined) {
+      if (!horarioPedido || typeof horarioPedido !== 'object') {
+        return reply.status(400).send({ error: 'El horario no es válido', code: 'HORARIO_NO_CUADRA', errores: [] });
+      }
+      const errores = erroresDelHorario(horarioPedido);
+      if (errores.length) {
+        return reply.status(400).send({ error: errores[0], code: 'HORARIO_NO_CUADRA', errores });
+      }
+      const horario = horarioParaGuardar(horarioPedido);
+      if (!confirmarClasesFuera) {
+        const fuera = await clasesQueSeQuedanFuera(request.tenantPrisma, currentAcademicConfig.schedule, horario);
+        if (fuera > 0) {
+          return reply.status(409).send({
+            error:
+              fuera === 1
+                ? 'Hay 1 clase del horario que ya no caería en ninguna hora del día.'
+                : `Hay ${fuera} clases del horario que ya no caerían en ninguna hora del día.`,
+            code: 'HORARIO_DEJA_CLASES_FUERA',
+            cuantas: fuera,
+          });
+        }
+      }
+      nextAcademicConfig.schedule = horario;
+      hasAcademicChanges = true;
     }
 
     if (hasAcademicChanges) {
