@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import { Lista } from '@/components/ui/lista';
 import { toast } from 'sonner';
 import {
     ArrowLeft, GraduationCap, CheckCircle2, Users, Wand2, Loader2,
@@ -749,16 +750,13 @@ export default function PromotionPage() {
                                                 <span className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${STATUS_COLOR[s.suggestedStatus]}`}>
                                                     {STATUS_LABEL[s.suggestedStatus]}
                                                 </span>
-                                                <select
-                                                    className="text-xs font-semibold border border-gray-200 rounded-lg px-2 py-1 bg-white"
-                                                    value={finalResults[s.studentId] || s.suggestedStatus}
-                                                    onChange={e => setFinalResults(prev => ({ ...prev, [s.studentId]: e.target.value }))}
-                                                    title="Resultado evaluativo final"
-                                                >
-                                                    {Object.entries(STATUS_LABEL).map(([k, v]) => (
-                                                        <option key={k} value={k}>{v}</option>
-                                                    ))}
-                                                </select>
+                                                <Lista
+                                                    tamano="chica"
+                                                    etiqueta="Resultado evaluativo final"
+                                                    valor={finalResults[s.studentId] || s.suggestedStatus}
+                                                    alCambiar={v => setFinalResults(prev => ({ ...prev, [s.studentId]: v }))}
+                                                    opciones={Object.entries(STATUS_LABEL).map(([k, v]) => ({ valor: k, texto: v }))}
+                                                />
                                             </div>
                                         )}
 
@@ -779,32 +777,25 @@ export default function PromotionPage() {
                                                     {/* Selector de Año Destino */}
                                                     <div className="flex items-center gap-1">
                                                         <span className="text-xs text-gray-500 font-medium">Pasa a:</span>
-                                                        <select
-                                                            className="text-xs font-bold border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-800"
-                                                            value={currentAsg.targetGrade || 1}
-                                                            onChange={e => updateStudentAssignment(s.studentId, { targetGrade: parseInt(e.target.value) })}
-                                                        >
-                                                            <option value={1}>1º Año</option>
-                                                            <option value={2}>2º Año</option>
-                                                            <option value={3}>3º Año</option>
-                                                            <option value={4}>4º Año</option>
-                                                            <option value={5}>5º Año</option>
-                                                            <option value={6}>6º Año</option>
-                                                        </select>
+                                                        <Lista
+                                                            tamano="chica"
+                                                            etiqueta="Año al que pasa"
+                                                            valor={String(currentAsg.targetGrade || 1)}
+                                                            alCambiar={v => updateStudentAssignment(s.studentId, { targetGrade: parseInt(v) })}
+                                                            opciones={[1, 2, 3, 4, 5, 6].map(n => ({ valor: String(n), texto: `${n}º Año` }))}
+                                                        />
                                                     </div>
 
                                                     {/* Selector de Sección Destino */}
                                                     <div className="flex items-center gap-1">
                                                         <span className="text-xs text-gray-500 font-medium">Sección:</span>
-                                                        <select
-                                                            className="text-xs font-bold border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-800"
-                                                            value={currentAsg.targetSectionLetter || 'A'}
-                                                            onChange={e => updateStudentAssignment(s.studentId, { targetSectionLetter: e.target.value })}
-                                                        >
-                                                            {uniqueSectionLetters.map(sec => (
-                                                                <option key={sec} value={sec}>Sección {sec}</option>
-                                                            ))}
-                                                        </select>
+                                                        <Lista
+                                                            tamano="chica"
+                                                            etiqueta="Sección a la que pasa"
+                                                            valor={currentAsg.targetSectionLetter || 'A'}
+                                                            alCambiar={v => updateStudentAssignment(s.studentId, { targetSectionLetter: v })}
+                                                            opciones={uniqueSectionLetters.map(sec => ({ valor: sec, texto: `Sección ${sec}` }))}
+                                                        />
                                                     </div>
 
                                                     <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">
@@ -913,17 +904,12 @@ export default function PromotionPage() {
                         <div className="p-6 space-y-4">
                             <div>
                                 <label className="block text-xs font-bold text-gray-600 mb-1">Año Escolar Destino</label>
-                                <select
-                                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-bold"
-                                    value={newSectionGrade}
-                                    onChange={e => setNewSectionGrade(parseInt(e.target.value))}
-                                >
-                                    <option value={1}>1º Año</option>
-                                    <option value={2}>2º Año</option>
-                                    <option value={3}>3º Año</option>
-                                    <option value={4}>4º Año</option>
-                                    <option value={5}>5º Año</option>
-                                </select>
+                                <Lista
+                                    etiqueta="Año escolar destino"
+                                    valor={String(newSectionGrade)}
+                                    alCambiar={v => setNewSectionGrade(parseInt(v))}
+                                    opciones={[1, 2, 3, 4, 5].map(n => ({ valor: String(n), texto: `${n}º Año` }))}
+                                />
                             </div>
 
                             <div>

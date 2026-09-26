@@ -1,5 +1,6 @@
 'use client';
 
+import { Lista } from '@/components/ui/lista';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, X, Building2, Layers, LayoutGrid, AlertTriangle } from 'lucide-react';
 import { usePreviewEvent, EventScope, EventDay, ClassInSlot } from '@/hooks/useSchoolEvents';
@@ -168,18 +169,13 @@ export default function EventModal({
                         <label htmlFor="ev-end" className="block text-sm font-medium text-gray-700 mb-1.5">
                             Hasta
                         </label>
-                        <select
+                        <Lista
                             id="ev-end"
-                            value={endTime}
-                            onChange={(e) => setEndTime(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        >
-                            {endOptions.map((p) => (
-                                <option key={p.id} value={p.endTime}>
-                                    Fin de {p.label} ({p.endTime})
-                                </option>
-                            ))}
-                        </select>
+                            etiqueta="Hasta"
+                            valor={endTime}
+                            alCambiar={setEndTime}
+                            opciones={endOptions.map((p) => ({ valor: p.endTime, texto: `Fin de ${p.label} (${p.endTime})` }))}
+                        />
                     </div>
 
                     <div>
