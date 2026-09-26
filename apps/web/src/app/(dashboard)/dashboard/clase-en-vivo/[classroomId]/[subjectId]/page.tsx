@@ -1,5 +1,6 @@
 'use client';
 
+import { OtraFormaDeEvaluarBoton } from '@/components/live-class/OtraFormaDeEvaluar';
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -979,15 +980,32 @@ function LiveClassPageInner() {
                                                           : undefined;
 
                                                       if (activeGradingActivity) {
+                                                          // La actividad tal como está ahora (la del estado es
+                                                          // la del momento de pulsar «Calificar»).
+                                                          const viva =
+                                                              currentActivitiesList.find((a) => a.id === activeGradingActivity.id) ??
+                                                              activeGradingActivity;
                                                           return (
-                                                              <LiveGradesSliderInput
-                                                                  studentId={student.id}
-                                                                  studentName={`${student.firstName} ${student.lastName}`}
-                                                                  score={currentScore}
-                                                                  maxScore={activeGradingActivity.maxScore || 20}
-                                                                  onChange={handleGradeScoreChange}
-                                                                  disabled={!canEdit}
-                                                              />
+                                                              <span className="flex flex-col items-start gap-1">
+                                                                  <LiveGradesSliderInput
+                                                                      studentId={student.id}
+                                                                      studentName={`${student.firstName} ${student.lastName}`}
+                                                                      score={currentScore}
+                                                                      maxScore={activeGradingActivity.maxScore || 20}
+                                                                      onChange={handleGradeScoreChange}
+                                                                      disabled={!canEdit}
+                                                                  />
+                                                                  {/* Evaluarle de otra forma (el cuaderno de quien no
+                                                                      puede hacer deporte): su nota cuenta igual. */}
+                                                                  {canEdit && !(student as any).external && (
+                                                                      <OtraFormaDeEvaluarBoton
+                                                                          activityId={viva.id}
+                                                                          studentId={student.id}
+                                                                          studentName={`${student.firstName} ${student.lastName}`}
+                                                                          actual={viva.evaluadoDeOtraForma?.[student.id] ?? null}
+                                                                      />
+                                                                  )}
+                                                              </span>
                                                           );
                                                       }
 

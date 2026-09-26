@@ -85,6 +85,7 @@ export async function actividadesDelAlumno(
                 dueDate: true,
                 maxScore: true,
                 scores: true,
+                evaluadoDeOtraForma: true,
                 createdAt: true,
                 classroomId: true,
                 subject: { select: { id: true, name: true, color: true } },
@@ -121,6 +122,8 @@ export async function actividadesDelAlumno(
                 maxScore: a.maxScore ?? null,
                 nota: tieneNota ? nota : null,
                 estado,
+                // Si a ÉL se le evalúa de otra forma (solo lo suyo).
+                otraForma: ((a.evaluadoDeOtraForma ?? {}) as Record<string, { metodo: string; motivo?: string }>)[studentId] ?? null,
                 subject: a.subject,
                 classroom: { id: a.classroomId, name: nombreDeLaSeccion.get(a.classroomId) ?? '' },
             };

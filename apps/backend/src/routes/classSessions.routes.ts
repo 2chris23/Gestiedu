@@ -11,6 +11,7 @@ import {
     createClassActivity,
     updateClassActivity,
     deleteClassActivity,
+    evaluarDeOtraForma,
     saveClassActivityGrades,
     suspendClassSession,
     getLiveOverview,
@@ -72,6 +73,18 @@ export async function classSessionsRoutes(fastify: FastifyInstance) {
             '/activities/:activityId',
             { onRequest: [requireTeacher] },
             deleteClassActivity as any
+        );
+        // Evaluar a un alumno de otra forma en una actividad (p. ej. con el
+        // cuaderno quien no puede hacer deporte). Su nota cuenta igual.
+        authenticatedRoutes.put(
+            '/activities/:activityId/otra-forma/:studentId',
+            { onRequest: [requireTeacher] },
+            evaluarDeOtraForma as any
+        );
+        authenticatedRoutes.delete(
+            '/activities/:activityId/otra-forma/:studentId',
+            { onRequest: [requireTeacher] },
+            evaluarDeOtraForma as any
         );
 
         // Suspender una clase (rota actividades a la próxima clase). SOLO el

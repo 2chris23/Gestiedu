@@ -56,6 +56,12 @@ function Actividad({ a }: { a: ActividadDeMiClase }) {
                     {a.semana ? ` · Semana ${a.semana}` : ''}
                 </p>
                 {a.criterio && <p className="mt-0.5 text-xs text-gray-600">Del plan: {a.criterio}</p>}
+                {a.otraForma && (
+                    <p className="mt-1 inline-flex rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-900">
+                        Evaluado con: {a.otraForma.metodo}
+                        {a.otraForma.motivo ? ` (${a.otraForma.motivo})` : ''}
+                    </p>
+                )}
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
                 <span className={cn('rounded-full border px-2.5 py-0.5 text-[11px] font-semibold', estado.clases)}>

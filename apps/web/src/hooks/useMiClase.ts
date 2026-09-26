@@ -15,6 +15,8 @@ export interface ActividadDeMiClase {
     estado: EstadoDeActividad;
     criterio: string | null;
     semana: number | null;
+    /** Si a este alumno se le evalúa de otra forma en esta actividad. */
+    otraForma?: { metodo: string; motivo?: string | null } | null;
 }
 
 export interface ObservacionDeMiClase {

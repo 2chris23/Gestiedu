@@ -1193,6 +1193,87 @@ export async function saveClassActivityGrades(
 }
 
 /**
+ * EVALUAR A UN ALUMNO DE OTRA FORMA EN UNA ACTIVIDAD
+ *
+ * Un alumno que no puede hacer deporte se evalúa con el cuaderno; uno con una
+ * adaptación, con un trabajo escrito. Queda dicho en la actividad, alumno por
+ * alumno: cómo se le evaluó y por qué. Su nota se pone igual que la de los
+ * demás y cuenta igual (mismo peso en el plan): lo que cambia es el método,
+ * no la regla. Lo ven él y su representante en «Mi clase».
+ *
+ * `metodo` vacío o DELETE = se quita (vuelve a evaluarse como los demás).
+ * Solo el profesor de esa clase o el admin (`exigirActividadPropia`).
+ */
+export async function evaluarDeOtraForma(
+    request: FastifyRequest<{
+        Params: { activityId: string; studentId: string };
+        Body?: { metodo?: string; motivo?: string | null };
+    }>,
+    reply: FastifyReply
+) {
+    try {
+        const { activityId, studentId } = request.params;
+        const prisma = request.tenantPrisma;
+
+        const propia = await exigirActividadPropia(request, activityId, 'dar notas');
+        if (!propia) return reply.status(404).send({ error: 'Actividad no encontrada' });
+
+        const metodo = typeof request.body?.metodo === 'string' ? request.body.metodo.trim() : '';
+        const motivo = typeof request.body?.motivo === 'string' ? request.body.motivo.trim() : '';
+        const quitar = request.method === 'DELETE' || metodo === '';
+
+        if (!quitar) {
+            if (metodo.length > 60) {
+                return reply.status(400).send({ error: 'Cómo se le evalúa: 60 letras como mucho', code: 'METODO_MUY_LARGO' });
+            }
+            if (motivo.length > 200) {
+                return reply.status(400).send({ error: 'El motivo: 200 letras como mucho', code: 'MOTIVO_MUY_LARGO' });
+            }
+            // Un alumno de ESA sección: no se anota a cualquiera en la actividad.
+            const inscrito = await prisma.studentClassroom.findFirst({
+                where: { studentId, classroomId: propia.classroomId, isActive: true },
+                select: { id: true },
+            });
+            if (!inscrito) {
+                return reply.status(400).send({ error: 'Ese alumno no es de esta sección', code: 'ALUMNO_AJENO' });
+            }
+        }
+
+        // En la misma escritura (jsonb), como las notas: dos profesores no se
+        // pisan el uno al otro al anotar a alumnos distintos a la vez.
+        if (quitar) {
+            await prisma.$executeRaw`
+                UPDATE "class_activities"
+                   SET "evaluadoDeOtraForma" = COALESCE("evaluadoDeOtraForma", '{}'::jsonb) - ${studentId}::text,
+                       "updatedAt" = now()
+                 WHERE id = ${activityId}`;
+        } else {
+            const valor = JSON.stringify({ metodo, ...(motivo ? { motivo } : {}) });
+            await prisma.$executeRaw`
+                UPDATE "class_activities"
+                   SET "evaluadoDeOtraForma" = COALESCE("evaluadoDeOtraForma", '{}'::jsonb) || jsonb_build_object(${studentId}::text, ${valor}::jsonb),
+                       "updatedAt" = now()
+                 WHERE id = ${activityId}`;
+        }
+
+        const actividad = await prisma.classActivity.findUnique({ where: { id: activityId } });
+        request.aQuienAfecta = { studentIds: [studentId], classroomId: propia.classroomId };
+        return reply.status(200).send({ success: true, activity: actividad });
+    } catch (error) {
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
+        logger.error('Error anotando la otra forma de evaluar', {
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return reply.status(500).send({ error: 'No se pudo guardar cómo se le evalúa' });
+    }
+}
+
+/**
  * Eliminar una actividad.
  */
 export async function deleteClassActivity(

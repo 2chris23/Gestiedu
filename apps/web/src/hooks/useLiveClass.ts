@@ -23,6 +23,12 @@ export interface LiveClassPlanContent {
     indicators: Array<{ id: string; indicadores?: string }>;
 }
 
+/** Cómo se le evalúa a un alumno en una actividad cuando no es como a los demás. */
+export interface OtraFormaDeEvaluar {
+    metodo: string;
+    motivo?: string | null;
+}
+
 export interface ClassActivity {
     id: string;
     title: string;
@@ -33,6 +39,8 @@ export interface ClassActivity {
     dueDate?: string | null;
     maxScore?: number;
     scores?: Record<string, number | null> | null;
+    /** Alumnos evaluados de otra forma (p. ej. con el cuaderno): su nota cuenta igual. */
+    evaluadoDeOtraForma?: Record<string, OtraFormaDeEvaluar> | null;
     isDone: boolean;
     carriedOver: boolean;
     planRowId?: string | null;
@@ -312,6 +320,31 @@ export function useUpdateClassActivity() {
  *
  * Ver `lib/guardado-optimista.ts`.
  */
+/**
+ * Evaluar a un alumno de otra forma en una actividad (o quitarlo: `metodo`
+ * vacío). La nota se sigue poniendo igual y cuenta igual.
+ */
+export function useEvaluarDeOtraForma() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ activityId, studentId, metodo, motivo }: { activityId: string; studentId: string; metodo: string; motivo?: string }) => {
+            const url = `/sessions/activities/${encodeURIComponent(activityId)}/otra-forma/${encodeURIComponent(studentId)}`;
+            const { data } = metodo.trim()
+                ? await api.put(url, { metodo: metodo.trim(), motivo: motivo?.trim() || undefined })
+                : await api.delete(url);
+            return data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['liveClassDetail'] });
+            queryClient.invalidateQueries({ queryKey: ['classActivities'] });
+            toast.success('Guardado cómo se le evalúa');
+        },
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.error || 'No se pudo guardar cómo se le evalúa');
+        },
+    });
+}
+
 export function useSaveActivityGrades() {
     const queryClient = useQueryClient();
 

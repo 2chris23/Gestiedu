@@ -139,6 +139,7 @@ export async function miClase(
                     dueDate: true,
                     maxScore: true,
                     scores: true,
+                    evaluadoDeOtraForma: true,
                     createdAt: true,
                     classSession: { select: { date: true } },
                     planRow: { select: { weekNumber: true, actividadEval: true, lapso: true } },
@@ -177,6 +178,8 @@ export async function miClase(
                 estado: tieneNota ? 'EVALUADA' : dia && dia < hoy ? 'VENCIDA' : 'PENDIENTE',
                 criterio: a.planRow?.actividadEval ?? null,
                 semana: a.planRow?.weekNumber ?? null,
+                // Si a ÉL se le evalúa de otra forma (solo lo suyo, no el mapa entero).
+                otraForma: ((a.evaluadoDeOtraForma ?? {}) as Record<string, { metodo: string; motivo?: string }>)[studentId] ?? null,
             };
         });
 

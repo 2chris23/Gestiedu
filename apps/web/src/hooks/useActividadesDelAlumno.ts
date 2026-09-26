@@ -21,6 +21,8 @@ export interface ActividadDelAlumno {
     maxScore: number | null;
     nota: number | null;
     estado: EstadoDeActividad;
+    /** Si a este alumno se le evalúa de otra forma en esta actividad. */
+    otraForma?: { metodo: string; motivo?: string | null } | null;
     subject: { id: string; name: string; color?: string | null };
     classroom: { id: string; name: string };
 }

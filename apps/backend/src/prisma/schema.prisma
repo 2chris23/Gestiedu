@@ -1562,6 +1562,10 @@ model ClassActivity {
   dueDate     DateTime? // Fecha asignada o fecha límite
   maxScore    Float?    @default(20)
   scores      Json? // Mapa de puntajes por estudiante: { "studentId": score }
+  /// Alumnos evaluados de otra forma en esta actividad (p. ej. con el cuaderno
+  /// quien no puede hacer deporte): { "studentId": { metodo, motivo? } }. Su
+  /// nota va en `scores` y cuenta igual que la de los demás.
+  evaluadoDeOtraForma Json?
   isDone      Boolean   @default(false)
   carriedOver Boolean   @default(false) // true si fue movida por suspensión
 
