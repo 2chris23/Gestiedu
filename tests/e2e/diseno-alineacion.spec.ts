@@ -1,5 +1,6 @@
 import { test, expect, type Page, type BrowserContext, type Browser } from '@playwright/test';
-import { WEB_BASE, TENANT_SLUG, queryTenantDb } from './helpers';
+import axios from 'axios';
+import { API_BASE, WEB_BASE, TENANT_SLUG, queryTenantDb, loginApi } from './helpers';
 // Las reglas viven en un solo sitio y las usan dos: esta prueba y el recorrido
 // con fotos (`node scripts/recorrido-del-diseno.mjs`).
 import { MEDIR_DISENO, QUE_SIGNIFICA_DISENO } from '../../scripts/reglas-del-diseno.mjs';
@@ -226,6 +227,9 @@ test('DISENO-04: en el Panel, las baldosas de una fila empiezan a la misma altur
             return { ancho: Math.round(rejilla.getBoundingClientRect().width), filas: [...filas.values()] };
         });
         await ctx.close();
+        // El representante no tiene accesos desde que se quitó el calendario
+        // (era el único): su Panel no lleva «Ir a», y está bien.
+        if (medida === null && rol === REPRESENTANTE) continue;
         expect(medida, 'el Panel no tiene la sección «Ir a»').not.toBeNull();
         for (const fila of medida!.filas) {
             expect(new Set(fila.titulos).size, `títulos a distinta altura en una fila: ${fila.titulos}`).toBe(1);
@@ -240,27 +244,41 @@ test('DISENO-04: en el Panel, las baldosas de una fila empiezan a la misma altur
 });
 
 test('DISENO-05: el representante ve el promedio y la asistencia de cada hijo sin tocar nada', async ({ browser }) => {
+    // Un representado suyo, asignado por la API como lo hace el admin: la
+    // prueba no depende de cómo quedó el sembrado.
+    const [rep] = await queryTenantDb<{ id: string }>(`SELECT id FROM users WHERE email = $1`, [REPRESENTANTE.email]);
+    const [hijo] = await queryTenantDb<{ id: string }>(
+        `SELECT u.id FROM users u JOIN student_classrooms sc ON sc."studentId" = u.id AND sc."isActive" WHERE u.role = 'STUDENT' ORDER BY u.id LIMIT 1`
+    );
+    const { accessToken } = await loginApi('admin@testing.edu.ve', '123456');
+    const admin = { headers: { Authorization: `Bearer ${accessToken}`, 'X-Institute-Slug': TENANT_SLUG } };
+    const alta = await axios.post(`${API_BASE}/users/${encodeURIComponent(hijo.id)}/tutors`, { tutorId: rep.id, relationship: 'MADRE' }, { ...admin, validateStatus: () => true });
     const ctx = await contexto(browser, 'telefono');
-    const page = await ctx.newPage();
-    await entrar(page, REPRESENTANTE);
-    await esperarAQueCargue(page);
-    const tarjetas = page.locator('section', { has: page.getByRole('heading', { name: 'Mis representados' }) }).locator('> div');
-    const n = await tarjetas.count();
-    expect(n, 'no hay representados en la pantalla').toBeGreaterThan(0);
-    for (let i = 0; i < n; i++) {
-        await expect(tarjetas.nth(i).getByText('Promedio', { exact: true })).toBeVisible();
-        await expect(tarjetas.nth(i).getByText('Asistencia', { exact: true })).toBeVisible();
+    try {
+        const page = await ctx.newPage();
+        await entrar(page, REPRESENTANTE);
+        await esperarAQueCargue(page);
+        const tarjetas = page.locator('section', { has: page.getByRole('heading', { name: 'Mis representados' }) }).locator('> div');
+        const n = await tarjetas.count();
+        expect(n, 'no hay representados en la pantalla').toBeGreaterThan(0);
+        for (let i = 0; i < n; i++) {
+            await expect(tarjetas.nth(i).getByText('Promedio', { exact: true })).toBeVisible();
+            await expect(tarjetas.nth(i).getByText('Asistencia', { exact: true })).toBeVisible();
+        }
+        // El parentesco se lee como se dice, no como se guarda.
+        await expect(page.getByText(/· MADRE\b/)).toHaveCount(0);
+        // Y lo que el representante vino a ver va antes que los accesos.
+        const orden = await page.evaluate(() => {
+            const rep = [...document.querySelectorAll('h2')].find((h) => h.textContent?.trim() === 'Mis representados');
+            const ir = document.getElementById('accesos-del-liceo');
+            return rep && ir ? rep.getBoundingClientRect().top < ir.getBoundingClientRect().top : null;
+        });
+        // Sin «Ir a» (el representante ya no tiene accesos) no hay orden que mirar.
+        expect(orden, '«Ir a» va delante de «Mis representados»').not.toBe(false);
+    } finally {
+        await ctx.close();
+        if (alta.status === 201) await axios.delete(`${API_BASE}/users/${encodeURIComponent(hijo.id)}/tutors/${encodeURIComponent(rep.id)}`, admin);
     }
-    // El parentesco se lee como se dice, no como se guarda.
-    await expect(page.getByText(/· MADRE\b/)).toHaveCount(0);
-    // Y lo que el representante vino a ver va antes que los accesos.
-    const orden = await page.evaluate(() => {
-        const rep = [...document.querySelectorAll('h2')].find((h) => h.textContent?.trim() === 'Mis representados');
-        const ir = document.getElementById('accesos-del-liceo');
-        return rep && ir ? rep.getBoundingClientRect().top < ir.getBoundingClientRect().top : null;
-    });
-    expect(orden, '«Ir a» va delante de «Mis representados»').toBe(true);
-    await ctx.close();
 });
 
 test('DISENO-06: en el teléfono, las ventanas quedan centradas, dentro y con una X de 44 px', async ({ browser }) => {

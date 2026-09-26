@@ -93,7 +93,6 @@ export function Carril({
     }, [embla, inicio]);
     const [puedeIzquierda, setPuedeIzquierda] = React.useState(false);
     const [puedeDerecha, setPuedeDerecha] = React.useState(false);
-    const arrastrando = React.useRef(false);
 
     const mirarBordes = React.useCallback(() => {
         if (!embla) return;
@@ -108,38 +107,22 @@ export function Carril({
         embla.on('reInit', mirarBordes);
         embla.on('scroll', mirarBordes);
 
-        // Para cancelar el clic si lo que hubo fue un arrastre.
-        const empieza = () => {
-            arrastrando.current = true;
-        };
-        const termina = () => {
-            // Se deja un respiro para que el clic que viene detrás lo vea.
-            setTimeout(() => {
-                arrastrando.current = false;
-            }, 0);
-        };
-        embla.on('pointerDown', empieza);
-        embla.on('pointerUp', termina);
-
         return () => {
             embla.off('select', mirarBordes);
             embla.off('reInit', mirarBordes);
             embla.off('scroll', mirarBordes);
-            embla.off('pointerDown', empieza);
-            embla.off('pointerUp', termina);
         };
     }, [embla, mirarBordes]);
 
     /**
-     * Si se arrastró, el clic de la tarjeta no ocurre. Embla ya distingue un
-     * arrastre de un toque; aquí solo se le hace caso.
+     * EL CLIC TRAS UN ARRASTRE LO ANULA EMBLA, NO ESTE ARCHIVO
+     *
+     * Embla ya se come el clic que llega al soltar un arrastre (pasado su
+     * umbral), y deja pasar un toque. Aquí había un freno propio que marcaba
+     * «arrastrando» en CUALQUIER pulsación y lo quitaba un instante DESPUÉS
+     * del clic: se comía también los toques. Desde que el horario en vivo va
+     * en este carril, tocar una clase no abría nada (ALUM-UI-01).
      */
-    const frenarElClic = React.useCallback((e: React.MouseEvent) => {
-        if (arrastrando.current) {
-            e.stopPropagation();
-            e.preventDefault();
-        }
-    }, []);
 
     // La rueda vertical del ratón mueve el carril en horizontal.
     React.useEffect(() => {
@@ -176,7 +159,6 @@ export function Carril({
                 aria-label={etiqueta}
                 tabIndex={0}
                 onKeyDown={conTeclado}
-                onClickCapture={frenarElClic}
                 /**
                  * `touch-action: pan-y` reparte los ejes: el horizontal lo
                  * lleva el carril, el vertical se lo queda el navegador. Sin

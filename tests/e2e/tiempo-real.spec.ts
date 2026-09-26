@@ -133,7 +133,8 @@ test.describe('Tiempo real', () => {
 
             const leerObservaciones = async () => {
                 const texto = await page.locator('main').first().innerText();
-                const m = texto.match(/OBSERVACIONES\s*\n?\s*(\d+)/);
+                // «Observaciones», no en mayúsculas, desde las cifras con barra (§58).
+                const m = texto.match(/OBSERVACIONES\s*\n?\s*(\d+)/i);
                 return m ? Number(m[1]) : NaN;
             };
 

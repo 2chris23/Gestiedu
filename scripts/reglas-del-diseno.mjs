@@ -126,6 +126,22 @@ export const MEDIR_DISENO = ({ tolerancia = 2 } = {}) => {
                 ? { left: Math.min(caja.left, r.left), top: Math.min(caja.top, r.top), right: Math.max(caja.right, r.right), bottom: Math.max(caja.bottom, r.bottom) }
                 : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
         }
+        // Lo que un contenedor recorta (overflow hidden, line-clamp) no se ve:
+        // la caja del texto se corta por ahí. Un rango mide TODAS las líneas,
+        // también las escondidas por `line-clamp-1`, y las daba por pisadas
+        // sobre lo que hay debajo (la ficha de la clase con «Hoy: 0»).
+        for (let a = el; caja && a && a !== document.body; a = a.parentElement) {
+            const s = getComputedStyle(a);
+            if (!/hidden|clip/.test(s.overflowX + s.overflowY)) continue;
+            const r = a.getBoundingClientRect();
+            caja = {
+                left: Math.max(caja.left, r.left),
+                top: Math.max(caja.top, r.top),
+                right: Math.min(caja.right, r.right),
+                bottom: Math.min(caja.bottom, r.bottom),
+            };
+            if (caja.right <= caja.left || caja.bottom <= caja.top) return null;
+        }
         return caja;
     };
     const nombre = (el) =>

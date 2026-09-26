@@ -46,7 +46,9 @@ import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export function GeneralSettings() {
     const queryClient = useQueryClient();
-    const [loading, setLoading] = useState(false);
+    // Empieza cargando: si empezaba en «no», el formulario salía vacío un
+    // instante, se podía escribir, y al llegar los datos lo escrito se perdía.
+    const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [config, setConfig] = useState<InstituteConfig | null>(null);
 

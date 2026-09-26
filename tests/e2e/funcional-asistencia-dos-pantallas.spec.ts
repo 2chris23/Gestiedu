@@ -47,20 +47,22 @@ async function esperarGuardado(page: Page) {
 
 test.describe('Asistencia desde dos pantallas', () => {
     test('ASIS-DOS-01: lo que marca una pantalla no lo deshace la otra', async ({ browser }, testInfo) => {
-        const profe = await loginApi('profesor.ciencias@tuapp.com', '123456');
-        const admin = await loginApi('admin@testing.edu.ve', '123456');
-        const hoy = await diaDelLiceo(profe.accessToken);
-
-        // Una clase del profesor en 1er Año A, con dos alumnos.
+        // Una clase de un profesor, en el año en curso, con dos alumnos o más.
+        // Se busca en la base en vez de fiarse de un profesor del sembrado.
         const [clase] = await queryTenantDb(
-            `SELECT cs."classroomId", cs."subjectId"
+            `SELECT cs."classroomId", cs."subjectId", u.email AS "profeEmail"
                FROM classroom_subjects cs
-               JOIN users u ON u.id = cs."teacherId"
+               JOIN users u ON u.id = cs."teacherId" AND u."isActive"
                JOIN classrooms c ON c.id = cs."classroomId"
-              WHERE u.email = 'profesor.ciencias@tuapp.com' AND c.grade = 1 AND c.section = 'A'
+               JOIN academic_years ay ON ay.id = c."academicYearId" AND ay.status = 'ACTIVE'
+              WHERE (SELECT count(*) FROM student_classrooms sc WHERE sc."classroomId" = c.id AND sc."isActive") >= 2
+              ORDER BY c.grade, c.section
               LIMIT 1`
         );
-        expect(clase, 'el profesor de ciencias no da clase en 1er Año A').toBeTruthy();
+        expect(clase, 'hace falta una clase con profesor y dos alumnos').toBeTruthy();
+        const profe = await loginApi(clase.profeEmail, '123456');
+        const admin = await loginApi('admin@testing.edu.ve', '123456');
+        const hoy = await diaDelLiceo(profe.accessToken);
         const alumnos = await queryTenantDb(
             `SELECT u.id, u."firstName", u."lastName"
                FROM student_classrooms sc JOIN users u ON u.id = sc."studentId"

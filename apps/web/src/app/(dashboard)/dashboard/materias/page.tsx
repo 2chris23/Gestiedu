@@ -124,7 +124,11 @@ export default function MateriasPage() {
             <EncabezadoDePantalla
                 migas={
                     <nav aria-label="Ruta" className="flex items-center gap-2 text-sm text-gray-600">
-                        <Link href="/dashboard" className="hover:text-gray-900">Inicio</Link>
+                        {/* 44 px para el dedo sin mover la línea: el margen negativo
+                            devuelve lo que añade el relleno. */}
+                        <Link href="/dashboard" className="-my-3 inline-flex min-h-11 min-w-11 items-center hover:text-gray-900">
+                            Inicio
+                        </Link>
                         <span aria-hidden>/</span>
                         <span className="font-medium text-gray-900">Materias</span>
                     </nav>

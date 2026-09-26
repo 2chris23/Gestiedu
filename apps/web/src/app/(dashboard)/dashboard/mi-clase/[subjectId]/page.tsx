@@ -12,6 +12,7 @@ import PlanPorBloques from '@/components/evaluation/PlanPorBloques';
 import { dbRowsToWeekRows, getWeekDates } from '@/components/evaluation/planEnSemanas';
 import { DEFAULT_PLAN_COLUMNS, type PlanColumnDef } from '@/components/evaluation/planColumns';
 import { cn } from '@/lib/utils';
+import { BotonesDeAsistencia } from '@/components/asistencia/AsistenciaDelAlumno';
 
 /**
  * «MI CLASE»: LA MATERIA, VISTA POR EL ALUMNO O SU REPRESENTANTE
@@ -162,6 +163,11 @@ export default function MiClasePage({ params }: { params: Promise<{ subjectId: s
                 titulo={data.materia.name}
                 descripcion={[data.seccion.name, data.profesor ? `Prof. ${data.profesor}` : null].filter(Boolean).join(' · ')}
             />
+
+            {/* La asistencia por QR, desde su clase: escanear el QR del profesor
+                o enseñar el suyo. Solo el alumno (el representante no pasa
+                lista por él), y solo si el liceo la usa. */}
+            {yo?.role === 'STUDENT' && <BotonesDeAsistencia />}
 
             {data.lapsos.length > 1 && (
                 <div
