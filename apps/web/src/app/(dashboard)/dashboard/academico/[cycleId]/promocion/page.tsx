@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { academicYearService } from '@/services/academic-year.service';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
+import { MembreteOficial } from '@/components/documentos/MembreteOficial';
 
 interface Suggestion {
     studentId: string;
@@ -1060,10 +1061,10 @@ export default function PromotionPage() {
                         {/* Documento Oficial Formateado para Venezuela */}
                         <div className="p-8 space-y-6 text-gray-800 font-sans text-xs leading-relaxed print:p-8">
                             <div className="text-center border-b border-gray-200 pb-4 space-y-1">
-                                <div className="font-extrabold uppercase tracking-wider text-gray-900 text-sm">República Bolivariana de Venezuela</div>
-                                <div className="font-semibold text-gray-700">Ministerio del Poder Popular para la Educación</div>
+                                {/* El membrete del liceo: antes el acta no decía de qué liceo era. */}
+                                <MembreteOficial className="mb-3" />
                                 <div className="font-bold text-indigo-900 text-sm">ACTA DE COMPROMISO ACADÉMICO — MATERIA PENDIENTE</div>
-                                <div className="text-gray-500 font-medium text-[11px]">Año Escolar Cursado: <strong>{yearName}</strong></div>
+                                <div className="text-gray-600 font-medium text-xs">Año Escolar Cursado: <strong>{yearName}</strong></div>
                             </div>
 
                             <div className="space-y-2">

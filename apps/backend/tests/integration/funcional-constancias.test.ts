@@ -153,7 +153,9 @@ describe('Las constancias (CONS-01…05)', () => {
                 configuration: {
                     gradeScale: { min: 0, max: 20 },
                     passingGrade: 10,
-                    documentos: { firmanteNombre: '  José Díaz ', firmanteCargo: 'Director encargado', codigoDea: '', otraCosa: 'x' },
+                    // Lo que no viene se queda (lo guarda otra pantalla); lo que
+                    // viene vacío se borra: por eso la cédula va vacía.
+                    documentos: { firmanteNombre: '  José Díaz ', firmanteCedula: '', firmanteCargo: 'Director encargado', codigoDea: '', otraCosa: 'x' },
                 },
             })
             .expect(200);

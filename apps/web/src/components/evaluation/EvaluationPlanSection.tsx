@@ -21,6 +21,7 @@ import api from '@/lib/axios';
 import { useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_PLAN_COLUMNS, type PlanColumnDef } from './planColumns';
 import PlanPorBloques from './PlanPorBloques';
+import { MembreteOficial } from '@/components/documentos/MembreteOficial';
 import { type WeekRow, getWeekDates, buildEmptyWeekRows, dbRowsToWeekRows } from './planEnSemanas';
 import CamposDelPlan from './CamposDelPlan';
 
@@ -548,14 +549,9 @@ export default function EvaluationPlanSection({
     ];
     return (
       <div className="bg-white border-b border-gray-200">
-        <div className="p-4 pb-2 text-center">
-          <div className="text-[10px] font-bold uppercase text-gray-800 leading-tight">
-            República Bolivariana de Venezuela<br />
-            Ministerio del Poder Popular para la Educación<br />
-            <span className="text-sm text-indigo-900 mt-1 block">
-              {autoPopulated.instituteName || 'INSTITUCIÓN EDUCATIVA'}
-            </span>
-          </div>
+        {/* El membrete oficial del liceo (ministerio, nombre, código DEA…), el mismo de la boleta. */}
+        <div className="p-4 pb-2">
+          <MembreteOficial respaldo={{ nombre: autoPopulated.instituteName || 'Institución educativa' }} />
         </div>
 
         <div className="grid grid-cols-4 gap-0 border-t border-gray-200 bg-gray-50 text-[10px]">

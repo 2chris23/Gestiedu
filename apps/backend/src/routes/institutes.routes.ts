@@ -9,7 +9,8 @@ import {
   removeColorFromPalette,
   updateColorInPalette,
   getAcademicConfigEndpoint,
-  updateAcademicConfigEndpoint
+  updateAcademicConfigEndpoint,
+  obtenerMembrete
 } from '../controllers/institutes.controller';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
 import { validateBody, validateParams, validateCUID } from '../middleware/validation.middleware';
@@ -409,6 +410,12 @@ const institutesRoutes: FastifyPluginAsync = async (fastify) => {
     request.params = { id: instituteId };
     return getInstituteConfig(request, reply);
   });
+
+  // El membrete de los documentos (datos oficiales del plantel). Lo usan todas
+  // las hojas que se imprimen: boleta, constancia, resumen final, plan…
+  fastify.get('/current/membrete', {
+    preHandler: [authenticate]
+  }, obtenerMembrete);
 
   // Fase 3.5-C — Configuración académica del liceo (reglas de promoción)
   fastify.get('/current/academic-config', {

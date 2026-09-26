@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, Printer } from 'lucide-react';
 import api from '@/lib/axios';
+import { MembreteOficial } from '@/components/documentos/MembreteOficial';
 
 /**
  * EL RESUMEN FINAL DEL RENDIMIENTO DE UNA SECCIÓN, PARA VER E IMPRIMIR
@@ -96,7 +97,9 @@ export default function ResumenFinalPage({ params }: { params: Promise<{ classro
 
             <article className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 print:border-0 print:shadow-none" aria-label="Resumen final del rendimiento">
                 <header className="border-b border-gray-200 pb-4 text-center">
-                    <p className="text-lg font-bold text-gray-900">{r.liceo.nombre}</p>
+                    <MembreteOficial
+                        respaldo={{ nombre: r.liceo.nombre, direccion: [r.liceo.direccion, r.liceo.ciudad].filter(Boolean).join(' · ') }}
+                    />
                     <h1 className="mt-2 text-base font-bold uppercase tracking-wide text-gray-900">Resumen final del rendimiento estudiantil</h1>
                     <p className="text-sm text-gray-700">
                         Año escolar {r.ciclo.nombre} · {r.seccion.grado}° año, sección «{r.seccion.seccion}»

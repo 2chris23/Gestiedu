@@ -12,6 +12,7 @@ import {
 import type { ScheduleBlock } from '@/components/schedule/UniversalScheduleViewer';
 import { useSchedulePeriods } from '@/hooks/useSchedulePeriods';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
+import { useMembrete } from '@/hooks/useMembrete';
 
 /**
  * EL BOTÓN DE DESCARGAR HORARIO
@@ -33,6 +34,7 @@ export function DescargarHorario({
 }) {
     const { periods } = useSchedulePeriods();
     const hoy = useSchoolToday();
+    const { data: membrete } = useMembrete();
     const [haciendo, setHaciendo] = React.useState<null | 'png' | 'pdf'>(null);
 
     const descargar = async (formato: 'png' | 'pdf') => {
@@ -40,7 +42,8 @@ export function DescargarHorario({
         setHaciendo(formato);
         try {
             const m = await import('@/lib/horario-en-archivo');
-            const datos = { bloques, periodos: periods, titulo, subtitulo, fecha: hoy };
+            const liceo = membrete ? { nombre: membrete.nombre, codigoDea: membrete.codigoDea } : undefined;
+            const datos = { bloques, periodos: periods, titulo, subtitulo, fecha: hoy, liceo };
             const blob = formato === 'png' ? await m.horarioComoPng(datos) : await m.horarioComoPdf(datos);
             const r = await m.entregarArchivo(blob, m.nombreDeArchivo(titulo, formato));
             if (r === 'descargado') toast.success(formato === 'png' ? 'Imagen descargada' : 'PDF descargado');

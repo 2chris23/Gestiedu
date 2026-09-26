@@ -50,6 +50,8 @@ export interface DatosDelHorario {
     subtitulo?: string;
     /** "2026-09-16", la fecha del liceo — no la del teléfono. */
     fecha: string;
+    /** El liceo y su código DEA, arriba a la derecha (del membrete oficial). */
+    liceo?: { nombre: string; codigoDea?: string | null };
 }
 
 /** Si la configuración no llegó, los tramos salen de las propias clases. */
@@ -150,10 +152,23 @@ export async function dibujarHorario(datos: DatosDelHorario): Promise<HTMLCanvas
         ctx.font = `500 24px ${familia}`;
         ctx.fillText(lineas(ctx, datos.subtitulo, ANCHO - MARGEN * 2 - 360, 1)[0] ?? '', MARGEN, MARGEN + 52);
     }
+    ctx.textAlign = 'right';
+    let derecha = MARGEN + 8;
+    if (datos.liceo?.nombre) {
+        ctx.fillStyle = '#374151';
+        ctx.font = `600 20px ${familia}`;
+        ctx.fillText(lineas(ctx, datos.liceo.nombre, 340, 1)[0] ?? '', ANCHO - MARGEN, derecha);
+        derecha += 28;
+        if (datos.liceo.codigoDea) {
+            ctx.fillStyle = '#6b7280';
+            ctx.font = `500 18px ${familia}`;
+            ctx.fillText(`Código DEA: ${datos.liceo.codigoDea}`, ANCHO - MARGEN, derecha);
+            derecha += 26;
+        }
+    }
     ctx.fillStyle = '#6b7280';
     ctx.font = `500 20px ${familia}`;
-    ctx.textAlign = 'right';
-    ctx.fillText(fechaLegible(datos.fecha), ANCHO - MARGEN, MARGEN + 8);
+    ctx.fillText(fechaLegible(datos.fecha), ANCHO - MARGEN, derecha);
     ctx.textAlign = 'left';
 
     // ── Rejilla ─────────────────────────────────────────────────────────────

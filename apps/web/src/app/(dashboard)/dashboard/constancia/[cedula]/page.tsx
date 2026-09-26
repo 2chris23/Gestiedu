@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, Printer } from 'lucide-react';
 import { useConstancia, type TipoDeConstancia } from '@/hooks/useConstancia';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
+import { useMembrete } from '@/hooks/useMembrete';
+import { MembreteOficial } from '@/components/documentos/MembreteOficial';
 
 /**
  * CONSTANCIA DE ESTUDIO O DE BUENA CONDUCTA, PARA IMPRIMIR
@@ -35,6 +37,8 @@ export default function ConstanciaPage({ params }: { params: Promise<{ cedula: s
     const { yo } = useQuienSoy();
     const deQuien = cedula === 'mia' ? (yo?.id ?? '') : decodeURIComponent(cedula);
     const { data: c, isLoading: cargando, error } = useConstancia(deQuien, tipo);
+    // El nombre del cuerpo, el mismo que el del membrete (el oficial, si lo hay).
+    const { data: membrete } = useMembrete();
 
     if (cargando || (cedula === 'mia' && !yo?.id)) {
         return <div className="p-8 text-sm text-gray-600">Cargando la constancia…</div>;
@@ -62,6 +66,7 @@ export default function ConstanciaPage({ params }: { params: Promise<{ cedula: s
     const titulo = c.tipo === 'ESTUDIO' ? 'Constancia de estudio' : 'Constancia de buena conducta';
     const firmante = c.firmante.nombre ?? '____________________________';
     const quien = `${c.alumno.nombres} ${c.alumno.apellidos}`;
+    const liceo = membrete?.nombre || c.liceo.nombre;
     const anio = `${ORDINAL[c.seccion.grado] ?? `${c.seccion.grado}°`} año, sección «${c.seccion.seccion}»`;
     const turno = c.seccion.turno && TURNO[c.seccion.turno] ? `, turno de la ${TURNO[c.seccion.turno]}` : '';
 
@@ -81,18 +86,16 @@ export default function ConstanciaPage({ params }: { params: Promise<{ cedula: s
 
             <article className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm sm:p-12 print:border-0 print:shadow-none" aria-label={titulo}>
                 <header className="text-center">
-                    <p className="text-lg font-bold text-gray-900">{c.liceo.nombre}</p>
-                    {c.liceo.codigoDea && <p className="text-xs text-gray-700">Código del plantel: {c.liceo.codigoDea}</p>}
-                    {(c.liceo.direccion || c.liceo.ciudad) && (
-                        <p className="text-xs text-gray-600">{[c.liceo.direccion, c.liceo.ciudad].filter(Boolean).join(' · ')}</p>
-                    )}
+                    <MembreteOficial
+                        respaldo={{ nombre: c.liceo.nombre, direccion: [c.liceo.direccion, c.liceo.ciudad].filter(Boolean).join(' · ') }}
+                    />
                     <h1 className="mt-8 text-base font-bold uppercase tracking-widest text-gray-900">{titulo}</h1>
                 </header>
 
                 <p className="mt-8 text-justify text-sm leading-7 text-gray-900 sm:text-base sm:leading-8">
                     Quien suscribe, <strong>{firmante}</strong>
                     {c.firmante.cedula ? `, titular de la cédula de identidad ${c.firmante.cedula}` : ''}, en su carácter de{' '}
-                    {c.firmante.cargo} de <strong>{c.liceo.nombre}</strong>, hace constar por medio de la presente que el (la)
+                    {c.firmante.cargo} de <strong>{liceo}</strong>, hace constar por medio de la presente que el (la)
                     estudiante <strong>{quien}</strong>, titular de la cédula {c.alumno.cedula},{' '}
                     {c.tipo === 'ESTUDIO' ? (
                         <>

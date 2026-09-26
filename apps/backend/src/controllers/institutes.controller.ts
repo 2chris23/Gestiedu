@@ -9,6 +9,7 @@ import { platformPrisma } from '../config/database';
 import { revisarImagen } from '../utils/archivos-que-se-aceptan';
 import { guardarArchivoDelLiceo } from '../services/archivos-del-liceo.service';
 import { limpiarDatosDeDocumentos } from '../services/constancias.service';
+import { revisarDatosDelPlantel, membreteDelLiceo } from '../services/datos-del-plantel.service';
 import {
   erroresDelHorario,
   franjasDelTurno,
@@ -143,8 +144,31 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
         }
         // Quién firma las constancias y el código del plantel. Solo los
         // campos conocidos, como texto (`limpiarDatosDeDocumentos`).
+        /**
+         * Quién firma y los datos oficiales del plantel (DEA, estadístico,
+         * dependencia, zona, entidad…). Se MEZCLAN con lo guardado: la
+         * pantalla de General manda los del plantel y la de Académico los de
+         * la firma, y antes cada una borraba lo de la otra. Un campo que viene
+         * vacío se borra; uno que no viene, se queda.
+         */
         if (configObj.documentos !== undefined) {
-          nextAcademicConfig.documentos = limpiarDatosDeDocumentos(configObj.documentos);
+          const entrada = (configObj.documentos && typeof configObj.documentos === 'object' ? configObj.documentos : {}) as Record<string, unknown>;
+          const { datos, errores } = revisarDatosDelPlantel(entrada);
+          if (errores.length) {
+            return reply.status(400).send({ error: errores[0], code: 'DATOS_DEL_PLANTEL', errores });
+          }
+          const firma = limpiarDatosDeDocumentos(entrada);
+          const documentos: Record<string, unknown> = { ...(currentAcademicConfig.documentos ?? {}) };
+          for (const campo of ['firmanteNombre', 'firmanteCedula', 'firmanteCargo'] as const) {
+            if (!(campo in entrada)) continue;
+            if (firma[campo]) documentos[campo] = firma[campo];
+            else delete documentos[campo];
+          }
+          for (const [campo, valor] of Object.entries(datos)) {
+            if (valor) documentos[campo] = valor;
+            else delete documentos[campo];
+          }
+          nextAcademicConfig.documentos = documentos;
         }
         if (configObj.schedule) horarioPedido = configObj.schedule;
         if (configObj.confirmarClasesFuera === true) confirmarClasesFuera = true;
@@ -234,6 +258,16 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
   }
 }
 
+
+/**
+ * El membrete de los documentos del liceo: el texto del ministerio, el nombre
+ * oficial, los códigos (DEA, estadístico, dependencia), la zona, la entidad,
+ * el municipio, la dirección y el logo. Lo usa toda hoja que se imprime.
+ */
+export async function obtenerMembrete(request: FastifyRequest, reply: FastifyReply) {
+  const instituteId = getInstId(request);
+  return reply.status(200).send({ success: true, data: await membreteDelLiceo(instituteId) });
+}
 
 // Subir logos del instituto (favicon y logo principal)
 export async function uploadLogos(request: FastifyRequest, reply: FastifyReply) {

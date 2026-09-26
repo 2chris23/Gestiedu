@@ -22,8 +22,9 @@ export function AcademicSettings() {
         passingGrade: 10,
         asistenciaMinima: 80,
         redondeoDeDefinitivas: 'MPPE' as 'MPPE' | 'NINGUNO',
-        // Quién firma las constancias y el código del plantel (DEA).
-        documentos: { firmanteNombre: '', firmanteCedula: '', firmanteCargo: '', codigoDea: '' },
+        // Quién firma las constancias. El código DEA y los demás datos
+        // oficiales del plantel están en Información General.
+        documentos: { firmanteNombre: '', firmanteCedula: '', firmanteCargo: '' },
         language: 'es',
         dateFormat: 'DD/MM/YYYY',
         // Por turno: inicio, fin, duración y recreos (`lib/franjas-del-horario.ts`).
@@ -55,7 +56,6 @@ export function AcademicSettings() {
                         firmanteNombre: rawConfig.documentos?.firmanteNombre ?? '',
                         firmanteCedula: rawConfig.documentos?.firmanteCedula ?? '',
                         firmanteCargo: rawConfig.documentos?.firmanteCargo ?? '',
-                        codigoDea: rawConfig.documentos?.codigoDea ?? '',
                     },
                     language: rawConfig.language || 'es',
                     dateFormat: rawConfig.dateFormat || 'DD/MM/YYYY',
@@ -359,18 +359,6 @@ export function AcademicSettings() {
                             placeholder="Director(a)"
                             value={academicConfig.documentos.firmanteCargo}
                             onChange={(e) => setAcademicConfig(prev => ({ ...prev, documentos: { ...prev.documentos, firmanteCargo: e.target.value } }))}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                        />
-                    </div>
-                    <div>
-                        <label htmlFor="codigoDea" className="block text-sm font-medium text-gray-700 mb-2">Código del plantel (DEA)</label>
-                        <input
-                            id="codigoDea"
-                            type="text"
-                            maxLength={120}
-                            placeholder="OD00000000"
-                            value={academicConfig.documentos.codigoDea}
-                            onChange={(e) => setAcademicConfig(prev => ({ ...prev, documentos: { ...prev.documentos, codigoDea: e.target.value } }))}
                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                         />
                     </div>

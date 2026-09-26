@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { BookOpen, ChevronDown, FileText } from 'lucide-react';
+import { BookOpen, ChevronDown, FileText, Users } from 'lucide-react';
 import api from '@/lib/axios';
 import UserAvatar from '@/components/ui/UserAvatar';
 import ActividadesDelAlumno from '@/components/profile/ActividadesDelAlumno';
@@ -48,6 +48,26 @@ export function MisRepresentados() {
     // al pintar, sin efectos que cambien el estado y vuelvan a pintar.
     const desplegadoAhora = abierto ?? (hijos.length === 1 ? hijos[0].id : null);
 
+    // Sin representados asignados, se dice: antes el Inicio salía en blanco y
+    // el representante no sabía si la app fallaba o si faltaba algo.
+    if (data && hijos.length === 0) {
+        return (
+            <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm" aria-labelledby="sin-representados">
+                <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-700" aria-hidden>
+                        <Users className="h-5 w-5" />
+                    </span>
+                    <div>
+                        <h2 id="sin-representados" className="text-base font-bold text-gray-900">Aún no tienes representados</h2>
+                        <p className="mt-1 text-sm text-gray-600">
+                            El liceo es quien te asigna a tus representados. Cuando lo haga, aquí verás sus notas,
+                            su asistencia y lo que tienen pendiente.
+                        </p>
+                    </div>
+                </div>
+            </section>
+        );
+    }
     if (hijos.length === 0) return null;
 
     return (

@@ -61,6 +61,7 @@ export function useUpdateInstituteConfig() {
             // `config()` a secas es la del liceo «none»: no coincidía con la de ningún
             // liceo y, tras «Guardado», nada se volvía a pedir hasta recargar.
             queryClient.invalidateQueries({ queryKey: instituteKeys.configs() });
+            queryClient.invalidateQueries({ queryKey: ['membrete'] });
             toast.success('Configuración actualizada exitosamente');
         },
         onError: (error: Error) => {
@@ -82,6 +83,7 @@ export function useUploadLogos() {
             // `config()` a secas es la del liceo «none»: no coincidía con la de ningún
             // liceo y, tras «Guardado», nada se volvía a pedir hasta recargar.
             queryClient.invalidateQueries({ queryKey: instituteKeys.configs() });
+            queryClient.invalidateQueries({ queryKey: ['membrete'] });
             toast.success('Logos actualizados exitosamente');
         },
         onError: (error: Error) => {
@@ -103,6 +105,7 @@ export function useUpdateColors() {
             // `config()` a secas es la del liceo «none»: no coincidía con la de ningún
             // liceo y, tras «Guardado», nada se volvía a pedir hasta recargar.
             queryClient.invalidateQueries({ queryKey: instituteKeys.configs() });
+            queryClient.invalidateQueries({ queryKey: ['membrete'] });
             toast.success('Colores actualizados exitosamente');
         },
         onError: (error: Error) => {

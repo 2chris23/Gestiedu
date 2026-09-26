@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ChevronLeft, FileText, Printer } from 'lucide-react';
 import { useBoleta } from '@/hooks/useBoleta';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
+import { MembreteOficial } from '@/components/documentos/MembreteOficial';
 
 /**
  * LA BOLETA DEL ALUMNO, PARA VER E IMPRIMIR
@@ -89,10 +90,9 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
 
             <article className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-8 print:border-0 print:shadow-none" aria-label="Boleta de calificaciones">
                 <header className="border-b border-gray-200 pb-4 text-center">
-                    <p className="text-lg font-bold text-gray-900">{b.liceo.nombre}</p>
-                    {(b.liceo.direccion || b.liceo.ciudad) && (
-                        <p className="text-xs text-gray-600">{[b.liceo.direccion, b.liceo.ciudad].filter(Boolean).join(' · ')}</p>
-                    )}
+                    <MembreteOficial
+                        respaldo={{ nombre: b.liceo.nombre, direccion: [b.liceo.direccion, b.liceo.ciudad].filter(Boolean).join(' · ') }}
+                    />
                     <h1 className="mt-3 text-base font-bold uppercase tracking-wide text-gray-900">Boleta de calificaciones</h1>
                     <p className="text-sm text-gray-700">Año escolar {b.ciclo.nombre}</p>
                 </header>

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { WEB_BASE, loginApi, injectSessionCookies, captureEvidence } from './helpers';
+import { WEB_BASE, loginApi, injectSessionCookies, captureEvidence, queryTenantDb } from './helpers';
 
 /**
  * LAS CONSTANCIAS, EN EL NAVEGADOR
@@ -19,7 +19,10 @@ test.describe('Las constancias', () => {
             await expect(page).toHaveURL(/\/dashboard\/constancia\/mia/);
             const hoja = page.getByRole('article', { name: 'Constancia de estudio' });
             await expect(hoja).toBeVisible({ timeout: 30000 });
-            await expect(hoja.getByText('Estudiante Prueba')).toBeVisible();
+            const [yo] = await queryTenantDb<{ firstName: string; lastName: string }>(
+                `SELECT "firstName", "lastName" FROM users WHERE email = 'est0575@testing.edu.ve'`
+            );
+            await expect(hoja.getByText(`${yo.firstName} ${yo.lastName}`)).toBeVisible();
             await expect(hoja).toContainText('hace constar');
             await expect(hoja).toContainText('cursa estudios');
         } catch (error) {
@@ -32,7 +35,8 @@ test.describe('Las constancias', () => {
         try {
             const admin = await loginApi('admin@testing.edu.ve', '123456');
             await injectSessionCookies(page, admin);
-            await page.goto(`${WEB_BASE}/dashboard/usuarios/V-20000575`);
+            const [alumno] = await queryTenantDb<{ id: string }>(`SELECT id FROM users WHERE email = 'est0575@testing.edu.ve'`);
+            await page.goto(`${WEB_BASE}/dashboard/usuarios/${encodeURIComponent(alumno.id)}`);
             await page.getByRole('link', { name: /Constancia de buena conducta/ }).click();
             const hoja = page.getByRole('article', { name: 'Constancia de buena conducta' });
             await expect(hoja).toBeVisible({ timeout: 30000 });
