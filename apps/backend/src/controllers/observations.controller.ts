@@ -269,11 +269,20 @@ export async function getStudentObservations(
       orderBy: { date: 'desc' },
     });
 
+    /**
+     * Los otros alumnos de una observación de grupo, solo para el personal.
+     *
+     * Al alumno y a su representante les llegaban el nombre, el código y la foto
+     * de cada compañero implicado. Lo suyo es suyo; lo de los demás, no.
+     */
+    const rolQueMira = (request.user as any)?.role;
+    const esPersonal = rolQueMira === 'ADMIN' || rolQueMira === 'TEACHER';
+
     // Enriquecer cada observación con otros involucrados si pertenece a un groupId
     const enriched = await Promise.all(
       observations.map(async (obs: any) => {
         let otherInvolved: any[] = [];
-        if (obs.groupId) {
+        if (obs.groupId && esPersonal) {
           const peers = await prisma.observation.findMany({
             where: {
               groupId: obs.groupId,

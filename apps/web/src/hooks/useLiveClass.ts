@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import { toast } from 'sonner';
 import type { PlanColumnDef } from '@/components/evaluation/planColumns';
@@ -162,6 +162,32 @@ export function useLiveOverview(classroomId: string, date: string, studentId?: s
         // Que un alumno no pueda ver una sección no es un fallo que reintentar.
         retry: false,
     });
+}
+
+/**
+ * El resumen de VARIAS secciones el mismo día: el horario de un profesor da
+ * clase en varias, y el resumen se pide por sección. Con una sola (la del
+ * perfil), el horario del profesor salía con «—» y «Hoy: 0 · Próx: 0».
+ * Comparte memoria con `useLiveOverview` (misma clave).
+ */
+export function useLiveOverviews(classroomIds: string[], date: string) {
+    const unicas = Array.from(new Set(classroomIds.filter(Boolean))).sort();
+    const resultados = useQueries({
+        queries: unicas.map((classroomId) => ({
+            queryKey: ['liveOverview', classroomId, date, ''],
+            queryFn: async () => {
+                const { data } = await api.get('/sessions/live-overview', { params: { classroomId, date } });
+                return data as { overview: Record<string, LiveOverviewSubject>; shift?: 'MANANA' | 'TARDE' | 'INTEGRAL' };
+            },
+            enabled: Boolean(date),
+            retry: false,
+        })),
+    });
+    const porSeccion: Record<string, { overview: Record<string, LiveOverviewSubject>; shift?: 'MANANA' | 'TARDE' | 'INTEGRAL' } | undefined> = {};
+    unicas.forEach((id, i) => {
+        porSeccion[id] = resultados[i]?.data ?? undefined;
+    });
+    return porSeccion;
 }
 
 export function useClassActivities(classroomId?: string, subjectId?: string) {

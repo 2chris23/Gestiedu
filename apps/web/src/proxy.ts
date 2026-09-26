@@ -86,6 +86,9 @@ const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[] }> = [
     { prefijo: '/dashboard/clases', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/aulas', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/horario', roles: ['ADMIN', 'TEACHER'] },
+    // La materia vista por el alumno o su representante. El personal trabaja
+    // la clase en la Clase en Vivo; esto es solo mirar lo de UN alumno.
+    { prefijo: '/dashboard/mi-clase', roles: ['STUDENT', 'TUTOR'] },
 ];
 
 function rolDeLaSesion(request: NextRequest): Rol | null {

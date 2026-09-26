@@ -39,6 +39,7 @@ export function MiDiaDeClases({
                     schedule={horario}
                     role="student"
                     classroomId={classroomId}
+                    alumnoId={studentId ?? undefined}
                     titulo={nombre ? `Horario · ${nombre}` : 'Mi horario'}
                     subtitulo={seccion || undefined}
                 />

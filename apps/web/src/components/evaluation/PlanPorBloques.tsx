@@ -74,6 +74,12 @@ interface Props {
     /** El bloque que empieza en esa semana pasa a abarcar una semana más. */
     alAlargar: (indiceDeSemana: number) => void;
     alAcortar: (indiceDeSemana: number) => void;
+    /**
+     * Lo que ve el alumno: solo lo escrito. Sin la cuenta de puntos («Faltan
+     * 8», cosa del profesor), sin semanas ni campos vacíos («Sin escribir»
+     * veinte veces) y sin el botón de girar a la tabla del profesor.
+     */
+    paraElAlumno?: boolean;
     className?: string;
 }
 
@@ -159,6 +165,7 @@ export function PlanPorBloques({
     alEscribir,
     alAlargar,
     alAcortar,
+    paraElAlumno = false,
     className,
 }: Props) {
     const [abiertas, setAbiertas] = React.useState<Set<number>>(new Set());
@@ -202,6 +209,7 @@ export function PlanPorBloques({
     return (
         <div className={cn('flex flex-col gap-3', className)}>
             {/* La cuenta, siempre arriba: es lo que hay que cuadrar. */}
+            {!paraElAlumno && (
             <div className="sticky top-0 z-10 flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2.5 shadow-sm">
                 <p className="text-sm font-semibold text-gray-800">
                     Puntos <span className={puntosRedondos > 20 ? 'text-red-600' : 'text-indigo-700'}>{puntosRedondos}</span>
@@ -215,12 +223,20 @@ export function PlanPorBloques({
                           : 'Cuadrado'}
                 </p>
             </div>
+            )}
 
             {bloques.map((bloque) => {
                 const semana = semanas[bloque.desde];
                 if (!semana) return null;
                 const vacio = !tieneAlgo(semana, columnas) && bloque.desde === bloque.hasta;
                 const abierto = abiertas.has(bloque.desde);
+                const semanasDelBloque = semanas.slice(bloque.desde, bloque.hasta + 1);
+                if (paraElAlumno && !semanasDelBloque.some((s) => tieneAlgo(s, columnas))) return null;
+                const conValor = (valor: unknown) => {
+                    const v = String(valor ?? '').trim();
+                    return v !== '' && v !== '0';
+                };
+                const camposDelBloque = paraElAlumno ? deBloque.filter((c) => conValor(semana.data[c.key])) : deBloque;
 
                 return (
                     <article
@@ -263,9 +279,9 @@ export function PlanPorBloques({
                         </div>
 
                         {/* Lo del bloque entero: lo que no cambia semana a semana. */}
-                        {deBloque.length > 0 && (
+                        {camposDelBloque.length > 0 && (
                             <div className="space-y-3 px-3 py-3">
-                                {deBloque.map((col) => (
+                                {camposDelBloque.map((col) => (
                                     <Campo
                                         key={col.key}
                                         columna={col}
@@ -284,6 +300,7 @@ export function PlanPorBloques({
                                     const idx = bloque.desde + k;
                                     const s = semanas[idx];
                                     if (!s) return null;
+                                    if (paraElAlumno && !deSemana.some((c) => conValor(s.data[c.key]))) return null;
                                     const suyaAbierta = abierto || abiertas.has(idx);
                                     const resumen =
                                         deSemana
@@ -320,7 +337,7 @@ export function PlanPorBloques({
 
                                             {suyaAbierta && (
                                                 <div className="space-y-3 bg-gray-50 px-3 py-3">
-                                                    {deSemana.map((col) => (
+                                                    {(paraElAlumno ? deSemana.filter((c) => conValor(s.data[c.key])) : deSemana).map((col) => (
                                                         <Campo
                                                             key={col.key}
                                                             columna={col}
@@ -340,6 +357,7 @@ export function PlanPorBloques({
                 );
             })}
 
+            {!paraElAlumno && (
             <button
                 type="button"
                 onClick={pedirElGiro}
@@ -348,6 +366,7 @@ export function PlanPorBloques({
                 <RotateCw className="h-4 w-4" aria-hidden />
                 Para ver el plan como se entrega, gira el teléfono
             </button>
+            )}
 
             {avisoDeGiro && (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">

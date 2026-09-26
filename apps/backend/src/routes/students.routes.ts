@@ -13,6 +13,7 @@ import { getStudentGrades } from '../controllers/grades.controller';
 import { getStudentAttendance } from '../controllers/attendance.controller';
 import { getStudentDashboard } from '../controllers/dashboard.controller';
 import { actividadesDelAlumno } from '../controllers/actividades-del-alumno.controller';
+import { miClase, misMaterias } from '../controllers/mi-clase.controller';
 import { obtenerBoleta } from '../controllers/boleta.controller';
 import { obtenerConstancia } from '../controllers/constancias.controller';
 import { authenticate, requireAdmin, requireTeacher, requireStudent, requireSelfOrAdmin } from '../middleware/auth.middleware';
@@ -263,6 +264,19 @@ const studentsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/:id/actividades', {
     preHandler: [authenticate]
   }, actividadesDelAlumno as any);
+
+  /**
+   * Una materia vista por el alumno o su representante: plan, SUS actividades
+   * con SU nota y SUS observaciones. Quién puede lo decide `assertCanSeeStudent`
+   * dentro. Solo lectura (`mi-clase.controller.ts`).
+   */
+  fastify.get('/:id/materias/:subjectId/clase', {
+    preHandler: [authenticate]
+  }, miClase as any);
+
+  fastify.get('/:id/materias', {
+    preHandler: [authenticate]
+  }, misMaterias as any);
 
   /**
    * La boleta: notas por lapso, definitiva e inasistencias. Sin guardián de

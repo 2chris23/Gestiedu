@@ -14,7 +14,7 @@ import { WEB_BASE, loginApi, loginViaUI, captureEvidence, queryTenantDb } from '
  */
 
 test.describe('El horario del alumno', () => {
-    test('ALUM-UI-01: ve su horario con el tema de la semana y puede abrir una clase', async ({ page }, testInfo) => {
+    test('ALUM-UI-01: ve su horario con el tema de la semana y, al tocar una clase, entra a «Mi clase»', async ({ page }, testInfo) => {
         try {
             const [alumno] = await queryTenantDb(
                 `SELECT u.email, u.id
@@ -35,22 +35,62 @@ test.describe('El horario del alumno', () => {
             const horario = page.getByText('Horario en Vivo').first();
             await expect(horario).toBeVisible({ timeout: 30000 });
 
-            // Un bloque con materia: se abre y sale la ficha de esa hora.
+            // Un bloque con materia: lleva a SU clase (plan, sus notas, sus
+            // observaciones), no a una ventanita con el tema del día.
             const bloque = page.locator('h4', { hasText: /\S/ }).first();
             await expect(bloque).toBeVisible({ timeout: 30000 });
+            const materia = (await bloque.textContent())?.trim() ?? '';
             await bloque.click();
 
-            const ficha = page.getByRole('dialog');
-            await expect(ficha).toBeVisible({ timeout: 15000 });
-            await expect(ficha.getByText(/Tema Generador|Para esta clase/i).first()).toBeVisible();
+            await expect(page).toHaveURL(/\/dashboard\/mi-clase\/[^/?]+$/, { timeout: 15000 });
+            await expect(page.getByRole('heading', { name: materia })).toBeVisible({ timeout: 30000 });
+            await expect(page.getByRole('tab', { name: /Plan/ })).toBeVisible();
+            await page.getByRole('tab', { name: /Actividades/ }).click();
+            await page.getByRole('tab', { name: /Observaciones/ }).click();
 
             // Y no hay nada que escribir: el alumno solo mira.
-            await expect(ficha.getByRole('textbox')).toHaveCount(0);
+            await expect(page.getByRole('textbox')).toHaveCount(0);
+            await expect(page.getByRole('button', { name: /Guardar|Editar|Eliminar/ })).toHaveCount(0);
 
-            await page.screenshot({ path: 'test-results/evidencia/horario-del-alumno.png', fullPage: false });
+            await page.screenshot({ path: 'test-results/evidencia/mi-clase-del-alumno.png', fullPage: false });
         } catch (error) {
-            await captureEvidence(testInfo, page, 'ALUM-UI-01', 'Horario del alumno con contenido', error);
+            await captureEvidence(testInfo, page, 'ALUM-UI-01', 'El alumno entra a su clase desde el horario', error);
             throw error;
+        }
+    });
+
+    test('ALUM-UI-03: el representante entra a las materias de su representado', async ({ page }, testInfo) => {
+        // El representante de pruebas no tiene representados en la semilla:
+        // se le presta uno durante la prueba y se le quita al acabar.
+        const [tutor] = await queryTenantDb(`SELECT id FROM users WHERE email = 'tutor.prueba@testing.edu.ve'`);
+        const [alumno] = await queryTenantDb(
+            `SELECT sc."studentId" AS id
+               FROM student_classrooms sc
+               JOIN classroom_subjects cs ON cs."classroomId" = sc."classroomId"
+              WHERE sc."isActive" = true
+                AND NOT EXISTS (SELECT 1 FROM student_tutors st WHERE st."studentId" = sc."studentId" AND st."tutorId" = $1)
+              LIMIT 1`,
+            [tutor?.id]
+        );
+        test.skip(!tutor || !alumno, 'hace falta el representante de pruebas y un alumno con materias');
+        await queryTenantDb(
+            `INSERT INTO student_tutors (id, "studentId", "tutorId", relationship, "createdAt", "updatedAt")
+             VALUES ('e2e-alum-ui-03', $1, $2, 'Madre', now(), now())`,
+            [alumno.id, tutor.id]
+        );
+        try {
+            await loginViaUI(page, 'tutor.prueba@testing.edu.ve', '123456');
+            await page.goto(`${WEB_BASE}/dashboard/mi-clase?alumno=${encodeURIComponent(alumno.id)}`);
+            const primera = page.locator('a[href^="/dashboard/mi-clase/"]').first();
+            await expect(primera).toBeVisible({ timeout: 30000 });
+            await primera.click();
+            await expect(page).toHaveURL(/\/dashboard\/mi-clase\/[^/?]+\?alumno=/, { timeout: 15000 });
+            await expect(page.getByRole('tab', { name: /Plan/ })).toBeVisible({ timeout: 30000 });
+        } catch (error) {
+            await captureEvidence(testInfo, page, 'ALUM-UI-03', 'El representante entra a una materia de su representado', error);
+            throw error;
+        } finally {
+            await queryTenantDb(`DELETE FROM student_tutors WHERE id = 'e2e-alum-ui-03'`);
         }
     });
 

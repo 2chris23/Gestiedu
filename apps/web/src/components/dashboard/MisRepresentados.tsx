@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { ChevronDown, FileText } from 'lucide-react';
+import { BookOpen, ChevronDown, FileText } from 'lucide-react';
 import api from '@/lib/axios';
 import UserAvatar from '@/components/ui/UserAvatar';
 import ActividadesDelAlumno from '@/components/profile/ActividadesDelAlumno';
@@ -112,6 +112,14 @@ export function MisRepresentados() {
                                     className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
                                 >
                                     <FileText size={16} /> Constancia de estudio
+                                </Link>{' '}
+                                {/* Sus materias: el plan, sus notas y sus observaciones
+                                    de cada una («Mi clase»), solo para mirar. */}
+                                <Link
+                                    href={`/dashboard/mi-clase?alumno=${encodeURIComponent(hijo.id)}`}
+                                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                >
+                                    <BookOpen size={16} /> Sus materias
                                 </Link>
                                 <ActividadesDelAlumno studentId={hijo.id} titulo={`Actividades de ${hijo.fullName.split(' ')[0]}`} />
                             </div>

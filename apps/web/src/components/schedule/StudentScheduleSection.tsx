@@ -12,8 +12,8 @@ import ScheduleHistoryModal from '@/components/schedule/ScheduleHistoryModal';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSchedulePeriods } from '@/hooks/useSchedulePeriods';
-import { useLiveOverview, LiveOverviewSubject } from '@/hooks/useLiveClass';
-import { ClaseDelAlumnoDialogo } from '@/components/schedule/ClaseDelAlumnoDialogo';
+import { useLiveOverviews, LiveOverviewSubject } from '@/hooks/useLiveClass';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { useArrastrarParaDesplazar } from '@/hooks/useArrastrarParaDesplazar';
 import TurnoBadge from '@/components/common/TurnoBadge';
 import { turnoDeLaHora } from '@/lib/turnos';
@@ -31,6 +31,11 @@ interface Props {
     subtitulo?: string;
     /** Horario de un profesor: para enseñar las clases que cubre como reemplazo. */
     teacherId?: string;
+    /**
+     * El alumno de este horario. Al tocar una clase, su representante va a
+     * «Mi clase» de ESE alumno (`/dashboard/mi-clase/<materia>?alumno=`).
+     */
+    alumnoId?: string;
 }
 
 // Días de la semana laborables
@@ -97,7 +102,7 @@ const MODERN_SUBJECT_STYLES = [
     },
 ];
 
-export default function StudentScheduleSection({ schedule, role, showActions = false, classroomId, editUrl, titulo = 'Horario semanal', subtitulo, teacherId }: Props) {
+export default function StudentScheduleSection({ schedule, role, showActions = false, classroomId, editUrl, titulo = 'Horario semanal', subtitulo, teacherId, alumnoId }: Props) {
     const [viewMode, setViewMode] = React.useState<'day' | 'week'>('day');
     /**
      * EL TURNO MANDA EN LAS HORAS
@@ -164,39 +169,42 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
 
     // Tema generador y actividades por materia para el horario en vivo.
     // Lo pide también el alumno: es SU sección (lo comprueba el servidor).
+    //
+    // Se pide POR SECCIÓN, y el horario de un profesor cruza varias: con solo
+    // la del perfil (ninguna, en un profesor) salía «—» y «Hoy: 0 · Próx: 0».
     const activeOverviewDate = histDate || todayDateStr;
-    const { data: liveOverview } = useLiveOverview(classroomId || '', activeOverviewDate);
-    const turno = liveOverview?.shift ?? turnoDeLosBloques;
-    const { periods: dynamicPeriods, isLoading } = useSchedulePeriods(turno === 'INTEGRAL' ? 'MANANA' : turno);
+    const seccionDe = (c: { classroomIdDeLaClase?: string; classroomId?: string } | null | undefined) =>
+        c?.classroomIdDeLaClase ?? c?.classroomId ?? classroomId;
 
     /**
      * ENTRAR A UNA CLASE
      *
-     * El profesor va a la Clase en Vivo, donde trabaja. El alumno —y quien mira
-     * su horario— abre la ficha de esa hora: tema, qué hay que hacer y su nota.
-     * Antes el bloque no respondía a nadie que no fuera profesor y el alumno se
-     * quedaba mirando una tarjeta muerta.
+     * Según QUIÉN mira, no de quién es el horario: el admin que abre el perfil
+     * de un alumno también trabaja la clase. El personal va a la Clase en
+     * Vivo; el alumno y su representante, a «Mi clase»: el plan, sus
+     * actividades con su nota y sus observaciones (solo mirar). Antes al alumno
+     * se le abría una ventanita con el tema del día y nada más.
      */
-    const [claseAbierta, setClaseAbierta] = React.useState<
-        (ScheduleBlock & { reemplazaA?: string; classroomIdDeLaClase?: string }) | null
-    >(null);
+    const { yo } = useQuienSoy();
+    const esFamilia = yo ? yo.role === 'STUDENT' || yo.role === 'TUTOR' : role === 'student';
 
     const handleClassClick = (
         classItem: (ScheduleBlock & { reemplazaA?: string; classroomIdDeLaClase?: string }) | null
     ) => {
         if (!classItem?.subjectId) return;
-        const seccion = classItem.classroomIdDeLaClase ?? classItem.classroomId ?? classroomId;
-        if (!seccion) return;
 
-        if (role === 'teacher') {
-            const blockDate = (viewMode === 'day' && histDate) ? histDate : getDateForDayKey(classItem.day || '');
-            router.push(
-                `/dashboard/clase-en-vivo/${seccion}/${classItem.subjectId}?date=${blockDate}&start=${encodeURIComponent(classItem.startTime)}&end=${encodeURIComponent(classItem.endTime)}`
-            );
+        if (esFamilia) {
+            const deQuien = yo?.role === 'TUTOR' && alumnoId ? `?alumno=${encodeURIComponent(alumnoId)}` : '';
+            router.push(`/dashboard/mi-clase/${encodeURIComponent(classItem.subjectId)}${deQuien}`);
             return;
         }
 
-        setClaseAbierta(classItem);
+        const seccion = seccionDe(classItem);
+        if (!seccion) return;
+        const blockDate = (viewMode === 'day' && histDate) ? histDate : getDateForDayKey(classItem.day || '');
+        router.push(
+            `/dashboard/clase-en-vivo/${seccion}/${classItem.subjectId}?date=${blockDate}&start=${encodeURIComponent(classItem.startTime)}&end=${encodeURIComponent(classItem.endTime)}`
+        );
     };
 
     // Scroll por bloque completo en el carrusel
@@ -246,6 +254,21 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
         teacherId,
         fecha: viewMode === 'day' ? fechaDelDia : undefined,
     });
+
+    const resumenes = useLiveOverviews(
+        [
+            classroomId ?? '',
+            ...todaySchedule.map((c) => seccionDe(c) ?? ''),
+            ...reemplazos.map((r) => r.classroom.id),
+        ],
+        activeOverviewDate
+    );
+    const infoDe = (c: (ScheduleBlock & { classroomIdDeLaClase?: string }) | null | undefined): LiveOverviewSubject | null => {
+        const seccion = seccionDe(c);
+        return c?.subjectId && seccion ? resumenes[seccion]?.overview?.[c.subjectId] ?? null : null;
+    };
+    const turno = (classroomId ? resumenes[classroomId]?.shift : undefined) ?? turnoDeLosBloques;
+    const { periods: dynamicPeriods, isLoading } = useSchedulePeriods(turno === 'INTEGRAL' ? 'MANANA' : turno);
 
     // Timeline para vista diaria ("Hoy")
     const timeline = dynamicPeriods.map((period) => {
@@ -603,11 +626,11 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
 
                                 const classItem = period.class;
                                 const isClickable = Boolean(
-                                    classItem?.subjectId && (classItem?.classroomIdDeLaClase || classItem?.classroomId || classroomId)
+                                    classItem?.subjectId && (esFamilia || seccionDe(classItem))
                                 );
 
                                 // Datos enriquecidos desde el Plan de Evaluación y Actividades
-                                const subjectInfo = classItem?.subjectId ? liveOverview?.overview?.[classItem.subjectId] : null;
+                                const subjectInfo = infoDe(classItem);
                                 const temaGenerador = subjectInfo?.temaGenerador || null;
                                 const firstColLabel = subjectInfo?.firstColumnLabel || 'Tema Generador';
                                 const todayActivitiesCount = subjectInfo?.todayActivitiesCount ?? 0;
@@ -862,7 +885,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                                 const classItem = cell.classItem!;
                                                 const subjectKey = (classItem.subject || '').trim().toLowerCase();
                                                 const style = subjectStyleMap[subjectKey] || MODERN_SUBJECT_STYLES[0];
-                                                const isClickable = Boolean(classItem.subjectId && (classItem.classroomId || classroomId));
+                                                const isClickable = Boolean(classItem.subjectId && (esFamilia || seccionDe(classItem)));
 
                                                 const teacherName = classItem.detail
                                                     ? classItem.detail.replace(/^Prof\.\s*/i, '').trim()
@@ -911,23 +934,6 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                     </>
                 )}
             </div>
-
-            {/* La ficha de una clase para quien no es profesor: solo lectura. */}
-            <ClaseDelAlumnoDialogo
-                abierto={Boolean(claseAbierta)}
-                alCerrar={() => setClaseAbierta(null)}
-                materia={claseAbierta?.subject}
-                hora={claseAbierta ? `${claseAbierta.startTime} - ${claseAbierta.endTime}` : undefined}
-                profesor={claseAbierta?.detail || undefined}
-                aula={claseAbierta?.location || undefined}
-                fecha={histLabel}
-                reemplazaA={claseAbierta?.reemplazaA}
-                datos={
-                    (claseAbierta?.subjectId
-                        ? liveOverview?.overview?.[claseAbierta.subjectId]
-                        : null) as LiveOverviewSubject | null
-                }
-            />
 
             {/* Modal de Calendario e Historial */}
 
