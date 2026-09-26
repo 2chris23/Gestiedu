@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { gradesService } from './grades.service';
 import { fechaDeLaActividad, lapsoDeLaFecha, LapsoConFechas } from '../utils/lapso-de-la-actividad';
+import { esCualitativa } from './apreciaciones.service';
 
 /**
  * =====================================================================
@@ -53,6 +54,9 @@ export async function studentsWithNoteInSubject(
     subjectId: string,
     periodId?: string
 ): Promise<Set<string>> {
+    // Una materia con apreciación no tiene notas que promediar (CUALI-02).
+    if (await esCualitativa(prisma, subjectId)) return new Set<string>();
+
     const enrollments = await prisma.studentClassroom.findMany({
         where: { classroomId, isActive: true },
         select: { studentId: true },

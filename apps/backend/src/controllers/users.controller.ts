@@ -10,6 +10,7 @@ import { invalidateUserSession } from '../middleware/auth.middleware';
 import { fueModificadoPorOtro, versionVista, AVISO_MODIFICADO_POR_OTRO } from '../utils/concurrencia';
 import { esCedulaEscolar } from '../utils/cedula-escolar';
 import { cambiarLaCedula } from '../services/cambiar-cedula.service';
+import { NOTAS_QUE_CUENTAN } from '../services/apreciaciones.service';
 
 /**
  * Lo que piden los documentos del Ministerio (nacionalidad, lugar y entidad de
@@ -670,7 +671,8 @@ export async function getUser(
         by: ['subjectId'],
         where: {
           teacherId: user.id,
-          score: { not: null }
+          score: { not: null },
+          ...NOTAS_QUE_CUENTAN,
         },
         _avg: { score: true }
       });
@@ -845,6 +847,7 @@ export async function getUserProfile(
             const gradeAggregate = await request.tenantPrisma.grade.aggregate({
               where: {
                 studentId: userId,
+                ...NOTAS_QUE_CUENTAN,
                 period: {
                   academicYearId: enrollment.academicYearId,
                 },

@@ -5,6 +5,7 @@ import { RedisCache } from '../config/redis';
 import { ErrorFactory, NotFoundError, ConflictError, UserNotFoundError } from '../utils/errors';
 import { logBusiness, logError } from '../utils/logger';
 import { hashPassword } from '../utils/bcrypt';
+import { NOTAS_QUE_CUENTAN } from './apreciaciones.service';
 
 // Tipos locales para student (reemplazan class-validator DTOs)
 interface CreateStudentData {
@@ -301,7 +302,7 @@ export class StudentsService {
 
         const [gradesStats, subjectStats, attendanceStats] = await Promise.all([
             prisma.grade.aggregate({
-                where: { studentId },
+                where: { studentId, ...NOTAS_QUE_CUENTAN },
                 _avg: { score: true },
                 _min: { score: true },
                 _max: { score: true },
@@ -309,7 +310,7 @@ export class StudentsService {
             }),
             prisma.grade.groupBy({
                 by: ['subjectId'],
-                where: { studentId },
+                where: { studentId, ...NOTAS_QUE_CUENTAN },
                 _avg: { score: true },
                 _count: { score: true },
                 orderBy: {

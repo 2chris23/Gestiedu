@@ -4,6 +4,7 @@ import { generateSlug } from '../utils/slug';
 import * as closeCycleService from '../services/promotion/close-cycle.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 import { canSeeClassroom } from '../services/authorization.service';
+import { NOTAS_QUE_CUENTAN } from '../services/apreciaciones.service';
 
 /**
  * MIRAR UNA SECCIÓN ES DE QUIEN TIENE QUE VER CON ELLA
@@ -1039,6 +1040,7 @@ export const getClassroomStats = async (request: FastifyRequest, reply: FastifyR
       const gradesWhere: any = {
           studentId: { in: studentIds },
           score: { not: null },
+          ...NOTAS_QUE_CUENTAN,
           ...(periodId ? { periodId } : { period: { academicYearId: classroom.academicYearId } })
       };
       const studentSubjectGrades = await prisma.grade.groupBy({

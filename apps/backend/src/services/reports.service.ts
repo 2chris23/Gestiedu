@@ -4,6 +4,7 @@ import { RedisCache } from '../config/redis';
 import { AppErrors, createError } from '../middleware/error.middleware';
 import * as ExcelJS from 'exceljs';
 import * as PDFDocument from 'pdfkit';
+import { NOTAS_QUE_CUENTAN } from './apreciaciones.service';
 
 interface ReportFilters {
   dateFrom?: Date;
@@ -88,6 +89,7 @@ export class ReportsService {
           student: {
 
           },
+          ...NOTAS_QUE_CUENTAN,
           ...(filters.dateFrom || filters.dateTo ? {
             createdAt: {
               ...(filters.dateFrom && { gte: filters.dateFrom }),

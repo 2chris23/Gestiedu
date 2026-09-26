@@ -23,12 +23,14 @@ import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
 import LapsoSelector from '@/components/academic/LapsoSelector';
 import SubjectScheduleSection from '@/components/schedule/SubjectScheduleSection';
 import { diferido } from '@/components/common/Diferido';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
 
 // Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
 const AssignSubjectTeacherModal = diferido(() => import('@/components/subject/AssignSubjectTeacherModal').then((m) => ({ default: m.AssignSubjectTeacherModal })), { sinEsqueleto: true });
 const EvaluationPlanSection = diferido(() => import('@/components/evaluation/EvaluationPlanSection'), { alto: 400 });
 const SubjectActivitiesTab = diferido(() => import('@/components/subject/SubjectActivitiesTab'), { alto: 300 });
 const SubjectObservationsTab = diferido(() => import('@/components/subject/SubjectObservationsTab'), { alto: 300 });
+const ApreciacionesDeLaMateria = diferido(() => import('@/components/subject/ApreciacionesDeLaMateria'), { alto: 300 });
 const StudentObservationsModal = diferido(() => import('@/components/observations/StudentObservationsModal'), { sinEsqueleto: true });
 
 const DAY_ABBR: Record<number, string> = {
@@ -90,6 +92,7 @@ export default function SectionSubjectDashboard() {
     const pagination = studentsData?.pagination;
     
     const { user } = useAuthStore();
+    const { yo } = useQuienSoy();
 
     // Obtener estadísticas de materias de la sección filtradas por lapso
     const { data: subjectsWithStats } = useClassroomSubjectsStats(classroomId, lapsoId);
@@ -429,6 +432,10 @@ export default function SectionSubjectDashboard() {
                     <nav className="-mb-px flex flex-wrap gap-x-6">
                         {[
                             { id: 'estudiantes', label: 'Estudiantes', icon: Users },
+                            // Una materia sin nota (Orientación…) se evalúa con apreciación.
+                            ...(subject.evaluacion === 'CUALITATIVA'
+                                ? [{ id: 'apreciaciones', label: 'Apreciaciones', icon: CheckCircle }]
+                                : []),
                             { id: 'calificaciones', label: 'Plan de Evaluación / Calificaciones', icon: GraduationCap },
                             { id: 'actividades', label: 'Actividades', icon: ListTodo },
                             { id: 'observaciones', label: 'Observaciones', icon: Bell },
@@ -598,6 +605,14 @@ export default function SectionSubjectDashboard() {
                             <Pagination currentPage={page} totalPages={pagination.totalPages} onPageChange={setPage} />
                         )}
                     </div>
+                )}
+
+                {activeTab === 'apreciaciones' && subject.evaluacion === 'CUALITATIVA' && (
+                    <ApreciacionesDeLaMateria
+                        classroomId={classroomId}
+                        subjectId={subject.id}
+                        puedePoner={yo?.role === 'ADMIN' || (yo?.role === 'TEACHER' && !!teacher && teacher.id === yo.id)}
+                    />
                 )}
 
                 {/* Calificaciones / Evaluation Plan Tab */}

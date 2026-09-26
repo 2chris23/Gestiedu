@@ -2,6 +2,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { UserRole, ActivityType } from '../utils/prisma-enums';
 import { AppErrors } from '../middleware/error.middleware';
 import { RedisCache } from '../config/redis';
+import { esCualitativa } from './apreciaciones.service';
 import { fechaDeLaActividad, lapsoDeLaFecha, LapsoConFechas } from '../utils/lapso-de-la-actividad';
 import { logger } from '../utils/logger';
 import { CACHE_TTL, PAGINATION, GRADE_SYSTEM } from '../utils/constants';
@@ -989,6 +990,11 @@ class GradesService {
     subjectId: string,
     periodId: string
   ): Promise<{ promedio: number; conNotas: boolean }> {
+    // Una materia con apreciación (Orientación, Grupos de Creación…) no entra
+    // en ningún promedio: sale «sin notas», y todo lo de encima —la sección,
+    // el año, el riesgo, el cierre— ya deja fuera lo que no tiene notas.
+    if (await esCualitativa(prisma, subjectId)) return { promedio: 0, conNotas: false };
+
     const cacheKey = `grade:avg:student:${studentId}:subject:${subjectId}:period:${periodId}`;
 
     const guardado = await RedisCache.get<{ promedio: number; conNotas: boolean } | number>(cacheKey);

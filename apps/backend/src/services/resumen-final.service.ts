@@ -3,6 +3,7 @@ import { platformPrisma } from '../config/database';
 import { gradesService } from './grades.service';
 import { getAcademicConfig, condicionSugerida, SuggestionStatus } from './promotion/close-cycle.service';
 import { AppErrors } from '../middleware/error.middleware';
+import { apreciacionesFinalesDelCiclo } from './apreciaciones.service';
 
 /**
  * EL RESUMEN FINAL DEL RENDIMIENTO DE UNA SECCIÓN
@@ -18,6 +19,8 @@ import { AppErrors } from '../middleware/error.middleware';
  *   - si la reprobó y presentó revisión, la nota de la revisión
  *     (`services/revision.service.ts`);
  *   - «sin notas» sale vacío y no cuenta ni como aprobada ni como reprobada;
+ *   - una materia con apreciación sale con su apreciación final y no cuenta
+ *     en el promedio ni en las reprobadas (CUALI-05);
  *   - la condición (promovido, con pendientes, repite) con `condicionSugerida`,
  *     la del cierre; con el ciclo ya cerrado, la que dejó el admin.
  *
@@ -32,13 +35,13 @@ export interface ResumenFinal {
     liceo: { nombre: string; codigo: string | null; direccion: string | null; ciudad: string | null };
     ciclo: { id: string; nombre: string; cerrado: boolean };
     seccion: { id: string; grado: number; seccion: string; turno: string | null; guia: string | null };
-    materias: Array<{ id: string; nombre: string }>;
+    materias: Array<{ id: string; nombre: string; cualitativa: boolean }>;
     alumnos: Array<{
         cedula: string;
         apellidos: string;
         nombres: string;
         sexo: string | null;
-        notas: Record<string, { definitiva: number | null; revision: number | null }>;
+        notas: Record<string, { definitiva: number | null; revision: number | null; apreciacion?: string | null }>;
         reprobadas: number;
         promedio: number | null;
         condicion: SuggestionStatus;
@@ -68,14 +71,14 @@ export async function resumenFinalDeLaSeccion(
             academicYearId: true,
             academicYear: { select: { id: true, name: true, status: true } },
             teacher: { select: { firstName: true, lastName: true } },
-            subjects: { select: { subject: { select: { id: true, name: true } } } },
+            subjects: { select: { subject: { select: { id: true, name: true, evaluacion: true } } } },
         },
     });
     if (!seccion || !seccion.academicYearId || !seccion.academicYear) throw AppErrors.NotFound('Sección');
     const academicYearId = seccion.academicYearId;
     const ciclo = seccion.academicYear;
 
-    const [config, liceo, inscripciones, revisiones, actas] = await Promise.all([
+    const [config, liceo, inscripciones, revisiones, actas, apreciaciones] = await Promise.all([
         getAcademicConfig(instituteId),
         platformPrisma.institute.findUnique({ where: { id: instituteId }, select: { name: true, code: true, address: true, city: true } }),
         prisma.studentClassroom.findMany({
@@ -93,6 +96,7 @@ export async function resumenFinalDeLaSeccion(
             where: { academicYearId },
             select: { studentId: true, finalResult: true },
         }),
+        apreciacionesFinalesDelCiclo(prisma, academicYearId),
     ]);
     const redondeo = config.redondeoDeDefinitivas ?? 'MPPE';
     const minima = config.notaMinimaAprobatoria;
@@ -131,6 +135,10 @@ export async function resumenFinalDeLaSeccion(
         const queCuentan: number[] = [];
         let reprobadas = 0;
         for (const m of materias) {
+            if (m.evaluacion === 'CUALITATIVA') {
+                notas[m.id] = { definitiva: null, revision: null, apreciacion: apreciaciones.get(`${a.id}|${m.id}`) ?? null };
+                continue;
+            }
             const def = definitivas.get(`${a.id}|${m.id}`)!;
             if (!def.conNotas) {
                 notas[m.id] = { definitiva: null, revision: null };
@@ -175,7 +183,7 @@ export async function resumenFinalDeLaSeccion(
             turno: (seccion as any).shift ?? null,
             guia: seccion.teacher ? `${seccion.teacher.firstName} ${seccion.teacher.lastName}` : null,
         },
-        materias: materias.map((m) => ({ id: m.id, nombre: m.name })),
+        materias: materias.map((m) => ({ id: m.id, nombre: m.name, cualitativa: m.evaluacion === 'CUALITATIVA' })),
         alumnos,
         porMateria,
         totales: {

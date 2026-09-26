@@ -16,6 +16,7 @@ import {
     cycleAverage,
 } from './aggregation.service';
 import { getAcademicConfig } from './promotion/close-cycle.service';
+import { NOTAS_QUE_CUENTAN } from './apreciaciones.service';
 
 /**
  * SERVICIO UNIFICADO DE ESTADÍSTICAS - "The Unified Stats Engine"
@@ -469,7 +470,8 @@ class CycleStatisticsService {
             const gradesInActiveYears = await prisma.grade.findMany({
                 where: {
                     studentId,
-                    periodId: { in: periods.map(p => p.id) }
+                    periodId: { in: periods.map(p => p.id) },
+                    ...NOTAS_QUE_CUENTAN,
                 },
                 select: { score: true, periodId: true }
             });
@@ -523,7 +525,7 @@ class CycleStatisticsService {
                     prisma.grade.findMany({
                         where: {
                             studentId,
-                            subject: { classroomSubjects: { some: { classroomId: currentEnrollment.sectionId } } },
+                            subject: { classroomSubjects: { some: { classroomId: currentEnrollment.sectionId } }, ...NOTAS_QUE_CUENTAN.subject },
                             period: { academicYearId: currentEnrollment.academicYearId }
                         },
                         select: {
@@ -828,7 +830,8 @@ class CycleStatisticsService {
                 prisma.grade.findMany({
                     where: {
                         studentId: { in: studentIds },
-                        subjectId: { in: classroomSubjects.map(cs => cs.subjectId) }
+                        subjectId: { in: classroomSubjects.map(cs => cs.subjectId) },
+                        ...NOTAS_QUE_CUENTAN,
                     },
                     select: {
                         studentId: true,

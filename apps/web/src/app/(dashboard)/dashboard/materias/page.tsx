@@ -17,6 +17,7 @@ import { CreateSubjectData, UpdateSubjectData, Subject } from '@/services/subjec
 import { Pagination } from '@/components/ui';
 import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
 import { PaletteColorSelector } from '@/components/ui/PaletteColorSelector';
+import { Lista } from '@/components/ui/lista';
 import { toast } from 'sonner';
 
 export default function MateriasPage() {
@@ -229,6 +230,11 @@ export default function MateriasPage() {
                                         <span className="min-w-0 truncate font-medium text-gray-900 group-hover:text-indigo-600">
                                             {m.name}
                                         </span>
+                                        {m.evaluacion === 'CUALITATIVA' && (
+                                            <span className="shrink-0 rounded-full bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800">
+                                                Apreciación
+                                            </span>
+                                        )}
                                     </Link>
                                 ),
                             },
@@ -348,13 +354,14 @@ function SubjectFormModal({
 }: {
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (data: { name: string; color: string }) => Promise<void>;
+    onSubmit: (data: CreateSubjectData) => Promise<void>;
     title: string;
     initialData?: Subject;
 }) {
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<CreateSubjectData>({
         name: initialData?.name || '',
         color: initialData?.color || '#3B82F6',
+        evaluacion: initialData?.evaluacion || 'NUMERICA',
     });
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -406,9 +413,27 @@ function SubjectFormModal({
                                     </label>
                                     <PaletteColorSelector
                                         id="subjectColor"
-                                        selectedColor={formData.color}
+                                        selectedColor={formData.color || '#3B82F6'}
                                         onSelectColor={(color) => setFormData({ ...formData, color: color })}
                                     />
+                                </div>
+
+                                <div>
+                                    <span className="block text-sm font-medium text-gray-700 mb-1">Cómo se evalúa</span>
+                                    <Lista
+                                        etiqueta="Cómo se evalúa"
+                                        valor={formData.evaluacion || 'NUMERICA'}
+                                        alCambiar={(v) => setFormData({ ...formData, evaluacion: v as CreateSubjectData['evaluacion'] })}
+                                        opciones={[
+                                            { valor: 'NUMERICA', texto: 'Con nota (01 a 20)' },
+                                            { valor: 'CUALITATIVA', texto: 'Con apreciación (sin nota)' },
+                                        ]}
+                                    />
+                                    <p className="mt-1 text-xs text-gray-600">
+                                        Con apreciación, como Orientación o Grupos de Creación: el profesor pone
+                                        «Consolidado», «En proceso»… y la materia no entra en los promedios ni en la
+                                        promoción.
+                                    </p>
                                 </div>
                             </div>
                         </div>

@@ -26,6 +26,14 @@ enum Gender {
   OTRO
 }
 
+/// Cómo se evalúa una materia: con nota de 01 a 20, o con una apreciación
+/// (Orientación y Convivencia, Grupos de Creación…). Las cualitativas no
+/// entran en ningún promedio ni en la promoción.
+enum EvaluacionDeMateria {
+  NUMERICA
+  CUALITATIVA
+}
+
 enum AcademicYearStatus {
   ACTIVE
   COMPLETED
@@ -275,6 +283,8 @@ model User {
   pasesDeListaAbiertos    PaseDeLista[]            @relation("PaseAbiertoPor")
   registrosDeAsistenciaQr RegistroDeAsistenciaQr[] @relation("RegistroQrAlumno")
   notasDeRevision         NotaDeRevision[]         @relation("RevisionAlumno")
+  apreciaciones           Apreciacion[]            @relation("ApreciacionAlumno")
+  apreciacionesPuestas    Apreciacion[]            @relation("ApreciacionPuestaPor")
   aparatoDeAsistencia     AparatoDelAlumno?
 
   // Notificaciones
@@ -385,6 +395,7 @@ model AcademicYear {
   payments         Payment[]
   schoolEvents     SchoolEvent[]
   notasDeRevision  NotaDeRevision[]
+  apreciaciones    Apreciacion[]
   institute        Institute?           @relation(fields: [instituteId], references: [id])
   instituteId      String?
 
@@ -414,8 +425,9 @@ model Period {
   updatedAt DateTime @updatedAt
 
   // Relaciones
-  grades     Grade[]
-  activities Activity[]
+  grades        Grade[]
+  activities    Activity[]
+  apreciaciones Apreciacion[]
 
   @@unique([academicYearId, name])
   @@map("periods")
@@ -428,6 +440,8 @@ model Subject {
   code        String?
   description String?
   color       String?
+  /// Con nota (01 a 20) o con apreciación; la eligen en el liceo.
+  evaluacion  EvaluacionDeMateria @default(NUMERICA)
 
   // Instituto
   // Timestamps
@@ -435,6 +449,7 @@ model Subject {
   updatedAt DateTime @updatedAt
 
   // Relaciones
+  apreciaciones      Apreciacion[]
   classroomSubjects  ClassroomSubject[]
   activities         Activity[]
   grades             Grade[]
@@ -510,6 +525,7 @@ model Classroom {
   evaluationPlanRows EvaluationPlanRow[]
   replacements       ClassReplacement[]
   observations       Observation[]
+  apreciaciones      Apreciacion[]
   institute          Institute?          @relation(fields: [instituteId], references: [id])
   instituteId        String?
 
@@ -1118,6 +1134,44 @@ model NotaDeRevision {
   @@unique([studentId, subjectId, academicYearId])
   @@index([academicYearId])
   @@map("notas_de_revision")
+}
+
+/// La apreciación de un alumno en una materia cualitativa: por lapso o la
+/// final del año (`momento` = id del lapso o «FINAL»). La pone el profesor
+/// que da esa materia en esa sección. Ver `services/apreciaciones.service.ts`.
+model Apreciacion {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("ApreciacionAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  /// El lapso, o vacío si es la apreciación final.
+  periodId String?
+  period   Period? @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  /// El id del lapso o «FINAL» (una clave única no puede apoyarse en un vacío).
+  momento  String
+
+  valor       String
+  observacion String?
+
+  registradaPorId String?
+  registradaPor   User?   @relation("ApreciacionPuestaPor", fields: [registradaPorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, subjectId, academicYearId, momento])
+  @@index([classroomId, subjectId])
+  @@map("apreciaciones")
 }
 
 // =====================================================

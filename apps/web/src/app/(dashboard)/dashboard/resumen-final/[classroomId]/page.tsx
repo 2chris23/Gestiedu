@@ -21,13 +21,13 @@ interface ResumenFinal {
     liceo: { nombre: string; codigo: string | null; direccion: string | null; ciudad: string | null };
     ciclo: { id: string; nombre: string; cerrado: boolean };
     seccion: { id: string; grado: number; seccion: string; turno: string | null; guia: string | null };
-    materias: Array<{ id: string; nombre: string }>;
+    materias: Array<{ id: string; nombre: string; cualitativa?: boolean }>;
     alumnos: Array<{
         cedula: string;
         apellidos: string;
         nombres: string;
         sexo: string | null;
-        notas: Record<string, { definitiva: number | null; revision: number | null }>;
+        notas: Record<string, { definitiva: number | null; revision: number | null; apreciacion?: string | null }>;
         reprobadas: number;
         promedio: number | null;
         condicion: 'PROMOVIDO' | 'PROMOVIDO_CON_PENDIENTES' | 'NO_PROMOVIDO';
@@ -136,6 +136,14 @@ export default function ResumenFinalPage({ params }: { params: Promise<{ classro
                                     </th>
                                     {r.materias.map((m) => {
                                         const n = a.notas[m.id];
+                                        // Sin nota: su apreciación, que no cuenta en el promedio.
+                                        if (m.cualitativa) {
+                                            return (
+                                                <td key={m.id} className="border border-gray-200 px-2 py-1.5 text-center text-xs text-gray-900">
+                                                    {n?.apreciacion ?? '—'}
+                                                </td>
+                                            );
+                                        }
                                         const cuenta = n?.revision ?? n?.definitiva ?? null;
                                         return (
                                             <td key={m.id} className={`border border-gray-200 px-2 py-1.5 text-center tabular-nums ${cuenta !== null && cuenta < min ? 'font-semibold text-red-700' : 'text-gray-900'}`}>
@@ -151,14 +159,14 @@ export default function ResumenFinalPage({ params }: { params: Promise<{ classro
                             <tr className="bg-gray-50">
                                 <th scope="row" colSpan={3} className="border border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-800">Aprobados</th>
                                 {r.materias.map((m) => (
-                                    <td key={m.id} className="border border-gray-200 px-2 py-1.5 text-center tabular-nums">{r.porMateria[m.id].aprobados}</td>
+                                    <td key={m.id} className="border border-gray-200 px-2 py-1.5 text-center tabular-nums">{m.cualitativa ? '—' : r.porMateria[m.id].aprobados}</td>
                                 ))}
                                 <td colSpan={2} className="border border-gray-200" />
                             </tr>
                             <tr className="bg-gray-50">
                                 <th scope="row" colSpan={3} className="border border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-800">Reprobados</th>
                                 {r.materias.map((m) => (
-                                    <td key={m.id} className="border border-gray-200 px-2 py-1.5 text-center tabular-nums">{r.porMateria[m.id].reprobados}</td>
+                                    <td key={m.id} className="border border-gray-200 px-2 py-1.5 text-center tabular-nums">{m.cualitativa ? '—' : r.porMateria[m.id].reprobados}</td>
                                 ))}
                                 <td colSpan={2} className="border border-gray-200" />
                             </tr>

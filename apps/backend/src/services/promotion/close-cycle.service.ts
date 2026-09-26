@@ -3,6 +3,7 @@ import { gradesService } from '../grades.service';
 import { getStrategy, Assignment, StudentForPlacement, SectionOption } from './strategies';
 import { platformPrisma } from '../../config/database';
 import { borrarGuardandoCopia, QuienBorra } from '../../utils/papelera';
+import { apreciacionesFinalesDelCiclo, APRECIACIONES_POR_DEFECTO, esListaDeApreciaciones } from '../apreciaciones.service';
 
 export interface AcademicConfig {
     notaMinimaAprobatoria: number;
@@ -22,6 +23,12 @@ export interface AcademicConfig {
      * definitiva. 'NINGUNO': a dos decimales, sin redondear al entero.
      */
     redondeoDeDefinitivas?: RedondeoDeDefinitivas;
+    /**
+     * Las palabras con que se evalúan las materias cualitativas (Orientación,
+     * Grupos de Creación…), de mejor a peor. Por defecto: Consolidado, En
+     * proceso, Iniciado.
+     */
+    apreciaciones?: string[];
 }
 
 export type RedondeoDeDefinitivas = 'MPPE' | 'NINGUNO';
@@ -39,6 +46,7 @@ export const DEFAULT_ACADEMIC_CONFIG: AcademicConfig = {
     maxGradeLevel: 5,
     turnosHabilitados: ['MANANA', 'TARDE'],
     redondeoDeDefinitivas: 'MPPE',
+    apreciaciones: APRECIACIONES_POR_DEFECTO,
 };
 
 /** El porcentaje de asistencia va de 0 a 100 y no admite otra cosa. */
@@ -61,6 +69,7 @@ export async function getAcademicConfig(instituteId: string): Promise<AcademicCo
         maxGradeLevel: typeof raw.maxGradeLevel === 'number' ? raw.maxGradeLevel : defaultMax,
         turnosHabilitados: Array.isArray(raw.turnosHabilitados) ? raw.turnosHabilitados : DEFAULT_ACADEMIC_CONFIG.turnosHabilitados,
         redondeoDeDefinitivas: esRedondeoValido(raw.redondeoDeDefinitivas) ? raw.redondeoDeDefinitivas : DEFAULT_ACADEMIC_CONFIG.redondeoDeDefinitivas,
+        apreciaciones: esListaDeApreciaciones(raw.apreciaciones) ? raw.apreciaciones.map((v) => v.trim()) : [...APRECIACIONES_POR_DEFECTO],
     };
 }
 
@@ -83,6 +92,7 @@ export async function updateAcademicConfig(instituteId: string, patch: Partial<A
         maxGradeLevel: patch.maxGradeLevel ?? current.maxGradeLevel ?? defaultMax,
         turnosHabilitados: patch.turnosHabilitados ?? current.turnosHabilitados,
         redondeoDeDefinitivas: esRedondeoValido(patch.redondeoDeDefinitivas) ? patch.redondeoDeDefinitivas : current.redondeoDeDefinitivas,
+        apreciaciones: esListaDeApreciaciones(patch.apreciaciones) ? patch.apreciaciones.map((v) => v.trim()) : current.apreciaciones,
     };
     await platformPrisma.institute.update({
         where: { id: instituteId },
@@ -129,6 +139,9 @@ export interface StudentSuggestion {
         conNotas?: boolean;
         revision?: number | null;
         definitivaDeLapsos?: number;
+        /** Se evalúa con apreciación: no cuenta para promediar ni para promover. */
+        cualitativa?: boolean;
+        apreciacion?: string | null;
     }>;
     failedSubjects: Array<{ subjectId?: string; name: string; average: number; revision?: number | null }>;
     pendingCount: number;
@@ -164,7 +177,7 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                     grade: true,
                     shift: true,
                     subjects: {
-                        include: { subject: { select: { id: true, name: true } } },
+                        include: { subject: { select: { id: true, name: true, evaluacion: true } } },
                     },
                 },
             },
@@ -182,6 +195,10 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
         ).map((r: any) => [`${r.studentId}|${r.subjectId}`, r.score])
     );
 
+    // Las materias con apreciación no cuentan: van al expediente con su
+    // apreciación final y nada más (CUALI-03).
+    const apreciaciones = await apreciacionesFinalesDelCiclo(prisma, academicYearId);
+
     const suggestions: StudentSuggestion[] = [];
     const chunkSize = 25;
     for (let i = 0; i < enrollments.length; i += chunkSize) {
@@ -191,6 +208,17 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                 const classroom = enr.classroom;
                 const subjectGrades: StudentSuggestion['subjectGrades'] = await Promise.all(
                     classroom.subjects.map(async (cs: any) => {
+                        if (cs.subject.evaluacion === 'CUALITATIVA') {
+                            return {
+                                subjectId: cs.subjectId,
+                                subjectName: cs.subject.name,
+                                average: 0,
+                                approved: true,
+                                conNotas: false,
+                                cualitativa: true,
+                                apreciacion: apreciaciones.get(`${enr.studentId}|${cs.subjectId}`) ?? null,
+                            };
+                        }
                         // La definitiva, con el redondeo del liceo (MPPE por defecto): un
                         // 9,5 es un 10 aprobado, no una materia pendiente (RED-01…04).
                         const { promedio: avg, conNotas } = await gradesService.promedioDeLaMateria(
@@ -283,6 +311,17 @@ export interface CloseConfirmResult {
     closed: boolean;
     records: Array<{ studentId: string; finalResult: string; assignedClassroomId: string | null }>;
     placements: Assignment[];
+}
+
+/** Lo que queda de cada materia en el expediente del alumno. */
+function notaDelExpediente(sg: StudentSuggestion['subjectGrades'][number]) {
+    if (sg.cualitativa) return { subjectId: sg.subjectId, subjectName: sg.subjectName, cualitativa: true, apreciacion: sg.apreciacion ?? null };
+    return {
+        subjectId: sg.subjectId,
+        subjectName: sg.subjectName,
+        average: sg.average,
+        ...(sg.revision != null ? { revision: sg.revision, definitivaDeLapsos: sg.definitivaDeLapsos } : {}),
+    };
 }
 
 /** 2. Ejecución atómica de Cierre de Ciclo Escolar */
@@ -440,7 +479,7 @@ export async function confirmClose(
                     status: 'RETIRADO',
                     finalResult: 'NO_PROMOVIDO',
                     pendingSubjects: s.failedSubjects.map(f => f.name),
-                    subjectGrades: s.subjectGrades.map(sg => ({ subjectId: sg.subjectId, subjectName: sg.subjectName, average: sg.average, ...(sg.revision != null ? { revision: sg.revision, definitivaDeLapsos: sg.definitivaDeLapsos } : {}) })),
+                    subjectGrades: s.subjectGrades.map(notaDelExpediente),
                     assignedClassroomId: null,
                 });
                 records.push({ studentId: s.studentId, finalResult: 'RETIRADO', assignedClassroomId: null });
@@ -458,7 +497,7 @@ export async function confirmClose(
                     status: 'COMPLETED',
                     finalResult: decision.finalResult === 'NO_PROMOVIDO' ? 'NO_PROMOVIDO' : 'PROMOVIDO',
                     pendingSubjects: s.failedSubjects.map(f => f.name),
-                    subjectGrades: s.subjectGrades.map(sg => ({ subjectId: sg.subjectId, subjectName: sg.subjectName, average: sg.average, ...(sg.revision != null ? { revision: sg.revision, definitivaDeLapsos: sg.definitivaDeLapsos } : {}) })),
+                    subjectGrades: s.subjectGrades.map(notaDelExpediente),
                     assignedClassroomId: null,
                 });
                 records.push({ studentId: s.studentId, finalResult: 'GRADUATED', assignedClassroomId: null });
@@ -549,7 +588,7 @@ export async function confirmClose(
                 status: 'COMPLETED',
                 finalResult: decision.finalResult,
                 pendingSubjects: s.failedSubjects.map(f => f.name),
-                subjectGrades: s.subjectGrades.map(sg => ({ subjectId: sg.subjectId, subjectName: sg.subjectName, average: sg.average, ...(sg.revision != null ? { revision: sg.revision, definitivaDeLapsos: sg.definitivaDeLapsos } : {}) })),
+                subjectGrades: s.subjectGrades.map(notaDelExpediente),
                 assignedClassroomId: targetClassroomId,
             });
 

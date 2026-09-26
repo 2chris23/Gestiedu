@@ -68,7 +68,7 @@ export async function miClase(
         const materiaDeLaSeccion = await prisma.classroomSubject.findFirst({
             where: { classroomId: seccion.id, subjectId },
             select: {
-                subject: { select: { id: true, name: true, color: true } },
+                subject: { select: { id: true, name: true, color: true, evaluacion: true } },
                 teacher: { select: { firstName: true, lastName: true } },
             },
         });
@@ -259,7 +259,7 @@ export async function misMaterias(
         const materias = await prisma.classroomSubject.findMany({
             where: { classroomId: seccion.id },
             select: {
-                subject: { select: { id: true, name: true, color: true } },
+                subject: { select: { id: true, name: true, color: true, evaluacion: true } },
                 teacher: { select: { firstName: true, lastName: true } },
             },
             orderBy: { subject: { name: 'asc' } },

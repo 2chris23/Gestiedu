@@ -10,6 +10,7 @@ import { revisarImagen } from '../utils/archivos-que-se-aceptan';
 import { guardarArchivoDelLiceo } from '../services/archivos-del-liceo.service';
 import { limpiarDatosDeDocumentos } from '../services/constancias.service';
 import { revisarDatosDelPlantel, membreteDelLiceo } from '../services/datos-del-plantel.service';
+import { esListaDeApreciaciones } from '../services/apreciaciones.service';
 import {
   erroresDelHorario,
   franjasDelTurno,
@@ -169,6 +170,16 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
             else delete documentos[campo];
           }
           nextAcademicConfig.documentos = documentos;
+        }
+        // Las palabras de las materias con apreciación (`apreciaciones.service`).
+        if (configObj.apreciaciones !== undefined) {
+          if (!esListaDeApreciaciones(configObj.apreciaciones)) {
+            return reply.status(400).send({
+              error: 'Las apreciaciones son de 2 a 10 palabras distintas, de hasta 40 letras cada una.',
+              code: 'APRECIACIONES_INVALIDAS',
+            });
+          }
+          nextAcademicConfig.apreciaciones = configObj.apreciaciones.map((v: string) => v.trim());
         }
         if (configObj.schedule) horarioPedido = configObj.schedule;
         if (configObj.confirmarClasesFuera === true) confirmarClasesFuera = true;
@@ -438,6 +449,17 @@ export async function updateAcademicConfigEndpoint(request: FastifyRequest, repl
     if (esAsistenciaMinimaValida(body.asistenciaMinima)) patch.asistenciaMinima = body.asistenciaMinima;
     // 'MPPE' o 'NINGUNO'; cualquier otra cosa se ignora y se queda la que había.
     if (esRedondeoValido(body.redondeoDeDefinitivas)) patch.redondeoDeDefinitivas = body.redondeoDeDefinitivas;
+    // La lista de apreciaciones: de 2 a 10 palabras distintas. Una lista mal
+    // hecha se rechaza (no se ignora): dejaría materias sin cómo evaluarse.
+    if (body.apreciaciones !== undefined) {
+      if (!esListaDeApreciaciones(body.apreciaciones)) {
+        return reply.status(400).send({
+          error: 'Las apreciaciones son de 2 a 10 palabras distintas, de hasta 40 letras cada una.',
+          code: 'APRECIACIONES_INVALIDAS',
+        });
+      }
+      patch.apreciaciones = body.apreciaciones;
+    }
     const instId = getInstId(request);
     const config = await updateAcademicConfig(instId, patch);
     await conLiceo(instId, () => RedisCache.delete(`dashboard:admin:${instId}`));

@@ -4,6 +4,7 @@ import { gradesService } from './grades.service';
 import { AdminDashboardDto, TeacherDashboardDto, StudentDashboardDto, TutorDashboardDto } from '../dto/dashboard-response.dto';
 import { getAcademicConfig, DEFAULT_ACADEMIC_CONFIG } from './promotion/close-cycle.service';
 import { bulkSubjectAveragesConDatos } from './bulk-averages.service';
+import { NOTAS_QUE_CUENTAN } from './apreciaciones.service';
 
 /**
  * QUÉ PERIODO SE MIRA: EL LAPSO EN CURSO, Y APARTE EL CICLO
@@ -123,6 +124,7 @@ async function materiasDelAlumnoConPromedio(
         by: ['subjectId'],
         where: {
             studentId: userId,
+            ...NOTAS_QUE_CUENTAN,
             ...(lapsosDelCiclo.length > 0
                 ? { periodId: { in: lapsosDelCiclo } }
                 : {}),
@@ -260,7 +262,8 @@ export class DashboardService {
                     by: ['studentId', 'subjectId'],
                     where: {
                         period: { academicYearId: activeYear.id },
-                        score: { not: null }
+                        score: { not: null },
+                        ...NOTAS_QUE_CUENTAN,
                     },
                     _avg: { score: true },
                     having: {

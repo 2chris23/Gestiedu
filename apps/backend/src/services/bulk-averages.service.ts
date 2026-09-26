@@ -25,6 +25,7 @@
 import { PrismaClient } from '@prisma/client';
 import { calculateLapsoAverage, CriterionInput, CriterionActivityGrade } from '../utils/lapso-average';
 import { fechaDeLaActividad, lapsoDeLaFecha } from '../utils/lapso-de-la-actividad';
+import { soloLasQueCuentan } from './apreciaciones.service';
 
 export interface BulkAverageParams {
     classroomId: string;
@@ -91,8 +92,10 @@ export async function bulkSubjectAverages(
 
 export async function bulkSubjectAveragesConDatos(
     prisma: PrismaClient,
-    { classroomId, studentIds, subjectIds, periodId }: BulkAverageParams
+    { classroomId, studentIds, subjectIds: pedidas, periodId }: BulkAverageParams
 ): Promise<BulkAverageDetail> {
+    // Las materias con apreciación no se promedian (ver `apreciaciones.service`).
+    const subjectIds = await soloLasQueCuentan(prisma, pedidas);
     const empty: BulkAverageDetail = new Map(
         studentIds.map((id) => [id, new Map<string, { promedio: number; conNotas: boolean }>()])
     );

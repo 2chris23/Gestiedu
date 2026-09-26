@@ -5,6 +5,7 @@ import * as closeCycleService from './promotion/close-cycle.service';
 import { findTeacherAssignmentConflicts, ScheduleConflictError } from './schedule-conflicts.service';
 import { borrarGuardandoCopia, QuienBorra } from '../utils/papelera';
 import { NotFoundError } from '../utils/errors';
+import { olvidarMateriasCualitativas } from './apreciaciones.service';
 
 export class SubjectsService {
     async getAllSubjects(filters: any = {}, prisma: any) {
@@ -480,19 +481,24 @@ export class SubjectsService {
     async createSubject(data: CreateSubjectInput, prisma: any) {
         const { generateSlug } = await import('../utils/slug');
 
-        return prisma.subject.create({
+        const materia = await prisma.subject.create({
             data: {
                 ...data,
                 slug: generateSlug(data.name)
             }
         });
+        if (data.evaluacion === 'CUALITATIVA') await olvidarMateriasCualitativas();
+        return materia;
     }
 
     async updateSubject(id: string, data: UpdateSubjectInput, prisma: any) {
-        return prisma.subject.update({
+        const materia = await prisma.subject.update({
             where: { id },
             data
         });
+        // Pasar a apreciación (o volver a nota) cambia todos los promedios.
+        if (data.evaluacion) await olvidarMateriasCualitativas();
+        return materia;
     }
 
     /**

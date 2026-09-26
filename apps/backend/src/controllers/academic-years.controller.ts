@@ -373,6 +373,7 @@ export const updateAcademicYear = async (request: FastifyRequest, reply: Fastify
 
 import { comparePassword } from '../utils/bcrypt';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
+import { NOTAS_QUE_CUENTAN } from '../services/apreciaciones.service';
 
 export const deleteAcademicYear = async (request: FastifyRequest, reply: FastifyReply) => {
   try {
@@ -549,7 +550,8 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
       by: ['studentId', 'subjectId'],
       where: {
         period: { academicYearId: id },
-        score: { not: null }
+        score: { not: null },
+        ...NOTAS_QUE_CUENTAN,
       },
       _avg: { score: true }
     });

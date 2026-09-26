@@ -152,6 +152,8 @@ export const createSubjectSchema = z.object({
     .optional(),
   description: z.string().max(255, 'Descripción no puede tener más de 255 caracteres').optional(),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Color debe ser un código hexadecimal válido').optional(),
+  /** Con nota (01 a 20) o con apreciación (sin nota, fuera de los promedios). */
+  evaluacion: z.enum(['NUMERICA', 'CUALITATIVA']).optional(),
 });
 
 export const updateSubjectSchema = createSubjectSchema.partial().omit({ code: true });

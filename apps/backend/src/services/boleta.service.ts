@@ -3,6 +3,7 @@ import { platformPrisma } from '../config/database';
 import { gradesService } from './grades.service';
 import { getAcademicConfig } from './promotion/close-cycle.service';
 import { AppErrors } from '../middleware/error.middleware';
+import { apreciacionesDelAlumno, MOMENTO_FINAL } from './apreciaciones.service';
 
 /**
  * LA BOLETA DEL ALUMNO
@@ -19,6 +20,9 @@ import { AppErrors } from '../middleware/error.middleware';
  *     «sin notas» no (CERO-*);
  *   - si reprobó una materia y la presentó en revisión, la nota de la
  *     revisión es la que cuenta (`revision`; `services/revision.service.ts`);
+ *   - una materia que se evalúa con apreciación (Orientación, Grupos de
+ *     Creación…) no lleva nota ni entra en los promedios: sale su
+ *     apreciación de cada lapso y la final (`apreciaciones`, CUALI-04);
  *   - las inasistencias salen de la asistencia diaria de las fechas del lapso:
  *     sin justificar (ABSENT), justificadas (EXCUSED) y tardanzas (LATE).
  *
@@ -42,6 +46,10 @@ export interface BoletaDelAlumno {
         /** La nota de la revisión, si la reprobó y la presentó: es la que cuenta. */
         revision: number | null;
         aprobada: boolean | null;
+        /** Se evalúa con apreciación, no con nota: no entra en los promedios. */
+        cualitativa: boolean;
+        /** Su apreciación por lapso (id del lapso) y la final (`FINAL`). */
+        apreciaciones: Record<string, string | null>;
     }>;
     inasistencias: Record<string, { injustificadas: number; justificadas: number; tardanzas: number }>;
     promedios: Record<string, number | null> & { definitivo: number | null };
@@ -79,7 +87,7 @@ export async function boletaDelAlumno(
                     section: true,
                     shift: true,
                     teacher: { select: { firstName: true, lastName: true } },
-                    subjects: { select: { subject: { select: { id: true, name: true } } } },
+                    subjects: { select: { subject: { select: { id: true, name: true, evaluacion: true } } } },
                 },
             },
         },
@@ -119,8 +127,26 @@ export async function boletaDelAlumno(
         ).map((r: any) => [r.subjectId, r.score])
     );
 
+    const apreciaciones = await apreciacionesDelAlumno(prisma, studentId, inscripcion.academicYearId);
+
     const materias = await Promise.all(
         materiasDeLaSeccion.map(async (m) => {
+            if (m.evaluacion === 'CUALITATIVA') {
+                const suyas = apreciaciones.get(m.id) ?? {};
+                const porMomento: Record<string, string | null> = {};
+                for (const l of lapsos) porMomento[l.id] = suyas[l.id] ?? null;
+                porMomento[MOMENTO_FINAL] = suyas[MOMENTO_FINAL] ?? null;
+                return {
+                    id: m.id,
+                    nombre: m.name,
+                    notas: Object.fromEntries(lapsos.map((l) => [l.id, null])) as Record<string, number | null>,
+                    definitiva: null,
+                    revision: null,
+                    aprobada: null,
+                    cualitativa: true,
+                    apreciaciones: porMomento,
+                };
+            }
             const notas: Record<string, number | null> = {};
             for (const l of lapsos) {
                 const d = await gradesService.promedioDeLaMateria(prisma, studentId, m.id, l.id, undefined, redondeo);
@@ -139,6 +165,8 @@ export async function boletaDelAlumno(
                 definitiva,
                 revision,
                 aprobada: queCuenta === null ? null : queCuenta >= config.notaMinimaAprobatoria,
+                cualitativa: false,
+                apreciaciones: {},
             };
         })
     );

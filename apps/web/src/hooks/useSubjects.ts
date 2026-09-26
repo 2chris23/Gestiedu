@@ -58,6 +58,8 @@ export function useUpdateSubject() {
         mutationFn: ({ id, data }: { id: string; data: UpdateSubjectData }) =>
             subjectsService.updateSubject(id, data),
         onSuccess: (_, variables) => {
+            // Pasarla a apreciación (o volver a nota) cambia todos los promedios.
+            if (variables.data.evaluacion) queryClient.invalidateQueries();
             queryClient.invalidateQueries({ queryKey: ['subjects'] });
             queryClient.invalidateQueries({ queryKey: ['subject', variables.id] });
             toast.success('Materia actualizada exitosamente');

@@ -56,6 +56,7 @@ export interface Subject {
     slug: string;
     code?: string;
     color: string;
+    evaluacion?: EvaluacionDeMateria;
     createdAt: string;
     updatedAt: string;
     teacherCount?: number;
@@ -84,14 +85,19 @@ export interface Subject {
     };
 }
 
+/** Con nota (01 a 20) o con apreciación (sin nota, fuera de los promedios). */
+export type EvaluacionDeMateria = 'NUMERICA' | 'CUALITATIVA';
+
 export interface CreateSubjectData {
     name: string;
     color?: string;
+    evaluacion?: EvaluacionDeMateria;
 }
 
 export interface UpdateSubjectData {
     name?: string;
     color?: string;
+    evaluacion?: EvaluacionDeMateria;
 }
 
 class SubjectsService {

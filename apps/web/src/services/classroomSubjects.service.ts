@@ -16,6 +16,8 @@ export interface ClassroomSubject {
         code: string;
         color: string;
         description?: string;
+        /** Con nota o con apreciación (sin nota, fuera de los promedios). */
+        evaluacion?: 'NUMERICA' | 'CUALITATIVA';
     };
     teacher?: {
         id: string;

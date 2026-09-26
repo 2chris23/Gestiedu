@@ -18,6 +18,23 @@ Principio arquitectural: **Todo promedio superior es una agregación recursiva d
 | **5** | Dashboard de Año Académico (1er a 5to Año) | Promedio del Año (Nivel Académico) | Media aritmética del Nivel 4 de todas las secciones pertenecientes a ese año: PromAño = suma(Nivel4(sec)) / TotalSeccionesConNota | `aggregationService.yearGradeAverage` (`apps/backend/src/services/aggregation.service.ts`) | `Classroom` (filtrado por `grade`), `Grade` | Secciones vacías o sin notas cargadas se excluyen. |
 | **6** | Dashboard Ciclo Escolar / Estadísticas Globales | Promedio Global del Ciclo Escolar | Media aritmética del Nivel 5 de todos los años/grados del ciclo: PromCiclo = suma(Nivel5(g)) / TotalGradosConNota | `aggregationService.cycleAverage` (`apps/backend/src/services/aggregation.service.ts`) | `AcademicYear`, `Classroom` | Si solo 1er Año tiene notas cargadas, el promedio del ciclo es idéntico al de 1er Año. |
 
+### 1b. Las materias con apreciación (sin nota) no entran en ningún promedio
+
+**Añadido el 2026-09-26.** Cada materia dice cómo se evalúa (`Subject.evaluacion`):
+`NUMERICA` (01 a 20, lo de siempre) o `CUALITATIVA` (Orientación y Convivencia,
+Grupos de Creación…: «Consolidado», «En proceso», «Iniciado» o las palabras que ponga
+el liceo en `academicConfig.apreciaciones`).
+
+| Dónde | Regla | Función / Archivo |
+| :--- | :--- | :--- |
+| **Nivel 2** (promedio del alumno en la materia) | Una materia cualitativa sale **«sin notas»** (`conNotas: false`), tenga o no notas de antes. Como todo lo de encima (niveles 3-6, riesgo, cierre, boleta, resumen) ya deja fuera lo que no tiene notas, **el filtro está en un solo sitio**. | `gradesService.promedioDelLapso`, `bulkSubjectAveragesConDatos`, `aggregation.studentsWithNoteInSubject` → `apreciaciones.service.esCualitativa` |
+| Consultas que promedian notas de varias materias a la vez (`grade.groupBy`, `grade.aggregate`) | Solo notas de materias `NUMERICA`: `...NOTAS_QUE_CUENTAN` en el `where`. | `cycle-statistics.service`, `dashboard.service`, `students.service`, `reports.service`, `academic-years.controller`, `classrooms.controller`, `users.controller` |
+| Cierre del ciclo | La materia cualitativa no es reprobada ni pendiente y no entra en `finalAverage`; el expediente la guarda como `{ cualitativa: true, apreciacion }` (la **final**). | `prepareClose` (`close-cycle.service.ts`) |
+| Boleta y resumen final | Sale su apreciación (por lapso y final en la boleta; la final en el resumen), aparte y sin contar en los promedios ni en aprobados/reprobados. | `boleta.service.ts`, `resumen-final.service.ts` |
+
+La apreciación la pone el profesor que da esa materia en esa sección (o el admin);
+el guía de la sección solo la mira. Pruebas: CUALI-01…05, CUALI-UI-01.
+
 ---
 
 ## 2. Plan de Evaluación y Ponderaciones

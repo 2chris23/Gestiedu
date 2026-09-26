@@ -9,6 +9,7 @@ import { esQueNoContesta } from '@/lib/estado-del-servidor';
 import { useConfirm } from '@/hooks/useConfirm';
 import { calcularTurno, erroresDelHorario, turnosDeLaConfig, type HorarioDelLiceo } from '@/lib/franjas-del-horario';
 import { HorarioDelLiceoEditor } from './HorarioDelLiceoEditor';
+import { ApreciacionesEditor, APRECIACIONES_POR_DEFECTO, erroresDeApreciaciones } from './ApreciacionesEditor';
 
 export function AcademicSettings() {
     const [loading, setLoading] = useState(false);
@@ -22,6 +23,7 @@ export function AcademicSettings() {
         passingGrade: 10,
         asistenciaMinima: 80,
         redondeoDeDefinitivas: 'MPPE' as 'MPPE' | 'NINGUNO',
+        apreciaciones: [...APRECIACIONES_POR_DEFECTO],
         // Quién firma las constancias. El código DEA y los demás datos
         // oficiales del plantel están en Información General.
         documentos: { firmanteNombre: '', firmanteCedula: '', firmanteCargo: '' },
@@ -52,6 +54,9 @@ export function AcademicSettings() {
                     passingGrade: rawConfig.passingGrade ?? rawConfig.notaMinimaAprobatoria ?? 10,
                     asistenciaMinima: rawConfig.asistenciaMinima ?? 80,
                     redondeoDeDefinitivas: rawConfig.redondeoDeDefinitivas === 'NINGUNO' ? 'NINGUNO' : 'MPPE',
+                    apreciaciones: Array.isArray(rawConfig.apreciaciones) && rawConfig.apreciaciones.length >= 2
+                        ? rawConfig.apreciaciones
+                        : [...APRECIACIONES_POR_DEFECTO],
                     documentos: {
                         firmanteNombre: rawConfig.documentos?.firmanteNombre ?? '',
                         firmanteCedula: rawConfig.documentos?.firmanteCedula ?? '',
@@ -93,6 +98,12 @@ export function AcademicSettings() {
 
         if (academicConfig.asistenciaMinima < 0 || academicConfig.asistenciaMinima > 100) {
             toast.error('La asistencia mínima es un porcentaje: debe estar entre 0 y 100');
+            return;
+        }
+
+        const malApreciaciones = erroresDeApreciaciones(academicConfig.apreciaciones);
+        if (malApreciaciones) {
+            toast.error(malApreciaciones);
             return;
         }
 
@@ -259,6 +270,13 @@ export function AcademicSettings() {
                     <p className="mt-1 text-xs text-gray-500">
                         Se aplica a la nota de cada lapso y a la definitiva al cerrar el ciclo: con la regla del MPPE, un 9,5 es un 10.
                     </p>
+                </div>
+
+                <div className="md:col-span-2">
+                    <ApreciacionesEditor
+                        valor={academicConfig.apreciaciones}
+                        alCambiar={(apreciaciones) => setAcademicConfig((prev) => ({ ...prev, apreciaciones }))}
+                    />
                 </div>
 
                 {/* Zona Horaria */}

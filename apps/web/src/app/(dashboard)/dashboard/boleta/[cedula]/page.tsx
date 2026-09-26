@@ -60,8 +60,12 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
         );
     }
 
+    // Las materias sin nota (Orientación…) van aparte, con su apreciación:
+    // no entran en el promedio.
+    const conNota = b.materias.filter((m) => !m.cualitativa);
+    const conApreciacion = b.materias.filter((m) => m.cualitativa);
     // La columna de revisión sale solo si alguna materia la tiene.
-    const conRevision = b.materias.some((m) => m.revision != null);
+    const conRevision = conNota.some((m) => m.revision != null);
 
     return (
         <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6 print:max-w-none print:p-0">
@@ -117,7 +121,7 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                             </tr>
                         </thead>
                         <tbody>
-                            {b.materias.map((m) => (
+                            {conNota.map((m) => (
                                 <tr key={m.id}>
                                     <th scope="row" className="border border-gray-200 px-2 py-1.5 text-left font-medium text-gray-900">{m.nombre}</th>
                                     {b.lapsos.map((l) => {
@@ -161,12 +165,44 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                     </table>
                 </div>
 
+                {conApreciacion.length > 0 && (
+                    <div className="mt-4 overflow-x-auto">
+                        <table className="w-full border-collapse text-sm" aria-label="Áreas que se evalúan con apreciación">
+                            <thead>
+                                <tr className="bg-gray-50 text-gray-700">
+                                    <th scope="col" className="border border-gray-200 px-2 py-2 text-left">Área (apreciación)</th>
+                                    {b.lapsos.map((l) => (
+                                        <th key={l.id} scope="col" className="border border-gray-200 px-2 py-2 text-center">{l.nombre}</th>
+                                    ))}
+                                    <th scope="col" className="border border-gray-200 px-2 py-2 text-center">Final</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {conApreciacion.map((m) => (
+                                    <tr key={m.id}>
+                                        <th scope="row" className="border border-gray-200 px-2 py-1.5 text-left font-medium text-gray-900">{m.nombre}</th>
+                                        {b.lapsos.map((l) => (
+                                            <td key={l.id} className="border border-gray-200 px-2 py-1.5 text-center text-gray-900">
+                                                {m.apreciaciones?.[l.id] ?? '—'}
+                                            </td>
+                                        ))}
+                                        <td className="border border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-900">
+                                            {m.apreciaciones?.FINAL ?? '—'}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
                 <p className="mt-3 text-xs text-gray-600">
                     Escala del 01 al 20. Nota mínima aprobatoria: {b.reglas.notaMinima}.{' '}
                     {b.reglas.redondeo === 'MPPE'
                         ? 'Las notas se redondean al entero: una fracción de 0,50 o más sube al entero siguiente.'
                         : 'Las notas se expresan con dos decimales, sin redondear al entero.'}{' '}
                     «—»: sin notas.{conRevision ? ' La nota de revisión es la definitiva de la materia que se reprobó en el año.' : ''}
+                    {conApreciacion.length > 0 ? ' Las áreas con apreciación no llevan nota ni entran en el promedio.' : ''}
                 </p>
 
                 <footer className="mt-10 grid grid-cols-1 gap-10 text-center text-sm sm:grid-cols-2">
