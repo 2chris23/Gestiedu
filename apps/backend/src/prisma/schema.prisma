@@ -297,6 +297,7 @@ model User {
   citaciones              Citacion[]               @relation("CitacionAlumno")
   notasDeOtroPlantel      NotaDeOtroPlantel[]      @relation("NotaDeOtroPlantelAlumno")
   titulos                 Titulo[]                 @relation("TituloAlumno")
+  casosDelConsejo         CasoDelConsejo[]         @relation("CasoDelConsejoAlumno")
   aparatoDeAsistencia     AparatoDelAlumno?
 
   // Notificaciones
@@ -446,6 +447,7 @@ model Period {
   activities         Activity[]
   apreciaciones      Apreciacion[]
   notasDeOtroPlantel NotaDeOtroPlantel[]
+  consejos           ConsejoDeSeccion[]
 
   @@unique([academicYearId, name])
   @@map("periods")
@@ -546,6 +548,7 @@ model Classroom {
   replacements       ClassReplacement[]
   observations       Observation[]
   apreciaciones      Apreciacion[]
+  consejos           ConsejoDeSeccion[]
   institute          Institute?          @relation(fields: [instituteId], references: [id])
   instituteId        String?
 
@@ -1331,6 +1334,55 @@ model CalificacionExterna {
 
   @@index([studentId])
   @@map("calificaciones_externas")
+}
+
+/// El acta del consejo de sección de un lapso: cuándo fue, qué profesores
+/// asistieron, los casos de alumnos tratados y los acuerdos. La escriben el
+/// admin y el profesor guía; la leen los profesores de la sección. Una por
+/// sección y lapso. Ver `services/consejo.service.ts`.
+model ConsejoDeSeccion {
+  id String @id @default(cuid())
+
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  periodId String
+  period   Period @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  fecha             DateTime @db.Date
+  /// [{ id, nombre, materias, asistio }]: los profesores de la sección.
+  asistentes        Json
+  acuerdosGenerales String?
+  escritoPor        String?
+
+  casos CasoDelConsejo[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([classroomId, periodId])
+  @@map("consejos_de_seccion")
+}
+
+/// Un alumno tratado en el consejo: por qué (lo que propuso el sistema o se
+/// añadió a mano), lo que se trató y el acuerdo.
+model CasoDelConsejo {
+  id String @id @default(cuid())
+
+  consejoId String
+  consejo   ConsejoDeSeccion @relation(fields: [consejoId], references: [id], onDelete: Cascade)
+
+  studentId String
+  student   User   @relation("CasoDelConsejoAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  /// Lo que lo trae al consejo: materias reprobadas, asistencia, observaciones.
+  motivos   Json?
+  loTratado String?
+  acuerdo   String?
+  orden     Int     @default(0)
+
+  @@unique([consejoId, studentId])
+  @@map("casos_del_consejo")
 }
 
 /// El título de bachiller de un egresado: la mención, el número (serial) del

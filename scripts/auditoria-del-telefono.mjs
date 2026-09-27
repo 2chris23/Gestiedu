@@ -204,6 +204,7 @@ async function losRecorridos() {
                 ['Matrícula', `/dashboard/academico/${ciclo?.name}/matricula`],
                 ['Graduandos', `/dashboard/academico/${ciclo?.name}/graduandos`],
                 ['Resumen final', `/dashboard/resumen-final/${seccion?.id}`],
+                ['Consejo de sección', `/dashboard/consejo/${seccion?.id}`],
                 ['Pendientes', '/dashboard/materias-pendientes'],
                 ['Observaciones', '/dashboard/observaciones'],
                 ['Labor social', '/dashboard/labor-social'],

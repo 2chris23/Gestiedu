@@ -350,6 +350,15 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                     <FileText className="w-4 h-4" /> Resumen final
                                 </Link>
                             )}
+                            {/* El consejo de sección: lo escriben el admin y el guía; lo leen los profesores de la sección. */}
+                            {classroomId && (yo?.role === 'ADMIN' || yo?.role === 'TEACHER') && (
+                                <Link
+                                    href={`/dashboard/consejo/${encodeURIComponent(classroomId)}`}
+                                    className="inline-flex min-h-[44px] items-center gap-1 rounded-lg px-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                >
+                                    <FileText className="w-4 h-4" /> Consejo de sección
+                                </Link>
+                            )}
                             <span className="ml-2">
                                 <LapsoSelector
                                     periods={((classroom as any)?.academicYear?.periods || []).map((p: any) => ({ id: p.id, name: p.name }))}

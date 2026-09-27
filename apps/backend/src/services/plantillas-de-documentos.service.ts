@@ -28,7 +28,8 @@ export type TipoDePlantilla =
     | 'PLANILLA_INSCRIPCION'
     | 'CITACION'
     | 'NOTAS_PARCIALES'
-    | 'TITULO_EN_TRAMITE';
+    | 'TITULO_EN_TRAMITE'
+    | 'ACTA_CONSEJO';
 export const TIPOS_DE_PLANTILLA: TipoDePlantilla[] = [
     'ESTUDIO',
     'BUENA_CONDUCTA',
@@ -40,6 +41,7 @@ export const TIPOS_DE_PLANTILLA: TipoDePlantilla[] = [
     'CITACION',
     'NOTAS_PARCIALES',
     'TITULO_EN_TRAMITE',
+    'ACTA_CONSEJO',
 ];
 export const esTipoDePlantilla = (v: unknown): v is TipoDePlantilla => typeof v === 'string' && (TIPOS_DE_PLANTILLA as string[]).includes(v);
 
@@ -55,6 +57,7 @@ export const NOMBRE_DE_LA_PLANTILLA: Record<TipoDePlantilla, string> = {
     CITACION: 'Citación al representante',
     NOTAS_PARCIALES: 'Notas parciales (traslado)',
     TITULO_EN_TRAMITE: 'Constancia de título en trámite',
+    ACTA_CONSEJO: 'Acta del consejo de sección',
 };
 
 /** Marcador → [qué pone, un ejemplo para la vista previa]. */
@@ -80,6 +83,16 @@ const DEL_ALUMNO: Marcadores = {
     ciclo: ['El año escolar (p. ej. «2026-2027»)', '2026-2027'],
     nivel: ['«Educación Media General» o «Media Técnica»', 'Educación Media General'],
     cursa: ['«cursa» si estudia hoy, «cursó» si ya no', 'cursa'],
+};
+
+/** Los de una sección (el acta del consejo). */
+const DE_LA_SECCION: Marcadores = {
+    grado: ['El año (p. ej. «3er año»)', '3er año'],
+    seccion: ['La letra de la sección', 'A'],
+    ciclo: ['El año escolar', '2026-2027'],
+    lapso: ['El lapso (p. ej. «Primer Lapso»)', 'Primer Lapso'],
+    fechaDelConsejo: ['El día del consejo', '12 de diciembre de 2026'],
+    guia: ['El profesor guía de la sección', 'Luis Herrera'],
 };
 
 /** Los que solo tienen sentido en uno. */
@@ -109,7 +122,7 @@ const PROPIOS: Partial<Record<TipoDePlantilla, Marcadores>> = {
  * Qué grupos de marcadores lleva cada documento, además de los del plantel.
  * Sin decir nada, los del alumno (las constancias son de un alumno).
  */
-const GRUPOS: Partial<Record<TipoDePlantilla, Marcadores[]>> = {};
+const GRUPOS: Partial<Record<TipoDePlantilla, Marcadores[]>> = { ACTA_CONSEJO: [DE_LA_SECCION] };
 
 function marcadoresCompletos(tipo: TipoDePlantilla): Marcadores {
     const grupos = GRUPOS[tipo] ?? [DEL_ALUMNO];
@@ -162,6 +175,11 @@ export const PLANTILLAS_POR_DEFECTO: Record<TipoDePlantilla, { titulo: string; t
     TITULO_EN_TRAMITE: {
         titulo: 'Constancia de título en trámite',
         texto: `Quien suscribe, {firmante}, en su carácter de {cargo} de {liceo}, hace constar por medio de la presente que el (la) ciudadano(a) {alumno}, titular de la {tipoDeCedula} {cedula}, cursó y aprobó todas las áreas del plan de estudio de {nivel} en esta institución, egresando en el año escolar {ciclo}, y que su título de {mencion} se encuentra en trámite ante el Ministerio del Poder Popular para la Educación.\n\n${PIE}`,
+    },
+    ACTA_CONSEJO: {
+        titulo: 'Acta del consejo de sección',
+        texto:
+            'En {liceo}, el día {fechaDelConsejo}, se reunió el consejo de sección del {grado}, sección «{seccion}», correspondiente al {lapso} del año escolar {ciclo}, con la presencia de los docentes que se indican, para evaluar el desempeño de los estudiantes y acordar las acciones a seguir.\n\nNo habiendo más que tratar, se da por concluida la reunión y firman los presentes.',
     },
     NOTAS_PARCIALES: {
         titulo: 'Notas parciales',
