@@ -359,6 +359,14 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                     <FileText className="w-4 h-4" /> Consejo de sección
                                 </Link>
                             )}
+                            {classroomId && yo?.role === 'ADMIN' && (
+                                <Link
+                                    href={`/dashboard/carnets?seccion=${encodeURIComponent(classroomId)}`}
+                                    className="inline-flex min-h-[44px] items-center gap-1 rounded-lg px-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                >
+                                    <FileText className="w-4 h-4" /> Carnets de la sección
+                                </Link>
+                            )}
                             <span className="ml-2">
                                 <LapsoSelector
                                     periods={((classroom as any)?.academicYear?.periods || []).map((p: any) => ({ id: p.id, name: p.name }))}

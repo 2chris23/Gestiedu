@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authenticate, requireAdmin, requireTeacher } from '../middleware/auth.middleware';
 import { cargaHoraria, constanciaDeTrabajo, reglasDeCargaHoraria, ponerReglasDeCargaHoraria } from '../services/personal.service';
+import { carnetDelAlumno, carnetsDeLaSeccion } from '../services/carnet.service';
 import { instituteTimezone, todayInTimezone } from '../utils/school-time';
 import { responderErrorClaro } from '../utils/error-claro';
 import { AppErrors } from '../middleware/error.middleware';
@@ -10,6 +11,8 @@ import { AppErrors } from '../middleware/error.middleware';
  *   GET /teachers/:id/carga-horaria            su carga (el admin, o el propio profesor)
  *   GET /users/:id/constancia-de-trabajo       la constancia (admin)
  *   GET|PUT /institutes/current/carga-horaria  el rango recomendado del liceo (admin)
+ *   GET /students/:id/carnet                   el carnet de un alumno (admin, `carnet.service`)
+ *   GET /classrooms/:id/carnets                los de la sección entera (admin)
  */
 const id = { type: 'string', minLength: 1, maxLength: 64 } as const;
 const liceoDe = (r: FastifyRequest) => String((r.user as any)?.instituteId ?? (r as any).institute?.id ?? '');
@@ -49,5 +52,15 @@ export async function personalRoutes(fastify: FastifyInstance) {
             schema: { body: { type: 'object', additionalProperties: false, required: ['minimo', 'maximo'], properties: { minimo: { type: 'number' }, maximo: { type: 'number' } } } },
         },
         responder((r) => ponerReglasDeCargaHoraria(liceoDe(r), r.body as any)) as any
+    );
+    fastify.get(
+        '/students/:id/carnet',
+        { preHandler: [authenticate, requireAdmin], schema: { params: { type: 'object', properties: { id } } } },
+        responder(async (r) => carnetDelAlumno(r.tenantPrisma, liceoDe(r), r.params.id, await hoyDe(r))) as any
+    );
+    fastify.get(
+        '/classrooms/:id/carnets',
+        { preHandler: [authenticate, requireAdmin], schema: { params: { type: 'object', properties: { id } } } },
+        responder(async (r) => carnetsDeLaSeccion(r.tenantPrisma, liceoDe(r), r.params.id, await hoyDe(r))) as any
     );
 }

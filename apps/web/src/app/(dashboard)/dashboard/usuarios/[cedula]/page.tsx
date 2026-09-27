@@ -504,6 +504,14 @@ export default function UserProfilePage({ params }: PageProps) {
                                     ))}
                                     {yo?.role === 'ADMIN' && (
                                         <Link
+                                            href={`/dashboard/carnets?alumno=${encodeURIComponent(user.cedula)}`}
+                                            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                        >
+                                            <FileText className="h-4 w-4" /> Carnet
+                                        </Link>
+                                    )}
+                                    {yo?.role === 'ADMIN' && (
+                                        <Link
                                             href={`/dashboard/certificacion/${encodeURIComponent(user.cedula)}`}
                                             className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
                                         >
