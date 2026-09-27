@@ -308,6 +308,8 @@ describe('La memoria rápida no mezcla liceos', () => {
                 'índice de memoryStore: sus claves son las claves completas, que ya llevan el liceo delante',
             'src/services/foto-de-perfil.service.ts|FORMATOS_DE_FOTO':
                 'son los formatos de imagen aceptados (jpeg, png...), no datos de nadie',
+            'src/services/resumen-final.service.ts|PALABRAS_VACIAS':
+                'son palabras del castellano («y», «de»...) que no cuentan en una abreviatura, no datos de nadie',
             'src/scripts/medir-concurrencia.ts|credenciales':
                 'guion de medición, no corre en el servidor',
         };

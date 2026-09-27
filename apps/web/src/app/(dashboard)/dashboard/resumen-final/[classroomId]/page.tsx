@@ -81,6 +81,53 @@ function casilla(tipo: Tipo, n: Nota | undefined): string {
 
 const CELDA = 'border border-gray-400 px-1 py-0.5';
 
+/**
+ * DE PIE, EN UN TELÉFONO
+ *
+ * La planilla del MPPE son veinte y tantas columnas: en 390 px no cabe ni
+ * tumbada. Por debajo de 700 px (como el horario y el plan) cada alumno es
+ * una ficha con sus notas; la planilla entera sale al imprimir y en pantallas
+ * anchas. Es la misma información, no un resumen del resumen.
+ */
+function AlumnosEnElTelefono({ r }: { r: ResumenFinal }) {
+    const min = r.reglas.notaMinima;
+    return (
+        <ol className="mt-3 space-y-2 min-[700px]:hidden print:hidden" aria-label="Alumnos del resumen">
+            {r.alumnos.map((a, i) => (
+                <li key={a.cedula} className="rounded-lg border border-gray-200 p-3 text-xs text-gray-800">
+                    <p className="text-sm font-semibold text-gray-900">
+                        {i + 1}. {a.apellidos}, {a.nombres}
+                    </p>
+                    <p className="text-gray-600">
+                        {a.cedula}
+                        {a.tipoDeCedula === 'ESCOLAR' ? ' (CE)' : ''} · {a.sexo ? SEXO[a.sexo] ?? '' : ''} · {fecha(a.fechaDeNacimiento)}
+                        {a.lugarDeNacimiento ? ` · ${a.lugarDeNacimiento}` : ''}
+                        {a.entidadDeNacimiento ? ` (${a.entidadDeNacimiento})` : ''}
+                    </p>
+                    <dl className="mt-2 grid grid-cols-4 gap-1">
+                        {r.materias.map((m) => {
+                            const texto = casilla(r.tipo, a.notas[m.id]);
+                            if (!texto) return null;
+                            const numero = Number(texto);
+                            return (
+                                <div key={m.id} className="rounded bg-gray-50 px-1.5 py-1 text-center">
+                                    <dt className="font-semibold text-gray-600" title={m.nombre}>{m.abreviatura}</dt>
+                                    <dd className={`tabular-nums ${Number.isFinite(numero) && numero < min ? 'font-bold text-red-700' : ''}`}>{texto}</dd>
+                                </div>
+                            );
+                        })}
+                    </dl>
+                    {r.tipo === 'FINAL' && (
+                        <p className="mt-2 font-medium">
+                            Promedio {nota(a.promedio)} · {CONDICION[a.condicion]}
+                        </p>
+                    )}
+                </li>
+            ))}
+        </ol>
+    );
+}
+
 export default function ResumenFinalPage({ params }: { params: Promise<{ classroomId: string }> }) {
     const { classroomId } = use(params);
     const router = useRouter();
@@ -165,7 +212,9 @@ export default function ResumenFinalPage({ params }: { params: Promise<{ classro
                         {r.tipo === 'REVISION' ? 'Nadie de esta sección presentó revisión.' : r.tipo === 'MATERIA_PENDIENTE' ? 'Nadie de esta sección cursó materias pendientes este año.' : 'La sección no tiene alumnos.'}
                     </p>
                 ) : (
-                    <div className="relative mt-3 overflow-x-auto">
+                    <>
+                    <AlumnosEnElTelefono r={r} />
+                    <div className="relative mt-3 hidden overflow-x-auto min-[700px]:block print:block">
                         <table className="w-full border-collapse text-[11px] leading-tight print:text-[9px]">
                             <thead>
                                 <tr className="bg-gray-100 text-gray-800">
@@ -233,10 +282,19 @@ export default function ResumenFinalPage({ params }: { params: Promise<{ classro
                             </tbody>
                         </table>
                     </div>
+                    </>
                 )}
 
                 <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr] print:grid-cols-[2fr_1fr]">
-                    <table className="w-full border-collapse text-[11px] print:text-[9px]" aria-label="Docentes">
+                    <ul className="space-y-2 min-[700px]:hidden print:hidden" aria-label="Docentes de cada área">
+                        {r.materias.map((m) => (
+                            <li key={m.id} className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800">
+                                <span className="font-bold">{m.abreviatura}</span> · {m.nombre}
+                                <span className="block text-gray-600">{m.docente ? `${m.docente.nombre} · ${m.docente.cedula}` : 'Sin docente'}</span>
+                            </li>
+                        ))}
+                    </ul>
+                    <table className="hidden w-full border-collapse text-[11px] min-[700px]:table print:table print:text-[9px]" aria-label="Docentes">
                         <thead>
                             <tr className="bg-gray-100 text-gray-800">
                                 <th scope="col" className={CELDA}>Área</th>
@@ -278,7 +336,7 @@ export default function ResumenFinalPage({ params }: { params: Promise<{ classro
                         </div>
                     </div>
                 </div>
-                <p className="mt-2 text-[11px] text-gray-600">
+                <p className="mt-2 text-xs text-gray-600 print:text-[11px]">
                     Nota mínima aprobatoria: {min}. {r.tipo === 'MATERIA_PENDIENTE' ? 'P: pendiente todavía.' : ''} (CE): cédula escolar.
                 </p>
             </article>

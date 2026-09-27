@@ -99,11 +99,15 @@ const fmtShort = (iso: string): string => {
 
 export default function AcademicYearModal({ isOpen, onClose, onSuccess, existingYears = [], yearToEdit }: AcademicYearModalProps) {
     const [isLoading, setIsLoading] = useState(false);
-    const [isManual, setIsManual] = useState(false);
+    const [isManual, setIsManual] = useState(!!yearToEdit);
     const [startYear, setStartYear] = useState<number>(new Date().getFullYear());
     // «mppe»: las fechas del calendario del Ministerio; «auto»: tres partes
-    // iguales; «manual»: a mano. Lo nuevo nace como el MPPE.
-    const [lapsoSplitMode, setLapsoSplitMode] = useState<'mppe' | 'auto' | 'manual'>('mppe');
+    // iguales; «manual»: a mano. Lo nuevo nace como el MPPE; lo que se edita,
+    // con sus fechas. Tiene que nacer así, no cambiarse al abrir: en la misma
+    // pasada el calendario del MPPE pisaba las fechas guardadas del ciclo.
+    const [lapsoSplitMode, setLapsoSplitMode] = useState<'mppe' | 'auto' | 'manual'>(
+        yearToEdit ? (yearToEdit.periods?.length ? 'manual' : 'auto') : 'mppe'
+    );
     const [periods, setPeriods] = useState<Period[]>([
         { name: 'Primer Lapso', startDate: '', endDate: '', isActive: true },
         { name: 'Segundo Lapso', startDate: '', endDate: '', isActive: false },

@@ -23,8 +23,8 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
 ```bash
 cd apps/backend && npm run dev      # API en :3001
 cd apps/web && npm run dev          # web en :3000
-cd apps/backend && npx jest         # 1048 pruebas en 127 archivos (integración + cálculo)
-npm run test:e2e                    # 257 pruebas de navegador (Playwright), con los dos servidores arriba
+cd apps/backend && npx jest         # 1095 pruebas en 135 archivos (integración + cálculo)
+npm run test:e2e                    # 267 pruebas de navegador (Playwright), con los dos servidores arriba
 cd apps/backend && npm run typecheck
 cd apps/backend && npm run migrate:plataforma        # la base de la plataforma
 cd apps/backend && npm run migrate:tenants[:status]   # migra todos los liceos
@@ -344,8 +344,47 @@ había: General y Académico (la firma) ya no se borran lo del otro.
 **Un solo membrete** (`components/documentos/MembreteOficial.tsx`, de
 `GET /institutes/current/membrete`) en la boleta, la constancia, el resumen
 final, el plan de evaluación y el acta de compromiso; el horario descargado
-lleva el nombre y el DEA (MEMB-UI-01/02). Lo que falta para Venezuela está en
-`docs/VENEZUELA-LO-QUE-FALTA.md`.
+lleva el nombre y el DEA (MEMB-UI-01/02). Todo lo de un liceo venezolano, y
+dónde vive, en `docs/VENEZUELA-LO-QUE-FALTA.md`. **Nada se envía al Ministerio**:
+decidido, el papel sale en su formato y el liceo lo entrega.
+
+**Los textos son del liceo.** Cada constancia (estudio, buena conducta,
+prosecución, retiro, inscripción, labor social) sale de una plantilla con
+marcadores `{{…}}` que el admin edita en Configuración → Documentos; sin
+plantilla propia, la del MPPE (`plantillas-de-documentos.service.ts`). Un
+marcador que no existe no se guarda (400 `MARCADOR_DESCONOCIDO`). El resumen
+final sale en sus tres tipos (final, revisión, materia pendiente) y la
+certificación junta de 1.º a 5.º, con los años de otro plantel cargados a mano
+(DOC-01…08, `MAPA_DE_CALCULOS.md` §8e).
+
+## El año escolar venezolano
+
+- **Áreas con apreciación** (GCRP y las que el liceo marque): no llevan número y
+  quedan fuera de todo promedio y de la condición. En las cuentas entre materias
+  se filtra con `NOTAS_QUE_CUENTAN` (`apreciaciones.service.ts`); olvidarlo mete
+  una «A» en un promedio (CUALI-*).
+- **El calendario del MPPE** se ofrece al crear el año: una cuenta en
+  `utils/calendario-mppe.ts` y `lib/calendario-mppe.ts` (Pascua incluida).
+- **El fin del año va por pasos** (Académico → año → Cierre): faltantes,
+  revisión, decisiones, año siguiente, expedientes. Las reglas en
+  `promotion/reglas-del-fin-de-ano.ts`. **Ojo:** al cerrar, el alumno tiene dos
+  inscripciones activas; las notas se toman de los lapsos del año que se cierra,
+  no de «la inscripción activa» (CIERRE-10 salía en rojo una de cada tantas).
+- **Revisión y materia pendiente las pone el profesor de la materia**; la
+  pendiente va por momentos y con acta de compromiso (`materias-pendientes.service.ts`).
+- **Labor social**: la anotan el admin y el profesor guía; cuenta para egresar
+  según el liceo (bloquea, avisa o nada; `MAPA` §8d).
+
+## Dos ayudas del servidor
+
+- **`utils/error-claro.ts`**: el manejador global cambia los 4xx por uno
+  genérico; `responderErrorClaro` deja pasar el mensaje y el código propios
+  (`MARCADOR_DESCONOCIDO`, `SIN_PROSECUCION`…) para que la pantalla diga qué pasó.
+- **`npx tsx src/scripts/deriva-del-esquema.ts`**: las migraciones de los liceos
+  se escriben a mano; esto compara la base migrada con `schema.prisma` y enseña
+  el SQL que faltaría. PostgreSQL corta los nombres a 63 letras: un índice de
+  nombre largo sale como deriva. Queda una deriva vieja, no de estas funciones:
+  `institutes.email` y `users.status`/`archivedAt`.
 
 ## Carga diferida
 
@@ -419,7 +458,7 @@ sobre el contenido (visto en un Motorola; MOVIL-02 lo mide).
 ## En el teléfono, lo que se comprueba cada vez
 
 ```bash
-npm run movil            # 27 pantallas (31 antes de quitar el calendario), los 4 roles, con foto de cada una
+npm run movil            # 35 pantallas, los 4 roles, con foto de cada una
 npm run movil -- --exigir   # y acaba en rojo si algo incumple
 ```
 

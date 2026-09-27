@@ -3446,3 +3446,59 @@ con Chrome haciendo de teléfono.
 cargada (la tanda completa y el teléfono por cable a la vez). Siete veces
 seguidas en verde, una dentro de la tanda completa (1043 de 1043); no se toca
 sin un fallo que mirar.
+
+## 60. Todo el plantel en el sistema: el año escolar venezolano (26 y 27 de septiembre de 2026)
+
+Lo que pidió el dueño: que el liceo haga en Gestiedu todo lo que hoy hace en
+papel, con las planillas del MPPE como punto de partida y cada liceo pudiendo
+cambiarlas. **Nada se envía al Ministerio**: el papel sale en su formato y el
+liceo lo entrega. Siete partes, un commit cada una:
+
+| | Qué | Commit | Pruebas |
+| :--- | :--- | :--- | :--- |
+| F1 | Datos del alumno (nacionalidad, lugar y entidad de nacimiento), cédula escolar y cambiarla por la de identidad sin perder nada | b6392a2 | CED-UI-01 |
+| F2 | Áreas con apreciación, fuera de todo promedio y de la condición | 2596009 | CUALI-* |
+| F7 | El calendario del MPPE al crear el año (Pascua incluida) | 966a5f3 | CAL-MPPE-01…03 |
+| F3 | El fin del año por pasos: faltantes, revisión, decisiones, año siguiente, expedientes, corrección | eeeb559 | CIERRE-* |
+| F4 | La materia pendiente: por momentos, con el profesor de la materia y acta de compromiso | 9da2b9b | PEND-* |
+| F6 | La labor social: admin y profesor guía; cuenta para egresar según el liceo | 5a72d19 | LABOR-01…07 |
+| F5 | Resumen final del MPPE (final, revisión, pendiente), certificación de 1.º a 5.º, constancias con texto del liceo | 1cd7e31 | DOC-01…08, DOC-UI-01…03 |
+
+Reglas de cálculo en `MAPA_DE_CALCULOS.md` §1b, §8c, §8d y §8e; índice de
+todo en `docs/VENEZUELA-LO-QUE-FALTA.md`.
+
+**Lo que se encontró por el camino:**
+
+- **El cierre tomaba las notas de «la inscripción activa»**, y al cerrar el
+  alumno tiene dos (la del año que acaba y la del siguiente): CIERRE-10 salía
+  en rojo una de cada tantas. Ahora se toman los lapsos del año que se cierra.
+- **Editar el ciclo pisaba las fechas guardadas** con las del calendario del
+  MPPE (F7): el modo «como el MPPE» nacía activo y en la misma pasada ganaba
+  a las fechas del ciclo. Lo vio PLANINI-UI-01; ahora comprueba también que
+  al editar salen las fechas guardadas.
+- **Las abreviaturas del resumen salían todas «MT»**: el código interno de la
+  materia («MT-12») no es una abreviatura. Ahora la del plan de estudio del
+  MPPE (CA, MA, FI…), el código si es de 2–5 letras, o las iniciales.
+- **El resumen final no cabía en un teléfono** (veinte y tantas columnas, letra
+  de 11 px): de pie, cada alumno es una ficha con sus notas; la planilla
+  entera, al imprimir y en pantallas anchas.
+- **Los errores propios salían como «petición incorrecta»**: el manejador
+  global cambia los 4xx; `utils/error-claro.ts` deja pasar el código y el
+  mensaje.
+- **PostgreSQL corta los nombres a 63 letras**: un índice nuevo salía como
+  diferencia entre la base y el esquema. `src/scripts/deriva-del-esquema.ts`
+  lo compara; queda una diferencia VIEJA, no de esta tanda (`institutes.email`
+  opcional, `users.status`/`archivedAt`), sin tocar.
+
+**Supuestos a confirmar con cada liceo** (todos se cambian sin código): 60
+horas de labor social y que solo avisan para egresar; el orden de la cédula
+escolar; si Orientación y Convivencia va con apreciación.
+
+**Medido al cerrar:** servidor, 1095 de 1095 (135 archivos; las de Redis de
+verdad, CUPO/DOBLE, 12 de 12 aparte con `REDIS_PRUEBAS_URL`); web, 66 de 66;
+navegador, 263 de 264 en la tanda y PLANINI-UI-01 en verde tras el arreglo (3 saltadas: las de servidor apagado, en verde contra la
+web compilada); `npm run movil -- --exigir`: **35 pantallas** (8 nuevas: fin
+del año, resumen final, pendientes, labor social, certificación, constancia),
+0 con algo que arreglar.
+
+**No probado:** nada en un teléfono de verdad; ni impreso en papel oficio.

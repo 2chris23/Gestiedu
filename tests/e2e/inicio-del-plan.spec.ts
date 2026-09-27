@@ -26,6 +26,8 @@ test.describe('Inicio del plan en el editor del ciclo', () => {
 
             const plan = page.locator('#period-plan-0');
             await expect(plan).toBeVisible({ timeout: 15000 });
+            // Al editar salen las fechas guardadas, no las del calendario del MPPE.
+            await expect(page.locator('#period-start-0')).toHaveValue(ciclo.inicio);
             await plan.fill(ciclo.plan);
             await expect(page.getByText(/Antes: 2 semanas con contenido del profesor/)).toBeVisible();
             await page.locator('#period-antes-0').fill('Adaptación');
