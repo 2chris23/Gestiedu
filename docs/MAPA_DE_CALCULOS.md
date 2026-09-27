@@ -173,6 +173,23 @@ Pruebas: CIERRE-01…10, academic-close 1…9, CIERRE-UI-01/02; la pendiente: PE
 
 ---
 
+## 8d. La labor social (horas comunitarias)
+
+**Añadido el 2026-09-27** (`services/labor-social.service.ts`; la cuenta pura, `avanceDe`, en
+`promotion/reglas-del-fin-de-ano.ts`). Reglas del liceo en `academicConfig.laborSocial`.
+
+| Qué | Regla | Configurable |
+| :--- | :--- | :--- |
+| **A quién le toca** | Alumnos inscritos este año en los grados del liceo, con la labor social activa. | `grados` ([último año]), `activa` (sí) |
+| **Avance** | Suma de las horas de TODAS sus actividades (de cualquier año). Con horas: cumplida si la suma ≥ las requeridas. Con 0 horas (por proyecto): cumplida si alguna actividad culmina el proyecto. Una actividad va de más de 0 a 24 h. | `horasRequeridas` (60; 0 = por proyecto) |
+| **Para egresar** | En el cierre del último año, al que egresaría: BLOQUEA → `egreso = PENDIENTE` sin ella; AVISA → egresa, con aviso en la sugerencia (lo del MPPE: un retraso no niega el título); NO → no cuenta. También al corregir tras cerrar. | `paraEgresar` (AVISA) |
+| **Constancia** | Solo con la labor social cumplida (409 `LABOR_SOCIAL_NO_CUMPLIDA`), con sus horas y su proyecto. | — |
+
+La anotan el admin y el profesor guía de la sección del alumno (una actividad a varios a la vez);
+el alumno y su representante solo la ven. Pruebas: LABOR-01…07, LABOR-UI-01.
+
+---
+
 ## 9. Estas reglas están vigiladas, no solo escritas
 
 Un documento como este **envejece en silencio**: alguien cambia una fórmula, el

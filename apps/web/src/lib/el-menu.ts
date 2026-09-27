@@ -9,6 +9,7 @@ import {
     Wallet,
     FileText,
     ClipboardCheck,
+    HeartHandshake,
     type LucideIcon,
 } from 'lucide-react';
 
@@ -62,6 +63,13 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean): DestinoDel
             icon: ClipboardCheck,
             roles: ['ADMIN', 'TEACHER'],
             pista: 'Materias pendientes, momento a momento',
+        },
+        {
+            name: 'Labor social',
+            href: '/dashboard/labor-social',
+            icon: HeartHandshake,
+            roles: ['ADMIN', 'TEACHER'],
+            pista: 'Las horas comunitarias de cada alumno',
         },
         {
             name: 'Horarios',

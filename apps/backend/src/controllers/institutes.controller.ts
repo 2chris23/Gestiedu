@@ -11,7 +11,7 @@ import { guardarArchivoDelLiceo } from '../services/archivos-del-liceo.service';
 import { limpiarDatosDeDocumentos } from '../services/constancias.service';
 import { revisarDatosDelPlantel, membreteDelLiceo } from '../services/datos-del-plantel.service';
 import { esListaDeApreciaciones } from '../services/apreciaciones.service';
-import { esReglasDeRevision, esUltimoAnoConPendientes, esPendienteNoAprobada, esReglasDePendientes } from '../services/promotion/reglas-del-fin-de-ano';
+import { esReglasDeRevision, esUltimoAnoConPendientes, esPendienteNoAprobada, esReglasDePendientes, esReglasDeLaborSocial } from '../services/promotion/reglas-del-fin-de-ano';
 import {
   erroresDelHorario,
   franjasDelTurno,
@@ -481,6 +481,12 @@ export async function updateAcademicConfigEndpoint(request: FastifyRequest, repl
     if (body.pendientes !== undefined) {
       if (!esReglasDePendientes(body.pendientes)) return mal('Materias pendientes: de 1 a 8 momentos, y MOMENTO_APROBADO o PROMEDIO.', 'REGLA_INVALIDA');
       patch.pendientes = body.pendientes;
+    }
+    if (body.laborSocial !== undefined) {
+      if (!esReglasDeLaborSocial(body.laborSocial)) {
+        return mal('Labor social: activa, de 1 a 6 grados (1 a 6), horas de 0 a 1000 y para egresar BLOQUEA, AVISA o NO.', 'REGLA_INVALIDA');
+      }
+      patch.laborSocial = body.laborSocial;
     }
     const instId = getInstId(request);
     const config = await updateAcademicConfig(instId, patch);

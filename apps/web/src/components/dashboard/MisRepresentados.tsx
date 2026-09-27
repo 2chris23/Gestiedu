@@ -8,6 +8,7 @@ import api from '@/lib/axios';
 import UserAvatar from '@/components/ui/UserAvatar';
 import ActividadesDelAlumno from '@/components/profile/ActividadesDelAlumno';
 import { cn } from '@/lib/utils';
+import { LaborSocialDelAlumno } from '@/components/labor-social/LaborSocialDelAlumno';
 
 /**
  * LO QUE VE UN REPRESENTANTE
@@ -141,6 +142,7 @@ export function MisRepresentados() {
                                 >
                                     <BookOpen size={16} /> Sus materias
                                 </Link>
+                                <LaborSocialDelAlumno studentId={hijo.id} compacto />
                                 <ActividadesDelAlumno studentId={hijo.id} titulo={`Actividades de ${hijo.fullName.split(' ')[0]}`} />
                             </div>
                         )}

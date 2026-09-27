@@ -19,6 +19,7 @@ import Link from 'next/link';
 import { RepresentantesDelAlumno } from '@/components/users/RepresentantesDelAlumno';
 import { TelefonoDeAsistencia } from '@/components/users/TelefonoDeAsistencia';
 import { CambiarCedula } from '@/components/users/CambiarCedula';
+import { LaborSocialDelAlumno } from '@/components/labor-social/LaborSocialDelAlumno';
 import ActividadesDelAlumno from '@/components/profile/ActividadesDelAlumno';
 import api from '@/lib/axios';
 import { comprimirFotoEnElDispositivo, pesoLegible } from '@/lib/foto-comprimida';
@@ -384,6 +385,7 @@ export default function UserProfilePage({ params }: PageProps) {
                 <div className="lg:col-span-1 space-y-6 animate-in slide-in-from-left duration-500 delay-150">
                     {/* Lo que le falta al alumno: la pregunta que más se hace un
                         representante y que la ficha no sabía responder. */}
+                    {user.role === 'student' && <LaborSocialDelAlumno studentId={user.cedula} />}
                     {user.role === 'student' && (
                         <ActividadesDelAlumno
                             studentId={user.cedula}

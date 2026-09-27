@@ -289,6 +289,9 @@ model User {
   materiasPendientes      MateriaPendiente[]       @relation("PendienteAlumno")
   pendientesQueEvalua     MateriaPendiente[]       @relation("PendienteProfesor")
   evaluacionesDePendiente EvaluacionDePendiente[]  @relation("EvaluacionPendientePuestaPor")
+  laborSocial             ActividadDeLaborSocial[] @relation("LaborSocialAlumno")
+  laborSocialAnotada      ActividadDeLaborSocial[] @relation("LaborSocialPuestaPor")
+  calificacionesExternas  CalificacionExterna[]    @relation("CalificacionExternaAlumno")
   aparatoDeAsistencia     AparatoDelAlumno?
 
   // Notificaciones
@@ -403,6 +406,7 @@ model AcademicYear {
   decisionesDeFinDeAno DecisionDeFinDeAno[]
   pendientesQueNacieron MateriaPendiente[] @relation("PendienteOrigen")
   pendientesQueSeCursan MateriaPendiente[] @relation("PendienteCiclo")
+  laborSocial      ActividadDeLaborSocial[]
   institute        Institute?           @relation(fields: [instituteId], references: [id])
   instituteId      String?
 
@@ -1242,6 +1246,75 @@ model EvaluacionDePendiente {
 
   @@unique([materiaPendienteId, momento])
   @@map("evaluaciones_de_pendientes")
+}
+
+/// LA LABOR SOCIAL (las horas comunitarias de los últimos años): cada alumno
+/// hace actividades distintas, en sitios distintos y de horas distintas. La
+/// anotan el admin y el profesor guía de su sección. Ver
+/// `services/labor-social.service.ts`.
+model ActividadDeLaborSocial {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("LaborSocialAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  fecha             DateTime @db.Date
+  horas             Float
+  /// Qué hizo, dónde, en qué proyecto y quién lo supervisó en la comunidad.
+  que               String
+  donde             String?
+  proyecto          String?
+  responsable       String?
+  observaciones     String?
+  /// Con esta actividad culmina su proyecto (para el liceo que la mide por proyecto).
+  culminaElProyecto Boolean  @default(false)
+  /// Las que se anotaron juntas (una salida de toda la sección) llevan el mismo.
+  grupo             String?
+
+  registradaPorId String?
+  registradaPor   User?   @relation("LaborSocialPuestaPor", fields: [registradaPorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([studentId])
+  @@index([academicYearId])
+  @@map("actividades_de_labor_social")
+}
+
+/// Las notas de los años que el alumno cursó en OTRO plantel, para su
+/// certificación de calificaciones (las del liceo salen de sus expedientes).
+/// Las carga el admin desde la certificación del alumno.
+model CalificacionExterna {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("CalificacionExternaAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  grado            Int
+  anoEscolar       String
+  materia          String
+  nota             Float?
+  /// Si la materia se evalúa con apreciación, en lugar de la nota.
+  apreciacion      String?
+  /// F (final), R (revisión) o MP (materia pendiente)
+  tipo             String  @default("F")
+  /// Mes y año en que se aprobó (p. ej. «07/2024»), como pide la certificación.
+  fecha            String?
+  plantel          String
+  codigoDelPlantel String?
+  entidad          String?
+
+  registradaPor String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([studentId])
+  @@map("calificaciones_externas")
 }
 
 /// La apreciación de un alumno en una materia cualitativa: por lapso o la

@@ -70,6 +70,7 @@ const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[]; patron?: RegExp 
     { prefijo: '/dashboard/academico', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/materias', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/materias-pendientes', roles: ['ADMIN', 'TEACHER'] },
+    { prefijo: '/dashboard/labor-social', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/horarios', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/clase-en-vivo', roles: ['ADMIN', 'TEACHER'] },
     /**

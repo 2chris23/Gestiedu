@@ -14,6 +14,7 @@ import api from '@/lib/axios';
 import { PagosDelRepresentante } from '@/components/pagos/PagosDelRepresentante';
 import MiDiaDeClases from '@/components/dashboard/MiDiaDeClases';
 import MisRepresentados from '@/components/dashboard/MisRepresentados';
+import { LaborSocialDelAlumno } from '@/components/labor-social/LaborSocialDelAlumno';
 import {
     Users,
     TrendingUp,
@@ -311,6 +312,9 @@ export default function DashboardPage() {
                     seccion={studentStats?.student?.currentSection?.name}
                 />
             )}
+
+            {/* El alumno de los últimos años: su labor social (solo si le toca). */}
+            {rol === 'STUDENT' && yo?.id && <LaborSocialDelAlumno studentId={yo.id} />}
 
             {/* Representante: sus representados y lo que les falta. */}
             {rol === 'TUTOR' && <MisRepresentados />}

@@ -69,6 +69,7 @@ export interface FilaDeDecision {
     pendientesArrastradas: Array<{ id: string; subjectName: string; gradoDeOrigen: number; estado: string }>;
     sugerida: Condicion;
     motivoDeLaSugerencia: string;
+    laborSocial?: { horas: number; requeridas: number; porProyecto: boolean; proyectoCulminado: boolean; cumplida: boolean } | null;
     decision: { condicion: Condicion; motivo: string; decididaPor: string | null } | null;
     condicion: Condicion;
 }

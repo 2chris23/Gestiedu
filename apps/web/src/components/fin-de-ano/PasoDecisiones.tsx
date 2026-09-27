@@ -178,6 +178,11 @@ function FilaDelAlumno({ cicloId, fila }: { cicloId: string; fila: FilaDeDecisio
                             Sin aprobar: {fila.reprobadas.map((r) => `${r.nombre} (${r.nota}${r.revision != null ? ', revisión' : ''})`).join(', ')}
                         </p>
                     )}
+                    {fila.esUltimoAno && fila.laborSocial && (
+                        <p className={`text-xs ${fila.laborSocial.cumplida ? 'text-emerald-700' : 'text-amber-800'}`}>
+                            Labor social: {fila.laborSocial.porProyecto ? (fila.laborSocial.proyectoCulminado ? 'proyecto culminado' : 'proyecto sin culminar') : `${fila.laborSocial.horas} de ${fila.laborSocial.requeridas} h`}
+                        </p>
+                    )}
                     {fila.pendientesArrastradas.length > 0 && (
                         <p className="text-xs text-gray-700">
                             Pendientes de antes:{' '}

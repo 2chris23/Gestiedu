@@ -8,6 +8,11 @@ import { nombreDeLaSeccion, slugDeLaSeccion } from '../../utils/nombre-de-la-sec
 import {
     ReglasDeRevision,
     ReglasDePendientes,
+    ReglasDeLaborSocial,
+    LABOR_SOCIAL_POR_DEFECTO,
+    esReglasDeLaborSocial,
+    avanceDe,
+    AvanceDeLaborSocial,
     UltimoAnoConPendientes,
     PendienteNoAprobada,
     REVISION_POR_DEFECTO,
@@ -53,6 +58,7 @@ export interface AcademicConfig {
     ultimoAnoConPendientes: UltimoAnoConPendientes;
     pendienteNoAprobada: PendienteNoAprobada;
     pendientes: ReglasDePendientes;
+    laborSocial: ReglasDeLaborSocial;
 }
 
 export type RedondeoDeDefinitivas = 'MPPE' | 'NINGUNO';
@@ -75,6 +81,7 @@ export const DEFAULT_ACADEMIC_CONFIG: AcademicConfig = {
     ultimoAnoConPendientes: 'REPITE',
     pendienteNoAprobada: 'REPITE',
     pendientes: PENDIENTES_POR_DEFECTO,
+    laborSocial: LABOR_SOCIAL_POR_DEFECTO,
 };
 
 /** El porcentaje de asistencia va de 0 a 100 y no admite otra cosa. */
@@ -109,6 +116,9 @@ export async function getAcademicConfig(instituteId: string): Promise<AcademicCo
         ultimoAnoConPendientes,
         pendienteNoAprobada: esPendienteNoAprobada(raw.pendienteNoAprobada) ? raw.pendienteNoAprobada : DEFAULT_ACADEMIC_CONFIG.pendienteNoAprobada,
         pendientes: esReglasDePendientes(raw.pendientes) ? raw.pendientes : PENDIENTES_POR_DEFECTO,
+        laborSocial: esReglasDeLaborSocial(raw.laborSocial)
+            ? raw.laborSocial
+            : { ...LABOR_SOCIAL_POR_DEFECTO, grados: [typeof raw.maxGradeLevel === 'number' ? raw.maxGradeLevel : defaultMax] },
     };
 }
 
@@ -144,6 +154,7 @@ export async function updateAcademicConfig(instituteId: string, patch: Partial<A
         ultimoAnoConPendientes,
         pendienteNoAprobada: esPendienteNoAprobada(patch.pendienteNoAprobada) ? patch.pendienteNoAprobada : current.pendienteNoAprobada,
         pendientes: esReglasDePendientes(patch.pendientes) ? patch.pendientes : current.pendientes,
+        laborSocial: esReglasDeLaborSocial(patch.laborSocial) ? patch.laborSocial : current.laborSocial,
     };
     await platformPrisma.institute.update({
         where: { id: instituteId },
@@ -222,6 +233,8 @@ export interface StudentSuggestion {
     suggestedStatus: SuggestionStatus;
     /** Por qué sugiere eso, en palabras. */
     motivoDeLaSugerencia: string;
+    /** Su labor social, si es de un grado que la hace (`labor-social.service`). */
+    laborSocial: AvanceDeLaborSocial | null;
     /** Lo que decidió el admin antes de cerrar, si es distinto (con su motivo). */
     decision: { condicion: SuggestionStatus; motivo: string; decididaPor: string | null } | null;
     /** La que vale: la del admin o, si no decidió nada, la sugerida. */
@@ -254,6 +267,32 @@ function explicar(
             : `No egresa todavía: cursa solo ${materias(s.reprobadas)} pendiente${s.reprobadas === 1 ? '' : 's'}.`;
     }
     return `Pasa con ${materias(s.reprobadas)} pendiente${s.reprobadas === 1 ? '' : 's'}.`;
+}
+
+/** Lo que se añade a la sugerencia si al que egresa le falta la labor social. */
+function avisoDeLabor(labor: AvanceDeLaborSocial | null, egresaria: boolean, config: AcademicConfig): string {
+    if (!labor || labor.cumplida || !egresaria || config.laborSocial.paraEgresar === 'NO') return '';
+    const falta = labor.porProyecto ? 'no ha culminado su proyecto de labor social' : `lleva ${labor.horas} de ${labor.requeridas} h de labor social`;
+    return config.laborSocial.paraEgresar === 'BLOQUEA'
+        ? ` Pero ${falta}: no egresa hasta cumplirla.`
+        : ` Ojo: ${falta}.`;
+}
+
+/**
+ * El egreso del alumno de último año que no repite: EGRESADO, o PENDIENTE si
+ * solo cursa sus pendientes o si el liceo exige la labor social para egresar
+ * y no la ha cumplido.
+ */
+export function egresoDe(
+    condicion: SuggestionStatus,
+    config: AcademicConfig,
+    labor: AvanceDeLaborSocial | null,
+    egresoForzado = false
+): 'EGRESADO' | 'PENDIENTE' {
+    if (egresoForzado) return 'EGRESADO';
+    if (condicion === 'PROMOVIDO_CON_PENDIENTES' && config.ultimoAnoConPendientes !== 'EGRESA') return 'PENDIENTE';
+    if (labor && !labor.cumplida && config.laborSocial.paraEgresar === 'BLOQUEA') return 'PENDIENTE';
+    return 'EGRESADO';
 }
 
 /** 1. Calcula los resultados sugeridos evaluando notas reales y reglas de grado */
@@ -326,6 +365,23 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
         suyas.push({ id: p.id, subjectId: p.subjectId, subjectName: p.subject.name, gradoDeOrigen: p.gradoDeOrigen, estado: p.estado });
         arrastradas.set(p.studentId, suyas);
     }
+
+    // La labor social de los que están en los grados que la hacen.
+    const reglasDeLabor = config.laborSocial;
+    const conLabor = reglasDeLabor.activa
+        ? enrollments.filter((e: any) => reglasDeLabor.grados.includes(e.classroom.grade)).map((e: any) => e.studentId)
+        : [];
+    const actividadesDeLabor = new Map<string, Array<{ horas: number; culminaElProyecto: boolean }>>();
+    if (conLabor.length > 0) {
+        for (const a of await prisma.actividadDeLaborSocial.findMany({
+            where: { studentId: { in: conLabor } },
+            select: { studentId: true, horas: true, culminaElProyecto: true },
+        })) {
+            actividadesDeLabor.set(a.studentId, [...(actividadesDeLabor.get(a.studentId) ?? []), a]);
+        }
+    }
+    const laborDe = (studentId: string) =>
+        conLabor.includes(studentId) ? avanceDe(actividadesDeLabor.get(studentId) ?? [], reglasDeLabor) : null;
 
     const suggestions: StudentSuggestion[] = [];
     const chunkSize = 25;
@@ -412,10 +468,10 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                     pendingCount,
                     finalAverage,
                     suggestedStatus,
-                    motivoDeLaSugerencia: explicar(
-                        { reprobadas: failed.length, sinAprobar, esUltimoAno: isLastGrade, condicion: suggestedStatus },
-                        config
-                    ),
+                    motivoDeLaSugerencia:
+                        explicar({ reprobadas: failed.length, sinAprobar, esUltimoAno: isLastGrade, condicion: suggestedStatus }, config) +
+                        avisoDeLabor(laborDe(enr.studentId), isLastGrade && suggestedStatus !== 'NO_PROMOVIDO', config),
+                    laborSocial: laborDe(enr.studentId),
                     decision,
                     condicionFinal,
                 };
@@ -679,16 +735,15 @@ export async function confirmClose(
             // Egresa, o se queda solo con sus pendientes hasta aprobarlas.
             const egresa = d?.action === 'GRADUATE' || (s.isLastGrade && condicion !== 'NO_PROMOVIDO');
             if (egresa) {
-                const soloPendientes =
-                    condicion === 'PROMOVIDO_CON_PENDIENTES' && config.ultimoAnoConPendientes !== 'EGRESA' && d?.action !== 'GRADUATE';
+                const egreso = egresoDe(condicion, config, s.laborSocial, d?.action === 'GRADUATE');
                 expedientes.push({
                     ...baseDelExpediente(s, condicion, motivo),
                     status: 'COMPLETED',
                     finalResult: condicion,
-                    egreso: soloPendientes ? 'PENDIENTE' : 'EGRESADO',
+                    egreso,
                     assignedClassroomId: null,
                 });
-                records.push({ studentId: s.studentId, finalResult: soloPendientes ? 'SOLO_PENDIENTES' : 'GRADUATED', assignedClassroomId: null });
+                records.push({ studentId: s.studentId, finalResult: egreso === 'PENDIENTE' ? 'EGRESO_PENDIENTE' : 'GRADUATED', assignedClassroomId: null });
                 placements.push({ studentId: s.studentId, sectionId: null });
                 continue;
             }

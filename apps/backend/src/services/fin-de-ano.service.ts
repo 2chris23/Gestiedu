@@ -13,7 +13,9 @@ import {
     profesorParaLaPendiente,
     SuggestionStatus,
     StudentSuggestion,
+    egresoDe,
 } from './promotion/close-cycle.service';
+import { avanceDe } from './promotion/reglas-del-fin-de-ano';
 
 /**
  * EL FIN DEL AÑO ESCOLAR, POR PASOS
@@ -475,9 +477,14 @@ export async function corregirDecision(
     const reprobadas: Array<{ subjectId: string; average: number }> = ((expediente.subjectGrades as any[]) ?? [])
         .filter((g) => !g.cualitativa && typeof g.average === 'number' && g.average < config.notaMinimaAprobatoria)
         .map((g) => ({ subjectId: g.subjectId, average: g.average }));
-    const egreso = esUltimo && condicion !== 'NO_PROMOVIDO'
-        ? condicion === 'PROMOVIDO_CON_PENDIENTES' && config.ultimoAnoConPendientes !== 'EGRESA' ? 'PENDIENTE' : 'EGRESADO'
+    // La labor social cuenta igual que al cerrar (si el liceo la exige para egresar).
+    const labor = config.laborSocial.activa && config.laborSocial.grados.includes(grado)
+        ? avanceDe(
+              await prisma.actividadDeLaborSocial.findMany({ where: { studentId }, select: { horas: true, culminaElProyecto: true } }),
+              config.laborSocial
+          )
         : null;
+    const egreso = esUltimo && condicion !== 'NO_PROMOVIDO' ? egresoDe(condicion, config, labor) : null;
 
     await prisma.$transaction(async (tx: any) => {
         await tx.academicRecord.update({
@@ -620,6 +627,7 @@ export function filaDeDecision(s: StudentSuggestion) {
         pendientesArrastradas: s.pendientesArrastradas,
         sugerida: s.suggestedStatus,
         motivoDeLaSugerencia: s.motivoDeLaSugerencia,
+        laborSocial: s.laborSocial,
         decision: s.decision,
         condicion: s.condicionFinal,
     };
