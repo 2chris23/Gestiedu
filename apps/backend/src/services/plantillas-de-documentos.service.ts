@@ -29,7 +29,8 @@ export type TipoDePlantilla =
     | 'CITACION'
     | 'NOTAS_PARCIALES'
     | 'TITULO_EN_TRAMITE'
-    | 'ACTA_CONSEJO';
+    | 'ACTA_CONSEJO'
+    | 'TRABAJO';
 export const TIPOS_DE_PLANTILLA: TipoDePlantilla[] = [
     'ESTUDIO',
     'BUENA_CONDUCTA',
@@ -42,6 +43,7 @@ export const TIPOS_DE_PLANTILLA: TipoDePlantilla[] = [
     'NOTAS_PARCIALES',
     'TITULO_EN_TRAMITE',
     'ACTA_CONSEJO',
+    'TRABAJO',
 ];
 export const esTipoDePlantilla = (v: unknown): v is TipoDePlantilla => typeof v === 'string' && (TIPOS_DE_PLANTILLA as string[]).includes(v);
 
@@ -58,6 +60,7 @@ export const NOMBRE_DE_LA_PLANTILLA: Record<TipoDePlantilla, string> = {
     NOTAS_PARCIALES: 'Notas parciales (traslado)',
     TITULO_EN_TRAMITE: 'Constancia de título en trámite',
     ACTA_CONSEJO: 'Acta del consejo de sección',
+    TRABAJO: 'Constancia de trabajo',
 };
 
 /** Marcador → [qué pone, un ejemplo para la vista previa]. */
@@ -95,6 +98,15 @@ const DE_LA_SECCION: Marcadores = {
     guia: ['El profesor guía de la sección', 'Luis Herrera'],
 };
 
+/** Los de quien trabaja en el liceo (la constancia de trabajo). */
+const DEL_TRABAJADOR: Marcadores = {
+    trabajador: ['Nombres y apellidos del trabajador', 'Carmen Rojas'],
+    cedulaDelTrabajador: ['Su cédula', 'V-12345678'],
+    cargoDelTrabajador: ['Su cargo («docente de Matemática», «personal administrativo»)', 'docente de Matemática'],
+    fechaDeIngreso: ['Desde cuándo trabaja aquí', '16 de septiembre de 2019'],
+    conCargaHoraria: ['«, con una carga horaria de 24 horas semanales» (vacío si no da clases)', ', con una carga horaria de 24 horas semanales'],
+};
+
 /** Los que solo tienen sentido en uno. */
 const PROPIOS: Partial<Record<TipoDePlantilla, Marcadores>> = {
     PROSECUCION: { gradoSiguiente: ['El año al que puede proseguir (p. ej. «4to año»)', '4to año'] },
@@ -122,7 +134,7 @@ const PROPIOS: Partial<Record<TipoDePlantilla, Marcadores>> = {
  * Qué grupos de marcadores lleva cada documento, además de los del plantel.
  * Sin decir nada, los del alumno (las constancias son de un alumno).
  */
-const GRUPOS: Partial<Record<TipoDePlantilla, Marcadores[]>> = { ACTA_CONSEJO: [DE_LA_SECCION] };
+const GRUPOS: Partial<Record<TipoDePlantilla, Marcadores[]>> = { ACTA_CONSEJO: [DE_LA_SECCION], TRABAJO: [DEL_TRABAJADOR] };
 
 function marcadoresCompletos(tipo: TipoDePlantilla): Marcadores {
     const grupos = GRUPOS[tipo] ?? [DEL_ALUMNO];
@@ -175,6 +187,10 @@ export const PLANTILLAS_POR_DEFECTO: Record<TipoDePlantilla, { titulo: string; t
     TITULO_EN_TRAMITE: {
         titulo: 'Constancia de título en trámite',
         texto: `Quien suscribe, {firmante}, en su carácter de {cargo} de {liceo}, hace constar por medio de la presente que el (la) ciudadano(a) {alumno}, titular de la {tipoDeCedula} {cedula}, cursó y aprobó todas las áreas del plan de estudio de {nivel} en esta institución, egresando en el año escolar {ciclo}, y que su título de {mencion} se encuentra en trámite ante el Ministerio del Poder Popular para la Educación.\n\n${PIE}`,
+    },
+    TRABAJO: {
+        titulo: 'Constancia de trabajo',
+        texto: `Quien suscribe, {firmante}, en su carácter de {cargo} de {liceo}, hace constar por medio de la presente que el (la) ciudadano(a) {trabajador}, titular de la cédula de identidad {cedulaDelTrabajador}, presta sus servicios en esta institución desde el {fechaDeIngreso} como {cargoDelTrabajador}{conCargaHoraria}.\n\n${PIE}`,
     },
     ACTA_CONSEJO: {
         titulo: 'Acta del consejo de sección',

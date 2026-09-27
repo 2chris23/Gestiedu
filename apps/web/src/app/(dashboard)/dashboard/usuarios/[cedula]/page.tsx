@@ -130,6 +130,12 @@ export default function UserProfilePage({ params }: PageProps) {
     const ponerLaFoto = (avatar: string | null) =>
         queryClient.setQueryData(['usuario', cedula], (u: typeof dbUser) => (u ? { ...u, avatar } : u));
 
+    const { data: reglasDeCarga = { minimo: 30, maximo: 40 } } = useQuery<{ minimo: number; maximo: number }>({
+        queryKey: ['reglas-carga-horaria'],
+        queryFn: async () => (await api.get('/institutes/current/carga-horaria')).data.data,
+        enabled: dbUser?.role === 'TEACHER',
+    });
+
     const teacherData = useMemo(() => {
         const vacio = { guideSection: undefined, allClasses: [] as TeacherClass[], academicYears: [] as Array<{ id: string; name: string }> };
         if (!dbUser || dbUser.role !== 'TEACHER') return vacio;
@@ -160,8 +166,9 @@ export default function UserProfilePage({ params }: PageProps) {
                 section: st.classroom?.section || 'A',
                 academicYearId: st.classroom?.academicYear?.id || '',
                 academicYearName: st.classroom?.academicYear?.name || '',
-                weeklyBlocks: st.weeklyBlocks || 4,
-                hoursPerWeek: st.hoursPerWeek || ((st.weeklyBlocks || 4) * 45) / 60,
+                // Sin inventar: sin horas, las de sus bloques (45 min); sin bloques, 0 («sin horas»).
+                weeklyBlocks: st.weeklyBlocks || 0,
+                hoursPerWeek: st.hoursPerWeek || ((st.weeklyBlocks || 0) * 45) / 60,
                 average: typeof teacherAverages[st.subject?.id] === 'number' ? teacherAverages[st.subject?.id] : undefined,
             })) || [];
 
@@ -505,6 +512,27 @@ export default function UserProfilePage({ params }: PageProps) {
                                     )}
                                 </div>
                             )}
+                            {/* El personal: su carga horaria (el admin, o el propio profesor) y su constancia de trabajo (el admin). */}
+                            {(user.role === 'teacher' || user.role === 'admin') && (yo?.role === 'ADMIN' || yo?.id === user.cedula) && (
+                                <div className="flex flex-wrap gap-2">
+                                    {user.role === 'teacher' && (
+                                        <Link
+                                            href={`/dashboard/carga-horaria/${encodeURIComponent(user.cedula)}`}
+                                            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                        >
+                                            <Clock className="h-4 w-4" /> Hoja de carga horaria
+                                        </Link>
+                                    )}
+                                    {yo?.role === 'ADMIN' && (
+                                        <Link
+                                            href={`/dashboard/constancia-de-trabajo/${encodeURIComponent(user.cedula)}`}
+                                            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                        >
+                                            <FileText className="h-4 w-4" /> Constancia de trabajo
+                                        </Link>
+                                    )}
+                                </div>
+                            )}
                             {user.role === 'student' && <RepresentantesDelAlumno studentId={user.cedula} />}
                             {user.role === 'student' && <TelefonoDeAsistencia studentId={user.cedula} />}
                             {user.role === 'tutor' && (
@@ -580,11 +608,14 @@ export default function UserProfilePage({ params }: PageProps) {
 
                             {/* Resumen Global de Carga Horaria Docente (30-40h semanales) */}
                             {(() => {
-                                const totalHours = filteredClasses.reduce((sum, c) => sum + (c.hoursPerWeek || 3), 0);
-                                const totalBlocks = filteredClasses.reduce((sum, c) => sum + (c.weeklyBlocks || 4), 0);
-                                const isNearLimit = totalHours >= 30 && totalHours <= 40;
-                                const isOverLimit = totalHours > 40;
-                                const percentage = Math.min(Math.round((totalHours / 40) * 100), 100);
+                                // El rango recomendado es del liceo (`academicConfig.cargaHoraria`, 30 a 40 por defecto).
+                                const { minimo, maximo } = reglasDeCarga;
+                                const totalHours = filteredClasses.reduce((sum, c) => sum + (c.hoursPerWeek || 0), 0);
+                                const totalBlocks = filteredClasses.reduce((sum, c) => sum + (c.weeklyBlocks || 0), 0);
+                                const sinHoras = filteredClasses.filter((c) => !c.hoursPerWeek).length;
+                                const isNearLimit = totalHours >= minimo && totalHours <= maximo;
+                                const isOverLimit = totalHours > maximo;
+                                const percentage = maximo > 0 ? Math.min(Math.round((totalHours / maximo) * 100), 100) : 0;
 
                                 return (
                                     <div className="bg-white rounded-xl border border-gray-200/80 p-4 shadow-2xs space-y-3">
@@ -610,13 +641,13 @@ export default function UserProfilePage({ params }: PageProps) {
                                                         ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                                                         : "bg-indigo-50 text-indigo-700 border-indigo-200"
                                             )}>
-                                                {isOverLimit ? 'Sobrecarga (+40h)' : isNearLimit ? 'Carga Óptima (30-40h)' : 'Carga Moderada (<30h)'}
+                                                {isOverLimit ? `Sobrecarga (+${maximo}h)` : isNearLimit ? `En el rango (${minimo}-${maximo}h)` : `Por debajo (<${minimo}h)`}
                                             </span>
                                         </div>
 
                                         <div className="space-y-1">
                                             <div className="flex justify-between text-xs text-gray-500 font-medium">
-                                                <span>Límite pedagógico recomendado: 30 a 40 horas</span>
+                                                <span>Recomendado por el liceo: {minimo} a {maximo} horas{sinHoras > 0 ? ` · ${sinHoras} sin horas puestas` : ''}</span>
                                                 <span className="font-bold">{percentage}% de jornada máx.</span>
                                             </div>
                                             <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
@@ -662,7 +693,7 @@ export default function UserProfilePage({ params }: PageProps) {
                                             groupedByGrade[g].sumAvg += cls.average;
                                             groupedByGrade[g].count += 1;
                                         }
-                                        groupedByGrade[g].totalHours += cls.hoursPerWeek || 3;
+                                        groupedByGrade[g].totalHours += cls.hoursPerWeek || 0;
                                     });
 
                                     const gradesList = Object.keys(groupedByGrade).map(Number).sort((a, b) => a - b);
@@ -727,9 +758,9 @@ export default function UserProfilePage({ params }: PageProps) {
                                                                 </p>
                                                                 <div className="flex items-center gap-1.5 text-[11px] text-gray-500 font-medium">
                                                                     <span className="bg-white px-1.5 py-0.5 rounded border border-gray-200 text-indigo-700 font-semibold inline-flex items-center gap-1">
-                                                                        <Clock size={11} /> {(c.hoursPerWeek || 3).toFixed(1)}h/sem
+                                                                        <Clock size={11} /> {c.hoursPerWeek ? `${c.hoursPerWeek.toFixed(1)}h/sem` : 'sin horas'}
                                                                     </span>
-                                                                    <span>({c.weeklyBlocks || 4} bloques)</span>
+                                                                    {(c.weeklyBlocks ?? 0) > 0 && <span>({c.weeklyBlocks} bloques)</span>}
                                                                 </div>
                                                             </div>
 

@@ -215,6 +215,8 @@ async function losRecorridos() {
                 ['Horarios', '/dashboard/horarios'],
                 ['Horario de sección', `/dashboard/horarios/seccion/${seccion?.id}`],
                 ['Horario de profesor', `/dashboard/horarios/profesor/${profe?.id}`],
+                ['Carga horaria', `/dashboard/carga-horaria/${profe?.id}`],
+                ['Constancia de trabajo', `/dashboard/constancia-de-trabajo/${profe?.id}`],
                 ['Usuarios', '/dashboard/usuarios'],
                 ['Ficha de alumno', `/dashboard/usuarios/${alumno?.id}`],
                 ['Certificación', `/dashboard/certificacion/${alumno?.id}`],
