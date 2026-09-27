@@ -26,6 +26,9 @@ import { plantillaDe, parrafosDe, type TipoDePlantilla } from './plantillas-de-d
  *     fecha es la del retiro (409 NO_RETIRADO si no). Solo el admin.
  *   - **Labor social:** cumplió las horas del liceo (`labor-social.service`).
  *     Solo el admin.
+ *   - **Título en trámite:** egresó (el cierre del último año dijo EGRESADO);
+ *     lleva la mención de su título (`graduandos.service`). 409 NO_EGRESADO
+ *     si no. Solo el admin.
  *
  * Ninguna depende de los pagos: en Venezuela no se puede condicionar la
  * entrega de constancias al pago de la mensualidad.
@@ -34,7 +37,7 @@ import { plantillaDe, parrafosDe, type TipoDePlantilla } from './plantillas-de-d
  */
 
 export type TipoDeConstancia = TipoDePlantilla;
-export const TIPOS_DE_CONSTANCIA: TipoDeConstancia[] = ['ESTUDIO', 'BUENA_CONDUCTA', 'PROSECUCION', 'RETIRO', 'INSCRIPCION', 'LABOR_SOCIAL'];
+export const TIPOS_DE_CONSTANCIA: TipoDeConstancia[] = ['ESTUDIO', 'BUENA_CONDUCTA', 'PROSECUCION', 'RETIRO', 'INSCRIPCION', 'LABOR_SOCIAL', 'TITULO_EN_TRAMITE'];
 export const esTipoDeConstancia = (v: unknown): v is TipoDeConstancia =>
     typeof v === 'string' && (TIPOS_DE_CONSTANCIA as string[]).includes(v);
 
@@ -161,6 +164,21 @@ export async function constanciaDelAlumno(
         valoresPropios.gradoSiguiente =
             deEseAno.classroom.grade >= config ? 'nivel de Educación Universitaria' : gradoLegible(deEseAno.classroom.grade + 1);
     }
+    if (tipo === 'TITULO_EN_TRAMITE') {
+        const egreso = await prisma.academicRecord.findFirst({
+            where: { studentId, egreso: 'EGRESADO' },
+            orderBy: { academicYear: { startDate: 'desc' } },
+            select: { academicYearId: true },
+        });
+        const deEseAno = egreso ? inscripciones.find((i) => i.academicYearId === egreso.academicYearId) : null;
+        if (!egreso || !deEseAno) throw createError(409, 'El estudiante no ha egresado de este liceo', 'NO_EGRESADO');
+        inscripcion = deEseAno;
+        const titulo = await (prisma as any).titulo.findUnique({
+            where: { studentId_academicYearId: { studentId, academicYearId: egreso.academicYearId } },
+            select: { mencion: true },
+        });
+        valoresPropios.mencion = titulo?.mencion ?? (await mencionDelLiceo(instituteId));
+    }
     if (tipo === 'RETIRO') {
         const retirada = porFecha.find((i) => !i.isActive);
         if (!retirada || (alumno.isActive && !alumno.archivedAt)) {
@@ -257,6 +275,15 @@ export function valoresDelAlumno(
         ciclo,
         nivel,
     };
+}
+
+/** La mención del título de bachiller del liceo (la pone el liceo; por defecto, la del plan de estudio). */
+export async function mencionDelLiceo(instituteId: string): Promise<string> {
+    const inst = await platformPrisma.institute.findUnique({ where: { id: instituteId }, select: { academicConfig: true } });
+    const raw = (inst?.academicConfig ?? {}) as Record<string, any>;
+    const suya = typeof raw.titulo?.mencion === 'string' ? raw.titulo.mencion.trim() : '';
+    if (suya) return suya.slice(0, 120);
+    return raw.modalidad === 'MEDIA_TECNICA' ? 'Técnico Medio' : 'Bachiller en Ciencias y Tecnología';
 }
 
 async function getMaxGrado(instituteId: string): Promise<number> {

@@ -27,7 +27,8 @@ export type TipoDePlantilla =
     | 'LABOR_SOCIAL'
     | 'PLANILLA_INSCRIPCION'
     | 'CITACION'
-    | 'NOTAS_PARCIALES';
+    | 'NOTAS_PARCIALES'
+    | 'TITULO_EN_TRAMITE';
 export const TIPOS_DE_PLANTILLA: TipoDePlantilla[] = [
     'ESTUDIO',
     'BUENA_CONDUCTA',
@@ -38,6 +39,7 @@ export const TIPOS_DE_PLANTILLA: TipoDePlantilla[] = [
     'PLANILLA_INSCRIPCION',
     'CITACION',
     'NOTAS_PARCIALES',
+    'TITULO_EN_TRAMITE',
 ];
 export const esTipoDePlantilla = (v: unknown): v is TipoDePlantilla => typeof v === 'string' && (TIPOS_DE_PLANTILLA as string[]).includes(v);
 
@@ -52,6 +54,7 @@ export const NOMBRE_DE_LA_PLANTILLA: Record<TipoDePlantilla, string> = {
     PLANILLA_INSCRIPCION: 'Planilla de inscripción (declaración)',
     CITACION: 'Citación al representante',
     NOTAS_PARCIALES: 'Notas parciales (traslado)',
+    TITULO_EN_TRAMITE: 'Constancia de título en trámite',
 };
 
 /** Marcador → [qué pone, un ejemplo para la vista previa]. */
@@ -91,6 +94,7 @@ const PROPIOS: Partial<Record<TipoDePlantilla, Marcadores>> = {
         representante: ['Nombres y apellidos del representante', 'José Pérez'],
         cedulaDelRepresentante: ['La cédula del representante', 'V-12345678'],
     },
+    TITULO_EN_TRAMITE: { mencion: ['La mención del título (p. ej. «Bachiller en Ciencias y Tecnología»)', 'Bachiller en Ciencias y Tecnología'] },
     NOTAS_PARCIALES: { fechaDeRetiro: ['El día en que se retiró (vacío si sigue en el liceo)', '15 de marzo de 2027'] },
     CITACION: {
         representante: ['Nombres y apellidos del representante (o «representante» si no tiene)', 'José Pérez'],
@@ -154,6 +158,10 @@ export const PLANTILLAS_POR_DEFECTO: Record<TipoDePlantilla, { titulo: string; t
         titulo: 'Planilla de inscripción',
         texto:
             'Yo, {representante}, titular de la cédula de identidad {cedulaDelRepresentante}, representante del (la) estudiante {alumno}, declaro que los datos de esta planilla son ciertos y me comprometo a cumplir y hacer cumplir las normas de convivencia de {liceo} durante el año escolar {ciclo}.',
+    },
+    TITULO_EN_TRAMITE: {
+        titulo: 'Constancia de título en trámite',
+        texto: `Quien suscribe, {firmante}, en su carácter de {cargo} de {liceo}, hace constar por medio de la presente que el (la) ciudadano(a) {alumno}, titular de la {tipoDeCedula} {cedula}, cursó y aprobó todas las áreas del plan de estudio de {nivel} en esta institución, egresando en el año escolar {ciclo}, y que su título de {mencion} se encuentra en trámite ante el Ministerio del Poder Popular para la Educación.\n\n${PIE}`,
     },
     NOTAS_PARCIALES: {
         titulo: 'Notas parciales',

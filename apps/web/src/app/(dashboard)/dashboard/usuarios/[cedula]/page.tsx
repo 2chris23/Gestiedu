@@ -24,7 +24,7 @@ import { InscripcionDelAlumno } from '@/components/users/InscripcionDelAlumno';
 import { TrasladoDelAlumno } from '@/components/users/TrasladoDelAlumno';
 import { LaborSocialDelAlumno } from '@/components/labor-social/LaborSocialDelAlumno';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
-import { TIPOS_DE_CONSTANCIA, NOMBRE_DE_LA_CONSTANCIA, type TipoDeConstancia } from '@/hooks/useConstancia';
+import { CONSTANCIAS_DE_LA_FICHA, NOMBRE_DE_LA_CONSTANCIA, type TipoDeConstancia } from '@/hooks/useConstancia';
 import ActividadesDelAlumno from '@/components/profile/ActividadesDelAlumno';
 import api from '@/lib/axios';
 import { comprimirFotoEnElDispositivo, pesoLegible } from '@/lib/foto-comprimida';
@@ -486,7 +486,7 @@ export default function UserProfilePage({ params }: PageProps) {
                                 // Los documentos del liceo: el admin, todos; el resto
                                 // del personal, la de estudio (el servidor decide).
                                 <div className="flex flex-wrap gap-2">
-                                    {(yo?.role === 'ADMIN' ? TIPOS_DE_CONSTANCIA : (['ESTUDIO'] as TipoDeConstancia[])).map((tipo) => (
+                                    {(yo?.role === 'ADMIN' ? CONSTANCIAS_DE_LA_FICHA : (['ESTUDIO'] as TipoDeConstancia[])).map((tipo) => (
                                         <Link
                                             key={tipo}
                                             href={`/dashboard/constancia/${encodeURIComponent(user.cedula)}${tipo === 'ESTUDIO' ? '' : `?tipo=${tipo}`}`}

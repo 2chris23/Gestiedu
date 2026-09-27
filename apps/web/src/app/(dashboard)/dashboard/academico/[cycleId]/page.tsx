@@ -320,6 +320,9 @@ export default function AcademicYearDashboard() {
                                     <DropdownMenuItem onSelect={() => router.push(`/dashboard/academico/${year.name}/matricula`)}>
                                         <Users className="mr-2 h-4 w-4" /> Estadística de matrícula
                                     </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={() => router.push(`/dashboard/academico/${year.name}/graduandos`)}>
+                                        <GraduationCap className="mr-2 h-4 w-4" /> Graduandos y títulos
+                                    </DropdownMenuItem>
                                     <DropdownMenuItem
                                         onSelect={() => router.push(`/dashboard/academico/${year.name}/cierre`)}
                                         className="text-rose-700 focus:text-rose-700"

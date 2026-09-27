@@ -296,6 +296,7 @@ model User {
   suscripcionesDeAviso    SuscripcionDeAviso[]     @relation("SuscripcionesDeAviso")
   citaciones              Citacion[]               @relation("CitacionAlumno")
   notasDeOtroPlantel      NotaDeOtroPlantel[]      @relation("NotaDeOtroPlantelAlumno")
+  titulos                 Titulo[]                 @relation("TituloAlumno")
   aparatoDeAsistencia     AparatoDelAlumno?
 
   // Notificaciones
@@ -411,6 +412,7 @@ model AcademicYear {
   pendientesQueNacieron MateriaPendiente[]       @relation("PendienteOrigen")
   pendientesQueSeCursan MateriaPendiente[]       @relation("PendienteCiclo")
   laborSocial           ActividadDeLaborSocial[]
+  titulos               Titulo[]
   institute             Institute?               @relation(fields: [instituteId], references: [id])
   instituteId           String?
 
@@ -1329,6 +1331,30 @@ model CalificacionExterna {
 
   @@index([studentId])
   @@map("calificaciones_externas")
+}
+
+/// El título de bachiller de un egresado: la mención, el número (serial) del
+/// título y cuándo se expidió. Lo anota el admin en «Graduandos» del ciclo,
+/// solo para quien egresó al cerrar el año. Ver `services/graduandos.service.ts`.
+model Titulo {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("TituloAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  mencion           String
+  serial            String?   @unique
+  fechaDeExpedicion DateTime? @db.Date
+  registradoPor     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, academicYearId])
+  @@map("titulos")
 }
 
 /// La nota de un lapso que el alumno cursó en OTRO liceo este mismo año,

@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/axios';
 
-export type TipoDeConstancia = 'ESTUDIO' | 'BUENA_CONDUCTA' | 'PROSECUCION' | 'RETIRO' | 'INSCRIPCION' | 'LABOR_SOCIAL';
-export const TIPOS_DE_CONSTANCIA: TipoDeConstancia[] = ['ESTUDIO', 'BUENA_CONDUCTA', 'PROSECUCION', 'RETIRO', 'INSCRIPCION', 'LABOR_SOCIAL'];
+export type TipoDeConstancia = 'ESTUDIO' | 'BUENA_CONDUCTA' | 'PROSECUCION' | 'RETIRO' | 'INSCRIPCION' | 'LABOR_SOCIAL' | 'TITULO_EN_TRAMITE';
+export const TIPOS_DE_CONSTANCIA: TipoDeConstancia[] = ['ESTUDIO', 'BUENA_CONDUCTA', 'PROSECUCION', 'RETIRO', 'INSCRIPCION', 'LABOR_SOCIAL', 'TITULO_EN_TRAMITE'];
+/** Las que se ofrecen en la ficha (la de título en trámite, desde «Graduandos»). */
+export const CONSTANCIAS_DE_LA_FICHA: TipoDeConstancia[] = ['ESTUDIO', 'BUENA_CONDUCTA', 'PROSECUCION', 'RETIRO', 'INSCRIPCION', 'LABOR_SOCIAL'];
 export const NOMBRE_DE_LA_CONSTANCIA: Record<TipoDeConstancia, string> = {
     ESTUDIO: 'Constancia de estudio',
     BUENA_CONDUCTA: 'Constancia de buena conducta',
@@ -10,6 +12,7 @@ export const NOMBRE_DE_LA_CONSTANCIA: Record<TipoDeConstancia, string> = {
     RETIRO: 'Constancia de retiro',
     INSCRIPCION: 'Constancia de inscripción',
     LABOR_SOCIAL: 'Constancia de labor social',
+    TITULO_EN_TRAMITE: 'Constancia de título en trámite',
 };
 
 /** La constancia, tal como la arma el servidor (`services/constancias.service.ts`). */
