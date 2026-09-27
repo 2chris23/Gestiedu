@@ -30,6 +30,7 @@ const AssignSubjectTeacherModal = diferido(() => import('@/components/subject/As
 const EvaluationPlanSection = diferido(() => import('@/components/evaluation/EvaluationPlanSection'), { alto: 400 });
 const SubjectActivitiesTab = diferido(() => import('@/components/subject/SubjectActivitiesTab'), { alto: 300 });
 const SubjectObservationsTab = diferido(() => import('@/components/subject/SubjectObservationsTab'), { alto: 300 });
+const RevisionDeLaMateria = diferido(() => import('@/components/subject/RevisionDeLaMateria'), { alto: 300 });
 const ApreciacionesDeLaMateria = diferido(() => import('@/components/subject/ApreciacionesDeLaMateria'), { alto: 300 });
 const StudentObservationsModal = diferido(() => import('@/components/observations/StudentObservationsModal'), { sinEsqueleto: true });
 
@@ -439,6 +440,8 @@ export default function SectionSubjectDashboard() {
                             { id: 'calificaciones', label: 'Plan de Evaluación / Calificaciones', icon: GraduationCap },
                             { id: 'actividades', label: 'Actividades', icon: ListTodo },
                             { id: 'observaciones', label: 'Observaciones', icon: Bell },
+                            // Al terminar el año: los que la reprobaron la presentan en revisión.
+                            ...(subject.evaluacion !== 'CUALITATIVA' ? [{ id: 'revision', label: 'Revisión', icon: FileText }] : []),
                         ].map((tab) => {
                             const Icon = tab.icon;
                             const isActive = activeTab === tab.id;
@@ -609,6 +612,14 @@ export default function SectionSubjectDashboard() {
 
                 {activeTab === 'apreciaciones' && subject.evaluacion === 'CUALITATIVA' && (
                     <ApreciacionesDeLaMateria
+                        classroomId={classroomId}
+                        subjectId={subject.id}
+                        puedePoner={yo?.role === 'ADMIN' || (yo?.role === 'TEACHER' && !!teacher && teacher.id === yo.id)}
+                    />
+                )}
+
+                {activeTab === 'revision' && (
+                    <RevisionDeLaMateria
                         classroomId={classroomId}
                         subjectId={subject.id}
                         puedePoner={yo?.role === 'ADMIN' || (yo?.role === 'TEACHER' && !!teacher && teacher.id === yo.id)}

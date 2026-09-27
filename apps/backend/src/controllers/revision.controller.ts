@@ -39,7 +39,7 @@ export async function guardarRevision(
     const prisma = request.tenantPrisma;
     const instituteId = instituteIdDe(request);
     if (!instituteId) return reply.status(400).send({ error: 'No se pudo determinar el liceo', code: 'INSTITUTE_REQUIRED' });
-    const { studentId, subjectId, score, fecha, observaciones } = request.body ?? {};
+    const { studentId, subjectId, score, componentes, fecha, observaciones } = (request.body ?? {}) as any;
     if (!studentId || !subjectId) {
         return reply.status(400).send({ error: 'Faltan el estudiante y la materia', code: 'VALIDATION_ERROR' });
     }
@@ -51,7 +51,8 @@ export async function guardarRevision(
             academicYearId: request.params.id,
             studentId,
             subjectId,
-            score: Number(score),
+            score: score === undefined || score === null ? undefined : Number(score),
+            componentes: Array.isArray(componentes) ? componentes : undefined,
             fecha: fecha ?? todayInTimezone(await instituteTimezone(prisma)),
             observaciones: typeof observaciones === 'string' ? observaciones.slice(0, 500) : null,
             registradaPor: actorDe(request),

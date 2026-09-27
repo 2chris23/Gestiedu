@@ -284,7 +284,7 @@ describe('Fase 3.5-C — Cierre de ciclo, prosecución y comparación', () => {
         expect(ana!.suggestedStatus).toBe('NO_PROMOVIDO');
     });
 
-    it('3. El admin edita la sugerencia → el resultado final respeta su decisión', async () => {
+    it('3. El admin edita la sugerencia → el resultado final respeta su decisión (con motivo)', async () => {
         await createStudentWithScores('Ana R', 'FEMENINO', [15, 15, 5]); // sugerido: con pendientes
         await createStudentWithScores('Luis M', 'MASCULINO', [5, 5, 5]); // sugerido: no promocionado
         await flushGrades();
@@ -293,13 +293,23 @@ describe('Fase 3.5-C — Cierre de ciclo, prosecución y comparación', () => {
         const luis = prepared.suggestions.find(s => s.name.startsWith('Luis'));
         const ana = prepared.suggestions.find(s => s.name.startsWith('Ana'));
 
+        // Distinto de lo sugerido sin decir por qué: no se cierra (CIERRE-*).
+        await expect(
+            confirmClose(
+                prisma,
+                { academicYearId: year.id, decisions: [{ studentId: luis!.studentId, finalResult: 'PROMOVIDO_CON_PENDIENTES' }], strategyKey: 'manual' },
+                'institute'
+            )
+        ).rejects.toMatchObject({ code: 'FALTA_EL_MOTIVO' });
+
         const confirmed = await confirmClose(
             prisma,
             {
                 academicYearId: year.id,
                 decisions: [
-                    { studentId: luis!.studentId, finalResult: 'PROMOVIDO_CON_PENDIENTES' }, // el admin lo promueve igual
-                    { studentId: ana!.studentId, finalResult: 'PROMOVIDO' },
+                    // el admin lo promueve igual
+                    { studentId: luis!.studentId, finalResult: 'PROMOVIDO_CON_PENDIENTES', motivo: 'Enfermedad certificada en el 3er lapso' },
+                    { studentId: ana!.studentId, finalResult: 'PROMOVIDO', motivo: 'Aprobó la materia en el plan de recuperación' },
                 ],
                 strategyKey: 'manual',
             },
@@ -311,6 +321,8 @@ describe('Fase 3.5-C — Cierre de ciclo, prosecución y comparación', () => {
 
         const dbRecord = await prisma.academicRecord.findFirst({ where: { studentId: luis!.studentId } });
         expect(dbRecord!.finalResult).toBe('PROMOVIDO_CON_PENDIENTES');
+        expect(dbRecord!.condicionSugerida).toBe('NO_PROMOVIDO');
+        expect(dbRecord!.motivo).toBe('Enfermedad certificada en el 3er lapso');
     });
 
     it('4. Las 4 estrategias de asignación de sección producen sugerencias razonables', async () => {

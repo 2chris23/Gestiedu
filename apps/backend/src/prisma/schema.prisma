@@ -285,6 +285,10 @@ model User {
   notasDeRevision         NotaDeRevision[]         @relation("RevisionAlumno")
   apreciaciones           Apreciacion[]            @relation("ApreciacionAlumno")
   apreciacionesPuestas    Apreciacion[]            @relation("ApreciacionPuestaPor")
+  decisionesDeFinDeAno    DecisionDeFinDeAno[]     @relation("DecisionFinDeAnoAlumno")
+  materiasPendientes      MateriaPendiente[]       @relation("PendienteAlumno")
+  pendientesQueEvalua     MateriaPendiente[]       @relation("PendienteProfesor")
+  evaluacionesDePendiente EvaluacionDePendiente[]  @relation("EvaluacionPendientePuestaPor")
   aparatoDeAsistencia     AparatoDelAlumno?
 
   // Notificaciones
@@ -396,6 +400,9 @@ model AcademicYear {
   schoolEvents     SchoolEvent[]
   notasDeRevision  NotaDeRevision[]
   apreciaciones    Apreciacion[]
+  decisionesDeFinDeAno DecisionDeFinDeAno[]
+  pendientesQueNacieron MateriaPendiente[] @relation("PendienteOrigen")
+  pendientesQueSeCursan MateriaPendiente[] @relation("PendienteCiclo")
   institute        Institute?           @relation(fields: [instituteId], references: [id])
   instituteId      String?
 
@@ -450,6 +457,7 @@ model Subject {
 
   // Relaciones
   apreciaciones      Apreciacion[]
+  materiasPendientes MateriaPendiente[]
   classroomSubjects  ClassroomSubject[]
   activities         Activity[]
   grades             Grade[]
@@ -1100,6 +1108,15 @@ model AcademicRecord {
   subjectGrades       Json?
   assignedClassroomId String?
 
+  /// Lo que sugería el sistema con las reglas del liceo (para ver qué cambió el admin).
+  condicionSugerida String?
+  /// Por qué el admin decidió distinto de la sugerencia, o por qué lo corrigió después.
+  motivo            String?
+  decididaPor       String?
+  corregidoEl       DateTime?
+  /// Solo en el último año: EGRESADO, o PENDIENTE (le faltan materias o la labor social).
+  egreso            String?
+
   createdAt DateTime @default(now())
 
   @@unique([studentId, academicYearId])
@@ -1127,6 +1144,9 @@ model NotaDeRevision {
   fecha         DateTime @db.Date
   registradaPor String
   observaciones String?
+  /// Las partes de la revisión con su peso y su nota, si el liceo la divide
+  /// (p. ej. 30 % actividades + 70 % prueba): [{ nombre, peso, nota }].
+  componentes   Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1134,6 +1154,94 @@ model NotaDeRevision {
   @@unique([studentId, subjectId, academicYearId])
   @@index([academicYearId])
   @@map("notas_de_revision")
+}
+
+/// Lo que decide el admin para un alumno al cerrar el año, cuando no es lo que
+/// sugiere el sistema: con su motivo, que queda anotado. Sin fila, manda la
+/// sugerencia. Ver `services/fin-de-ano.service.ts`.
+model DecisionDeFinDeAno {
+  id String @id @default(cuid())
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  studentId String
+  student   User   @relation("DecisionFinDeAnoAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  /// PROMOVIDO | PROMOVIDO_CON_PENDIENTES | NO_PROMOVIDO
+  condicion   String
+  motivo      String
+  decididaPor String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([academicYearId, studentId])
+  @@map("decisiones_de_fin_de_ano")
+}
+
+/// LA MATERIA PENDIENTE: la que el alumno reprobó y arrastra al año siguiente.
+/// La evalúa un profesor en varios momentos (`EvaluacionDePendiente`); el
+/// cierre de ese año la tiene en cuenta. Ver `services/materias-pendientes.service.ts`.
+model MateriaPendiente {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("PendienteAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  /// El año (grado) en que la reprobó y el año escolar.
+  gradoDeOrigen   Int
+  cicloDeOrigenId String
+  cicloDeOrigen   AcademicYear @relation("PendienteOrigen", fields: [cicloDeOrigenId], references: [id], onDelete: Cascade)
+  /// La definitiva con que la reprobó (o la de la revisión).
+  notaDeOrigen    Float?
+
+  /// El año escolar en que se cursa.
+  cicloId String
+  ciclo   AcademicYear @relation("PendienteCiclo", fields: [cicloId], references: [id], onDelete: Cascade)
+
+  /// Quién la evalúa: por defecto el que da esa materia en ese grado este año.
+  profesorId String?
+  profesor   User?   @relation("PendienteProfesor", fields: [profesorId], references: [id], onDelete: SetNull)
+
+  /// PENDIENTE | APROBADA | NO_APROBADA
+  estado    String @default("PENDIENTE")
+  notaFinal Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  evaluaciones EvaluacionDePendiente[]
+
+  @@unique([studentId, subjectId, cicloDeOrigenId, cicloId])
+  @@index([cicloId])
+  @@index([profesorId])
+  @@map("materias_pendientes")
+}
+
+/// Cada momento en que se evalúa una materia pendiente (4 por defecto).
+model EvaluacionDePendiente {
+  id String @id @default(cuid())
+
+  materiaPendienteId String
+  materiaPendiente   MateriaPendiente @relation(fields: [materiaPendienteId], references: [id], onDelete: Cascade)
+
+  momento       Int
+  nota          Float
+  fecha         DateTime @db.Date
+  observaciones String?
+
+  registradaPorId String?
+  registradaPor   User?   @relation("EvaluacionPendientePuestaPor", fields: [registradaPorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([materiaPendienteId, momento])
+  @@map("evaluaciones_de_pendientes")
 }
 
 /// La apreciación de un alumno en una materia cualitativa: por lapso o la

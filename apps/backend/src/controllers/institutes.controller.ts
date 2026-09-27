@@ -11,6 +11,7 @@ import { guardarArchivoDelLiceo } from '../services/archivos-del-liceo.service';
 import { limpiarDatosDeDocumentos } from '../services/constancias.service';
 import { revisarDatosDelPlantel, membreteDelLiceo } from '../services/datos-del-plantel.service';
 import { esListaDeApreciaciones } from '../services/apreciaciones.service';
+import { esReglasDeRevision, esUltimoAnoConPendientes, esPendienteNoAprobada, esReglasDePendientes } from '../services/promotion/reglas-del-fin-de-ano';
 import {
   erroresDelHorario,
   franjasDelTurno,
@@ -459,6 +460,27 @@ export async function updateAcademicConfigEndpoint(request: FastifyRequest, repl
         });
       }
       patch.apreciaciones = body.apreciaciones;
+    }
+    // Las reglas del fin del año (`reglas-del-fin-de-ano.ts`). Mal hechas, se
+    // rechazan con el motivo: dejarían el cierre sin saber qué hacer.
+    const mal = (error: string, code: string) => reply.status(400).send({ error, code });
+    if (body.revision !== undefined) {
+      if (!esReglasDeRevision(body.revision)) {
+        return mal('La revisión: de 1 a 6 partes con nombre distinto, pesos enteros que suman 100, y un tope de 1 a 20 materias o ninguno.', 'REVISION_INVALIDA');
+      }
+      patch.revision = body.revision;
+    }
+    if (body.ultimoAnoConPendientes !== undefined) {
+      if (!esUltimoAnoConPendientes(body.ultimoAnoConPendientes)) return mal('Último año con pendientes: REPITE, SOLO_PENDIENTES o EGRESA.', 'REGLA_INVALIDA');
+      patch.ultimoAnoConPendientes = body.ultimoAnoConPendientes;
+    }
+    if (body.pendienteNoAprobada !== undefined) {
+      if (!esPendienteNoAprobada(body.pendienteNoAprobada)) return mal('Pendiente no aprobada: REPITE o SIGUE_PENDIENTE.', 'REGLA_INVALIDA');
+      patch.pendienteNoAprobada = body.pendienteNoAprobada;
+    }
+    if (body.pendientes !== undefined) {
+      if (!esReglasDePendientes(body.pendientes)) return mal('Materias pendientes: de 1 a 8 momentos, y MOMENTO_APROBADO o PROMEDIO.', 'REGLA_INVALIDA');
+      patch.pendientes = body.pendientes;
     }
     const instId = getInstId(request);
     const config = await updateAcademicConfig(instId, patch);

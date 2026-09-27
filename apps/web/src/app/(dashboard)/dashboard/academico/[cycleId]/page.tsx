@@ -316,7 +316,7 @@ export default function AcademicYearDashboard() {
                                         <Pencil className="mr-2 h-4 w-4" /> Editar el ciclo
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
-                                        onSelect={() => router.push(`/dashboard/academico/${year.name}/promocion`)}
+                                        onSelect={() => router.push(`/dashboard/academico/${year.name}/cierre`)}
                                         className="text-rose-700 focus:text-rose-700"
                                     >
                                         <GraduationCap className="mr-2 h-4 w-4" /> Finalizar el ciclo escolar

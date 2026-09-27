@@ -59,7 +59,10 @@ function isSuperAdminRequest(hostname: string, pathname: string): boolean {
  */
 type Rol = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'TUTOR';
 
-const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[] }> = [
+const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[]; patron?: RegExp }> = [
+    // El fin del año escolar y colocar a los alumnos: solo el admin, aunque el
+    // profesor entre a Académico. Van primero: se usa la primera que encaja.
+    { prefijo: '/dashboard/academico/*/cierre', roles: ['ADMIN'], patron: /^\/dashboard\/academico\/[^/]+\/(cierre|promocion)(\/|$)/ },
     { prefijo: '/dashboard/usuarios', roles: ['ADMIN'] },
     { prefijo: '/dashboard/configuracion', roles: ['ADMIN'] },
     { prefijo: '/dashboard/eventos', roles: ['ADMIN'] },
@@ -105,8 +108,8 @@ function rolDeLaSesion(request: NextRequest): Rol | null {
 /** Redirige al inicio si el rol no puede abrir esa pantalla. */
 function pantallaProhibida(request: NextRequest): NextResponse | null {
     const { pathname } = request.nextUrl;
-    const regla = PANTALLAS_POR_ROL.find(
-        (r) => pathname === r.prefijo || pathname.startsWith(r.prefijo + '/')
+    const regla = PANTALLAS_POR_ROL.find((r) =>
+        r.patron ? r.patron.test(pathname) : pathname === r.prefijo || pathname.startsWith(r.prefijo + '/')
     );
     if (!regla) return null;
 

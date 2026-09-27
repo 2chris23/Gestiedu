@@ -27,7 +27,19 @@ interface Suggestion {
     pendingCount: number;
     finalAverage: number;
     suggestedStatus: 'PROMOVIDO' | 'PROMOVIDO_CON_PENDIENTES' | 'NO_PROMOVIDO';
+    /** Lo que decidió el admin en el paso 4 (con su motivo) y la condición que vale. */
+    decision?: { condicion: string; motivo: string } | null;
+    condicionFinal?: 'PROMOVIDO' | 'PROMOVIDO_CON_PENDIENTES' | 'NO_PROMOVIDO';
+    motivoDeLaSugerencia?: string;
 }
+
+/**
+ * El grado al que va según la condición: repite el suyo; el del último año que
+ * no repite no va a ninguna sección (egresa o solo cursa sus pendientes).
+ * La misma cuenta que el servidor (`gradoDeDestino`).
+ */
+const gradoDestino = (s: { gradeLevel: number; isLastGrade: boolean }, condicion: string): number | null =>
+    condicion === 'NO_PROMOVIDO' ? s.gradeLevel : s.isLastGrade ? null : s.gradeLevel + 1;
 
 interface DestSection {
     id: string;
@@ -124,6 +136,10 @@ export default function PromotionPage() {
     // Asignaciones por estudiante
     const [assignments, setAssignments] = useState<Record<string, StudentAssignment>>({});
     const [finalResults, setFinalResults] = useState<Record<string, string>>({});
+    // Por qué el admin decide distinto de lo sugerido (obligatorio; queda en el expediente).
+    const [motivos, setMotivos] = useState<Record<string, string>>({});
+    // Sin año siguiente no se cierra: se crea en el paso 5 del fin de año.
+    const [nextYear, setNextYear] = useState<{ id: string; name: string } | null>(null);
 
     // Filtro por condición académica en Nivel 3
     const [statusFilter, setStatusFilter] = useState<'ALL' | 'PROMOVIDO' | 'PROMOVIDO_CON_PENDIENTES' | 'NO_PROMOVIDO'>('ALL');
@@ -175,6 +191,7 @@ export default function PromotionPage() {
             setSuggestions(loadedSuggestions);
             setDestYears(context.destinationYears || []);
             setSuggestedNextYearName(context.suggestedNextYearName || '2027-2028');
+            setNextYear(context.nextYear ?? null);
             setStrategies(strat || []);
 
             // Inicializar asignaciones lógicas iniciales
@@ -182,8 +199,8 @@ export default function PromotionPage() {
             const initialResults: Record<string, string> = {};
 
             loadedSuggestions.forEach((s: Suggestion) => {
-                initialResults[s.studentId] = s.suggestedStatus;
-                if (s.isLastGrade) {
+                initialResults[s.studentId] = s.condicionFinal ?? s.suggestedStatus;
+                if (s.defaultTargetGrade === null) {
                     initialAssignments[s.studentId] = {
                         action: 'GRADUATE',
                         targetGrade: null,
@@ -346,7 +363,8 @@ export default function PromotionPage() {
             (res.assignments || []).forEach((a: any) => {
                 const s = suggestions.find(st => st.studentId === a.studentId);
                 if (s) {
-                    if (s.isLastGrade) {
+                    const destino = gradoDestino(s, finalResults[s.studentId] || s.suggestedStatus);
+                    if (destino === null) {
                         nextAssignments[a.studentId] = {
                             action: 'GRADUATE',
                             targetGrade: null,
@@ -354,11 +372,12 @@ export default function PromotionPage() {
                             classroomId: null,
                         };
                     } else {
+                        const deEseGrado = destYears.some(y => y.sections.some(sec => sec.id === a.sectionId && sec.grade === destino));
                         nextAssignments[a.studentId] = {
                             action: 'ENROLL',
-                            targetGrade: a.targetGrade ?? s.defaultTargetGrade,
+                            targetGrade: destino,
                             targetSectionLetter: a.targetSectionLetter || s.currentSection || 'A',
-                            classroomId: a.sectionId || null,
+                            classroomId: deEseGrado ? a.sectionId : null,
                         };
                     }
                 }
@@ -379,18 +398,25 @@ export default function PromotionPage() {
             toast.error(`Escribe "${yearName}" exactamente para confirmar`);
             return;
         }
+        const sinMotivo = suggestions.filter(s => faltaElMotivo(s));
+        if (sinMotivo.length > 0) {
+            toast.error(`Falta el motivo de ${sinMotivo.length === 1 ? sinMotivo[0].name : `${sinMotivo.length} alumnos`}: decides distinto de lo que sugiere el sistema.`);
+            return;
+        }
         setConfirming(true);
         try {
             const decisions = suggestions.map(s => {
                 const asg = assignments[s.studentId] || {
-                    action: s.isLastGrade ? 'GRADUATE' : 'ENROLL',
+                    action: s.defaultTargetGrade === null ? 'GRADUATE' : 'ENROLL',
                     targetGrade: s.defaultTargetGrade,
                     targetSectionLetter: s.currentSection || 'A',
                     classroomId: null,
                 };
+                const finalResult = finalResults[s.studentId] || s.suggestedStatus;
                 return {
                     studentId: s.studentId,
-                    finalResult: finalResults[s.studentId] || s.suggestedStatus,
+                    finalResult,
+                    motivo: motivos[s.studentId]?.trim() || (s.decision?.condicion === finalResult ? s.decision.motivo : undefined),
                     action: asg.action,
                     targetGrade: asg.targetGrade,
                     targetSectionLetter: asg.targetSectionLetter,
@@ -398,22 +424,33 @@ export default function PromotionPage() {
                 };
             });
 
-            await academicYearService.confirmClose(
-                yearId,
-                decisions,
-                'manual',
-                undefined,
-                true, // autoCreateNextYear
-                suggestedNextYearName
-            );
+            await academicYearService.confirmClose(yearId, decisions, 'manual');
 
             toast.success(`¡Ciclo escolar ${yearName} finalizado exitosamente!`);
-            router.push(`/dashboard/academico`);
+            router.push(`/dashboard/academico/${yearName}/cierre`);
         } catch (e: any) {
             toast.error(e?.response?.data?.error || e?.message || 'Error al confirmar el cierre');
         } finally {
             setConfirming(false);
         }
+    };
+
+    /** Distinto de lo sugerido y sin motivo (ni escrito aquí ni guardado en el paso 4). */
+    const faltaElMotivo = (s: Suggestion) => {
+        const fr = finalResults[s.studentId] || s.suggestedStatus;
+        const accion = assignments[s.studentId]?.action;
+        if (accion === 'RETIRE_KEEP_HISTORY' || accion === 'RETIRE_DELETE') return false;
+        if (fr === s.suggestedStatus) return false;
+        return !(motivos[s.studentId]?.trim() || (s.decision?.condicion === fr && s.decision.motivo));
+    };
+
+    /** Cambiar la condición mueve también su destino (repite, pasa o egresa). */
+    const cambiarCondicion = (s: Suggestion, condicion: string) => {
+        setFinalResults(prev => ({ ...prev, [s.studentId]: condicion }));
+        const destino = gradoDestino(s, condicion);
+        updateStudentAssignment(s.studentId, destino === null
+            ? { action: 'GRADUATE', targetGrade: null, targetSectionLetter: '', classroomId: null }
+            : { action: 'ENROLL', targetGrade: destino, targetSectionLetter: s.currentSection || 'A', classroomId: null });
     };
 
     // Actualizar asignación individual de alumno
@@ -475,7 +512,7 @@ export default function PromotionPage() {
                     <div className="flex items-center justify-between gap-4 flex-wrap">
                         <div className="flex items-center gap-3">
                             <button
-                                onClick={() => router.push(`/dashboard/academico/${yearName}`)}
+                                onClick={() => router.push(`/dashboard/academico/${yearName}/cierre`)}
                                 className="-ml-2.5 flex h-11 w-11 shrink-0 items-center justify-center hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
                                 title="Volver al panel académico"
                                 aria-label="Volver al ciclo"
@@ -484,7 +521,7 @@ export default function PromotionPage() {
                             </button>
                             <div>
                                 <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">
-                                    Promoción Escolar — Ciclo {yearName}
+                                    Colocar y cerrar — Ciclo {yearName}
                                 </h1>
                                 <p className="text-sm text-gray-500">
                                     {suggestions.length} estudiantes matriculados · <strong className="text-indigo-600">{allAssignedCount}</strong> con destino asignado
@@ -494,12 +531,23 @@ export default function PromotionPage() {
 
                         <button
                             onClick={() => setConfirmOpen(true)}
-                            className="px-5 py-2.5 text-sm font-bold rounded-xl shadow-sm transition-all flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                            disabled={!nextYear}
+                            className="min-h-[44px] px-5 py-2.5 text-sm font-bold rounded-xl shadow-sm transition-all flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
                         >
                             <CheckCircle2 className="w-4 h-4" />
                             Confirmar y Cerrar Ciclo
                         </button>
                     </div>
+
+                    {!nextYear && (
+                        <p role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            Falta el año escolar siguiente. Créalo en el{' '}
+                            <a href={`/dashboard/academico/${yearName}/cierre`} className="font-semibold underline">
+                                paso 5 del fin de año
+                            </a>{' '}
+                            (con el calendario del MPPE y las secciones de este año) y vuelve aquí para colocar a los alumnos.
+                        </p>
+                    )}
 
                     {/* Barra de Estrategias Automáticas */}
                     <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-2 flex-wrap">
@@ -666,7 +714,7 @@ export default function PromotionPage() {
                         <div className="divide-y divide-gray-100">
                             {level3Students.map(s => {
                                 const currentAsg = assignments[s.studentId] || {
-                                    action: s.isLastGrade ? 'GRADUATE' : 'ENROLL',
+                                    action: s.defaultTargetGrade === null ? 'GRADUATE' : 'ENROLL',
                                     targetGrade: s.defaultTargetGrade,
                                     targetSectionLetter: s.currentSection || 'A',
                                     classroomId: null,
@@ -674,7 +722,7 @@ export default function PromotionPage() {
 
                                 const isMale = s.gender === 'MASCULINO';
                                 const isRetired = currentAsg.action === 'RETIRE_KEEP_HISTORY' || currentAsg.action === 'RETIRE_DELETE';
-                                const isGraduate = s.isLastGrade || currentAsg.action === 'GRADUATE';
+                                const isGraduate = currentAsg.action === 'GRADUATE';
                                 const hasPending = s.failedSubjects.length > 0;
                                 const conRevision = s.subjectGrades.some(g => g.revision != null);
 
@@ -746,18 +794,30 @@ export default function PromotionPage() {
                                         </div>
 
                                         {/* Selector de Estado Sugerido */}
-                                        {!isRetired && !isGraduate && (
-                                            <div className="flex items-center gap-2">
-                                                <span className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${STATUS_COLOR[s.suggestedStatus]}`}>
-                                                    {STATUS_LABEL[s.suggestedStatus]}
-                                                </span>
-                                                <Lista
-                                                    tamano="chica"
-                                                    etiqueta="Resultado evaluativo final"
-                                                    valor={finalResults[s.studentId] || s.suggestedStatus}
-                                                    alCambiar={v => setFinalResults(prev => ({ ...prev, [s.studentId]: v }))}
-                                                    opciones={Object.entries(STATUS_LABEL).map(([k, v]) => ({ valor: k, texto: v }))}
-                                                />
+                                        {!isRetired && (
+                                            <div className="flex flex-col gap-1.5">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${STATUS_COLOR[s.suggestedStatus]}`} title={s.motivoDeLaSugerencia}>
+                                                        {STATUS_LABEL[s.suggestedStatus]}
+                                                    </span>
+                                                    <Lista
+                                                        tamano="chica"
+                                                        etiqueta="Resultado evaluativo final"
+                                                        valor={finalResults[s.studentId] || s.suggestedStatus}
+                                                        alCambiar={v => cambiarCondicion(s, v)}
+                                                        opciones={Object.entries(STATUS_LABEL).map(([k, v]) => ({ valor: k, texto: v }))}
+                                                    />
+                                                </div>
+                                                {(finalResults[s.studentId] || s.suggestedStatus) !== s.suggestedStatus && (
+                                                    <input
+                                                        aria-label={`Motivo de la decisión de ${s.name}`}
+                                                        placeholder="Motivo (obligatorio, queda anotado)"
+                                                        maxLength={500}
+                                                        value={motivos[s.studentId] ?? (s.decision?.condicion === finalResults[s.studentId] ? s.decision.motivo : '')}
+                                                        onChange={e => setMotivos(prev => ({ ...prev, [s.studentId]: e.target.value }))}
+                                                        className={`min-h-[44px] w-full rounded-lg border px-3 text-sm ${faltaElMotivo(s) ? 'border-rose-400 bg-rose-50' : 'border-gray-300'}`}
+                                                    />
+                                                )}
                                             </div>
                                         )}
 
@@ -953,9 +1013,9 @@ export default function PromotionPage() {
                                 Al confirmar, el sistema:
                             </p>
                             <ul className="text-xs text-gray-600 space-y-1.5 list-disc list-inside bg-gray-50 p-3.5 rounded-xl border border-gray-100 font-medium">
-                                <li>Creará automáticamente el ciclo escolar siguiente (<strong>{suggestedNextYearName}</strong>) y las secciones destino.</li>
-                                <li>Promocionará a los estudiantes a sus años respectivos (1º → 2º, 2º → 3º).</li>
-                                <li>Registrará a los estudiantes de último año como <strong>Egresados</strong> y sellará su récord histórico.</li>
+                                <li>Matriculará a los estudiantes en <strong>{nextYear?.name ?? suggestedNextYearName}</strong>: el que pasa, en el año siguiente; el que repite, en el suyo.</li>
+                                <li>Creará las <strong>materias pendientes</strong> de quien pasa con pendientes, con el profesor que las evalúa.</li>
+                                <li>Registrará como <strong>Egresados</strong> a los de último año que aprobaron, y sellará el expediente de cada uno con su condición (y el motivo, si se cambió).</li>
                                 <li>Marcará el ciclo <strong>{yearName}</strong> como finalizado.</li>
                             </ul>
 

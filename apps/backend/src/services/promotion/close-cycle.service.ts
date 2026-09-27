@@ -4,10 +4,29 @@ import { getStrategy, Assignment, StudentForPlacement, SectionOption } from './s
 import { platformPrisma } from '../../config/database';
 import { borrarGuardandoCopia, QuienBorra } from '../../utils/papelera';
 import { apreciacionesFinalesDelCiclo, APRECIACIONES_POR_DEFECTO, esListaDeApreciaciones } from '../apreciaciones.service';
+import { nombreDeLaSeccion, slugDeLaSeccion } from '../../utils/nombre-de-la-seccion';
+import {
+    ReglasDeRevision,
+    ReglasDePendientes,
+    UltimoAnoConPendientes,
+    PendienteNoAprobada,
+    REVISION_POR_DEFECTO,
+    PENDIENTES_POR_DEFECTO,
+    esReglasDeRevision,
+    limpiarReglasDeRevision,
+    esUltimoAnoConPendientes,
+    esPendienteNoAprobada,
+    esReglasDePendientes,
+} from './reglas-del-fin-de-ano';
 
 export interface AcademicConfig {
     notaMinimaAprobatoria: number;
     maxMateriasPendientesParaPromover: number;
+    /**
+     * La forma vieja de `ultimoAnoConPendientes`: `true` se lee como EGRESA
+     * (lo que hacía), `false` como REPITE. Se sigue devolviendo para las
+     * pantallas que la leen.
+     */
     permitePendientesEnUltimoAno: boolean;
     /**
      * A partir de qué porcentaje de asistencia se deja de avisar al representante.
@@ -29,6 +48,11 @@ export interface AcademicConfig {
      * proceso, Iniciado.
      */
     apreciaciones?: string[];
+    /** Las reglas del fin del año (`reglas-del-fin-de-ano.ts`). */
+    revision: ReglasDeRevision;
+    ultimoAnoConPendientes: UltimoAnoConPendientes;
+    pendienteNoAprobada: PendienteNoAprobada;
+    pendientes: ReglasDePendientes;
 }
 
 export type RedondeoDeDefinitivas = 'MPPE' | 'NINGUNO';
@@ -47,6 +71,10 @@ export const DEFAULT_ACADEMIC_CONFIG: AcademicConfig = {
     turnosHabilitados: ['MANANA', 'TARDE'],
     redondeoDeDefinitivas: 'MPPE',
     apreciaciones: APRECIACIONES_POR_DEFECTO,
+    revision: REVISION_POR_DEFECTO,
+    ultimoAnoConPendientes: 'REPITE',
+    pendienteNoAprobada: 'REPITE',
+    pendientes: PENDIENTES_POR_DEFECTO,
 };
 
 /** El porcentaje de asistencia va de 0 a 100 y no admite otra cosa. */
@@ -54,22 +82,33 @@ export function esAsistenciaMinimaValida(valor: unknown): valor is number {
     return typeof valor === 'number' && Number.isFinite(valor) && valor >= 0 && valor <= 100;
 }
 
+/** Lo del último año, leyendo también la forma vieja (el booleano). */
+function ultimoAnoDe(raw: Record<string, unknown>): UltimoAnoConPendientes {
+    if (esUltimoAnoConPendientes(raw.ultimoAnoConPendientes)) return raw.ultimoAnoConPendientes;
+    return raw.permitePendientesEnUltimoAno === true ? 'EGRESA' : 'REPITE';
+}
+
 export async function getAcademicConfig(instituteId: string): Promise<AcademicConfig> {
     const inst = await platformPrisma.institute.findUnique({ where: { id: instituteId }, select: { academicConfig: true } });
     if (!inst) return { ...DEFAULT_ACADEMIC_CONFIG };
-    const raw = (inst.academicConfig || {}) as Partial<AcademicConfig>;
+    const raw = (inst.academicConfig || {}) as Partial<AcademicConfig> & Record<string, unknown>;
     const modalidad = raw.modalidad === 'MEDIA_TECNICA' ? 'MEDIA_TECNICA' : 'MEDIA_GENERAL';
     const defaultMax = modalidad === 'MEDIA_TECNICA' ? 6 : 5;
+    const ultimoAnoConPendientes = ultimoAnoDe(raw);
     return {
         notaMinimaAprobatoria: typeof raw.notaMinimaAprobatoria === 'number' ? raw.notaMinimaAprobatoria : DEFAULT_ACADEMIC_CONFIG.notaMinimaAprobatoria,
         maxMateriasPendientesParaPromover: typeof raw.maxMateriasPendientesParaPromover === 'number' ? raw.maxMateriasPendientesParaPromover : DEFAULT_ACADEMIC_CONFIG.maxMateriasPendientesParaPromover,
-        permitePendientesEnUltimoAno: typeof raw.permitePendientesEnUltimoAno === 'boolean' ? raw.permitePendientesEnUltimoAno : DEFAULT_ACADEMIC_CONFIG.permitePendientesEnUltimoAno,
+        permitePendientesEnUltimoAno: ultimoAnoConPendientes !== 'REPITE',
         asistenciaMinima: esAsistenciaMinimaValida(raw.asistenciaMinima) ? raw.asistenciaMinima : DEFAULT_ACADEMIC_CONFIG.asistenciaMinima,
         modalidad,
         maxGradeLevel: typeof raw.maxGradeLevel === 'number' ? raw.maxGradeLevel : defaultMax,
         turnosHabilitados: Array.isArray(raw.turnosHabilitados) ? raw.turnosHabilitados : DEFAULT_ACADEMIC_CONFIG.turnosHabilitados,
         redondeoDeDefinitivas: esRedondeoValido(raw.redondeoDeDefinitivas) ? raw.redondeoDeDefinitivas : DEFAULT_ACADEMIC_CONFIG.redondeoDeDefinitivas,
         apreciaciones: esListaDeApreciaciones(raw.apreciaciones) ? raw.apreciaciones.map((v) => v.trim()) : [...APRECIACIONES_POR_DEFECTO],
+        revision: esReglasDeRevision(raw.revision) ? limpiarReglasDeRevision(raw.revision) : REVISION_POR_DEFECTO,
+        ultimoAnoConPendientes,
+        pendienteNoAprobada: esPendienteNoAprobada(raw.pendienteNoAprobada) ? raw.pendienteNoAprobada : DEFAULT_ACADEMIC_CONFIG.pendienteNoAprobada,
+        pendientes: esReglasDePendientes(raw.pendientes) ? raw.pendientes : PENDIENTES_POR_DEFECTO,
     };
 }
 
@@ -83,16 +122,28 @@ export async function updateAcademicConfig(instituteId: string, patch: Partial<A
             ?.academicConfig as Record<string, unknown> | null) || {};
     const modalidad = patch.modalidad ?? current.modalidad;
     const defaultMax = modalidad === 'MEDIA_TECNICA' ? 6 : 5;
+    // El booleano viejo, si llega solo, sigue mandando (se traduce).
+    const ultimoAnoConPendientes = esUltimoAnoConPendientes(patch.ultimoAnoConPendientes)
+        ? patch.ultimoAnoConPendientes
+        : typeof patch.permitePendientesEnUltimoAno === 'boolean'
+          ? patch.permitePendientesEnUltimoAno
+              ? 'EGRESA'
+              : 'REPITE'
+          : current.ultimoAnoConPendientes;
     const next: AcademicConfig = {
         notaMinimaAprobatoria: patch.notaMinimaAprobatoria ?? current.notaMinimaAprobatoria,
         maxMateriasPendientesParaPromover: patch.maxMateriasPendientesParaPromover ?? current.maxMateriasPendientesParaPromover,
-        permitePendientesEnUltimoAno: patch.permitePendientesEnUltimoAno ?? current.permitePendientesEnUltimoAno,
+        permitePendientesEnUltimoAno: ultimoAnoConPendientes !== 'REPITE',
         asistenciaMinima: esAsistenciaMinimaValida(patch.asistenciaMinima) ? patch.asistenciaMinima : current.asistenciaMinima,
         modalidad,
         maxGradeLevel: patch.maxGradeLevel ?? current.maxGradeLevel ?? defaultMax,
         turnosHabilitados: patch.turnosHabilitados ?? current.turnosHabilitados,
         redondeoDeDefinitivas: esRedondeoValido(patch.redondeoDeDefinitivas) ? patch.redondeoDeDefinitivas : current.redondeoDeDefinitivas,
         apreciaciones: esListaDeApreciaciones(patch.apreciaciones) ? patch.apreciaciones.map((v) => v.trim()) : current.apreciaciones,
+        revision: esReglasDeRevision(patch.revision) ? limpiarReglasDeRevision(patch.revision) : current.revision,
+        ultimoAnoConPendientes,
+        pendienteNoAprobada: esPendienteNoAprobada(patch.pendienteNoAprobada) ? patch.pendienteNoAprobada : current.pendienteNoAprobada,
+        pendientes: esReglasDePendientes(patch.pendientes) ? patch.pendientes : current.pendientes,
     };
     await platformPrisma.institute.update({
         where: { id: instituteId },
@@ -102,16 +153,36 @@ export async function updateAcademicConfig(instituteId: string, patch: Partial<A
 }
 
 export type SuggestionStatus = 'PROMOVIDO' | 'PROMOVIDO_CON_PENDIENTES' | 'NO_PROMOVIDO';
+export const CONDICIONES: SuggestionStatus[] = ['PROMOVIDO', 'PROMOVIDO_CON_PENDIENTES', 'NO_PROMOVIDO'];
+export function esCondicion(valor: unknown): valor is SuggestionStatus {
+    return typeof valor === 'string' && (CONDICIONES as string[]).includes(valor);
+}
 
 /**
  * Lo que le toca al alumno según cuántas materias reprobó y las reglas del
  * liceo. La usan el cierre y el resumen final, para que digan lo mismo.
+ *
+ *   - sin reprobadas: promovido;
+ *   - más que el tope: no promovido (repite);
+ *   - en el último año, según `ultimoAnoConPendientes`: REPITE (lo del MPPE)
+ *     o con pendientes (SOLO_PENDIENTES o EGRESA, que el cierre trata distinto).
  */
 export function condicionSugerida(pendientes: number, esUltimoAno: boolean, config: AcademicConfig): SuggestionStatus {
     if (pendientes === 0) return 'PROMOVIDO';
-    if (esUltimoAno && !config.permitePendientesEnUltimoAno) return 'NO_PROMOVIDO';
-    if (pendientes <= config.maxMateriasPendientesParaPromover) return 'PROMOVIDO_CON_PENDIENTES';
-    return 'NO_PROMOVIDO';
+    if (pendientes > config.maxMateriasPendientesParaPromover) return 'NO_PROMOVIDO';
+    if (esUltimoAno && config.ultimoAnoConPendientes === 'REPITE') return 'NO_PROMOVIDO';
+    return 'PROMOVIDO_CON_PENDIENTES';
+}
+
+/** El grado al que va el alumno según su condición; null = no va a ninguna sección. */
+export function gradoDeDestino(
+    grado: number,
+    esUltimoAno: boolean,
+    condicion: SuggestionStatus
+): number | null {
+    if (condicion === 'NO_PROMOVIDO') return grado; // repite, también en el último año
+    if (esUltimoAno) return null; // egresa, o solo cursa sus pendientes
+    return grado + 1;
 }
 
 export interface StudentSuggestion {
@@ -144,15 +215,45 @@ export interface StudentSuggestion {
         apreciacion?: string | null;
     }>;
     failedSubjects: Array<{ subjectId?: string; name: string; average: number; revision?: number | null }>;
+    /** Las materias pendientes de años anteriores que cursaba este año. */
+    pendientesArrastradas: Array<{ id: string; subjectId: string; subjectName: string; gradoDeOrigen: number; estado: string }>;
     pendingCount: number;
     finalAverage: number;
     suggestedStatus: SuggestionStatus;
+    /** Por qué sugiere eso, en palabras. */
+    motivoDeLaSugerencia: string;
+    /** Lo que decidió el admin antes de cerrar, si es distinto (con su motivo). */
+    decision: { condicion: SuggestionStatus; motivo: string; decididaPor: string | null } | null;
+    /** La que vale: la del admin o, si no decidió nada, la sugerida. */
+    condicionFinal: SuggestionStatus;
 }
 
 export interface PrepareCloseResult {
     academicYearId: string;
     config: AcademicConfig;
     suggestions: StudentSuggestion[];
+}
+
+function explicar(
+    s: { reprobadas: number; sinAprobar: number; esUltimoAno: boolean; condicion: SuggestionStatus },
+    config: AcademicConfig
+): string {
+    const materias = (n: number) => (n === 1 ? '1 materia' : `${n} materias`);
+    if (s.sinAprobar > 0 && config.pendienteNoAprobada === 'REPITE') {
+        return `No aprobó ${materias(s.sinAprobar)} pendiente${s.sinAprobar === 1 ? '' : 's'} del año anterior.`;
+    }
+    if (s.reprobadas === 0) return s.esUltimoAno ? 'Aprobó todo: egresa.' : 'Aprobó todas las materias.';
+    if (s.condicion === 'NO_PROMOVIDO') {
+        return s.reprobadas > config.maxMateriasPendientesParaPromover
+            ? `${materias(s.reprobadas)} sin aprobar (el tope del liceo es ${config.maxMateriasPendientesParaPromover}).`
+            : `Último año con ${materias(s.reprobadas)} sin aprobar: repite.`;
+    }
+    if (s.esUltimoAno) {
+        return config.ultimoAnoConPendientes === 'EGRESA'
+            ? `Egresa y presenta aparte ${materias(s.reprobadas)} pendiente${s.reprobadas === 1 ? '' : 's'}.`
+            : `No egresa todavía: cursa solo ${materias(s.reprobadas)} pendiente${s.reprobadas === 1 ? '' : 's'}.`;
+    }
+    return `Pasa con ${materias(s.reprobadas)} pendiente${s.reprobadas === 1 ? '' : 's'}.`;
 }
 
 /** 1. Calcula los resultados sugeridos evaluando notas reales y reglas de grado */
@@ -199,6 +300,33 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
     // apreciación final y nada más (CUALI-03).
     const apreciaciones = await apreciacionesFinalesDelCiclo(prisma, academicYearId);
 
+    /**
+     * LOS LAPSOS DE ESTE AÑO, NO LOS DE «LA INSCRIPCIÓN ACTIVA»
+     *
+     * Sin lapsos, el promedio del alumno busca los de su inscripción activa,
+     * y un año cerrado no desactiva la suya: el alumno que ya pasó a 2do tiene
+     * dos, y la definitiva de 2do salía con las notas de 1ero (CIERRE-10).
+     */
+    const lapsosDelAno: string[] = (
+        await prisma.period.findMany({ where: { academicYearId }, select: { id: true } })
+    ).map((p: any) => p.id);
+
+    // Lo que decidió el admin antes de cerrar (paso 4), con su motivo.
+    const decisiones = new Map<string, any>(
+        (await prisma.decisionDeFinDeAno.findMany({ where: { academicYearId } })).map((d: any) => [d.studentId, d])
+    );
+
+    // Las materias pendientes de años anteriores que se cursaban en este.
+    const arrastradas = new Map<string, StudentSuggestion['pendientesArrastradas']>();
+    for (const p of await prisma.materiaPendiente.findMany({
+        where: { cicloId: academicYearId },
+        select: { id: true, studentId: true, subjectId: true, gradoDeOrigen: true, estado: true, subject: { select: { name: true } } },
+    })) {
+        const suyas = arrastradas.get(p.studentId) ?? [];
+        suyas.push({ id: p.id, subjectId: p.subjectId, subjectName: p.subject.name, gradoDeOrigen: p.gradoDeOrigen, estado: p.estado });
+        arrastradas.set(p.studentId, suyas);
+    }
+
     const suggestions: StudentSuggestion[] = [];
     const chunkSize = 25;
     for (let i = 0; i < enrollments.length; i += chunkSize) {
@@ -222,7 +350,7 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                         // La definitiva, con el redondeo del liceo (MPPE por defecto): un
                         // 9,5 es un 10 aprobado, no una materia pendiente (RED-01…04).
                         const { promedio: avg, conNotas } = await gradesService.promedioDeLaMateria(
-                            prisma, enr.studentId, cs.subjectId, undefined, undefined, config.redondeoDeDefinitivas
+                            prisma, enr.studentId, cs.subjectId, undefined, lapsosDelAno, config.redondeoDeDefinitivas
                         );
                         const revision = revisiones.get(`${enr.studentId}|${cs.subjectId}`);
                         const usaRevision = conNotas && avg < config.notaMinimaAprobatoria && revision !== undefined;
@@ -243,7 +371,6 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                 // miraba `average > 0`, y el alumno con todo en 0 —el que no
                 // entregó nada— salía promovido sin pendientes (CERO-03).
                 const failed = subjectGrades.filter(sg => sg.conNotas && sg.average < config.notaMinimaAprobatoria);
-                const pendingCount = failed.length;
                 const graded = subjectGrades.filter(sg => sg.conNotas);
                 const finalAverage = graded.length > 0
                     ? Math.round((graded.reduce((a, b) => a + b.average, 0) / graded.length) * 100) / 100
@@ -252,16 +379,21 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                 const ultimoAno = config.maxGradeLevel ?? (config.modalidad === 'MEDIA_TECNICA' ? 6 : 5);
                 const isLastGrade = classroom.grade >= ultimoAno;
 
-                const suggestedStatus = condicionSugerida(pendingCount, isLastGrade, config);
+                // Las pendientes de antes que no aprobó: o no se promueve (lo
+                // del MPPE) o se arrastran y cuentan en el tope.
+                const deAntes = arrastradas.get(enr.studentId) ?? [];
+                const sinAprobar = deAntes.filter((p) => p.estado !== 'APROBADA').length;
+                const pendingCount = failed.length + (config.pendienteNoAprobada === 'SIGUE_PENDIENTE' ? sinAprobar : 0);
+                const suggestedStatus: SuggestionStatus =
+                    sinAprobar > 0 && config.pendienteNoAprobada === 'REPITE'
+                        ? 'NO_PROMOVIDO'
+                        : condicionSugerida(pendingCount, isLastGrade, config);
 
-                let defaultTargetGrade: number | null = null;
-                if (isLastGrade) {
-                    defaultTargetGrade = null; // Egresado
-                } else if (suggestedStatus === 'NO_PROMOVIDO') {
-                    defaultTargetGrade = classroom.grade; // Repite en su mismo año
-                } else {
-                    defaultTargetGrade = classroom.grade + 1; // Pasa al siguiente año
-                }
+                const guardada = decisiones.get(enr.studentId);
+                const decision = guardada && esCondicion(guardada.condicion)
+                    ? { condicion: guardada.condicion as SuggestionStatus, motivo: guardada.motivo, decididaPor: guardada.decididaPor ?? null }
+                    : null;
+                const condicionFinal = decision?.condicion ?? suggestedStatus;
 
                 return {
                     studentId: enr.studentId,
@@ -271,14 +403,21 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                     currentShift: classroom.shift || 'MANANA',
                     gradeLevel: classroom.grade,
                     isLastGrade,
-                    defaultTargetGrade,
+                    defaultTargetGrade: gradoDeDestino(classroom.grade, isLastGrade, condicionFinal),
                     defaultTargetSection: classroom.section,
                     defaultTargetShift: classroom.shift || 'MANANA',
                     subjectGrades,
                     failedSubjects: failed.map(f => ({ subjectId: f.subjectId, name: f.subjectName, average: f.average, revision: f.revision ?? null })),
+                    pendientesArrastradas: deAntes,
                     pendingCount,
                     finalAverage,
                     suggestedStatus,
+                    motivoDeLaSugerencia: explicar(
+                        { reprobadas: failed.length, sinAprobar, esUltimoAno: isLastGrade, condicion: suggestedStatus },
+                        config
+                    ),
+                    decision,
+                    condicionFinal,
                 };
             })
         );
@@ -291,6 +430,8 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
 export interface CloseDecision {
     studentId: string;
     finalResult: SuggestionStatus;
+    /** Obligatorio si `finalResult` no es lo que sugiere el sistema (y no se guardó antes). */
+    motivo?: string;
     action?: 'ENROLL' | 'GRADUATE' | 'RETIRE_KEEP_HISTORY' | 'RETIRE_DELETE';
     targetGrade?: number | null;
     assignedClassroomId?: string | null;
@@ -303,15 +444,23 @@ export interface CloseConfirmInput {
     decisions: CloseDecision[];
     strategyKey?: string;
     strategyMode?: string;
+    /** Ya no se usa: el año siguiente se crea en el paso 5 (`fin-de-ano.service`). */
     autoCreateNextYear?: boolean;
     nextYearName?: string;
+    /** Quién cierra (para el expediente). */
+    quienCierra?: string;
 }
 
 export interface CloseConfirmResult {
     closed: boolean;
     records: Array<{ studentId: string; finalResult: string; assignedClassroomId: string | null }>;
     placements: Assignment[];
+    /** Materias pendientes creadas en el año siguiente (nuevas y arrastradas). */
+    pendientesCreadas: number;
 }
+
+const conflicto = (mensaje: string, code: string, extra: Record<string, unknown> = {}) =>
+    Object.assign(new Error(mensaje), { code, statusCode: 409, ...extra });
 
 /** Lo que queda de cada materia en el expediente del alumno. */
 function notaDelExpediente(sg: StudentSuggestion['subjectGrades'][number]) {
@@ -324,7 +473,54 @@ function notaDelExpediente(sg: StudentSuggestion['subjectGrades'][number]) {
     };
 }
 
-/** 2. Ejecución atómica de Cierre de Ciclo Escolar */
+/** El año escolar siguiente: el primero que empieza después de este. */
+export async function anoSiguiente(prisma: any, academicYearId: string) {
+    const actual = await prisma.academicYear.findUnique({ where: { id: academicYearId }, select: { startDate: true } });
+    if (!actual) return null;
+    return prisma.academicYear.findFirst({
+        where: { startDate: { gt: actual.startDate } },
+        orderBy: { startDate: 'asc' },
+    });
+}
+
+/**
+ * Quién evalúa una materia pendiente: el profesor que da esa materia en ese
+ * grado el año en que se cursa (de la misma sección si puede ser). El admin
+ * lo cambia después (`materias-pendientes.service`).
+ */
+export async function profesorParaLaPendiente(
+    prisma: any,
+    cicloId: string,
+    grado: number,
+    subjectId: string,
+    seccion?: string | null
+): Promise<string | null> {
+    const candidatas = await prisma.classroomSubject.findMany({
+        where: { subjectId, teacherId: { not: null }, classroom: { academicYearId: cicloId, grade: grado } },
+        select: { teacherId: true, classroom: { select: { section: true } } },
+    });
+    const misma = candidatas.find((c: any) => seccion && c.classroom.section === seccion);
+    return (misma ?? candidatas[0])?.teacherId ?? null;
+}
+
+/**
+ * 2. EL CIERRE, EN UNA SOLA TRANSACCIÓN
+ *
+ * Escribe el expediente de cada alumno, lo matricula en el año siguiente,
+ * crea sus materias pendientes y marca a los que egresan. Lo que cambió
+ * (MAPA_DE_CALCULOS §10, pruebas CIERRE-*):
+ *
+ *   - **Ya no crea el año siguiente solo** (con un lapso de 90 días y fechas
+ *     inventadas): sin año siguiente no se cierra (409 `SIN_ANO_SIGUIENTE`).
+ *     Se crea en el paso 5, con el calendario del MPPE y la estructura de este.
+ *   - Si falta una sección de destino, se crea copiando la de este año
+ *     (capacidad, materias y horas), no con valores fijos.
+ *   - Una condición distinta de la sugerida lleva **motivo** (400
+ *     `FALTA_EL_MOTIVO`); queda en el expediente.
+ *   - El de 5to que no aprueba repite 5to (antes egresaba igual).
+ *   - Las pendientes son registros de verdad (`MateriaPendiente`), y las del
+ *     año anterior sin aprobar se arrastran con su historia.
+ */
 export async function confirmClose(
     prisma: any,
     input: CloseConfirmInput,
@@ -334,6 +530,24 @@ export async function confirmClose(
     // 1. Preparar sugerencias y cálculos fuera de la transacción para no bloquear el pool
     const prepared = await prepareClose(prisma, input.academicYearId, instituteId);
     const config = prepared.config;
+    const decisionById = new Map(input.decisions.map(d => [d.studentId, d]));
+
+    // Una condición distinta de la sugerida, sin motivo, no se acepta.
+    const sinMotivo: string[] = [];
+    for (const s of prepared.suggestions) {
+        const d = decisionById.get(s.studentId);
+        if (d?.action === 'RETIRE_DELETE' || d?.action === 'RETIRE_KEEP_HISTORY') continue;
+        const condicion = d?.finalResult ?? s.condicionFinal;
+        if (condicion === s.suggestedStatus) continue;
+        const motivo = d?.motivo?.trim() || (s.decision?.condicion === condicion ? s.decision.motivo : '');
+        if (!motivo) sinMotivo.push(s.name);
+    }
+    if (sinMotivo.length > 0) {
+        throw Object.assign(
+            new Error(`Falta el motivo de la decisión distinta de la sugerida: ${sinMotivo.slice(0, 5).join(', ')}${sinMotivo.length > 5 ? '…' : ''}`),
+            { code: 'FALTA_EL_MOTIVO', statusCode: 400, alumnos: sinMotivo }
+        );
+    }
 
     return prisma.$transaction(async (tx: any) => {
         // 1. Verificar idempotencia
@@ -367,66 +581,23 @@ export async function confirmClose(
             });
         }
 
-        // 2. Buscar o crear automáticamente el año escolar destino si se requiere
-        let nextAcademicYear = await tx.academicYear.findFirst({
+        // 2. El año siguiente tiene que existir (paso 5). Antes se inventaba.
+        const nextAcademicYear = await tx.academicYear.findFirst({
             where: { startDate: { gt: currentYear.startDate } },
             orderBy: { startDate: 'asc' },
-            include: {
-                classrooms: true,
-            },
         });
-
-        if (!nextAcademicYear && (input.autoCreateNextYear || true)) {
-            // Calcular nombre del siguiente ciclo (ej. 2026-2027 -> 2027-2028)
-            let nextName = input.nextYearName;
-            if (!nextName) {
-                const match = currentYear.name.match(/(\d{4})-(\d{4})/);
-                if (match) {
-                    const y1 = parseInt(match[1]) + 1;
-                    const y2 = parseInt(match[2]) + 1;
-                    nextName = `${y1}-${y2}`;
-                } else {
-                    nextName = `${currentYear.name} (Siguiente)`;
-                }
-            }
-
-            const nextStart = new Date(currentYear.endDate);
-            nextStart.setMonth(nextStart.getMonth() + 1);
-            const nextEnd = new Date(nextStart);
-            nextEnd.setFullYear(nextEnd.getFullYear() + 1);
-
-            nextAcademicYear = await tx.academicYear.create({
-                data: {
-                    name: nextName,
-                    startDate: nextStart,
-                    endDate: nextEnd,
-                    status: 'ACTIVE',
-                    isActive: true,
-                },
-                include: { classrooms: true },
-            });
-
-            // Crear periodo por defecto en el nuevo año
-            await tx.period.create({
-                data: {
-                    academicYearId: nextAcademicYear.id,
-                    name: '1er Lapso',
-                    startDate: nextStart,
-                    endDate: new Date(nextStart.getTime() + 90 * 24 * 60 * 60 * 1000),
-                    isActive: true,
-                },
-            });
+        if (!nextAcademicYear && prepared.suggestions.length > 0) {
+            throw conflicto(
+                'Falta el año escolar siguiente: créalo primero (paso 5 del fin de año), con el calendario y las secciones.',
+                'SIN_ANO_SIGUIENTE'
+            );
         }
 
-        const decisionById = new Map(input.decisions.map(d => [d.studentId, d]));
-
-        // Mapear materias existentes por grado para replicarlas al auto-crear aulas
-        const subjectsByGrade = new Map<number, string[]>();
-        currentYear.classrooms.forEach((c: any) => {
-            if (!subjectsByGrade.has(c.grade)) {
-                subjectsByGrade.set(c.grade, c.subjects.map((s: any) => s.subjectId));
-            }
-        });
+        // Las secciones de este año, para copiar su estructura si falta una de destino.
+        const referenciaDe = (grado: number, seccion: string, turno: string) =>
+            currentYear.classrooms.find((c: any) => c.grade === grado && c.section === seccion && (c.shift || 'MANANA') === turno) ??
+            currentYear.classrooms.find((c: any) => c.grade === grado) ??
+            null;
 
         // 3. Procesar cada estudiante
         const records: CloseConfirmResult['records'] = [];
@@ -449,71 +620,86 @@ export async function confirmClose(
         const anioDelAula = new Map<string, string | null>();
         const expedientes: any[] = [];
         const matriculas: Array<{ studentId: string; classroomId: string; academicYearId: string }> = [];
+        const pendientesNuevas: Array<{ studentId: string; subjectId: string; gradoDeOrigen: number; notaDeOrigen: number | null; seccion: string | null }> = [];
+        const retirados = new Set<string>();
+
+        const baseDelExpediente = (s: StudentSuggestion, condicion: SuggestionStatus, motivo: string | null) => ({
+            studentId: s.studentId,
+            academicYearId: input.academicYearId,
+            sectionSnapshot: s.currentSection || '',
+            finalAverage: s.finalAverage,
+            pendingSubjects: s.failedSubjects.map(f => f.name),
+            subjectGrades: s.subjectGrades.map(notaDelExpediente),
+            condicionSugerida: s.suggestedStatus,
+            motivo: condicion !== s.suggestedStatus ? motivo : null,
+            decididaPor: condicion !== s.suggestedStatus ? (s.decision?.decididaPor ?? input.quienCierra ?? quien.usuarioId ?? null) : null,
+        });
 
         for (const s of prepared.suggestions) {
-            const decision = decisionById.get(s.studentId) || {
-                studentId: s.studentId,
-                finalResult: s.suggestedStatus,
-                action: s.isLastGrade ? 'GRADUATE' : 'ENROLL',
-                assignedClassroomId: null,
-            };
+            const d = decisionById.get(s.studentId);
+            const condicion: SuggestionStatus = d?.finalResult ?? s.condicionFinal;
+            const motivo = d?.motivo?.trim() || (s.decision?.condicion === condicion ? s.decision.motivo : null);
 
             // Caso A: Eliminar al estudiante. Con copia en la papelera, como
             // todo borrado: esto se saltaba la regla y el alumno se iba con
             // todas sus notas para siempre, sin nada de dónde recuperarlo.
-            if (decision.action === 'RETIRE_DELETE') {
-                const motivo = { ...quien, motivo: `cierre del ciclo ${input.academicYearId}: retirar y eliminar` };
-                await borrarGuardandoCopia(tx, 'studentClassroom', { studentId: s.studentId }, motivo);
-                await borrarGuardandoCopia(tx, 'grade', { studentId: s.studentId }, motivo);
-                await borrarGuardandoCopia(tx, 'user', { id: s.studentId }, motivo);
+            if (d?.action === 'RETIRE_DELETE') {
+                const motivoDelBorrado = { ...quien, motivo: `cierre del ciclo ${input.academicYearId}: retirar y eliminar` };
+                await borrarGuardandoCopia(tx, 'studentClassroom', { studentId: s.studentId }, motivoDelBorrado);
+                await borrarGuardandoCopia(tx, 'grade', { studentId: s.studentId }, motivoDelBorrado);
+                await borrarGuardandoCopia(tx, 'user', { id: s.studentId }, motivoDelBorrado);
+                retirados.add(s.studentId);
                 continue;
             }
 
             // Caso B: Retirado con conservación de historial
-            if (decision.action === 'RETIRE_KEEP_HISTORY') {
+            if (d?.action === 'RETIRE_KEEP_HISTORY') {
                 expedientes.push({
-                    studentId: s.studentId,
-                    academicYearId: input.academicYearId,
-                    sectionSnapshot: s.currentSection || '',
-                    finalAverage: s.finalAverage,
+                    ...baseDelExpediente(s, 'NO_PROMOVIDO', null),
                     status: 'RETIRADO',
                     finalResult: 'NO_PROMOVIDO',
-                    pendingSubjects: s.failedSubjects.map(f => f.name),
-                    subjectGrades: s.subjectGrades.map(notaDelExpediente),
+                    motivo: d.motivo?.trim() || null,
                     assignedClassroomId: null,
                 });
                 records.push({ studentId: s.studentId, finalResult: 'RETIRADO', assignedClassroomId: null });
                 placements.push({ studentId: s.studentId, sectionId: null });
+                retirados.add(s.studentId);
                 continue;
             }
 
-            // Caso C: Estudiante de 5to año (Egresado / Graduado)
-            if (s.isLastGrade || decision.action === 'GRADUATE') {
+            // Sus materias reprobadas pasan a pendientes si pasa con pendientes.
+            if (condicion === 'PROMOVIDO_CON_PENDIENTES') {
+                for (const f of s.failedSubjects) {
+                    if (!f.subjectId) continue;
+                    pendientesNuevas.push({ studentId: s.studentId, subjectId: f.subjectId, gradoDeOrigen: s.gradeLevel, notaDeOrigen: f.average, seccion: s.currentSection });
+                }
+            }
+
+            // Caso C: el último año que no repite (o un egreso decidido a mano).
+            // Egresa, o se queda solo con sus pendientes hasta aprobarlas.
+            const egresa = d?.action === 'GRADUATE' || (s.isLastGrade && condicion !== 'NO_PROMOVIDO');
+            if (egresa) {
+                const soloPendientes =
+                    condicion === 'PROMOVIDO_CON_PENDIENTES' && config.ultimoAnoConPendientes !== 'EGRESA' && d?.action !== 'GRADUATE';
                 expedientes.push({
-                    studentId: s.studentId,
-                    academicYearId: input.academicYearId,
-                    sectionSnapshot: s.currentSection || '',
-                    finalAverage: s.finalAverage,
+                    ...baseDelExpediente(s, condicion, motivo),
                     status: 'COMPLETED',
-                    finalResult: decision.finalResult === 'NO_PROMOVIDO' ? 'NO_PROMOVIDO' : 'PROMOVIDO',
-                    pendingSubjects: s.failedSubjects.map(f => f.name),
-                    subjectGrades: s.subjectGrades.map(notaDelExpediente),
+                    finalResult: condicion,
+                    egreso: soloPendientes ? 'PENDIENTE' : 'EGRESADO',
                     assignedClassroomId: null,
                 });
-                records.push({ studentId: s.studentId, finalResult: 'GRADUATED', assignedClassroomId: null });
+                records.push({ studentId: s.studentId, finalResult: soloPendientes ? 'SOLO_PENDIENTES' : 'GRADUATED', assignedClassroomId: null });
                 placements.push({ studentId: s.studentId, sectionId: null });
                 continue;
             }
 
-            // Caso D: Matricular en el ciclo destino
-            let targetClassroomId = decision.assignedClassroomId;
+            // Caso D: Matricular en el ciclo destino (también el de 5to que repite)
+            let targetClassroomId = d?.assignedClassroomId ?? null;
 
-            // Si no vino un ID directo pero sí targetGrade y targetSection (o auto-resolución)
             if (!targetClassroomId && nextAcademicYear) {
-                const targetGrade = decision.targetGrade ?? s.defaultTargetGrade ?? s.gradeLevel + 1;
-                const targetSection = (decision.targetSectionLetter || s.currentSection || 'A').toUpperCase();
-
-                const targetShift = decision.targetShift ?? s.defaultTargetShift ?? (s as any).currentShift ?? 'MANANA';
+                const targetGrade = d?.targetGrade ?? gradoDeDestino(s.gradeLevel, s.isLastGrade, condicion) ?? s.gradeLevel;
+                const targetSection = (d?.targetSectionLetter || s.currentSection || 'A').toUpperCase();
+                const targetShift = d?.targetShift ?? s.defaultTargetShift ?? (s as any).currentShift ?? 'MANANA';
 
                 // Buscar aula en el año destino (una vez por destino)
                 const destino = `${targetGrade}|${targetSection}|${targetShift}`;
@@ -529,45 +715,33 @@ export async function confirmClose(
                     });
                 }
 
-                // Auto-crear aula si no existe en el año nuevo
+                // Si falta, se crea COPIANDO la de este año (capacidad, materias
+                // y horas). Antes: capacidad 35, 4 horas por materia y la misma
+                // dirección «3er-ano-…» para todos los grados.
                 if (!targetClassroom) {
-                    const gradeNames: Record<number, string> = {
-                        1: '1er Año',
-                        2: '2do Año',
-                        3: '3er Año',
-                        4: '4to Año',
-                        5: '5to Año',
-                        6: '6to Año',
-                    };
-                    const gradeName = gradeNames[targetGrade] || `${targetGrade}º Año`;
-                    const shiftSuffix = targetShift === 'TARDE' ? ' (Tarde)' : targetShift === 'INTEGRAL' ? ' (Integral)' : '';
-                    const fullName = `${gradeName} ${targetSection}${shiftSuffix}`;
-                    const slugShift = targetShift === 'TARDE' ? '-tarde' : targetShift === 'INTEGRAL' ? '-integral' : '';
+                    const referencia = referenciaDe(targetGrade, targetSection, targetShift);
+                    const nombre = nombreDeLaSeccion(targetGrade, targetSection, targetShift);
                     targetClassroom = await tx.classroom.create({
                         data: {
-                            name: fullName,
-                            slug: `${targetGrade}er-ano-${targetSection.toLowerCase()}${slugShift}-${nextAcademicYear.id}`,
+                            name: nombre,
+                            slug: slugDeLaSeccion(nombre, nextAcademicYear.name),
                             grade: targetGrade,
                             section: targetSection,
                             shift: targetShift,
-                            capacity: 35,
+                            capacity: referencia?.capacity ?? null,
                             academicYearId: nextAcademicYear.id,
                         },
                     });
-
-                    // Copiar materias de referencia para este grado. De una vez,
-                    // y saltando las repetidas: antes era una por materia con
-                    // `.catch(() => {})`, y eso NO sirve dentro de una
-                    // transacción — un fallo de PostgreSQL deja la transacción
-                    // anulada aunque el error se trague, y todo lo que venía
-                    // detrás reventaba con un mensaje que no decía por qué.
-                    const refSubjects = subjectsByGrade.get(targetGrade) || subjectsByGrade.get(1) || [];
-                    if (refSubjects.length > 0) {
+                    // De una vez y saltando las repetidas: un fallo dentro de la
+                    // transacción la deja anulada aunque el error se trague.
+                    const materias = referencia?.subjects ?? [];
+                    if (materias.length > 0) {
                         await tx.classroomSubject.createMany({
-                            data: refSubjects.map((subId: string) => ({
+                            data: materias.map((m: any) => ({
                                 classroomId: targetClassroom.id,
-                                subjectId: subId,
-                                weeklyBlocks: 4,
+                                subjectId: m.subjectId,
+                                weeklyBlocks: m.weeklyBlocks ?? 0,
+                                hoursPerWeek: m.hoursPerWeek ?? 0,
                             })),
                             skipDuplicates: true,
                         });
@@ -581,14 +755,10 @@ export async function confirmClose(
 
             // Guardar registro académico histórico en el ciclo que se cierra
             expedientes.push({
-                studentId: s.studentId,
-                academicYearId: input.academicYearId,
-                sectionSnapshot: s.currentSection || '',
-                finalAverage: s.finalAverage,
+                ...baseDelExpediente(s, condicion, motivo),
                 status: 'COMPLETED',
-                finalResult: decision.finalResult,
-                pendingSubjects: s.failedSubjects.map(f => f.name),
-                subjectGrades: s.subjectGrades.map(notaDelExpediente),
+                finalResult: condicion,
+                egreso: s.isLastGrade ? null : undefined,
                 assignedClassroomId: targetClassroomId,
             });
 
@@ -611,13 +781,18 @@ export async function confirmClose(
                 }
             }
 
-            records.push({ studentId: s.studentId, finalResult: decision.finalResult, assignedClassroomId: targetClassroomId ?? null });
+            records.push({ studentId: s.studentId, finalResult: condicion, assignedClassroomId: targetClassroomId ?? null });
             placements.push({ studentId: s.studentId, sectionId: targetClassroomId ?? null });
         }
 
         // Expedientes y matrículas, juntos.
         if (expedientes.length > 0) {
-            await tx.academicRecord.createMany({ data: expedientes });
+            await tx.academicRecord.createMany({
+                data: expedientes.map((e) => {
+                    const { egreso, ...resto } = e;
+                    return egreso === undefined ? resto : { ...resto, egreso };
+                }),
+            });
         }
         if (matriculas.length > 0) {
             // Quien ya estaba matriculado en ese año se cambia de aula (lo que
@@ -646,13 +821,64 @@ export async function confirmClose(
             }
         }
 
-        // 4. Cerrar el año escolar actual
+        // 4. Las materias pendientes, en el año siguiente.
+        let pendientesCreadas = 0;
+        if (nextAcademicYear) {
+            // Las de antes que no se aprobaron: quedan NO_APROBADA en este año
+            // y nacen otra vez en el siguiente (con su origen), salvo retirados.
+            const deAntes = await tx.materiaPendiente.findMany({
+                where: { cicloId: input.academicYearId, estado: 'PENDIENTE' },
+            });
+            if (deAntes.length > 0) {
+                await tx.materiaPendiente.updateMany({
+                    where: { id: { in: deAntes.map((p: any) => p.id) } },
+                    data: { estado: 'NO_APROBADA' },
+                });
+            }
+            const porCrear = [
+                ...pendientesNuevas.map((p) => ({ ...p, cicloDeOrigenId: input.academicYearId })),
+                ...deAntes
+                    .filter((p: any) => !retirados.has(p.studentId))
+                    .map((p: any) => ({
+                        studentId: p.studentId,
+                        subjectId: p.subjectId,
+                        gradoDeOrigen: p.gradoDeOrigen,
+                        notaDeOrigen: p.notaDeOrigen,
+                        seccion: null,
+                        cicloDeOrigenId: p.cicloDeOrigenId,
+                    })),
+            ];
+            const profesores = new Map<string, string | null>();
+            for (const p of porCrear) {
+                const clave = `${p.gradoDeOrigen}|${p.subjectId}|${p.seccion ?? ''}`;
+                if (!profesores.has(clave)) {
+                    profesores.set(clave, await profesorParaLaPendiente(tx, nextAcademicYear.id, p.gradoDeOrigen, p.subjectId, p.seccion));
+                }
+            }
+            if (porCrear.length > 0) {
+                const hecho = await tx.materiaPendiente.createMany({
+                    data: porCrear.map((p) => ({
+                        studentId: p.studentId,
+                        subjectId: p.subjectId,
+                        gradoDeOrigen: p.gradoDeOrigen,
+                        cicloDeOrigenId: p.cicloDeOrigenId,
+                        notaDeOrigen: p.notaDeOrigen,
+                        cicloId: nextAcademicYear.id,
+                        profesorId: profesores.get(`${p.gradoDeOrigen}|${p.subjectId}|${p.seccion ?? ''}`) ?? null,
+                    })),
+                    skipDuplicates: true,
+                });
+                pendientesCreadas = hecho.count;
+            }
+        }
+
+        // 5. Cerrar el año escolar actual
         await tx.academicYear.update({
             where: { id: input.academicYearId },
             data: { status: 'COMPLETED', isActive: false },
         });
 
-        return { closed: true, records, placements };
+        return { closed: true, records, placements, pendientesCreadas };
     }, { timeout: 60000, maxWait: 15000 });
 }
 
@@ -674,6 +900,8 @@ export interface PromotionContext {
         }>;
     }>;
     suggestedNextYearName: string;
+    /** El año escolar siguiente, si ya existe (sin él no se puede cerrar). */
+    nextYear: { id: string; name: string } | null;
 }
 
 /** Contexto completo para la pantalla de promoción */
@@ -751,11 +979,14 @@ export async function getPromotionContext(prisma: PrismaClient, academicYearId: 
             }),
         }));
 
+    const siguiente = allYears.find((y) => y.startDate > currentYear.startDate);
+
     return {
         currentYear: { id: currentYear.id, name: currentYear.name },
         suggestions: suggestionsData.suggestions,
         destinationYears,
         suggestedNextYearName,
+        nextYear: siguiente ? { id: siguiente.id, name: siguiente.name } : null,
     };
 }
 
@@ -769,7 +1000,7 @@ export async function previewStrategyAssignment(
 ): Promise<{ assignments: Array<{ studentId: string; sectionId: string | null; targetGrade: number | null; targetSectionLetter: string | null }>; yearId: string | null }> {
     const prepared = await prepareClose(prisma, academicYearId, instituteId);
     const currentYear = await prisma.academicYear.findUnique({ where: { id: academicYearId }, select: { startDate: true } });
-    
+
     const nextYear = currentYear
         ? await prisma.academicYear.findFirst({
             where: { startDate: { gt: currentYear.startDate } },
@@ -789,7 +1020,8 @@ export async function previewStrategyAssignment(
         currentSection: s.currentSection,
         currentGrade: s.gradeLevel,
         targetGrade: s.defaultTargetGrade,
-        isLastGrade: s.isLastGrade,
+        // Sin sección solo quien no va a ninguna: el de 5to que repite, sí.
+        isLastGrade: s.defaultTargetGrade === null,
         name: s.name,
     }));
 

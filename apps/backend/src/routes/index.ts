@@ -34,6 +34,7 @@ import { schoolTimeRoutes } from './school-time.routes';
 import { appMovilRoutes } from './app-movil.routes';
 import { asistenciaQrRoutes } from './asistencia-qr.routes';
 import { apreciacionesRoutes } from './apreciaciones.routes';
+import { revisionRoutes } from './revision.routes';
 
 // Función para registrar todas las rutas
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
@@ -60,6 +61,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // Pasar lista con QR (ver services/asistencia-qr.service.ts).
   await fastify.register(asistenciaQrRoutes, { prefix: '/api/asistencia-qr' });
   await fastify.register(apreciacionesRoutes, { prefix: '/api/apreciaciones' });
+  await fastify.register(revisionRoutes, { prefix: '/api/revision' });
   await fastify.register(schedulesRoutes, { prefix: '/api/schedules' });
   await fastify.register(scheduleBlocksRoutes, { prefix: '/api' });
   await fastify.register(classSessionsRoutes, { prefix: '/api/sessions' });

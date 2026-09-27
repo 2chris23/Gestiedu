@@ -150,6 +150,28 @@ Todo el dinero se cuenta en **céntimos enteros**. Implementación: `apps/backen
 
 ---
 
+## 8c. El fin del año escolar (cierre)
+
+**Rehecho el 2026-09-26** (`services/promotion/close-cycle.service.ts`, `services/fin-de-ano.service.ts`,
+`services/revision.service.ts`; pantalla `/dashboard/academico/<año>/cierre`). Todas las reglas son del
+liceo (`academicConfig`, `reglas-del-fin-de-ano.ts`); lo del MPPE es el valor por defecto.
+
+| Qué | Regla | Configurable |
+| :--- | :--- | :--- |
+| **Definitiva de la materia** | Media de los lapsos con notas, con el redondeo del liceo (MPPE: 0,50 sube). Las materias con apreciación no cuentan (§1b). | `redondeoDeDefinitivas` |
+| **Revisión** | Solo de una materia reprobada con notas. Nota = Σ (nota de cada parte × peso) ÷ 100, redondeada como las definitivas; pasa a ser la definitiva. La pone el profesor de la materia en esa sección (o el admin). Quien reprobó más materias que el tope no va a revisión (409 `FUERA_DE_REVISION`). | `revision.componentes` (por defecto una sola parte, 100 %), `revision.maxMaterias` (vacío = todas) |
+| **Reprobadas que cuentan** | Materias con notas por debajo de la mínima tras la revisión + (si `pendienteNoAprobada = SIGUE_PENDIENTE`) las pendientes de antes sin aprobar. | `notaMinimaAprobatoria` |
+| **Condición sugerida** | 0 → PROMOVIDO; más que el tope → NO_PROMOVIDO; en el último año con reprobadas: REPITE → NO_PROMOVIDO, SOLO_PENDIENTES/EGRESA → PROMOVIDO_CON_PENDIENTES; pendiente de antes sin aprobar con `pendienteNoAprobada = REPITE` → NO_PROMOVIDO. | `maxMateriasPendientesParaPromover` (2), `ultimoAnoConPendientes` (REPITE; el booleano viejo `permitePendientesEnUltimoAno: true` se lee EGRESA), `pendienteNoAprobada` (REPITE) |
+| **Decisión del admin** | Puede ser otra que la sugerida **solo con motivo** (400 `FALTA_EL_MOTIVO`); queda en el expediente junto a la sugerida (`condicionSugerida`, `motivo`, `decididaPor`). | — |
+| **Destino** | NO_PROMOVIDO → repite su grado (también 5to: antes egresaba igual); último año que no repite → no va a sección: `egreso = EGRESADO`, o `PENDIENTE` si SOLO_PENDIENTES; los demás → grado + 1. | — |
+| **Materias pendientes** | Con PROMOVIDO_CON_PENDIENTES, una `MateriaPendiente` por reprobada, en el año siguiente, con la nota de origen y el profesor que da esa materia en ese grado ese año. Las de antes sin aprobar quedan NO_APROBADA y nacen otra vez en el siguiente. | `pendientes.momentos` (4) |
+| **Año siguiente** | Ya no se inventa al cerrar (antes: un mes después, un solo lapso de 90 días): sin él, 409 `SIN_ANO_SIGUIENTE`. Se crea en el paso 5 con el calendario del MPPE (`calendario-mppe.ts`) y copiando secciones (capacidad), materias (horas) y, si se pide, profesores y horarios. Una sección de destino que falte se crea copiando la del mismo grado de este año, no con valores fijos. | — |
+| **Corregir tras cerrar** | Rehace expediente (con motivo, quién y cuándo), matrícula del año siguiente y pendientes nacidas de este año (las ya evaluadas se quedan); queda en `audit_logs`. | — |
+
+Pruebas: CIERRE-01…10, academic-close 1…9, CIERRE-UI-01/02.
+
+---
+
 ## 9. Estas reglas están vigiladas, no solo escritas
 
 Un documento como este **envejece en silencio**: alguien cambia una fórmula, el

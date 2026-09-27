@@ -118,11 +118,14 @@ export async function resumenFinalDeLaSeccion(
     // La definitiva de cada alumno en cada materia; de a cinco alumnos, cada
     // uno con sus materias a la vez (como el cierre, que va de a 25).
     const definitivas = new Map<string, { promedio: number; conNotas: boolean }>();
+    // Los lapsos de ESTE año: con un año ya cerrado, el alumno tiene también
+    // la inscripción del siguiente, y sin ellos se tomaban los de esa.
+    const lapsos = (await prisma.period.findMany({ where: { academicYearId }, select: { id: true } })).map((p) => p.id);
     for (let i = 0; i < activos.length; i += 5) {
         await Promise.all(
             activos.slice(i, i + 5).flatMap((a) =>
                 materias.map(async (m) => {
-                    const d = await gradesService.promedioDeLaMateria(prisma, a.id, m.id, undefined, undefined, redondeo);
+                    const d = await gradesService.promedioDeLaMateria(prisma, a.id, m.id, undefined, lapsos, redondeo);
                     definitivas.set(`${a.id}|${m.id}`, { promedio: d.promedio, conNotas: d.conNotas });
                 })
             )

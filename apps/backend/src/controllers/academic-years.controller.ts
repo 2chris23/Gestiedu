@@ -734,8 +734,8 @@ export const confirmAcademicYearClose = async (request: FastifyRequest, reply: F
         decisions: body.decisions || [],
         strategyKey: body.strategyKey,
         strategyMode: body.strategyMode,
-        autoCreateNextYear: body.autoCreateNextYear ?? true,
         nextYearName: body.nextYearName || body.suggestedNextYearName,
+        quienCierra: (request.user as any)?.userId ?? (request.user as any)?.id,
       },
       getRequestInstituteId(request),
       quienBorra(request as any)
@@ -746,6 +746,10 @@ export const confirmAcademicYearClose = async (request: FastifyRequest, reply: F
     request.log.error(error);
     if (error?.code === 'CLOSE_ALREADY_EXECUTED') {
       return reply.status(409).send({ error: 'El ciclo ya fue cerrado', code: 'CLOSE_ALREADY_EXECUTED' });
+    }
+    // Sin año siguiente, un motivo que falta…: se dice cuál y por qué.
+    if (error?.statusCode && error.statusCode >= 400 && error.statusCode < 500) {
+      return reply.status(error.statusCode).send({ error: error.message, code: error.code, alumnos: error.alumnos });
     }
     return reply.status(500).send({ error: 'Error al confirmar el cierre del ciclo' });
   }
