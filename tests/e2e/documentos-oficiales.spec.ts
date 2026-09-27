@@ -42,7 +42,7 @@ test.describe('Documentos oficiales', () => {
             await expect(titulo).toHaveValue('Constancia de estudio', { timeout: 60000 });
             await titulo.fill('Constancia de estudios cursantes');
             await expect(page.getByRole('article', { name: 'Vista previa de la constancia' })).toContainText('María Pérez');
-            await page.getByRole('button', { name: 'Guardar' }).click();
+            await page.getByRole('button', { name: 'Guardar', exact: true }).click();
             await expect(page.getByText('Plantilla guardada')).toBeVisible({ timeout: 15000 });
             await page.screenshot({ path: 'test-results/evidencia/plantillas-de-documentos.png', fullPage: true });
 

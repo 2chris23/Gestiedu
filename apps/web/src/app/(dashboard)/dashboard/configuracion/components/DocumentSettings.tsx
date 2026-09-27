@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { FileText, Loader2, RotateCcw } from 'lucide-react';
+import { FileText, Loader2, Plus, RotateCcw, X } from 'lucide-react';
 import api from '@/lib/axios';
 import { Lista } from '@/components/ui/lista';
 import { getApiErrorMessage } from '@/lib/utils';
@@ -20,6 +20,9 @@ import { getApiErrorMessage } from '@/lib/utils';
 
 interface Plantilla {
     tipo: string;
+    /** Cómo se llama el documento y un ejemplo de cada marcador (los da el servidor). */
+    nombre?: string;
+    ejemplo?: Record<string, string>;
     titulo: string;
     texto: string;
     propia: boolean;
@@ -57,9 +60,130 @@ const EJEMPLO: Record<string, string> = {
     proyecto: ' en el proyecto «Huerto escolar»',
 };
 
-const rellenar = (texto: string) => texto.replace(/\{([a-zA-Z]+)\}/g, (m, n: string) => EJEMPLO[n] ?? m);
+const rellenar = (texto: string, ejemplo: Record<string, string> = {}) =>
+    texto.replace(/\{([a-zA-Z]+)\}/g, (m, n: string) => ejemplo[n] ?? EJEMPLO[n] ?? m);
 
 export function DocumentSettings() {
+    return (
+        <div className="space-y-10">
+            <PlantillasDeDocumentos />
+            <RecaudosDeInscripcion />
+        </div>
+    );
+}
+
+/**
+ * LO QUE EL LICEO PIDE AL INSCRIBIR
+ *
+ * La lista de recaudos (partida de nacimiento, fotos…) que luego se marca en
+ * la ficha de cada alumno. Por defecto, lo que suele pedir un liceo del MPPE.
+ */
+function RecaudosDeInscripcion() {
+    const cola = useQueryClient();
+    const { data, isLoading, error } = useQuery({
+        queryKey: ['recaudos-del-liceo'],
+        queryFn: async () => (await api.get('/institutes/current/recaudos')).data.data as Array<{ clave: string; nombre: string }>,
+    });
+    const [lista, setLista] = React.useState<Array<{ clave?: string; nombre: string }>>([]);
+    const [nuevo, setNuevo] = React.useState('');
+    React.useEffect(() => {
+        if (data) setLista(data);
+    }, [data]);
+    const alGuardar = () => {
+        toast.success('Recaudos guardados');
+        void cola.invalidateQueries({ queryKey: ['recaudos-del-liceo'] });
+        void cola.invalidateQueries({ queryKey: ['recaudos'] });
+    };
+    const guardar = useMutation({
+        mutationFn: async () => (await api.put('/institutes/current/recaudos', { recaudos: lista.filter((r) => r.nombre.trim()) })).data,
+        onSuccess: alGuardar,
+        onError: (e) => toast.error(getApiErrorMessage(e, 'No se pudieron guardar los recaudos')),
+    });
+    const deSiempre = useMutation({
+        mutationFn: async () => (await api.delete('/institutes/current/recaudos')).data,
+        onSuccess: alGuardar,
+        onError: (e) => toast.error(getApiErrorMessage(e, 'No se pudo')),
+    });
+
+    if (isLoading) return <p className="text-sm text-gray-600">Cargando los recaudos…</p>;
+    if (error || !data) return <p className="text-sm text-rose-700">{getApiErrorMessage(error, 'No se pudieron cargar los recaudos.')}</p>;
+    const cambiado = JSON.stringify(lista) !== JSON.stringify(data);
+
+    return (
+        <section aria-labelledby="recaudos-titulo" className="space-y-3">
+            <div>
+                <h3 id="recaudos-titulo" className="mb-1 text-lg font-medium text-gray-900">
+                    Recaudos de inscripción
+                </h3>
+                <p className="text-sm text-gray-600">
+                    Lo que el liceo pide al inscribir. En la ficha de cada alumno se marca lo que ya entregó; crear su cuenta no lo pide.
+                </p>
+            </div>
+            <ul className="space-y-2">
+                {lista.map((r, i) => (
+                    <li key={r.clave ?? `nuevo-${i}`} className="flex items-center gap-2">
+                        <input
+                            aria-label={`Recaudo ${i + 1}`}
+                            value={r.nombre}
+                            maxLength={80}
+                            onChange={(e) => setLista((l) => l.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)))}
+                            className="min-h-[44px] flex-1 rounded-lg border border-gray-300 px-3 text-sm"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setLista((l) => l.filter((_, j) => j !== i))}
+                            aria-label={`Quitar «${r.nombre}»`}
+                            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                        >
+                            <X className="h-4 w-4" aria-hidden />
+                        </button>
+                    </li>
+                ))}
+            </ul>
+            <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                    e.preventDefault();
+                    if (nuevo.trim().length < 3) return;
+                    setLista((l) => [...l, { nombre: nuevo.trim() }]);
+                    setNuevo('');
+                }}
+            >
+                <input
+                    aria-label="Recaudo nuevo"
+                    placeholder="Otro recaudo (p. ej. «Carpeta marrón»)"
+                    value={nuevo}
+                    maxLength={80}
+                    onChange={(e) => setNuevo(e.target.value)}
+                    className="min-h-[44px] flex-1 rounded-lg border border-gray-300 px-3 text-sm"
+                />
+                <button type="submit" className="inline-flex min-h-[44px] items-center gap-1 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">
+                    <Plus className="h-4 w-4" aria-hidden /> Añadir
+                </button>
+            </form>
+            <div className="flex flex-wrap gap-2">
+                <button
+                    type="button"
+                    onClick={() => guardar.mutate()}
+                    disabled={!cambiado || guardar.isPending}
+                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                    {guardar.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} Guardar recaudos
+                </button>
+                <button
+                    type="button"
+                    onClick={() => deSiempre.mutate()}
+                    disabled={deSiempre.isPending}
+                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                    <RotateCcw className="h-4 w-4" aria-hidden /> Volver a la lista de siempre
+                </button>
+            </div>
+        </section>
+    );
+}
+
+function PlantillasDeDocumentos() {
     const cola = useQueryClient();
     const { data, isLoading, error } = useQuery({
         queryKey: ['plantillas'],
@@ -125,16 +249,16 @@ export function DocumentSettings() {
             <div>
                 <h3 className="mb-1 text-lg font-medium text-gray-900">
                     <FileText className="mr-2 inline h-5 w-5" aria-hidden />
-                    Constancias
+                    Textos de los documentos
                 </h3>
                 <p className="text-sm text-gray-600">
-                    El texto de cada constancia, con marcadores entre llaves que se rellenan con los datos del alumno. Deja una
-                    línea en blanco para separar párrafos.
+                    El texto de cada constancia y de los demás documentos del liceo, con marcadores entre llaves que se
+                    rellenan solos. Deja una línea en blanco para separar párrafos.
                 </p>
             </div>
 
             <div className="sm:w-72">
-                <Lista etiqueta="Constancia" valor={tipo} alCambiar={setTipo} opciones={data.map((p) => ({ valor: p.tipo, texto: `${NOMBRE[p.tipo] ?? p.tipo}${p.propia ? ' (del liceo)' : ''}` }))} />
+                <Lista etiqueta="Documento" valor={tipo} alCambiar={setTipo} opciones={data.map((p) => ({ valor: p.tipo, texto: `${p.nombre ?? NOMBRE[p.tipo] ?? p.tipo}${p.propia ? ' (del liceo)' : ''}` }))} />
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
@@ -199,7 +323,7 @@ export function DocumentSettings() {
                     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Vista previa (datos de ejemplo)</p>
                     <article className="rounded-xl border border-gray-200 bg-white p-6 text-gray-900 shadow-xs" aria-label="Vista previa de la constancia">
                         <h4 className="text-center text-sm font-bold uppercase tracking-widest">{titulo}</h4>
-                        {rellenar(texto)
+                        {rellenar(texto, actual.ejemplo)
                             .split(/\n\s*\n/)
                             .map((p) => p.replace(/\s+/g, ' ').trim())
                             .filter(Boolean)

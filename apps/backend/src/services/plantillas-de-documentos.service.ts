@@ -18,37 +18,94 @@ import { createError } from '../middleware/error.middleware';
  * Pruebas: `tests/integration/documentos-oficiales.test.ts` (DOC-*).
  */
 
-export type TipoDePlantilla = 'ESTUDIO' | 'BUENA_CONDUCTA' | 'PROSECUCION' | 'RETIRO' | 'INSCRIPCION' | 'LABOR_SOCIAL';
-export const TIPOS_DE_PLANTILLA: TipoDePlantilla[] = ['ESTUDIO', 'BUENA_CONDUCTA', 'PROSECUCION', 'RETIRO', 'INSCRIPCION', 'LABOR_SOCIAL'];
+export type TipoDePlantilla =
+    | 'ESTUDIO'
+    | 'BUENA_CONDUCTA'
+    | 'PROSECUCION'
+    | 'RETIRO'
+    | 'INSCRIPCION'
+    | 'LABOR_SOCIAL'
+    | 'PLANILLA_INSCRIPCION';
+export const TIPOS_DE_PLANTILLA: TipoDePlantilla[] = [
+    'ESTUDIO',
+    'BUENA_CONDUCTA',
+    'PROSECUCION',
+    'RETIRO',
+    'INSCRIPCION',
+    'LABOR_SOCIAL',
+    'PLANILLA_INSCRIPCION',
+];
 export const esTipoDePlantilla = (v: unknown): v is TipoDePlantilla => typeof v === 'string' && (TIPOS_DE_PLANTILLA as string[]).includes(v);
 
-/** Los marcadores que valen en todas, con lo que ponen. */
-export const MARCADORES_COMUNES: Record<string, string> = {
-    alumno: 'Nombres y apellidos del alumno',
-    tipoDeCedula: '«cédula de identidad» o «cédula escolar»',
-    cedula: 'La cédula del alumno',
-    grado: 'El año que cursa (p. ej. «3er año»)',
-    seccion: 'La letra de la sección',
-    turno: '«mañana», «tarde» o «integral»',
-    ciclo: 'El año escolar (p. ej. «2026-2027»)',
-    nivel: '«Educación Media General» o «Media Técnica»',
-    liceo: 'El nombre oficial del plantel',
-    codigoDea: 'El código DEA del plantel',
-    firmante: 'Quien firma, con su cédula si está puesta',
-    cargo: 'El cargo de quien firma',
-    cursa: '«cursa» si estudia hoy, «cursó» si ya no',
-    lugarYFecha: '«en Caracas, a los 25 días del mes de…»',
+/** Cómo se llama cada documento en la pantalla de Configuración → Documentos. */
+export const NOMBRE_DE_LA_PLANTILLA: Record<TipoDePlantilla, string> = {
+    ESTUDIO: 'Constancia de estudio',
+    BUENA_CONDUCTA: 'Constancia de buena conducta',
+    PROSECUCION: 'Constancia de prosecución',
+    RETIRO: 'Constancia de retiro',
+    INSCRIPCION: 'Constancia de inscripción',
+    LABOR_SOCIAL: 'Constancia de labor social',
+    PLANILLA_INSCRIPCION: 'Planilla de inscripción (declaración)',
 };
 
-/** Los que solo tienen sentido en una. */
-export const MARCADORES_PROPIOS: Partial<Record<TipoDePlantilla, Record<string, string>>> = {
-    PROSECUCION: { gradoSiguiente: 'El año al que puede proseguir (p. ej. «4to año»)' },
-    RETIRO: { fechaDeRetiro: 'El día en que se retiró' },
-    LABOR_SOCIAL: { horas: 'Las horas de labor social cumplidas', proyecto: '« en el proyecto …», si lo tiene' },
+/** Marcador → [qué pone, un ejemplo para la vista previa]. */
+type Marcadores = Record<string, [string, string]>;
+
+/** Los del plantel: valen en TODO documento. */
+const DEL_PLANTEL: Marcadores = {
+    liceo: ['El nombre oficial del plantel', 'U.E.N. Liceo Ejemplo'],
+    codigoDea: ['El código DEA del plantel', 'OD00541105'],
+    firmante: ['Quien firma, con su cédula si está puesta', 'Carmen Páez, titular de la cédula de identidad V-9876543'],
+    cargo: ['El cargo de quien firma', 'Directora'],
+    lugarYFecha: ['«en Caracas, a los 25 días del mes de…»', 'en Valencia, a los 27 días del mes de septiembre de 2026'],
 };
 
+/** Los del alumno: valen en los documentos de un alumno. */
+const DEL_ALUMNO: Marcadores = {
+    alumno: ['Nombres y apellidos del alumno', 'María Pérez'],
+    tipoDeCedula: ['«cédula de identidad» o «cédula escolar»', 'cédula de identidad'],
+    cedula: ['La cédula del alumno', 'V-30123456'],
+    grado: ['El año que cursa (p. ej. «3er año»)', '3er año'],
+    seccion: ['La letra de la sección', 'A'],
+    turno: ['«mañana», «tarde» o «integral»', 'mañana'],
+    ciclo: ['El año escolar (p. ej. «2026-2027»)', '2026-2027'],
+    nivel: ['«Educación Media General» o «Media Técnica»', 'Educación Media General'],
+    cursa: ['«cursa» si estudia hoy, «cursó» si ya no', 'cursa'],
+};
+
+/** Los que solo tienen sentido en uno. */
+const PROPIOS: Partial<Record<TipoDePlantilla, Marcadores>> = {
+    PROSECUCION: { gradoSiguiente: ['El año al que puede proseguir (p. ej. «4to año»)', '4to año'] },
+    RETIRO: { fechaDeRetiro: ['El día en que se retiró', '15 de marzo de 2027'] },
+    LABOR_SOCIAL: {
+        horas: ['Las horas de labor social cumplidas', '60'],
+        proyecto: ['« en el proyecto …», si lo tiene', ' en el proyecto «Huerto escolar»'],
+    },
+    PLANILLA_INSCRIPCION: {
+        representante: ['Nombres y apellidos del representante', 'José Pérez'],
+        cedulaDelRepresentante: ['La cédula del representante', 'V-12345678'],
+    },
+};
+
+/**
+ * Qué grupos de marcadores lleva cada documento, además de los del plantel.
+ * Sin decir nada, los del alumno (las constancias son de un alumno).
+ */
+const GRUPOS: Partial<Record<TipoDePlantilla, Marcadores[]>> = {};
+
+function marcadoresCompletos(tipo: TipoDePlantilla): Marcadores {
+    const grupos = GRUPOS[tipo] ?? [DEL_ALUMNO];
+    return Object.assign({}, DEL_PLANTEL, ...grupos, PROPIOS[tipo] ?? {});
+}
+
+/** Los marcadores de un documento, con lo que ponen. */
 export function marcadoresDe(tipo: TipoDePlantilla): Record<string, string> {
-    return { ...MARCADORES_COMUNES, ...(MARCADORES_PROPIOS[tipo] ?? {}) };
+    return Object.fromEntries(Object.entries(marcadoresCompletos(tipo)).map(([m, [que]]) => [m, que]));
+}
+
+/** Un ejemplo de cada marcador, para la vista previa. */
+export function ejemploDe(tipo: TipoDePlantilla): Record<string, string> {
+    return Object.fromEntries(Object.entries(marcadoresCompletos(tipo)).map(([m, [, ej]]) => [m, ej]));
 }
 
 const ENCABEZADO = 'Quien suscribe, {firmante}, en su carácter de {cargo} de {liceo}, hace constar por medio de la presente que el (la) estudiante {alumno}, titular de la {tipoDeCedula} {cedula},';
@@ -78,6 +135,11 @@ export const PLANTILLAS_POR_DEFECTO: Record<TipoDePlantilla, { titulo: string; t
     LABOR_SOCIAL: {
         titulo: 'Constancia de labor social',
         texto: `${ENCABEZADO} cursante del {grado} de {nivel}, cumplió {horas} horas de labor social comunitaria{proyecto} durante el año escolar {ciclo}, requisito para optar al título de Bachiller (artículo 27 del Reglamento de la Ley Orgánica de Educación).\n\n${PIE}`,
+    },
+    PLANILLA_INSCRIPCION: {
+        titulo: 'Planilla de inscripción',
+        texto:
+            'Yo, {representante}, titular de la cédula de identidad {cedulaDelRepresentante}, representante del (la) estudiante {alumno}, declaro que los datos de esta planilla son ciertos y me comprometo a cumplir y hacer cumplir las normas de convivencia de {liceo} durante el año escolar {ciclo}.',
     },
 };
 
@@ -124,6 +186,8 @@ export async function todasLasPlantillas(instituteId: string) {
         const suya = suyas[tipo];
         return {
             tipo,
+            nombre: NOMBRE_DE_LA_PLANTILLA[tipo],
+            ejemplo: ejemploDe(tipo),
             titulo: suya?.titulo ?? PLANTILLAS_POR_DEFECTO[tipo].titulo,
             texto: suya?.texto ?? PLANTILLAS_POR_DEFECTO[tipo].texto,
             propia: !!suya,

@@ -19,6 +19,8 @@ import Link from 'next/link';
 import { RepresentantesDelAlumno } from '@/components/users/RepresentantesDelAlumno';
 import { TelefonoDeAsistencia } from '@/components/users/TelefonoDeAsistencia';
 import { CambiarCedula } from '@/components/users/CambiarCedula';
+import { EditarDatosPersonales } from '@/components/users/EditarDatosPersonales';
+import { InscripcionDelAlumno } from '@/components/users/InscripcionDelAlumno';
 import { LaborSocialDelAlumno } from '@/components/labor-social/LaborSocialDelAlumno';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { TIPOS_DE_CONSTANCIA, NOMBRE_DE_LA_CONSTANCIA, type TipoDeConstancia } from '@/hooks/useConstancia';
@@ -388,6 +390,7 @@ export default function UserProfilePage({ params }: PageProps) {
                 <div className="lg:col-span-1 space-y-6 animate-in slide-in-from-left duration-500 delay-150">
                     {/* Lo que le falta al alumno: la pregunta que más se hace un
                         representante y que la ficha no sabía responder. */}
+                    {user.role === 'student' && <InscripcionDelAlumno studentId={user.cedula} />}
                     {user.role === 'student' && <LaborSocialDelAlumno studentId={user.cedula} />}
                     {user.role === 'student' && (
                         <ActividadesDelAlumno
@@ -432,6 +435,7 @@ export default function UserProfilePage({ params }: PageProps) {
                             Información Personal
                         </h3>
                         <div className="space-y-4 text-sm">
+                            {dbUser && <EditarDatosPersonales usuario={dbUser as any} />}
                             <div className="grid gap-1">
                                 <span className="text-gray-400 text-xs uppercase font-bold tracking-wider">Nombre Completo</span>
                                 <span className="font-medium text-gray-700">{user.name}</span>
@@ -448,6 +452,14 @@ export default function UserProfilePage({ params }: PageProps) {
                                 <span className="text-gray-400 text-xs uppercase font-bold tracking-wider">Correo Electrónico</span>
                                 <span className="font-medium text-gray-700 truncate">{user.email}</span>
                             </div>
+                            {(dbUser as any)?.birthDate && (
+                                <div className="grid gap-1">
+                                    <span className="text-gray-400 text-xs uppercase font-bold tracking-wider">Fecha de nacimiento</span>
+                                    <span className="font-medium text-gray-700">
+                                        {String((dbUser as any).birthDate).slice(0, 10).split('-').reverse().join('/')}
+                                    </span>
+                                </div>
+                            )}
                             <div className="grid gap-1">
                                 <span className="text-gray-400 text-xs uppercase font-bold tracking-wider">Teléfono</span>
                                 <span className="font-medium text-gray-700">{user.phone}</span>

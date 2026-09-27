@@ -100,7 +100,9 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
         role: { type: 'string', enum: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
         search: { type: 'string' },
         isActive: { type: 'boolean' },
-        status: { type: 'string', enum: ['ACTIVE', 'ARCHIVED', 'ALL'] }
+        status: { type: 'string', enum: ['ACTIVE', 'ARCHIVED', 'ALL'] },
+        // Solo los alumnos a los que les falta un dato o un recaudo
+        faltan: { type: 'boolean' }
       }
     }
   };

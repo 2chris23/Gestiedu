@@ -62,6 +62,9 @@ test.describe('Los botones, pulsados de verdad', () => {
             await page.locator('#email').fill(correo);
             await page.locator('#id').fill(cedula);
             await page.locator('input[name="password"]').fill(CLAVE_NUEVA);
+            // El sexo se pide al crear (lo llevan todos los documentos del Ministerio).
+            await page.locator('#gender').click();
+            await page.getByRole('option', { name: 'Femenino' }).click();
 
             await page.getByRole('button', { name: /Guardar Usuario/i }).click();
 

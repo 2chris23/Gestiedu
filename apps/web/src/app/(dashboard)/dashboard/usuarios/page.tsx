@@ -51,7 +51,16 @@ export default function UsersPage() {
     const status = viewMode === 'archived' ? 'ARCHIVED' : 'ACTIVE';
     const lista = useQuery({
         queryKey: ['usuarios', 'lista', { page, busqueda, roleFilter, status }],
-        queryFn: () => userService.getUsers({ page, limit: 10, search: busqueda, role: roleFilter, status }),
+        // «Les falta algo» no es un rol: son los alumnos con un dato o un recaudo pendiente.
+        queryFn: () =>
+            userService.getUsers({
+                page,
+                limit: 10,
+                search: busqueda,
+                role: roleFilter === 'FALTAN' ? 'STUDENT' : roleFilter,
+                status,
+                faltan: roleFilter === 'FALTAN',
+            }),
         // Al pasar de página se sigue viendo la anterior hasta que llegue la nueva.
         placeholderData: (anterior) => anterior,
     });
@@ -276,7 +285,7 @@ export default function UsersPage() {
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </div>
-                <div className="w-full sm:w-48">
+                <div className="w-full sm:w-64">
                     <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <Filter className="h-4 w-4 text-gray-400" />
@@ -292,6 +301,7 @@ export default function UsersPage() {
                                 <SelectItem value="TEACHER">Profesor</SelectItem>
                                 <SelectItem value="STUDENT">Estudiante</SelectItem>
                                 <SelectItem value="TUTOR">Tutor</SelectItem>
+                                <SelectItem value="FALTAN">Alumnos a los que les falta algo</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>

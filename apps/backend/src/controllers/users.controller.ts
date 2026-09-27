@@ -118,6 +118,20 @@ export async function createUser(
       });
     }
 
+    // LA CÉDULA ES LA LLAVE DE LA CUENTA
+    //
+    // `User.id` es la cédula y no tiene valor por defecto: sin ella la base
+    // rechaza la fila y salía un 500. Crear pide lo mínimo (nombre, apellido,
+    // correo, cédula, contraseña, rol y sexo); esto sí hace falta.
+    if (!userData.id || !String(userData.id).trim()) {
+      return reply.status(400).send({
+        error: 'Hace falta la cédula',
+        message: 'La cédula es la llave de la cuenta: escríbela (o arma la cédula escolar).',
+        code: 'CEDULA_REQUERIDA',
+        field: ['id'],
+      });
+    }
+
     // Verificar si ya existe un usuario con la misma cédula / ID
     if (userData.id) {
       const existingUserById = await request.tenantPrisma.user.findUnique({
@@ -171,8 +185,7 @@ export async function createUser(
     // Crear el usuario con TODOS los campos necesarios
     const user = await request.tenantPrisma.user.create({
       data: {
-        // Si no viene ID, dejamos que Prisma genere uno (undefined activa el @default(cuid()))
-        id: userData.id || undefined as any,
+        id: String(userData.id).trim(),
         email: userData.email.toLowerCase(),
         password: hashedPassword,
         firstName: userData.firstName,
@@ -315,6 +328,14 @@ export async function getUsers(
     } else if (isActive === undefined) {
       // Por defecto listar sólo usuarios activos
       where.status = 'ACTIVE';
+    }
+
+    // «Les falta algo»: alumnos sin algún dato para el Ministerio o sin algún
+    // recaudo de la inscripción (`services/inscripcion.service.ts`).
+    if ((request.query as any).faltan === true) {
+      const { condicionDeLesFalta } = await import('../services/inscripcion.service');
+      const instituteId = String((request.user as any)?.instituteId ?? (request as any).institute?.id ?? '');
+      where.AND = [...(where.AND ?? []), await condicionDeLesFalta(instituteId)];
     }
 
     // Obtener usuarios y total

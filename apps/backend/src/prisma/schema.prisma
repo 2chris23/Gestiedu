@@ -206,16 +206,16 @@ model InstituteInvitation {
 // =====================================================
 
 model User {
-  id         String    @id // Cédula de identidad (CI) - definida por administrador
-  email      String    @unique
-  password   String
-  firstName  String
-  lastName   String
-  phone      String?
-  birthDate  DateTime?
-  address    String?
-  gender     Gender?
-  avatar     String?
+  id        String    @id // Cédula de identidad (CI) - definida por administrador
+  email     String    @unique
+  password  String
+  firstName String
+  lastName  String
+  phone     String?
+  birthDate DateTime?
+  address   String?
+  gender    Gender?
+  avatar    String?
 
   // Lo que piden los documentos del Ministerio (Resumen Final, certificación).
   nacionalidad        String? // 'V' | 'E'
@@ -223,12 +223,12 @@ model User {
   entidadDeNacimiento String? // una de ENTIDADES_DE_NACIMIENTO
   tipoDeCedula        String? // 'IDENTIDAD' | 'ESCOLAR'
   cedulaEscolar       String? // la escolar de antes, si la cambió por la de identidad
-  role       UserRole
-  isActive   Boolean   @default(true)
-  status     String    @default("ACTIVE") // ACTIVE, ARCHIVED, DELETED
-  archivedAt DateTime?
-  joinDate   DateTime  @default(now())
-  lastLogin  DateTime?
+  role                UserRole
+  isActive            Boolean   @default(true)
+  status              String    @default("ACTIVE") // ACTIVE, ARCHIVED, DELETED
+  archivedAt          DateTime?
+  joinDate            DateTime  @default(now())
+  lastLogin           DateTime?
 
   // Campos específicos para profesores
   specialization String?
@@ -292,6 +292,7 @@ model User {
   laborSocial             ActividadDeLaborSocial[] @relation("LaborSocialAlumno")
   laborSocialAnotada      ActividadDeLaborSocial[] @relation("LaborSocialPuestaPor")
   calificacionesExternas  CalificacionExterna[]    @relation("CalificacionExternaAlumno")
+  recaudosEntregados      RecaudoEntregado[]       @relation("RecaudoAlumno")
   aparatoDeAsistencia     AparatoDelAlumno?
 
   // Notificaciones
@@ -393,22 +394,22 @@ model AcademicYear {
   updatedAt DateTime @updatedAt
 
   // Relaciones
-  periods          Period[]
-  classrooms       Classroom[]
-  academicRecords  AcademicRecord[]
-  enrollments      StudentClassroom[]
-  subjectResources SubjectResource[]
-  paymentPlans     StudentPaymentPlan[]
-  payments         Payment[]
-  schoolEvents     SchoolEvent[]
-  notasDeRevision  NotaDeRevision[]
-  apreciaciones    Apreciacion[]
-  decisionesDeFinDeAno DecisionDeFinDeAno[]
-  pendientesQueNacieron MateriaPendiente[] @relation("PendienteOrigen")
-  pendientesQueSeCursan MateriaPendiente[] @relation("PendienteCiclo")
-  laborSocial      ActividadDeLaborSocial[]
-  institute        Institute?           @relation(fields: [instituteId], references: [id])
-  instituteId      String?
+  periods               Period[]
+  classrooms            Classroom[]
+  academicRecords       AcademicRecord[]
+  enrollments           StudentClassroom[]
+  subjectResources      SubjectResource[]
+  paymentPlans          StudentPaymentPlan[]
+  payments              Payment[]
+  schoolEvents          SchoolEvent[]
+  notasDeRevision       NotaDeRevision[]
+  apreciaciones         Apreciacion[]
+  decisionesDeFinDeAno  DecisionDeFinDeAno[]
+  pendientesQueNacieron MateriaPendiente[]       @relation("PendienteOrigen")
+  pendientesQueSeCursan MateriaPendiente[]       @relation("PendienteCiclo")
+  laborSocial           ActividadDeLaborSocial[]
+  institute             Institute?               @relation(fields: [instituteId], references: [id])
+  instituteId           String?
 
   @@unique([name])
   @@map("academic_years")
@@ -445,9 +446,9 @@ model Period {
 }
 
 model Subject {
-  id          String  @id @default(cuid())
+  id          String              @id @default(cuid())
   name        String
-  slug        String  @unique
+  slug        String              @unique
   code        String?
   description String?
   color       String?
@@ -1317,6 +1318,28 @@ model CalificacionExterna {
   @@map("calificaciones_externas")
 }
 
+/// Lo que el alumno ya entregó para su inscripción (partida de nacimiento,
+/// fotos…). La lista de lo que se pide es de cada liceo
+/// (`academicConfig.inscripcion.recaudos`); aquí solo lo entregado. Lo marca
+/// el admin en la ficha, cuando llega: no hace falta al crear la cuenta.
+/// Ver `services/inscripcion.service.ts`.
+model RecaudoEntregado {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("RecaudoAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  /// La clave del recaudo en la lista del liceo.
+  recaudo     String
+  entregadoEl DateTime @default(now())
+  anotadoPor  String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, recaudo])
+  @@map("recaudos_entregados")
+}
+
 /// La apreciación de un alumno en una materia cualitativa: por lapso o la
 /// final del año (`momento` = id del lapso o «FINAL»). La pone el profesor
 /// que da esa materia en esa sección. Ver `services/apreciaciones.service.ts`.
@@ -1795,21 +1818,21 @@ model ClassReplacement {
 // =====================================================
 
 model ClassActivity {
-  id          String    @id @default(cuid())
-  title       String
-  description String?
-  type        String    @default("TAREA") // TAREA | EXAMEN | ACTIVIDAD
-  target      String    @default("NEXT") // CURRENT (esta clase) | NEXT (próxima clase)
-  tag         String? // Etiqueta personalizada (ej: Examen, Taller, Tarea, Proyecto...)
-  dueDate     DateTime? // Fecha asignada o fecha límite
-  maxScore    Float?    @default(20)
-  scores      Json? // Mapa de puntajes por estudiante: { "studentId": score }
+  id                  String    @id @default(cuid())
+  title               String
+  description         String?
+  type                String    @default("TAREA") // TAREA | EXAMEN | ACTIVIDAD
+  target              String    @default("NEXT") // CURRENT (esta clase) | NEXT (próxima clase)
+  tag                 String? // Etiqueta personalizada (ej: Examen, Taller, Tarea, Proyecto...)
+  dueDate             DateTime? // Fecha asignada o fecha límite
+  maxScore            Float?    @default(20)
+  scores              Json? // Mapa de puntajes por estudiante: { "studentId": score }
   /// Alumnos evaluados de otra forma en esta actividad (p. ej. con el cuaderno
   /// quien no puede hacer deporte): { "studentId": { metodo, motivo? } }. Su
   /// nota va en `scores` y cuenta igual que la de los demás.
   evaluadoDeOtraForma Json?
-  isDone      Boolean   @default(false)
-  carriedOver Boolean   @default(false) // true si fue movida por suspensión
+  isDone              Boolean   @default(false)
+  carriedOver         Boolean   @default(false) // true si fue movida por suspensión
 
   classroomId String
   classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)

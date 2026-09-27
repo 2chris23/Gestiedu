@@ -50,13 +50,15 @@ interface Pagination {
 }
 
 export const userService = {
-    getUsers: async (params?: { page?: number; limit?: number; search?: string; role?: string; status?: string }): Promise<{ users: User[]; pagination: Pagination }> => {
+    getUsers: async (params?: { page?: number; limit?: number; search?: string; role?: string; status?: string; faltan?: boolean }): Promise<{ users: User[]; pagination: Pagination }> => {
         const queryParams = new URLSearchParams();
         if (params?.page) queryParams.append('page', params.page.toString());
         if (params?.limit) queryParams.append('limit', params.limit.toString());
         if (params?.search) queryParams.append('search', params.search);
         if (params?.role && params.role !== 'ALL') queryParams.append('role', params.role);
         if (params?.status) queryParams.append('status', params.status);
+        // Solo los alumnos a los que les falta un dato o un recaudo.
+        if (params?.faltan) queryParams.append('faltan', 'true');
 
         const response = await fetch(`${API_URL}/users?${queryParams.toString()}`, {
             method: 'GET',

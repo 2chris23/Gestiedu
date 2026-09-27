@@ -59,6 +59,9 @@ export function UserForm({ onSubmit, isLoading, onCancel, initialData }: UserFor
      */
     const formSchema = z.object({
         ...baseSchema,
+        gender: initialData
+            ? baseSchema.gender
+            : z.enum(['MASCULINO', 'FEMENINO', 'OTRO'] as const, { message: 'Elige el sexo' }),
         password: initialData
             ? z.string().min(MINIMO_DE_CONTRASENA, AVISO_DE_CONTRASENA).optional().or(z.literal(''))
             : z.string().min(MINIMO_DE_CONTRASENA, AVISO_DE_CONTRASENA),
@@ -76,7 +79,6 @@ export function UserForm({ onSubmit, isLoading, onCancel, initialData }: UserFor
         resolver: zodResolver(formSchema),
         defaultValues: {
             role: 'STUDENT',
-            gender: 'OTRO'
         }
     });
 
@@ -163,7 +165,6 @@ export function UserForm({ onSubmit, isLoading, onCancel, initialData }: UserFor
                 )}
                 {!initialData && watch('role') === 'STUDENT' && (
                     <ArmarCedulaEscolar
-                        anioDeNacimiento={watch('birthDate') ? Number(String(watch('birthDate')).slice(0, 4)) : undefined}
                         alArmar={(cedula, nacionalidad) => {
                             setValue('id', cedula, { shouldValidate: true });
                             setValue('tipoDeCedula', 'ESCOLAR');
@@ -186,11 +187,13 @@ export function UserForm({ onSubmit, isLoading, onCancel, initialData }: UserFor
                 {errors.password && <p className="text-xs text-red-500">{errors.password.message as string}</p>}
             </div>
 
-            <div>
-                <label htmlFor="birthDate" className="block text-sm font-medium text-gray-700">Fecha de Nacimiento (Opcional)</label>
-                <Input id="birthDate" type="date" {...register('birthDate')} className="mt-1" />
-                {errors.birthDate && <p className="text-xs text-red-500">{errors.birthDate.message as string}</p>}
-            </div>
+            {initialData && (
+                <div>
+                    <label htmlFor="birthDate" className="block text-sm font-medium text-gray-700">Fecha de Nacimiento (Opcional)</label>
+                    <Input id="birthDate" type="date" {...register('birthDate')} className="mt-1" />
+                    {errors.birthDate && <p className="text-xs text-red-500">{errors.birthDate.message as string}</p>}
+                </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -214,32 +217,42 @@ export function UserForm({ onSubmit, isLoading, onCancel, initialData }: UserFor
                     />
                 </div>
                 <div>
-                    <label htmlFor="gender" className="block text-sm font-medium text-gray-700">Género</label>
+                    <label htmlFor="gender" className="block text-sm font-medium text-gray-700">Sexo</label>
                     <Controller
                         name="gender"
                         control={control}
                         render={({ field }) => (
                             <Select value={field.value || undefined} onValueChange={field.onChange}>
                                 <SelectTrigger id="gender" className="mt-1 w-full">
-                                    <SelectValue placeholder="Seleccionar género" />
+                                    <SelectValue placeholder="Elegir" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="MASCULINO">Masculino</SelectItem>
                                     <SelectItem value="FEMENINO">Femenino</SelectItem>
-                                    <SelectItem value="OTRO">Otro</SelectItem>
+                                    {/* Solo para las fichas viejas que lo tengan: los documentos piden M o F. */}
+                                    {field.value === 'OTRO' && <SelectItem value="OTRO">Otro</SelectItem>}
                                 </SelectContent>
                             </Select>
                         )}
                     />
+                    {errors.gender && <p className="text-xs text-red-500">{errors.gender.message as string}</p>}
                 </div>
             </div>
 
-            <div>
-                <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Teléfono (Opcional)</label>
-                <Input id="phone" {...register('phone')} className="mt-1" />
-            </div>
+            {!initialData && (
+                <p className="text-xs text-gray-600">
+                    Lo demás (nacimiento, teléfono, dirección, representantes, recaudos) se completa después, en su ficha.
+                </p>
+            )}
 
-            {watch('role') === 'STUDENT' && (
+            {initialData && (
+                <div>
+                    <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Teléfono (Opcional)</label>
+                    <Input id="phone" {...register('phone')} className="mt-1" />
+                </div>
+            )}
+
+            {initialData && watch('role') === 'STUDENT' && (
                 <fieldset className="space-y-3 rounded-xl border border-gray-200 p-3">
                     <legend className="px-1 text-sm font-semibold text-gray-800">Datos para los documentos del Ministerio</legend>
                     <p className="text-xs text-gray-600">Los piden el Resumen Final y la certificación de calificaciones.</p>
@@ -322,7 +335,7 @@ export function UserForm({ onSubmit, isLoading, onCancel, initialData }: UserFor
  * cuatro partes (V/E, orden del parto, año de nacimiento y cédula de la madre)
  * y la pone como su cédula.
  */
-function ArmarCedulaEscolar({
+export function ArmarCedulaEscolar({
     anioDeNacimiento,
     alArmar,
 }: {

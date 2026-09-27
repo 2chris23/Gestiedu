@@ -8,6 +8,12 @@ import {
     verPlantillas,
     ponerPlantilla,
     volverALaDeSiempre,
+    verRecaudosDelLiceo,
+    ponerRecaudosDelLiceo,
+    recaudosDeSiempre,
+    verRecaudosDelAlumno,
+    marcarRecaudoDelAlumno,
+    verPlanillaDeInscripcion,
 } from '../controllers/documentos.controller';
 
 /**
@@ -15,6 +21,9 @@ import {
  *   - /students/:id/certificacion                la certificación de calificaciones
  *   - /students/:id/calificaciones-externas      los años cursados en otro plantel
  *   - /institutes/current/plantillas[/:tipo]     las plantillas de las constancias
+ *   - /institutes/current/recaudos               lo que el liceo pide al inscribir
+ *   - /students/:id/recaudos[/:clave]            lo que ese alumno ya entregó
+ *   - /students/:id/planilla-de-inscripcion      la planilla para imprimir
  */
 const id = { type: 'string', minLength: 1, maxLength: 64 } as const;
 const soloAdmin = [authenticate, requireAdmin];
@@ -85,4 +94,50 @@ export async function documentosRoutes(fastify: FastifyInstance) {
         ponerPlantilla as any
     );
     fastify.delete('/institutes/current/plantillas/:tipo', { preHandler: soloAdmin }, volverALaDeSiempre as any);
+
+    fastify.get('/institutes/current/recaudos', { preHandler: soloAdmin }, verRecaudosDelLiceo as any);
+    fastify.put(
+        '/institutes/current/recaudos',
+        {
+            preHandler: soloAdmin,
+            schema: {
+                body: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['recaudos'],
+                    properties: {
+                        recaudos: {
+                            type: 'array',
+                            maxItems: 30,
+                            items: {
+                                type: 'object',
+                                additionalProperties: false,
+                                required: ['nombre'],
+                                properties: { clave: { type: 'string', maxLength: 40 }, nombre: { type: 'string', maxLength: 80 } },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        ponerRecaudosDelLiceo as any
+    );
+    fastify.delete('/institutes/current/recaudos', { preHandler: soloAdmin }, recaudosDeSiempre as any);
+    fastify.get('/students/:id/recaudos', { schema: { params: { type: 'object', properties: { id } } }, preHandler: soloAdmin }, verRecaudosDelAlumno as any);
+    fastify.put(
+        '/students/:id/recaudos/:clave',
+        {
+            preHandler: soloAdmin,
+            schema: {
+                params: { type: 'object', properties: { id, clave: { type: 'string', maxLength: 40 } } },
+                body: { type: 'object', additionalProperties: false, required: ['entregado'], properties: { entregado: { type: 'boolean' } } },
+            },
+        },
+        marcarRecaudoDelAlumno as any
+    );
+    fastify.get(
+        '/students/:id/planilla-de-inscripcion',
+        { schema: { params: { type: 'object', properties: { id } } }, preHandler: soloAdmin },
+        verPlanillaDeInscripcion as any
+    );
 }

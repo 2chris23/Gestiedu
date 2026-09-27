@@ -189,7 +189,8 @@ describe('Los documentos oficiales (DOC-01…08)', () => {
         await api().put(url).set(como(profe, UserRole.TEACHER)).send({ titulo: 'x', texto }).expect(403);
 
         const todas = (await api().get('/api/institutes/current/plantillas').set(comoAdmin()).expect(200)).body.data;
-        expect(todas.map((p: any) => p.tipo)).toEqual(['ESTUDIO', 'BUENA_CONDUCTA', 'PROSECUCION', 'RETIRO', 'INSCRIPCION', 'LABOR_SOCIAL']);
+        // Las seis constancias, y los demás documentos del liceo que van llegando (planilla, citación…).
+        expect(todas.map((p: any) => p.tipo)).toEqual(expect.arrayContaining(['ESTUDIO', 'BUENA_CONDUCTA', 'PROSECUCION', 'RETIRO', 'INSCRIPCION', 'LABOR_SOCIAL', 'PLANILLA_INSCRIPCION']));
         expect(todas[0]).toMatchObject({ propia: true, titulo: 'Constancia de estudios' });
         expect(todas[2].marcadores).toHaveProperty('gradoSiguiente');
 

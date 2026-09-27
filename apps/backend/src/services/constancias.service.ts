@@ -171,42 +171,15 @@ export async function constanciaDelAlumno(
     }
     if (!inscripcion) throw AppErrors.NotFound('Inscripción del estudiante');
 
-    const [liceo, membrete, plantilla] = await Promise.all([
-        platformPrisma.institute.findUnique({
-            where: { id: instituteId },
-            select: { name: true, code: true, address: true, city: true, phone: true, academicConfig: true },
-        }),
-        membreteDelLiceo(instituteId),
-        plantillaDe(instituteId, tipo),
-    ]);
-    const config = (liceo?.academicConfig ?? {}) as Record<string, unknown>;
-    const docs = limpiarDatosDeDocumentos(config.documentos);
-    const firmante = {
-        nombre: docs.firmanteNombre ?? null,
-        cedula: docs.firmanteCedula ?? null,
-        cargo: docs.firmanteCargo ?? 'Director(a)',
-    };
-    const nivel = nivelDelLiceo(config.modalidad);
+    const [plantel, plantilla] = await Promise.all([datosDelPlantel(instituteId, hoy), plantillaDe(instituteId, tipo)]);
+    const { liceo, firmante, nivel } = plantel;
     const esVigente = Boolean(vigente);
     const c = inscripcion.classroom;
 
     const valores: Record<string, string> = {
-        alumno: `${alumno.firstName} ${alumno.lastName}`,
-        tipoDeCedula: alumno.tipoDeCedula === 'ESCOLAR' ? 'cédula escolar' : 'cédula de identidad',
-        cedula: alumno.id,
-        grado: gradoLegible(c.grade),
-        seccion: c.section,
-        turno: TURNO[(c as any).shift ?? 'MANANA'] ?? 'mañana',
-        ciclo: inscripcion.academicYear.name,
-        nivel,
-        liceo: membrete.nombre || liceo?.name || '',
-        codigoDea: membrete.codigoDea ?? docs.codigoDea ?? '',
-        firmante: firmante.nombre
-            ? `${firmante.nombre}${firmante.cedula ? `, titular de la cédula de identidad ${firmante.cedula}` : ''}`
-            : '____________________________',
-        cargo: firmante.cargo,
+        ...plantel.valores,
+        ...valoresDelAlumno(alumno, c, inscripcion.academicYear.name, nivel),
         cursa: esVigente ? 'cursa' : 'cursó',
-        lugarYFecha: `${liceo?.city ? `en ${liceo.city}, ` : ''}${aLosDias(hoy)}`,
         ...valoresPropios,
     };
 
@@ -214,14 +187,7 @@ export async function constanciaDelAlumno(
         tipo,
         titulo: plantilla.titulo,
         parrafos: parrafosDe(plantilla.texto, valores),
-        liceo: {
-            nombre: liceo?.name ?? '',
-            codigo: liceo?.code ?? null,
-            codigoDea: docs.codigoDea ?? membrete.codigoDea ?? null,
-            direccion: liceo?.address ?? null,
-            ciudad: liceo?.city ?? null,
-            telefono: liceo?.phone ?? null,
-        },
+        liceo,
         firmante,
         alumno: { cedula: alumno.id, nombres: alumno.firstName, apellidos: alumno.lastName },
         ciclo: { id: inscripcion.academicYear.id, nombre: inscripcion.academicYear.name },
@@ -229,6 +195,67 @@ export async function constanciaDelAlumno(
         nivel,
         vigente: esVigente,
         emitidaEl: hoy,
+    };
+}
+
+/**
+ * LO DEL PLANTEL EN CUALQUIER DOCUMENTO
+ *
+ * El nombre, el DEA, quién firma y con qué cargo, y «en Valencia, a los 27
+ * días…». Lo usan las constancias, la planilla de inscripción, la citación,
+ * el acta del consejo… (los marcadores «del plantel» de las plantillas).
+ */
+export async function datosDelPlantel(instituteId: string, hoy: string) {
+    const [inst, membrete] = await Promise.all([
+        platformPrisma.institute.findUnique({
+            where: { id: instituteId },
+            select: { name: true, code: true, address: true, city: true, phone: true, academicConfig: true },
+        }),
+        membreteDelLiceo(instituteId),
+    ]);
+    const config = (inst?.academicConfig ?? {}) as Record<string, unknown>;
+    const docs = limpiarDatosDeDocumentos(config.documentos);
+    const firmante = {
+        nombre: docs.firmanteNombre ?? null,
+        cedula: docs.firmanteCedula ?? null,
+        cargo: docs.firmanteCargo ?? 'Director(a)',
+    };
+    const liceo = {
+        nombre: inst?.name ?? '',
+        codigo: inst?.code ?? null,
+        codigoDea: docs.codigoDea ?? membrete.codigoDea ?? null,
+        direccion: inst?.address ?? null,
+        ciudad: inst?.city ?? null,
+        telefono: inst?.phone ?? null,
+    };
+    const valores: Record<string, string> = {
+        liceo: membrete.nombre || inst?.name || '',
+        codigoDea: membrete.codigoDea ?? docs.codigoDea ?? '',
+        firmante: firmante.nombre
+            ? `${firmante.nombre}${firmante.cedula ? `, titular de la cédula de identidad ${firmante.cedula}` : ''}`
+            : '____________________________',
+        cargo: firmante.cargo,
+        lugarYFecha: `${inst?.city ? `en ${inst.city}, ` : ''}${aLosDias(hoy)}`,
+    };
+    return { liceo, firmante, nivel: nivelDelLiceo(config.modalidad), valores };
+}
+
+/** Los marcadores «del alumno» de una plantilla (menos «cursa», que depende del documento). */
+export function valoresDelAlumno(
+    alumno: { id: string; firstName: string; lastName: string; tipoDeCedula: string | null },
+    seccion: { grade: number; section: string; shift?: string | null } | null,
+    ciclo: string,
+    nivel: string
+): Record<string, string> {
+    return {
+        alumno: `${alumno.firstName} ${alumno.lastName}`,
+        tipoDeCedula: alumno.tipoDeCedula === 'ESCOLAR' ? 'cédula escolar' : 'cédula de identidad',
+        cedula: alumno.id,
+        grado: seccion ? gradoLegible(seccion.grade) : '',
+        seccion: seccion?.section ?? '',
+        turno: seccion ? TURNO[seccion.shift ?? 'MANANA'] ?? 'mañana' : '',
+        ciclo,
+        nivel,
     };
 }
 
