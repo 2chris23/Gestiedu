@@ -113,6 +113,7 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
         // día al instante y se dice arriba (`Campana`).
         const llegoUnAviso = (aviso: { titulo?: string } | undefined) => {
             void queryClient.invalidateQueries({ queryKey: ['avisos'] });
+            void queryClient.invalidateQueries({ queryKey: ['citaciones'] });
             window.dispatchEvent(new CustomEvent('gestiedu:aviso', { detail: aviso }));
         };
 

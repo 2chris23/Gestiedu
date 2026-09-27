@@ -150,6 +150,8 @@ function isCacheable(request: FastifyRequest, role: string): boolean {
     // Los avisos los escribe OTRO (el admin cita al representante): guardados,
     // la campana del representante seguía en cero hasta que caducaran.
     if (url.startsWith('/api/avisos')) return false;
+    // Igual las citaciones: las pone el personal, las mira el representante.
+    if (url.startsWith('/api/citaciones')) return false;
     return true;
 }
 

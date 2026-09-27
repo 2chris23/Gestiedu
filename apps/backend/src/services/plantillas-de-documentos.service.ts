@@ -25,7 +25,8 @@ export type TipoDePlantilla =
     | 'RETIRO'
     | 'INSCRIPCION'
     | 'LABOR_SOCIAL'
-    | 'PLANILLA_INSCRIPCION';
+    | 'PLANILLA_INSCRIPCION'
+    | 'CITACION';
 export const TIPOS_DE_PLANTILLA: TipoDePlantilla[] = [
     'ESTUDIO',
     'BUENA_CONDUCTA',
@@ -34,6 +35,7 @@ export const TIPOS_DE_PLANTILLA: TipoDePlantilla[] = [
     'INSCRIPCION',
     'LABOR_SOCIAL',
     'PLANILLA_INSCRIPCION',
+    'CITACION',
 ];
 export const esTipoDePlantilla = (v: unknown): v is TipoDePlantilla => typeof v === 'string' && (TIPOS_DE_PLANTILLA as string[]).includes(v);
 
@@ -46,6 +48,7 @@ export const NOMBRE_DE_LA_PLANTILLA: Record<TipoDePlantilla, string> = {
     INSCRIPCION: 'Constancia de inscripción',
     LABOR_SOCIAL: 'Constancia de labor social',
     PLANILLA_INSCRIPCION: 'Planilla de inscripción (declaración)',
+    CITACION: 'Citación al representante',
 };
 
 /** Marcador → [qué pone, un ejemplo para la vista previa]. */
@@ -84,6 +87,13 @@ const PROPIOS: Partial<Record<TipoDePlantilla, Marcadores>> = {
     PLANILLA_INSCRIPCION: {
         representante: ['Nombres y apellidos del representante', 'José Pérez'],
         cedulaDelRepresentante: ['La cédula del representante', 'V-12345678'],
+    },
+    CITACION: {
+        representante: ['Nombres y apellidos del representante (o «representante» si no tiene)', 'José Pérez'],
+        fechaDeLaCitacion: ['El día de la cita (p. ej. «martes 14 de octubre de 2026»)', 'martes 14 de octubre de 2026'],
+        horaDeLaCitacion: ['La hora (p. ej. «8:00 a. m.»)', '8:00 a. m.'],
+        lugarDeLaCitacion: ['Dónde (p. ej. «la dirección del plantel»)', 'la dirección del plantel'],
+        motivoDeLaCitacion: ['Para qué se le cita', 'conversar sobre el rendimiento del estudiante en el primer lapso'],
     },
 };
 
@@ -140,6 +150,11 @@ export const PLANTILLAS_POR_DEFECTO: Record<TipoDePlantilla, { titulo: string; t
         titulo: 'Planilla de inscripción',
         texto:
             'Yo, {representante}, titular de la cédula de identidad {cedulaDelRepresentante}, representante del (la) estudiante {alumno}, declaro que los datos de esta planilla son ciertos y me comprometo a cumplir y hacer cumplir las normas de convivencia de {liceo} durante el año escolar {ciclo}.',
+    },
+    CITACION: {
+        titulo: 'Citación',
+        texto:
+            'Ciudadano(a) {representante}, representante del (la) estudiante {alumno}, cursante del {grado}, sección «{seccion}», de esta institución.\n\nPor medio de la presente se le cita a presentarse en {liceo} el día {fechaDeLaCitacion} a las {horaDeLaCitacion}, en {lugarDeLaCitacion}, para tratar el siguiente asunto: {motivoDeLaCitacion}.\n\nSu asistencia es de carácter obligatorio. Citación que se expide {lugarYFecha}.',
     },
 };
 

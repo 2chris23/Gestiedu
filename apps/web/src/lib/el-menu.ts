@@ -10,6 +10,7 @@ import {
     FileText,
     ClipboardCheck,
     HeartHandshake,
+    MessageSquareText,
     type LucideIcon,
 } from 'lucide-react';
 
@@ -63,6 +64,13 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean): DestinoDel
             icon: ClipboardCheck,
             roles: ['ADMIN', 'TEACHER'],
             pista: 'Materias pendientes, momento a momento',
+        },
+        {
+            name: 'Observaciones',
+            href: '/dashboard/observaciones',
+            icon: MessageSquareText,
+            roles: ['ADMIN', 'TEACHER'],
+            pista: 'Observaciones y citaciones a representantes',
         },
         {
             name: 'Labor social',

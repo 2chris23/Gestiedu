@@ -294,6 +294,7 @@ model User {
   calificacionesExternas  CalificacionExterna[]    @relation("CalificacionExternaAlumno")
   recaudosEntregados      RecaudoEntregado[]       @relation("RecaudoAlumno")
   suscripcionesDeAviso    SuscripcionDeAviso[]     @relation("SuscripcionesDeAviso")
+  citaciones              Citacion[]               @relation("CitacionAlumno")
   aparatoDeAsistencia     AparatoDelAlumno?
 
   // Notificaciones
@@ -1075,6 +1076,8 @@ model Observation {
 
   groupId String?
 
+  citaciones Citacion[]
+
   // Instituto
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
@@ -1317,6 +1320,42 @@ model CalificacionExterna {
 
   @@index([studentId])
   @@map("calificaciones_externas")
+}
+
+/// Citar al representante desde una observación: cuándo, dónde y para qué,
+/// y después si vino y lo que se habló. Al crearla se le avisa (campana y
+/// teléfono). La ponen el admin, el profesor guía de la sección del alumno y
+/// quien escribió la observación. Ver `services/citaciones.service.ts`.
+model Citacion {
+  id String @id @default(cuid())
+
+  observationId String
+  observation   Observation @relation(fields: [observationId], references: [id], onDelete: Cascade)
+
+  studentId String
+  student   User   @relation("CitacionAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  /// El día y la hora (hora del liceo, guardada como texto «08:00»).
+  fecha        DateTime @db.Date
+  hora         String
+  lugar        String
+  motivo       String
+  /// PENDIENTE | ASISTIO | NO_ASISTIO
+  estado       String   @default("PENDIENTE")
+  /// Lo que se habló en la reunión (o por qué no vino).
+  loQueSeHablo String?
+
+  citadaPor  String
+  marcadaPor String?
+  marcadaEl  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([studentId])
+  @@index([observationId])
+  @@index([fecha])
+  @@map("citaciones")
 }
 
 /// Un teléfono (o navegador) que recibe avisos de esta persona con la app

@@ -14,6 +14,7 @@ import api from '@/lib/axios';
 import { PagosDelRepresentante } from '@/components/pagos/PagosDelRepresentante';
 import MiDiaDeClases from '@/components/dashboard/MiDiaDeClases';
 import MisRepresentados from '@/components/dashboard/MisRepresentados';
+import CitacionesDelRepresentante from '@/components/dashboard/CitacionesDelRepresentante';
 import { LaborSocialDelAlumno } from '@/components/labor-social/LaborSocialDelAlumno';
 import {
     Users,
@@ -317,6 +318,7 @@ export default function DashboardPage() {
             {rol === 'STUDENT' && yo?.id && <LaborSocialDelAlumno studentId={yo.id} />}
 
             {/* Representante: sus representados y lo que les falta. */}
+            {rol === 'TUTOR' && <CitacionesDelRepresentante />}
             {rol === 'TUTOR' && <MisRepresentados />}
 
             {/* Representante: estado de pago de sus representados (si el liceo usa pagos) */}
