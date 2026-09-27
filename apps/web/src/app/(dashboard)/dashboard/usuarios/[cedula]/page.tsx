@@ -20,6 +20,8 @@ import { RepresentantesDelAlumno } from '@/components/users/RepresentantesDelAlu
 import { TelefonoDeAsistencia } from '@/components/users/TelefonoDeAsistencia';
 import { CambiarCedula } from '@/components/users/CambiarCedula';
 import { LaborSocialDelAlumno } from '@/components/labor-social/LaborSocialDelAlumno';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
+import { TIPOS_DE_CONSTANCIA, NOMBRE_DE_LA_CONSTANCIA, type TipoDeConstancia } from '@/hooks/useConstancia';
 import ActividadesDelAlumno from '@/components/profile/ActividadesDelAlumno';
 import api from '@/lib/axios';
 import { comprimirFotoEnElDispositivo, pesoLegible } from '@/lib/foto-comprimida';
@@ -180,6 +182,7 @@ export default function UserProfilePage({ params }: PageProps) {
     const { data: allAcademicYears } = useAcademicYears();
     const [subiendoFoto, setSubiendoFoto] = useState(false);
     const confirmar = useConfirm();
+    const { yo } = useQuienSoy();
 
     /**
      * Poner la foto: se achica en el dispositivo (512 px) y el servidor la deja
@@ -466,19 +469,26 @@ export default function UserProfilePage({ params }: PageProps) {
                                 </Link>
                             )}
                             {user.role === 'student' && (
+                                // Los documentos del liceo: el admin, todos; el resto
+                                // del personal, la de estudio (el servidor decide).
                                 <div className="flex flex-wrap gap-2">
-                                    <Link
-                                        href={`/dashboard/constancia/${encodeURIComponent(user.cedula)}`}
-                                        className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
-                                    >
-                                        <FileText className="h-4 w-4" /> Constancia de estudio
-                                    </Link>
-                                    <Link
-                                        href={`/dashboard/constancia/${encodeURIComponent(user.cedula)}?tipo=BUENA_CONDUCTA`}
-                                        className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
-                                    >
-                                        <FileText className="h-4 w-4" /> Constancia de buena conducta
-                                    </Link>
+                                    {(yo?.role === 'ADMIN' ? TIPOS_DE_CONSTANCIA : (['ESTUDIO'] as TipoDeConstancia[])).map((tipo) => (
+                                        <Link
+                                            key={tipo}
+                                            href={`/dashboard/constancia/${encodeURIComponent(user.cedula)}${tipo === 'ESTUDIO' ? '' : `?tipo=${tipo}`}`}
+                                            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                        >
+                                            <FileText className="h-4 w-4" /> {NOMBRE_DE_LA_CONSTANCIA[tipo]}
+                                        </Link>
+                                    ))}
+                                    {yo?.role === 'ADMIN' && (
+                                        <Link
+                                            href={`/dashboard/certificacion/${encodeURIComponent(user.cedula)}`}
+                                            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                        >
+                                            <FileText className="h-4 w-4" /> Certificación de calificaciones
+                                        </Link>
+                                    )}
                                 </div>
                             )}
                             {user.role === 'student' && <RepresentantesDelAlumno studentId={user.cedula} />}

@@ -14,6 +14,8 @@ import { platformPrisma } from '../config/database';
  *   - **Código estadístico**: 6 dígitos; los dos primeros, la zona educativa.
  *   - **Código de dependencia**: 9 dígitos (el plantel como unidad del
  *     presupuesto nacional).
+ *   - El **código del plan de estudio** (p. ej. «31059» para Media General):
+ *     lo pide el Resumen Final y la certificación de calificaciones.
  *   - El **nombre oficial** tal como está en el Sistema de Gestión Escolar del
  *     MPPE (U.E., L.B., U.E.N.…), la **zona educativa**, la **entidad federal**,
  *     el **municipio** y la **parroquia**.
@@ -37,6 +39,7 @@ export interface DatosDelPlantel {
     codigoDea?: string;
     codigoEstadistico?: string;
     codigoDependencia?: string;
+    codigoDelPlanDeEstudio?: string;
     zonaEducativa?: string;
     entidadFederal?: string;
     municipio?: string;
@@ -50,6 +53,7 @@ export const CAMPOS_DEL_PLANTEL: (keyof DatosDelPlantel)[] = [
     'codigoDea',
     'codigoEstadistico',
     'codigoDependencia',
+    'codigoDelPlanDeEstudio',
     'zonaEducativa',
     'entidadFederal',
     'municipio',
@@ -87,6 +91,10 @@ export function revisarDatosDelPlantel(entrada: Record<string, unknown>): { dato
                 v = v.replace(/[\s-]/g, '');
                 if (!/^\d{9}$/.test(v)) errores.push('El código de dependencia son 9 dígitos.');
                 break;
+            case 'codigoDelPlanDeEstudio':
+                v = v.replace(/[\s-]/g, '').toUpperCase();
+                if (!/^[A-Z0-9]{3,10}$/.test(v)) errores.push('El código del plan de estudio son de 3 a 10 letras y números (p. ej. 31059).');
+                break;
             case 'entidadFederal':
                 if (!(ENTIDADES_FEDERALES as readonly string[]).includes(v)) errores.push('Elige la entidad federal de la lista.');
                 break;
@@ -107,6 +115,7 @@ export interface Membrete {
     codigoDea: string | null;
     codigoEstadistico: string | null;
     codigoDependencia: string | null;
+    codigoDelPlanDeEstudio: string | null;
     zonaEducativa: string | null;
     entidadFederal: string | null;
     municipio: string | null;
@@ -130,6 +139,7 @@ export async function membreteDelLiceo(instituteId: string): Promise<Membrete> {
         codigoDea: o(docs.codigoDea),
         codigoEstadistico: o(docs.codigoEstadistico),
         codigoDependencia: o(docs.codigoDependencia),
+        codigoDelPlanDeEstudio: o(docs.codigoDelPlanDeEstudio),
         zonaEducativa: o(docs.zonaEducativa),
         entidadFederal: o(docs.entidadFederal),
         municipio: o(docs.municipio),

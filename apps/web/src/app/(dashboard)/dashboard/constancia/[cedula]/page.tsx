@@ -3,42 +3,30 @@
 import { use } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, Printer } from 'lucide-react';
-import { useConstancia, type TipoDeConstancia } from '@/hooks/useConstancia';
+import { useConstancia, TIPOS_DE_CONSTANCIA, type TipoDeConstancia } from '@/hooks/useConstancia';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
-import { useMembrete } from '@/hooks/useMembrete';
 import { MembreteOficial } from '@/components/documentos/MembreteOficial';
 
 /**
- * CONSTANCIA DE ESTUDIO O DE BUENA CONDUCTA, PARA IMPRIMIR
+ * LAS CONSTANCIAS, PARA IMPRIMIR
  *
- * La hoja que hace constar que el alumno estudia (o estudió) en el liceo, con
- * el membrete, el párrafo y la firma de quien el liceo haya puesto en
- * Configuración → Académico. `?tipo=BUENA_CONDUCTA` para la de conducta (solo
- * el admin). Quién puede, lo decide el servidor.
+ * La hoja con el membrete, el texto y la firma de quien el liceo haya puesto
+ * en Configuración → Académico. `?tipo=` elige cuál: ESTUDIO (por defecto),
+ * BUENA_CONDUCTA, PROSECUCION, RETIRO, INSCRIPCION o LABOR_SOCIAL. El texto es
+ * la plantilla del liceo (Configuración → Documentos), rellena en el servidor.
+ * Quién puede, lo decide el servidor.
  */
-
-const ORDINAL = ['', '1er', '2do', '3er', '4to', '5to', '6to'];
-const TURNO: Record<string, string> = { MANANA: 'mañana', TARDE: 'tarde', INTEGRAL: 'integral' };
-
-const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-
-/** «a los 25 días del mes de septiembre de 2026», como se escribe en una constancia. */
-const aLosDias = (ymd: string) => {
-    const [y, m, d] = ymd.split('-').map(Number);
-    return `a ${d === 1 ? 'un día' : `los ${d} días`} del mes de ${MESES[m - 1]} de ${y}`;
-};
 
 export default function ConstanciaPage({ params }: { params: Promise<{ cedula: string }> }) {
     const { cedula } = use(params);
     const router = useRouter();
     const buscar = useSearchParams();
-    const tipo: TipoDeConstancia = buscar.get('tipo') === 'BUENA_CONDUCTA' ? 'BUENA_CONDUCTA' : 'ESTUDIO';
+    const pedido = buscar.get('tipo') as TipoDeConstancia | null;
+    const tipo: TipoDeConstancia = pedido && TIPOS_DE_CONSTANCIA.includes(pedido) ? pedido : 'ESTUDIO';
     // `/dashboard/constancia/mia`: la del propio alumno.
     const { yo } = useQuienSoy();
     const deQuien = cedula === 'mia' ? (yo?.id ?? '') : decodeURIComponent(cedula);
     const { data: c, isLoading: cargando, error } = useConstancia(deQuien, tipo);
-    // El nombre del cuerpo, el mismo que el del membrete (el oficial, si lo hay).
-    const { data: membrete } = useMembrete();
 
     if (cargando || (cedula === 'mia' && !yo?.id)) {
         return <div className="p-8 text-sm text-gray-600">Cargando la constancia…</div>;
@@ -51,7 +39,7 @@ export default function ConstanciaPage({ params }: { params: Promise<{ cedula: s
                     {status === 403
                         ? 'No tienes permiso para sacar esta constancia.'
                         : status === 409
-                          ? 'El estudiante no está inscrito en el año escolar en curso: no se le puede hacer constar que estudia aquí.'
+                          ? ((error as any)?.response?.data?.error ?? 'No se puede sacar esta constancia.')
                           : status === 404
                             ? 'Este estudiante no tiene inscripción en ningún ciclo.'
                             : 'No se pudo cargar la constancia.'}
@@ -63,12 +51,7 @@ export default function ConstanciaPage({ params }: { params: Promise<{ cedula: s
         );
     }
 
-    const titulo = c.tipo === 'ESTUDIO' ? 'Constancia de estudio' : 'Constancia de buena conducta';
-    const firmante = c.firmante.nombre ?? '____________________________';
-    const quien = `${c.alumno.nombres} ${c.alumno.apellidos}`;
-    const liceo = membrete?.nombre || c.liceo.nombre;
-    const anio = `${ORDINAL[c.seccion.grado] ?? `${c.seccion.grado}°`} año, sección «${c.seccion.seccion}»`;
-    const turno = c.seccion.turno && TURNO[c.seccion.turno] ? `, turno de la ${TURNO[c.seccion.turno]}` : '';
+    const titulo = c.titulo;
 
     return (
         <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-6 print:max-w-none print:p-0">
@@ -92,27 +75,13 @@ export default function ConstanciaPage({ params }: { params: Promise<{ cedula: s
                     <h1 className="mt-8 text-base font-bold uppercase tracking-widest text-gray-900">{titulo}</h1>
                 </header>
 
-                <p className="mt-8 text-justify text-sm leading-7 text-gray-900 sm:text-base sm:leading-8">
-                    Quien suscribe, <strong>{firmante}</strong>
-                    {c.firmante.cedula ? `, titular de la cédula de identidad ${c.firmante.cedula}` : ''}, en su carácter de{' '}
-                    {c.firmante.cargo} de <strong>{liceo}</strong>, hace constar por medio de la presente que el (la)
-                    estudiante <strong>{quien}</strong>, titular de la cédula {c.alumno.cedula},{' '}
-                    {c.tipo === 'ESTUDIO' ? (
-                        <>
-                            cursa estudios de {c.nivel} en esta institución, en el <strong>{anio}</strong>
-                            {turno}, durante el año escolar {c.ciclo.nombre}.
-                        </>
-                    ) : (
-                        <>
-                            {c.vigente ? 'cursa' : 'cursó'} estudios de {c.nivel} en esta institución ({anio}, año escolar {c.ciclo.nombre}) y
-                            durante su permanencia en ella ha observado <strong>buena conducta</strong>.
-                        </>
-                    )}
-                </p>
-                <p className="mt-6 text-justify text-sm leading-7 text-gray-900 sm:text-base sm:leading-8">
-                    Constancia que se expide a petición de la parte interesada{c.liceo.ciudad ? ` en ${c.liceo.ciudad}` : ''},{' '}
-                    {aLosDias(c.emitidaEl)}.
-                </p>
+                {/* El texto sale de la plantilla del liceo (Configuración → Documentos),
+                    relleno en el servidor: se pinta como TEXTO, nunca como HTML. */}
+                {c.parrafos.map((p, i) => (
+                    <p key={i} className={`${i === 0 ? 'mt-8' : 'mt-6'} text-justify text-sm leading-7 text-gray-900 sm:text-base sm:leading-8`}>
+                        {p}
+                    </p>
+                ))}
 
                 <footer className="mt-24 text-center text-sm">
                     <div className="mx-auto w-64 border-t border-gray-400 pt-1 text-gray-900">

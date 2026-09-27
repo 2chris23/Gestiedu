@@ -188,6 +188,20 @@ Pruebas: CIERRE-01…10, academic-close 1…9, CIERRE-UI-01/02; la pendiente: PE
 La anotan el admin y el profesor guía de la sección del alumno (una actividad a varios a la vez);
 el alumno y su representante solo la ven. Pruebas: LABOR-01…07, LABOR-UI-01.
 
+## 8e. Los documentos oficiales (resumen final y certificación)
+
+**Añadido el 2026-09-27** (`services/resumen-final.service.ts`, `services/certificacion.service.ts`,
+`services/plantillas-de-documentos.service.ts`).
+
+| Qué | Regla | Configurable |
+| :--- | :--- | :--- |
+| **Resumen final, tipos** | FINAL: la definitiva de cada área (promedio de los lapsos del año). REVISIÓN: solo los alumnos con revisión, con su nota de revisión. MATERIA PENDIENTE: una columna por área y grado de origen, con la nota de la pendiente. | — |
+| **Abreviatura del área** | La del plan de estudio del MPPE si el nombre es uno de los suyos (CA, MA, FI…); si no, el código del liceo si son 2–5 letras; si no, las iniciales. Repetidas: la segunda lleva un número. | el código de la materia |
+| **Certificación** | Por grado, de 1.º al último: si se cursó en el liceo, sus definitivas con el tipo (F, R o MP) y la fecha MM/AAAA; si en otro plantel, lo cargado a mano; si no, «sin datos». | — |
+| **Constancias** | Texto de cada tipo desde la plantilla del liceo (marcadores `{{…}}`); sin plantilla propia, la del MPPE. Un marcador desconocido no se guarda (400). | Configuración → Documentos |
+
+Pruebas: DOC-01…08, DOC-UI-01…03.
+
 ---
 
 ## 9. Estas reglas están vigiladas, no solo escritas

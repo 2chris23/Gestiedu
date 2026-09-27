@@ -64,6 +64,7 @@ const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[]; patron?: RegExp 
     // profesor entre a Académico. Van primero: se usa la primera que encaja.
     { prefijo: '/dashboard/academico/*/cierre', roles: ['ADMIN'], patron: /^\/dashboard\/academico\/[^/]+\/(cierre|promocion)(\/|$)/ },
     { prefijo: '/dashboard/usuarios', roles: ['ADMIN'] },
+    { prefijo: '/dashboard/certificacion', roles: ['ADMIN'] },
     { prefijo: '/dashboard/configuracion', roles: ['ADMIN'] },
     { prefijo: '/dashboard/eventos', roles: ['ADMIN'] },
     { prefijo: '/dashboard/pagos', roles: ['ADMIN'] },

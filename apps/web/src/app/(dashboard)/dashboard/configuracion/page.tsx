@@ -2,7 +2,7 @@
 
 import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import { useState } from 'react';
-import { Building2, Palette, GraduationCap, Bell, Shield, Wallet, QrCode } from 'lucide-react';
+import { Building2, Palette, GraduationCap, Bell, Shield, Wallet, QrCode, FileText } from 'lucide-react';
 import { GeneralSettings } from './components/GeneralSettings';
 import { diferido } from '@/components/common/Diferido';
 
@@ -13,12 +13,14 @@ const AcademicSettings = diferido(() => import('./components/AcademicSettings').
 const NotificationSettings = diferido(() => import('./components/NotificationSettings').then((m) => ({ default: m.NotificationSettings })), { alto: 480 });
 const SecuritySettings = diferido(() => import('./components/SecuritySettings').then((m) => ({ default: m.SecuritySettings })), { alto: 480 });
 const PaymentSettings = diferido(() => import('./components/PaymentSettings').then((m) => ({ default: m.PaymentSettings })), { alto: 480 });
+const DocumentSettings = diferido(() => import('./components/DocumentSettings').then((m) => ({ default: m.DocumentSettings })), { alto: 480 });
 const QrSettings = diferido(() => import('./components/QrSettings').then((m) => ({ default: m.QrSettings })), { alto: 480 });
 
 const tabs = [
     { id: 'general', label: 'Información General', icon: Building2, component: GeneralSettings },
     { id: 'appearance', label: 'Apariencia', icon: Palette, component: AppearanceSettings },
     { id: 'academic', label: 'Configuración Académica', icon: GraduationCap, component: AcademicSettings },
+    { id: 'documents', label: 'Documentos', icon: FileText, component: DocumentSettings },
     { id: 'payments', label: 'Pagos', icon: Wallet, component: PaymentSettings },
     { id: 'qr', label: 'Asistencia por QR', icon: QrCode, component: QrSettings },
     { id: 'notifications', label: 'Notificaciones', icon: Bell, component: NotificationSettings },

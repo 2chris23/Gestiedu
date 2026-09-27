@@ -25,6 +25,7 @@ const DATOS_VACIOS = {
     codigoDea: '',
     codigoEstadistico: '',
     codigoDependencia: '',
+    codigoDelPlanDeEstudio: '',
     zonaEducativa: '',
     entidadFederal: '',
     municipio: '',
@@ -259,6 +260,11 @@ export function GeneralSettings() {
                         <span className="mb-1 block text-sm font-medium text-gray-700">Código de dependencia (9 dígitos)</span>
                         <input id="codigoDependencia" className={CAMPO} inputMode="numeric" maxLength={11} placeholder="123456789"
                             value={plantel.codigoDependencia} onChange={(e) => setPlantel((p) => ({ ...p, codigoDependencia: e.target.value }))} />
+                    </label>
+                    <label htmlFor="codigoDelPlanDeEstudio" className="block">
+                        <span className="mb-1 block text-sm font-medium text-gray-700">Código del plan de estudio</span>
+                        <input id="codigoDelPlanDeEstudio" className={CAMPO} maxLength={12} placeholder="31059"
+                            value={plantel.codigoDelPlanDeEstudio} onChange={(e) => setPlantel((p) => ({ ...p, codigoDelPlanDeEstudio: e.target.value }))} />
                     </label>
                     <label htmlFor="zonaEducativa" className="block">
                         <span className="mb-1 block text-sm font-medium text-gray-700">Zona educativa</span>

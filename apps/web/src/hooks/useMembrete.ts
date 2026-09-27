@@ -14,6 +14,7 @@ export interface Membrete {
     codigoDea: string | null;
     codigoEstadistico: string | null;
     codigoDependencia: string | null;
+    codigoDelPlanDeEstudio?: string | null;
     zonaEducativa: string | null;
     entidadFederal: string | null;
     municipio: string | null;
