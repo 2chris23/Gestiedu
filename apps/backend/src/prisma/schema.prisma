@@ -295,6 +295,7 @@ model User {
   recaudosEntregados      RecaudoEntregado[]       @relation("RecaudoAlumno")
   suscripcionesDeAviso    SuscripcionDeAviso[]     @relation("SuscripcionesDeAviso")
   citaciones              Citacion[]               @relation("CitacionAlumno")
+  notasDeOtroPlantel      NotaDeOtroPlantel[]      @relation("NotaDeOtroPlantelAlumno")
   aparatoDeAsistencia     AparatoDelAlumno?
 
   // Notificaciones
@@ -439,9 +440,10 @@ model Period {
   updatedAt DateTime @updatedAt
 
   // Relaciones
-  grades        Grade[]
-  activities    Activity[]
-  apreciaciones Apreciacion[]
+  grades             Grade[]
+  activities         Activity[]
+  apreciaciones      Apreciacion[]
+  notasDeOtroPlantel NotaDeOtroPlantel[]
 
   @@unique([academicYearId, name])
   @@map("periods")
@@ -478,6 +480,7 @@ model Subject {
   replacingIn        ClassReplacement[]  @relation("ReplacementSubject")
   observations       Observation[]
   notasDeRevision    NotaDeRevision[]
+  notasDeOtroPlantel NotaDeOtroPlantel[]
   institute          Institute?          @relation(fields: [instituteId], references: [id])
   instituteId        String?
 
@@ -588,8 +591,14 @@ model StudentClassroom {
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
 
-  enrollmentDate DateTime @default(now())
-  isActive       Boolean  @default(true)
+  enrollmentDate  DateTime  @default(now())
+  isActive        Boolean   @default(true)
+  /// El día en que se retiró del liceo (traslado u otro motivo) y por qué.
+  /// Lo cuenta la estadística de matrícula. Ver `services/traslado.service.ts`.
+  retiradoEl      DateTime? @db.Date
+  motivoDeRetiro  String?
+  /// El plantel del que venía, si llegó trasladado (archivo de traslado).
+  plantelDeOrigen String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1320,6 +1329,35 @@ model CalificacionExterna {
 
   @@index([studentId])
   @@map("calificaciones_externas")
+}
+
+/// La nota de un lapso que el alumno cursó en OTRO liceo este mismo año,
+/// traída con su archivo de traslado. Cuenta en el promedio de ese lapso
+/// (nivel 2) solo si el alumno no tiene notas propias en él.
+/// Ver `services/traslado.service.ts` y MAPA_DE_CALCULOS.md §1.
+model NotaDeOtroPlantel {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("NotaDeOtroPlantelAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  periodId String
+  period   Period @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  nota             Float
+  /// Cómo se llamaba la materia allá y en qué plantel.
+  materiaDeOrigen  String
+  plantel          String
+  codigoDelPlantel String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, periodId, subjectId])
+  @@index([studentId])
+  @@map("notas_de_otro_plantel")
 }
 
 /// Citar al representante desde una observación: cuándo, dónde y para qué,

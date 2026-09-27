@@ -35,6 +35,21 @@ el liceo en `academicConfig.apreciaciones`).
 La apreciación la pone el profesor que da esa materia en esa sección (o el admin);
 el guía de la sección solo la mira. Pruebas: CUALI-01…05, CUALI-UI-01.
 
+### 1c. Los lapsos cursados en otro liceo (alumno trasladado)
+
+**Añadido el 2026-09-28** (`services/traslado.service.ts`, tabla `notas_de_otro_plantel`).
+El alumno que llega a mitad de año con su archivo de traslado trae la nota de cada
+lapso que cursó allá, emparejada con una materia de aquí.
+
+| Dónde | Regla | Función / Archivo |
+| :--- | :--- | :--- |
+| **Nivel 2**, un lapso | Si el alumno **no tiene notas propias** de esa materia en ese lapso, el promedio del lapso es la nota traída (`conNotas: true`). Una sola nota propia manda sobre la traída. | `gradesService.promedioDelLapso`, `bulkSubjectAveragesConDatos` (los dos caminos, TRAS-07) |
+| Niveles 3-6, boleta, resumen, cierre | Nada propio: consumen el nivel 2. | — |
+| Consultas que promedian notas crudas (`grade.groupBy`) | **No** ven la nota traída (no es una `Grade`): la estadística de riesgo por materias puede no contarla. | `cycle-statistics.service`, `reports.service` |
+
+Los años anteriores del archivo van a la certificación como «de otro plantel»
+(`calificaciones_externas`). Pruebas: TRAS-05…07.
+
 ---
 
 ## 2. Plan de Evaluación y Ponderaciones

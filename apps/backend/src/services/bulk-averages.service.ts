@@ -219,6 +219,16 @@ export async function bulkSubjectAveragesConDatos(
         studentIds.map((id) => [id, new Map<string, { promedio: number; conNotas: boolean }>()])
     );
 
+    // Los lapsos que un alumno trasladado cursó en otro liceo (igual que
+    // `gradesService.promedioDelLapso`: cuentan solo si aquí no tiene notas).
+    const traidas = new Map<string, number>();
+    for (const t of await (prisma as any).notaDeOtroPlantel.findMany({
+        where: { studentId: { in: studentIds }, subjectId: { in: subjectIds }, periodId: { in: periods.map((p) => p.id) } },
+        select: { studentId: true, subjectId: true, periodId: true, nota: true },
+    })) {
+        traidas.set(`${t.studentId}|${t.subjectId}|${t.periodId}`, t.nota);
+    }
+
     for (const subjectId of subjectIds) {
         // Notas sueltas de Clase en Vivo de esta materia (sin criterio del plan)
         const subjectActs = actScores.filter((a) => a.subjectId === subjectId);
@@ -280,7 +290,9 @@ export async function bulkSubjectAveragesConDatos(
                 // Un lapso sin notas no pesa (regla de exclusión); uno con
                 // notas en 0, sí: un 0 es una nota.
                 const { nota, conNotas } = lapsoNote(criteria);
+                const traida = traidas.get(`${studentId}|${subjectId}|${period.id}`);
                 if (conNotas) notasPorLapso.push(nota);
+                else if (traida !== undefined) notasPorLapso.push(traida);
             }
 
             const promedio =

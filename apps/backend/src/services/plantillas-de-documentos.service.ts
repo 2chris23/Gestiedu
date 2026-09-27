@@ -26,7 +26,8 @@ export type TipoDePlantilla =
     | 'INSCRIPCION'
     | 'LABOR_SOCIAL'
     | 'PLANILLA_INSCRIPCION'
-    | 'CITACION';
+    | 'CITACION'
+    | 'NOTAS_PARCIALES';
 export const TIPOS_DE_PLANTILLA: TipoDePlantilla[] = [
     'ESTUDIO',
     'BUENA_CONDUCTA',
@@ -36,6 +37,7 @@ export const TIPOS_DE_PLANTILLA: TipoDePlantilla[] = [
     'LABOR_SOCIAL',
     'PLANILLA_INSCRIPCION',
     'CITACION',
+    'NOTAS_PARCIALES',
 ];
 export const esTipoDePlantilla = (v: unknown): v is TipoDePlantilla => typeof v === 'string' && (TIPOS_DE_PLANTILLA as string[]).includes(v);
 
@@ -49,6 +51,7 @@ export const NOMBRE_DE_LA_PLANTILLA: Record<TipoDePlantilla, string> = {
     LABOR_SOCIAL: 'Constancia de labor social',
     PLANILLA_INSCRIPCION: 'Planilla de inscripción (declaración)',
     CITACION: 'Citación al representante',
+    NOTAS_PARCIALES: 'Notas parciales (traslado)',
 };
 
 /** Marcador → [qué pone, un ejemplo para la vista previa]. */
@@ -88,6 +91,7 @@ const PROPIOS: Partial<Record<TipoDePlantilla, Marcadores>> = {
         representante: ['Nombres y apellidos del representante', 'José Pérez'],
         cedulaDelRepresentante: ['La cédula del representante', 'V-12345678'],
     },
+    NOTAS_PARCIALES: { fechaDeRetiro: ['El día en que se retiró (vacío si sigue en el liceo)', '15 de marzo de 2027'] },
     CITACION: {
         representante: ['Nombres y apellidos del representante (o «representante» si no tiene)', 'José Pérez'],
         fechaDeLaCitacion: ['El día de la cita (p. ej. «martes 14 de octubre de 2026»)', 'martes 14 de octubre de 2026'],
@@ -150,6 +154,11 @@ export const PLANTILLAS_POR_DEFECTO: Record<TipoDePlantilla, { titulo: string; t
         titulo: 'Planilla de inscripción',
         texto:
             'Yo, {representante}, titular de la cédula de identidad {cedulaDelRepresentante}, representante del (la) estudiante {alumno}, declaro que los datos de esta planilla son ciertos y me comprometo a cumplir y hacer cumplir las normas de convivencia de {liceo} durante el año escolar {ciclo}.',
+    },
+    NOTAS_PARCIALES: {
+        titulo: 'Notas parciales',
+        texto:
+            'Quien suscribe, {firmante}, en su carácter de {cargo} de {liceo}, hace constar que el (la) estudiante {alumno}, titular de la {tipoDeCedula} {cedula}, {cursa} el {grado}, sección «{seccion}», de {nivel} en esta institución durante el año escolar {ciclo}, con las calificaciones parciales que se indican.\n\nSe expide a petición de la parte interesada {lugarYFecha}.',
     },
     CITACION: {
         titulo: 'Citación',

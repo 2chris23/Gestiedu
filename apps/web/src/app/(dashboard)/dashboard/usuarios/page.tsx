@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, ChevronLeft, ChevronRight, Filter, FolderArchive, Users, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Plus, Search, ChevronLeft, ChevronRight, Filter, FolderArchive, Users, RotateCcw, AlertTriangle, FileUp } from 'lucide-react';
 import { Input, Button } from '@/components/ui';
 import { UsersTable } from '@/components/users/UsersTable';
 import { Modal } from '@/components/ui/Modal';
@@ -261,6 +262,14 @@ export default function UsersPage() {
                             <Users className="h-4 w-4 text-indigo-600" />
                             <span>Ver Usuarios Activos</span>
                         </Button>
+                    )}
+                    {viewMode === 'active' && (
+                        <Link
+                            href="/dashboard/importar-alumno"
+                            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                        >
+                            <FileUp className="h-4 w-4" aria-hidden /> Importar alumno
+                        </Link>
                     )}
                     {viewMode === 'active' && (
                         <Button onClick={() => { setEditingUser(null); setIsModalOpen(true); }} className="w-auto">

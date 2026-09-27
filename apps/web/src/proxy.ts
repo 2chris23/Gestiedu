@@ -67,6 +67,8 @@ const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[]; patron?: RegExp 
     { prefijo: '/dashboard/certificacion', roles: ['ADMIN'] },
     { prefijo: '/dashboard/planilla-de-inscripcion', roles: ['ADMIN'] },
     { prefijo: '/dashboard/observaciones', roles: ['ADMIN', 'TEACHER'] },
+    { prefijo: '/dashboard/notas-parciales', roles: ['ADMIN'] },
+    { prefijo: '/dashboard/importar-alumno', roles: ['ADMIN'] },
     { prefijo: '/dashboard/configuracion', roles: ['ADMIN'] },
     { prefijo: '/dashboard/eventos', roles: ['ADMIN'] },
     { prefijo: '/dashboard/pagos', roles: ['ADMIN'] },

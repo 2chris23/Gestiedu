@@ -21,6 +21,7 @@ import { TelefonoDeAsistencia } from '@/components/users/TelefonoDeAsistencia';
 import { CambiarCedula } from '@/components/users/CambiarCedula';
 import { EditarDatosPersonales } from '@/components/users/EditarDatosPersonales';
 import { InscripcionDelAlumno } from '@/components/users/InscripcionDelAlumno';
+import { TrasladoDelAlumno } from '@/components/users/TrasladoDelAlumno';
 import { LaborSocialDelAlumno } from '@/components/labor-social/LaborSocialDelAlumno';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { TIPOS_DE_CONSTANCIA, NOMBRE_DE_LA_CONSTANCIA, type TipoDeConstancia } from '@/hooks/useConstancia';
@@ -391,6 +392,7 @@ export default function UserProfilePage({ params }: PageProps) {
                     {/* Lo que le falta al alumno: la pregunta que más se hace un
                         representante y que la ficha no sabía responder. */}
                     {user.role === 'student' && <InscripcionDelAlumno studentId={user.cedula} />}
+                    {user.role === 'student' && <TrasladoDelAlumno studentId={user.cedula} archivado={dbUser?.isActive === false} />}
                     {user.role === 'student' && <LaborSocialDelAlumno studentId={user.cedula} />}
                     {user.role === 'student' && (
                         <ActividadesDelAlumno

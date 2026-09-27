@@ -216,6 +216,8 @@ async function losRecorridos() {
                 ['Ficha de alumno', `/dashboard/usuarios/${alumno?.id}`],
                 ['Certificación', `/dashboard/certificacion/${alumno?.id}`],
                 ['Planilla de inscripción', `/dashboard/planilla-de-inscripcion/${alumno?.id}`],
+                ['Notas parciales', `/dashboard/notas-parciales/${alumno?.id}`],
+                ['Importar alumno', '/dashboard/importar-alumno'],
                 ['Constancia', `/dashboard/constancia/${alumno?.id}`],
                 ['Eventos', '/dashboard/eventos'],
                 ['Pagos', '/dashboard/pagos'],

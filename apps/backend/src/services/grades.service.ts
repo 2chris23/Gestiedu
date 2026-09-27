@@ -1030,7 +1030,17 @@ class GradesService {
         : result.total;
       average = Math.round(average * 100) / 100;
 
-      const detalle = { promedio: average, conNotas: result.gradedActivities > 0 };
+      let detalle = { promedio: average, conNotas: result.gradedActivities > 0 };
+      // EL LAPSO QUE CURSÓ EN OTRO LICEO: si llegó trasladado y aquí no tiene
+      // notas de ese lapso, cuenta la que trajo (MAPA_DE_CALCULOS.md §1). Una
+      // nota propia, aunque sea una sola, manda sobre la traída.
+      if (!detalle.conNotas) {
+        const traida = await (prisma as any).notaDeOtroPlantel.findUnique({
+          where: { studentId_periodId_subjectId: { studentId, periodId, subjectId } },
+          select: { nota: true },
+        });
+        if (traida) detalle = { promedio: traida.nota, conNotas: true };
+      }
       // Cache por 10 minutos
       await RedisCache.set(cacheKey, detalle, CACHE_TTL.SHORT * 2);
       return detalle;
