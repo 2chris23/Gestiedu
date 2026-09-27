@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Layers, Pencil, GraduationCap, MoreVertical } from 'lucide-react';
+import { ArrowLeft, Layers, Pencil, GraduationCap, MoreVertical, Users } from 'lucide-react';
 import { academicYearService } from '@/services/academic-year.service';
 import { classroomService, Classroom } from '@/services/classroom.service';
 import { useAcademicYears } from '@/hooks/useAcademicYears';
@@ -20,7 +20,7 @@ import { Turno } from '@/lib/turnos';
 import { toast } from 'sonner';
 import AcademicStats from '@/components/academic/AcademicStats';
 import LapsoSelector from '@/components/academic/LapsoSelector';
-import { useAuthStore } from '@/store/auth.store';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
 import { diferido } from '@/components/common/Diferido';
@@ -37,8 +37,10 @@ export default function AcademicYearDashboard() {
 
     const [lapsoId, setLapsoId] = useState<string | undefined>(undefined);
     const queryClient = useQueryClient();
-    const { user } = useAuthStore();
-    const isAdmin = (user?.role as string) === 'ADMIN' || (user?.role as string) === 'SUPERADMIN';
+    // El rol lo dice el servidor (`useQuienSoy`), no el almacén del navegador,
+    // que en la primera pintada puede estar vacío y escondía el menú del ciclo.
+    const { yo } = useQuienSoy();
+    const isAdmin = yo?.role === 'ADMIN';
 
     const [isClassroomModalOpen, setClassroomModalOpen] = useState(false);
     const [isYearModalOpen, setYearModalOpen] = useState(false);
@@ -314,6 +316,9 @@ export default function AcademicYearDashboard() {
                                 <DropdownMenuContent align="end">
                                     <DropdownMenuItem onSelect={() => setYearModalOpen(true)}>
                                         <Pencil className="mr-2 h-4 w-4" /> Editar el ciclo
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={() => router.push(`/dashboard/academico/${year.name}/matricula`)}>
+                                        <Users className="mr-2 h-4 w-4" /> Estadística de matrícula
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
                                         onSelect={() => router.push(`/dashboard/academico/${year.name}/cierre`)}

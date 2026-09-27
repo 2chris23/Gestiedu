@@ -62,7 +62,7 @@ type Rol = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'TUTOR';
 const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[]; patron?: RegExp }> = [
     // El fin del año escolar y colocar a los alumnos: solo el admin, aunque el
     // profesor entre a Académico. Van primero: se usa la primera que encaja.
-    { prefijo: '/dashboard/academico/*/cierre', roles: ['ADMIN'], patron: /^\/dashboard\/academico\/[^/]+\/(cierre|promocion)(\/|$)/ },
+    { prefijo: '/dashboard/academico/*/cierre', roles: ['ADMIN'], patron: /^\/dashboard\/academico\/[^/]+\/(cierre|promocion|matricula|graduandos)(\/|$)/ },
     { prefijo: '/dashboard/usuarios', roles: ['ADMIN'] },
     { prefijo: '/dashboard/certificacion', roles: ['ADMIN'] },
     { prefijo: '/dashboard/planilla-de-inscripcion', roles: ['ADMIN'] },

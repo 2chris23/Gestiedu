@@ -219,6 +219,23 @@ Pruebas: DOC-01…08, DOC-UI-01…03.
 
 ---
 
+## 8f. La estadística de matrícula (el movimiento)
+
+**Añadido el 2026-09-28** (`services/matricula.service.ts`). Reglas del liceo en
+`academicConfig.matricula`.
+
+| Qué | Regla | Configurable |
+| :--- | :--- | :--- |
+| **Matrícula inicial** | Quien estaba inscrito al empezar el período y no se había ido. Lo inscrito en los primeros días del año es inicial del año, no ingreso. | `diasDeInscripcion` (30) |
+| **Ingresos** | Inscritos dentro del período (después de esos primeros días). | — |
+| **Retiros** | `student_classrooms.retiradoEl` dentro del período (lo pone el retiro de la ficha); si se archivó antes de existir, el día del archivo. | — |
+| **Final** | Inicial + ingresos − retiros. Por sexo (M, F; sin sexo cuenta en el total, «sin dato»). | — |
+| **Por edad** | La matrícula final, por edad cumplida en la fecha de corte. Sin fecha de nacimiento: «sin dato». | `fechaDeCorte` («09-30») |
+
+Pruebas: MAT-01…04, MAT-UI-01.
+
+---
+
 ## 9. Estas reglas están vigiladas, no solo escritas
 
 Un documento como este **envejece en silencio**: alguien cambia una fórmula, el
