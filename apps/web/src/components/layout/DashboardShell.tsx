@@ -20,6 +20,8 @@ import { BACKEND_URL } from '@/config/env';
 import { elMenuDe, losDeLaBarra, MI_CUENTA } from '@/lib/el-menu';
 import { abrirMiCuenta } from '@/components/layout/CabeceraMovil';
 import BarraInferiorMovil from '@/components/layout/BarraInferiorMovil';
+import { Campana, ApuntarElTelefonoAlEntrar, OfrecerAvisos } from '@/components/layout/Campana';
+import { olvidarEsteTelefono } from '@/lib/avisos-al-telefono';
 import CabeceraMovil from '@/components/layout/CabeceraMovil';
 import UserAvatar from '@/components/ui/UserAvatar';
 import Image from 'next/image';
@@ -79,6 +81,11 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
         // la huella del dueño del móvil sin pasar por la contraseña.
         const llaveDelTelefono = liceo ? await laLlaveGuardada(liceo) : null;
 
+        // Y los avisos a este teléfono: con la sesión todavía abierta, que el
+        // servidor necesita saber de quién son. Un teléfono prestado no debe
+        // seguir recibiendo las citaciones del anterior.
+        await olvidarEsteTelefono();
+
         await fetch('/api/auth/logout', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -122,6 +129,8 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
 
             {/* Sin señal se sigue viendo lo de antes, y hay que decirlo. */}
             <AvisoSinConexion />
+            {/* Si ya dio permiso, este teléfono recibe los avisos de quien entró. */}
+            <ApuntarElTelefonoAlEntrar />
 
             {/* En la APK: si hay una versión nueva publicada, se ofrece aquí. */}
             <ActualizarLaApp />
@@ -169,10 +178,11 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                                 className="h-10 w-10"
                                 initialsClassName="text-sm"
                             />
-                            <div>
+                            <div className="min-w-0 flex-1">
                                 <p className="text-sm font-medium text-gray-900">{nombre} {apellido}</p>
                                 <p className="text-xs text-gray-500">{ROLE_LABELS[user?.role] ?? user?.role}</p>
                             </div>
+                            <Campana />
                         </div>
                     </div>
 
@@ -219,6 +229,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                     sistema: sin él, lo último de cada pantalla queda donde el
                     dedo pulsa la barra de gestos. */}
                 <div className="mx-auto max-w-7xl px-4 py-6 pb-[calc(7rem+var(--zona-segura-abajo))] sm:px-6 lg:px-8 lateral:pb-6">
+                    <OfrecerAvisos />
                     {children}
                 </div>
             </main>

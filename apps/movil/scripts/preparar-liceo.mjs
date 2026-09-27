@@ -22,7 +22,7 @@
  * `docs/APP-MOVIL.md` explica cómo se crea y dónde se pone.
  */
 
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir, copyFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -142,7 +142,8 @@ async function main() {
             '  node scripts/preparar-liceo.mjs --liceo=sanmiguel --url=https://sanmiguel.gestiedu.com\n\n' +
             '  --liceo  el nombre corto del liceo (el mismo de su dirección)\n' +
             '  --url    dónde vive su sistema; la app abre eso\n' +
-            '  --api    (opcional) el servidor del que se saca el nombre y el logo');
+            '  --api    (opcional) el servidor del que se saca el nombre y el logo\n' +
+            '  --firebase  (opcional) el google-services.json del proyecto de Firebase: avisos al teléfono');
         process.exit(1);
     }
 
@@ -228,7 +229,29 @@ async function main() {
         );
     }
 
-    // 3. El icono. Si el liceo no tiene logo, se queda el de la plataforma.
+    /**
+     * 3. LOS AVISOS AL TELÉFONO (Firebase)
+     *
+     * Con la app cerrada, a la APK solo le llegan avisos por Firebase. Hace
+     * falta el `google-services.json` del proyecto de Firebase de Gestiedu
+     * (con este paquete dado de alta en él). No va al repositorio: se pasa
+     * aquí y se copia junto a la app. Sin él, la APK compila igual y tiene la
+     * campana y el tiempo real, pero no avisos con la app cerrada.
+     */
+    const firebase = argumento('firebase');
+    let conFirebase = false;
+    if (firebase) {
+        const datos = JSON.parse(await readFile(firebase, 'utf-8'));
+        const paquetes = (datos.client ?? []).map((c) => c?.client_info?.android_client_info?.package_name);
+        if (!paquetes.includes(paquete)) {
+            console.error(`Ese google-services.json no tiene el paquete ${paquete}: dalo de alta en el proyecto de Firebase y vuelve a bajarlo.`);
+            process.exit(1);
+        }
+        await copyFile(firebase, join(RAIZ, 'android', 'app', 'google-services.json'));
+        conFirebase = true;
+    }
+
+    // 4. El icono. Si el liceo no tiene logo, se queda el de la plataforma.
     const logo = await bajarLogo(api, liceo);
     const fuente = logo ?? join(RAIZ, '..', 'web', 'public', 'icons', 'icono-512.png');
     await dibujarIconos(fuente, color);
@@ -239,6 +262,7 @@ async function main() {
         `  dirección ${url}\n` +
         `  color     ${color}\n` +
         `  icono     ${logo ? 'el del liceo' : 'el de la plataforma (ese liceo no tiene logo)'}\n` +
+        `  avisos    ${conFirebase ? 'con Firebase: llegan con la app cerrada' : 'sin Firebase: solo la campana (ver --firebase)'}\n` +
         (enClaro ? '  AVISO     APK DE PRUEBAS: va por http. No se reparte.\n' : '') +
         '\n' +
         'Ahora:  npm run sincronizar  y luego  npm run apk:pruebas'

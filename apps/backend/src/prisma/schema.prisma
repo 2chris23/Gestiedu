@@ -293,6 +293,7 @@ model User {
   laborSocialAnotada      ActividadDeLaborSocial[] @relation("LaborSocialPuestaPor")
   calificacionesExternas  CalificacionExterna[]    @relation("CalificacionExternaAlumno")
   recaudosEntregados      RecaudoEntregado[]       @relation("RecaudoAlumno")
+  suscripcionesDeAviso    SuscripcionDeAviso[]     @relation("SuscripcionesDeAviso")
   aparatoDeAsistencia     AparatoDelAlumno?
 
   // Notificaciones
@@ -1316,6 +1317,30 @@ model CalificacionExterna {
 
   @@index([studentId])
   @@map("calificaciones_externas")
+}
+
+/// Un teléfono (o navegador) que recibe avisos de esta persona con la app
+/// cerrada: Web Push (la PWA) o Firebase (la APK). Se borra al cerrar sesión
+/// en ese teléfono y cuando el servicio dice que ya no existe (404/410).
+/// Ver `services/avisos.service.ts`.
+model SuscripcionDeAviso {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation("SuscripcionesDeAviso", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// WEB | FCM
+  tipo      String
+  /// La dirección de Web Push o el token de Firebase.
+  destino   String   @unique
+  /// Web Push: las llaves del navegador (p256dh, auth).
+  llaves    Json?
+  aparato   String?
+  createdAt DateTime @default(now())
+  ultimaVez DateTime @default(now())
+
+  @@index([userId])
+  @@map("suscripciones_de_aviso")
 }
 
 /// Lo que el alumno ya entregó para su inscripción (partida de nacimiento,

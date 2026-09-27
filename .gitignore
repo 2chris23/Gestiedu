@@ -104,3 +104,6 @@ tests/e2e/.auth-tokens.json
 
 # Las APK compiladas: pesan y se rehacen con un comando.
 apks/
+
+# Firebase (avisos al teléfono de la APK): es de cada despliegue, no del repositorio.
+google-services.json

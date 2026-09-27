@@ -147,6 +147,9 @@ function isCacheable(request: FastifyRequest, role: string): boolean {
     // El QR del alumno cambia cada 10 s: uno guardado es un código caducado.
     if (url.startsWith('/api/asistencia-qr')) return false;
     if (url.includes('/api/notifications/realtime')) return false;
+    // Los avisos los escribe OTRO (el admin cita al representante): guardados,
+    // la campana del representante seguía en cero hasta que caducaran.
+    if (url.startsWith('/api/avisos')) return false;
     return true;
 }
 

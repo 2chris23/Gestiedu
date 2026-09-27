@@ -109,6 +109,13 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
             window.dispatchEvent(new CustomEvent('gestiedu:asistencia-qr', { detail: aviso }));
         };
 
+        // Un aviso para esta persona (una citación…): la campana se pone al
+        // día al instante y se dice arriba (`Campana`).
+        const llegoUnAviso = (aviso: { titulo?: string } | undefined) => {
+            void queryClient.invalidateQueries({ queryKey: ['avisos'] });
+            window.dispatchEvent(new CustomEvent('gestiedu:aviso', { detail: aviso }));
+        };
+
         const alVolverALaPestaña = () => {
             if (document.visibilityState === 'visible' && huboCambios.current) {
                 pedirDeNuevoLoQueSeVe();
@@ -169,6 +176,7 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
             // El pase de lista por QR del profesor: alguien escaneó. Tampoco trae
             // datos; la pantalla del QR lo vuelve a pedir (`PaseDeListaQr`).
             socket.on('asistencia-qr:cambio', avisarDelPase);
+            socket.on('aviso:nuevo', llegoUnAviso);
 
             /**
              * AL CONECTAR TAMBIÉN, NO SOLO AL RECONECTAR
@@ -205,6 +213,7 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
             document.removeEventListener('visibilitychange', alVolverALaPestaña);
             socket?.off('datos:cambiaron', refrescarLoQueSeVe);
             socket?.off('asistencia-qr:cambio', avisarDelPase);
+            socket?.off('aviso:nuevo', llegoUnAviso);
             socket?.disconnect();
             socketRef.current = null;
         };

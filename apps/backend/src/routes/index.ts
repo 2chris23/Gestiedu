@@ -38,6 +38,7 @@ import { revisionRoutes } from './revision.routes';
 import { materiasPendientesRoutes } from './materias-pendientes.routes';
 import { laborSocialRoutes } from './labor-social.routes';
 import { documentosRoutes } from './documentos.routes';
+import { avisosRoutes } from './avisos.routes';
 
 // Función para registrar todas las rutas
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
@@ -68,6 +69,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(materiasPendientesRoutes, { prefix: '/api/materias-pendientes' });
   await fastify.register(laborSocialRoutes, { prefix: '/api/labor-social' });
   await fastify.register(documentosRoutes, { prefix: '/api' });
+  await fastify.register(avisosRoutes, { prefix: '/api/avisos' });
   await fastify.register(schedulesRoutes, { prefix: '/api/schedules' });
   await fastify.register(scheduleBlocksRoutes, { prefix: '/api' });
   await fastify.register(classSessionsRoutes, { prefix: '/api/sessions' });

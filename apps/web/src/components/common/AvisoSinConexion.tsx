@@ -62,7 +62,8 @@ export function AvisoSinConexion() {
                 'fixed z-50',
                 // En el teléfono, dentro de la cabecera, a la derecha (ahí no hay
                 // nada). En el ordenador no hay cabecera: abajo a la derecha.
-                'right-3 top-[calc(var(--zona-segura-arriba)+6px)]',
+                // (a la izquierda de la campana, que va en la esquina).
+                'right-16 top-[calc(var(--zona-segura-arriba)+6px)]',
                 'lateral:bottom-5 lateral:right-5 lateral:top-auto'
             )}
         >

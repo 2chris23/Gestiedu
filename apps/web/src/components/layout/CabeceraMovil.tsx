@@ -1,5 +1,6 @@
 'use client';
 
+import { Campana } from '@/components/layout/Campana';
 import * as React from 'react';
 import { ChevronDown } from 'lucide-react';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -88,6 +89,7 @@ export function CabeceraMovil({
                         <span className="truncate text-sm font-semibold text-gray-900">{comoSeLeLlama}</span>
                         <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
                     </button>
+                    <Campana className="ml-auto" />
                 </div>
             </header>
 

@@ -262,3 +262,46 @@ self.addEventListener('fetch', (evento) => {
     // la red manda, pero si no hay, vale lo de la última vez.
     evento.respondWith(laRedYSiNoLoGuardado(peticion));
 });
+
+/**
+ * LOS AVISOS CON LA APP CERRADA (Web Push)
+ *
+ * El servidor manda qué y cuándo —nunca el motivo ni lo hablado— y aquí se
+ * enseña como cualquier notificación del teléfono. Al tocarla se abre la app
+ * donde diga el aviso (o se trae al frente si ya estaba abierta). Ver
+ * `services/avisos.service.ts` en el servidor.
+ */
+self.addEventListener('push', (evento) => {
+    let carga = {};
+    try {
+        carga = evento.data ? evento.data.json() : {};
+    } catch {
+        carga = { titulo: 'Gestiedu', cuerpo: evento.data ? evento.data.text() : '' };
+    }
+    const titulo = carga.titulo || 'Aviso del liceo';
+    evento.waitUntil(
+        self.registration.showNotification(titulo, {
+            body: carga.cuerpo || '',
+            icon: '/icons/icono-192.png',
+            badge: '/icons/icono-192.png',
+            data: { enlace: typeof carga.enlace === 'string' && carga.enlace.startsWith('/') ? carga.enlace : '/dashboard' },
+            tag: carga.enlace || undefined,
+        })
+    );
+});
+
+self.addEventListener('notificationclick', (evento) => {
+    evento.notification.close();
+    const enlace = (evento.notification.data && evento.notification.data.enlace) || '/dashboard';
+    evento.waitUntil(
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((ventanas) => {
+            for (const v of ventanas) {
+                if (new URL(v.url).origin === self.location.origin && 'focus' in v) {
+                    v.navigate(enlace).catch(() => undefined);
+                    return v.focus();
+                }
+            }
+            return self.clients.openWindow(enlace);
+        })
+    );
+});
