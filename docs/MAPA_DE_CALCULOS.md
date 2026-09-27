@@ -165,10 +165,11 @@ liceo (`academicConfig`, `reglas-del-fin-de-ano.ts`); lo del MPPE es el valor po
 | **Decisión del admin** | Puede ser otra que la sugerida **solo con motivo** (400 `FALTA_EL_MOTIVO`); queda en el expediente junto a la sugerida (`condicionSugerida`, `motivo`, `decididaPor`). | — |
 | **Destino** | NO_PROMOVIDO → repite su grado (también 5to: antes egresaba igual); último año que no repite → no va a sección: `egreso = EGRESADO`, o `PENDIENTE` si SOLO_PENDIENTES; los demás → grado + 1. | — |
 | **Materias pendientes** | Con PROMOVIDO_CON_PENDIENTES, una `MateriaPendiente` por reprobada, en el año siguiente, con la nota de origen y el profesor que da esa materia en ese grado ese año. Las de antes sin aprobar quedan NO_APROBADA y nacen otra vez en el siguiente. | `pendientes.momentos` (4) |
+| **Aprobar una materia pendiente** | La evalúa el profesor asignado (o el admin), momento a momento y en orden, con notas de 0 a 20 redondeadas como las definitivas. MOMENTO_APROBADO: aprobada en el primer momento con la mínima, esa es su nota final y no hay más momentos; con todos los momentos sin llegar: NO_APROBADA con la mejor. PROMEDIO: con todos los momentos, la media (redondeada) decide. Corregir o quitar el último momento recalcula el estado. | `pendientes.momentos` (4), `pendientes.formaDeCalificar` (MOMENTO_APROBADO) |
 | **Año siguiente** | Ya no se inventa al cerrar (antes: un mes después, un solo lapso de 90 días): sin él, 409 `SIN_ANO_SIGUIENTE`. Se crea en el paso 5 con el calendario del MPPE (`calendario-mppe.ts`) y copiando secciones (capacidad), materias (horas) y, si se pide, profesores y horarios. Una sección de destino que falte se crea copiando la del mismo grado de este año, no con valores fijos. | — |
 | **Corregir tras cerrar** | Rehace expediente (con motivo, quién y cuándo), matrícula del año siguiente y pendientes nacidas de este año (las ya evaluadas se quedan); queda en `audit_logs`. | — |
 
-Pruebas: CIERRE-01…10, academic-close 1…9, CIERRE-UI-01/02.
+Pruebas: CIERRE-01…10, academic-close 1…9, CIERRE-UI-01/02; la pendiente: PEND-01…08, PEND-UI-01 (`materias-pendientes.service.ts`).
 
 ---
 

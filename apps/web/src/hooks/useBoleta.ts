@@ -20,6 +20,15 @@ export interface Boleta {
         /** Por lapso (id) y la final (`FINAL`). */
         apreciaciones?: Record<string, string | null>;
     }>;
+    /** Las materias pendientes de años anteriores que cursa este año. */
+    materiasPendientes?: Array<{
+        materia: string;
+        gradoDeOrigen: number;
+        cicloDeOrigen: string | null;
+        estado: 'PENDIENTE' | 'APROBADA' | 'NO_APROBADA';
+        notaFinal: number | null;
+        momentos: Array<{ momento: number; nota: number }>;
+    }>;
     inasistencias: Record<string, { injustificadas: number; justificadas: number; tardanzas: number }>;
     promedios: Record<string, number | null> & { definitivo: number | null };
     reglas: { notaMinima: number; redondeo: 'MPPE' | 'NINGUNO' };

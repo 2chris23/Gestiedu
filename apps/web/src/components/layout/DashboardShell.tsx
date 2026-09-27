@@ -181,7 +181,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                         {menu.map((item) => {
                             const isActive = item.href === '/dashboard'
                                 ? pathname === '/dashboard'
-                                : pathname.startsWith(item.href);
+                                : pathname === item.href || pathname.startsWith(item.href + '/');
                             const Icon = item.icon;
                             return (
                                 <Link

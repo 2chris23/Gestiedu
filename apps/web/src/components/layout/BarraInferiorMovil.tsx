@@ -82,7 +82,7 @@ export function BarraInferiorMovil({ destinos }: Props) {
     React.useEffect(() => setEscondida(false), [pathname]);
 
     const esElActivo = (href: string) =>
-        href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href);
+        href === '/dashboard' ? pathname === '/dashboard' : pathname === href || pathname.startsWith(href + '/');
 
     const mitad = Math.ceil(destinos.length / 2);
     const izquierda = destinos.slice(0, mitad);

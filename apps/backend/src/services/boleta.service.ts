@@ -23,6 +23,8 @@ import { apreciacionesDelAlumno, MOMENTO_FINAL } from './apreciaciones.service';
  *   - una materia que se evalúa con apreciación (Orientación, Grupos de
  *     Creación…) no lleva nota ni entra en los promedios: sale su
  *     apreciación de cada lapso y la final (`apreciaciones`, CUALI-04);
+ *   - las materias pendientes de años anteriores que cursa este año, con la
+ *     nota de cada momento y su estado (`materias-pendientes.service`);
  *   - las inasistencias salen de la asistencia diaria de las fechas del lapso:
  *     sin justificar (ABSENT), justificadas (EXCUSED) y tardanzas (LATE).
  *
@@ -52,6 +54,15 @@ export interface BoletaDelAlumno {
         apreciaciones: Record<string, string | null>;
     }>;
     inasistencias: Record<string, { injustificadas: number; justificadas: number; tardanzas: number }>;
+    /** Las materias pendientes de años anteriores que cursa este año. */
+    materiasPendientes: Array<{
+        materia: string;
+        gradoDeOrigen: number;
+        cicloDeOrigen: string | null;
+        estado: 'PENDIENTE' | 'APROBADA' | 'NO_APROBADA';
+        notaFinal: number | null;
+        momentos: Array<{ momento: number; nota: number }>;
+    }>;
     promedios: Record<string, number | null> & { definitivo: number | null };
     reglas: { notaMinima: number; redondeo: 'MPPE' | 'NINGUNO' };
     emitidaEl: string;
@@ -196,6 +207,19 @@ export async function boletaDelAlumno(
         promedios[l.id] = media(materias.map((m) => m.notas[l.id]).filter((n): n is number => n !== null));
     }
 
+    const pendientes = await (prisma as any).materiaPendiente.findMany({
+        where: { studentId, cicloId: inscripcion.academicYearId },
+        select: {
+            gradoDeOrigen: true,
+            estado: true,
+            notaFinal: true,
+            subject: { select: { name: true } },
+            cicloDeOrigen: { select: { name: true } },
+            evaluaciones: { select: { momento: true, nota: true }, orderBy: { momento: 'asc' } },
+        },
+        orderBy: { gradoDeOrigen: 'asc' },
+    });
+
     const c = inscripcion.classroom;
     return {
         liceo: {
@@ -217,6 +241,14 @@ export async function boletaDelAlumno(
         lapsos: lapsos.map((l) => ({ id: l.id, nombre: l.name, desde: ymd(l.startDate), hasta: ymd(l.endDate) })),
         materias,
         inasistencias,
+        materiasPendientes: pendientes.map((p: any) => ({
+            materia: p.subject.name,
+            gradoDeOrigen: p.gradoDeOrigen,
+            cicloDeOrigen: p.cicloDeOrigen?.name ?? null,
+            estado: p.estado,
+            notaFinal: p.notaFinal,
+            momentos: p.evaluaciones,
+        })),
         promedios,
         reglas: { notaMinima: config.notaMinimaAprobatoria, redondeo },
         emitidaEl: opciones.hoy,

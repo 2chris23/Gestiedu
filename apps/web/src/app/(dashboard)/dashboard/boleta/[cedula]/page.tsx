@@ -196,6 +196,35 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                     </div>
                 )}
 
+                {(b.materiasPendientes ?? []).length > 0 && (
+                    <div className="mt-4 overflow-x-auto">
+                        <table className="w-full border-collapse text-sm" aria-label="Materias pendientes">
+                            <thead>
+                                <tr className="bg-gray-50 text-gray-700">
+                                    <th scope="col" className="border border-gray-200 px-2 py-2 text-left">Materia pendiente</th>
+                                    <th scope="col" className="border border-gray-200 px-2 py-2 text-center">Momentos</th>
+                                    <th scope="col" className="border border-gray-200 px-2 py-2 text-center">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {(b.materiasPendientes ?? []).map((p) => (
+                                    <tr key={`${p.materia}|${p.gradoDeOrigen}`}>
+                                        <th scope="row" className="border border-gray-200 px-2 py-1.5 text-left font-medium text-gray-900">
+                                            {p.materia} de {p.gradoDeOrigen}º año{p.cicloDeOrigen ? ` (${p.cicloDeOrigen})` : ''}
+                                        </th>
+                                        <td className="border border-gray-200 px-2 py-1.5 text-center tabular-nums text-gray-900">
+                                            {p.momentos.length === 0 ? '—' : p.momentos.map((m) => `${m.momento}º: ${nota(m.nota)}`).join(' · ')}
+                                        </td>
+                                        <td className={`border border-gray-200 px-2 py-1.5 text-center font-semibold ${p.estado === 'APROBADA' ? 'text-emerald-700' : p.estado === 'NO_APROBADA' ? 'text-red-700' : 'text-amber-800'}`}>
+                                            {p.estado === 'APROBADA' ? `Aprobada (${nota(p.notaFinal)})` : p.estado === 'NO_APROBADA' ? 'No aprobada' : 'Pendiente'}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
                 <p className="mt-3 text-xs text-gray-600">
                     Escala del 01 al 20. Nota mínima aprobatoria: {b.reglas.notaMinima}.{' '}
                     {b.reglas.redondeo === 'MPPE'

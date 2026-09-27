@@ -35,6 +35,7 @@ import { appMovilRoutes } from './app-movil.routes';
 import { asistenciaQrRoutes } from './asistencia-qr.routes';
 import { apreciacionesRoutes } from './apreciaciones.routes';
 import { revisionRoutes } from './revision.routes';
+import { materiasPendientesRoutes } from './materias-pendientes.routes';
 
 // Función para registrar todas las rutas
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
@@ -62,6 +63,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(asistenciaQrRoutes, { prefix: '/api/asistencia-qr' });
   await fastify.register(apreciacionesRoutes, { prefix: '/api/apreciaciones' });
   await fastify.register(revisionRoutes, { prefix: '/api/revision' });
+  await fastify.register(materiasPendientesRoutes, { prefix: '/api/materias-pendientes' });
   await fastify.register(schedulesRoutes, { prefix: '/api/schedules' });
   await fastify.register(scheduleBlocksRoutes, { prefix: '/api' });
   await fastify.register(classSessionsRoutes, { prefix: '/api/sessions' });

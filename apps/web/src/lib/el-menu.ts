@@ -8,6 +8,7 @@ import {
     CalendarDays,
     Wallet,
     FileText,
+    ClipboardCheck,
     type LucideIcon,
 } from 'lucide-react';
 
@@ -54,6 +55,13 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean): DestinoDel
             icon: Library,
             roles: ['ADMIN', 'TEACHER'],
             pista: 'Las materias del liceo',
+        },
+        {
+            name: 'Pendientes',
+            href: '/dashboard/materias-pendientes',
+            icon: ClipboardCheck,
+            roles: ['ADMIN', 'TEACHER'],
+            pista: 'Materias pendientes, momento a momento',
         },
         {
             name: 'Horarios',
