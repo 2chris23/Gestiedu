@@ -2087,3 +2087,38 @@ model RegistroBorrado {
   @@index([tabla, createdAt(sort: Desc)])
   @@map("registros_borrados")
 }
+
+/// EL COMEDOR (PAE): un módulo que el liceo activa o no, como los pagos.
+/// Apagado, sus rutas responden 403. Una sola fila. Ver `services/pae.service.ts`.
+model PaeConfig {
+  id      String  @id @default("liceo")
+  enabled Boolean @default(false)
+  /// Las comidas que da el liceo: ["DESAYUNO", "ALMUERZO", "MERIENDA"].
+  comidas Json
+
+  updatedAt DateTime @updatedAt
+
+  @@map("pae_config")
+}
+
+/// Lo del comedor de un día y una comida: raciones recibidas y servidas, el
+/// menú y lo que haya que anotar. Solo el admin.
+model PaeRegistro {
+  id String @id @default(cuid())
+
+  fecha         DateTime @db.Date
+  /// DESAYUNO | ALMUERZO | MERIENDA
+  comida        String
+  recibidas     Int
+  servidas      Int
+  menu          String?
+  observaciones String?
+  registradoPor String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([fecha, comida])
+  @@index([fecha])
+  @@map("pae_registros")
+}

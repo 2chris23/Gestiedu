@@ -16,6 +16,7 @@ import { clsx } from 'clsx';
 import { useInstituteConfig } from '@/hooks/useInstitute';
 import { useSessionKeepAlive } from '@/hooks/useSessionKeepAlive';
 import { usePagosActivos } from '@/hooks/usePagos';
+import { usePaeActivo } from '@/hooks/usePae';
 import { BACKEND_URL } from '@/config/env';
 import { elMenuDe, losDeLaBarra, MI_CUENTA } from '@/lib/el-menu';
 import { abrirMiCuenta } from '@/components/layout/CabeceraMovil';
@@ -58,6 +59,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
     const { logout: zustandLogout, user: usuarioDeLaSesion } = useAuthStore();
     const { data: instituteConfig } = useInstituteConfig();
     const { data: pagos } = usePagosActivos();
+    const { data: comedor } = usePaeActivo(user?.role === 'ADMIN');
 
     // Mantener la sesión activa de forma transparente mientras la pestaña esté abierta
     useSessionKeepAlive();
@@ -104,7 +106,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
         router.push(puerta);
     };
 
-    const menu = elMenuDe(user?.role, Boolean(pagos?.enabled));
+    const menu = elMenuDe(user?.role, Boolean(pagos?.enabled), Boolean(comedor?.enabled));
 
     const destinosDeLaBarra = losDeLaBarra(user?.role, Boolean(pagos?.enabled)).flatMap((href) => {
         if (href === MI_CUENTA) return [{ name: 'Mi cuenta', href, icon: UserCircle, alPulsar: abrirMiCuenta }];

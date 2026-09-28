@@ -11,6 +11,7 @@ import {
     ClipboardCheck,
     HeartHandshake,
     MessageSquareText,
+    UtensilsCrossed,
     type LucideIcon,
 } from 'lucide-react';
 
@@ -36,7 +37,7 @@ export interface DestinoDelMenu {
     pista?: string;
 }
 
-export function elMenuDe(rol: string | undefined, conPagos: boolean): DestinoDelMenu[] {
+export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = false): DestinoDelMenu[] {
     const todos: DestinoDelMenu[] = [
         {
             name: 'Inicio',
@@ -102,6 +103,18 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean): DestinoDel
                       icon: Wallet,
                       roles: ['ADMIN'],
                       pista: 'Cobros y solvencia',
+                  },
+              ]
+            : []),
+        // Solo si el liceo activó el comedor (Configuración → Comedor (PAE)).
+        ...(conPae
+            ? [
+                  {
+                      name: 'Comedor',
+                      href: '/dashboard/comedor',
+                      icon: UtensilsCrossed,
+                      roles: ['ADMIN'],
+                      pista: 'Raciones del PAE, día a día',
                   },
               ]
             : []),

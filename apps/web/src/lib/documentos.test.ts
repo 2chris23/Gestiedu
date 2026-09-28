@@ -33,7 +33,7 @@ const laRuta = (archivo: string) =>
 
 describe('Las pantallas de papel', () => {
     const queImprimen = paginas(RAIZ)
-        .filter((f) => /HojaImprimible|imprimirConAviso|window\.print/.test(fs.readFileSync(f, 'utf-8')))
+        .filter((f) => /<HojaImprimible|imprimirConAviso\(|window\.print\(/.test(fs.readFileSync(f, 'utf-8')))
         .map(laRuta)
         .filter((r) => !NO_SON_PAPEL.includes(r));
 
