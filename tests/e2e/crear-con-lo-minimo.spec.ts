@@ -43,12 +43,16 @@ test.describe('Crear con lo mínimo', () => {
 
             // En la ficha: le falta de todo, y se completa.
             await page.goto(`${WEB_BASE}/dashboard/usuarios/${encodeURIComponent(cedula)}`);
-            const inscripcion = page.getByRole('region', { name: 'Inscripción' });
+            // La inscripción es un anillo en la cabecera que abre su ventana.
+            const abrirInscripcion = () => page.getByRole('button', { name: /^Inscripción/ }).click({ timeout: 60000 });
+            await abrirInscripcion();
+            const inscripcion = page.getByRole('dialog', { name: 'Inscripción' });
             await expect(inscripcion).toContainText('Le falta: fecha de nacimiento', { timeout: 60000 });
             // click, no check(): la casilla cambia al volver a pintarse, un instante después.
             await inscripcion.getByLabel('Fotos tipo carnet').click();
             await expect(inscripcion.getByLabel('Fotos tipo carnet')).toBeChecked();
             await expect.poll(async () => (await queryTenantDb(`SELECT 1 FROM recaudos_entregados WHERE "studentId" = $1`, [cedula])).length).toBe(1);
+            await page.keyboard.press('Escape');
 
             await page.getByRole('button', { name: 'Editar datos' }).click();
             await page.getByLabel('Fecha de nacimiento').fill('2013-02-14');
@@ -59,6 +63,7 @@ test.describe('Crear con lo mínimo', () => {
             expect(guardado).toEqual({ nac: '2013-02-14', lugar: 'Maracay' });
             await page.screenshot({ path: 'test-results/evidencia/ficha-inscripcion.png', fullPage: true });
 
+            await abrirInscripcion();
             await inscripcion.getByRole('link', { name: 'Planilla de inscripción' }).click();
             const hoja = page.getByRole('article', { name: 'Planilla de inscripción' });
             await expect(hoja).toContainText('Maracay', { timeout: 60000 });

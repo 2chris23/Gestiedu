@@ -155,6 +155,25 @@ export async function condicionDeLesFalta(instituteId: string): Promise<Record<s
     };
 }
 
+/** Los datos de la ficha que piden los documentos del Ministerio (ver `loQueLeFalta`). */
+export const DATOS_DE_LA_FICHA = 5;
+
+/**
+ * CUÁNTO LLEVA DE LA INSCRIPCIÓN
+ *
+ * El anillo de la ficha: cada dato del Ministerio y cada recaudo cuenta uno.
+ * `falta` es la lista de `loQueLeFalta`, que junta los recaudos en una sola
+ * entrada («6 recaudos»); por eso los datos que faltan son el resto.
+ */
+export function avanceDeLaInscripcion(
+    recaudos: { recaudos: Array<{ entregado: boolean }>; faltan: number },
+    falta: string[]
+): { hecho: number; total: number } {
+    const datosQueFaltan = falta.length - (recaudos.faltan > 0 ? 1 : 0);
+    const total = DATOS_DE_LA_FICHA + recaudos.recaudos.length;
+    return { hecho: total - datosQueFaltan - recaudos.faltan, total };
+}
+
 /** Lo que le falta a un alumno, en palabras (para su ficha). */
 export async function loQueLeFalta(prisma: any, instituteId: string, studentId: string): Promise<string[]> {
     const a = await prisma.user.findUnique({

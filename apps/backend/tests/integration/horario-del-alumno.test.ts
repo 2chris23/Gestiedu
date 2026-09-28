@@ -312,6 +312,28 @@ describe('Horario en vivo del alumno', () => {
             expect((await actividadesDe(tk.profe, ana.id)).status).toBe(200);
         }, 60000);
 
+        it('ACT-04: cada actividad dice su lapso; un ciclo pedido por su id trae su historia aunque ya no esté inscrito', async () => {
+            const { academicYearId } = (await prisma.classroom.findUnique({ where: { id: seccion.id }, select: { academicYearId: true } }))!;
+            const lapso = await prisma.period.create({
+                data: { name: 'Lapso de 2020', startDate: new Date(Date.UTC(2020, 0, 1)), endDate: new Date(Date.UTC(2020, 1, 28)), academicYearId },
+            });
+            try {
+                const res = await actividadesDe(tk.admin, ana.id).query({ academicYearId });
+                expect(res.status).toBe(200);
+                const maqueta = res.body.actividades.find((a: any) => a.title === 'Maqueta del sistema solar');
+                expect(maqueta.periodId).toBe(lapso.id);
+                expect(res.body.actividades.find((a: any) => a.title === 'Exposición final').periodId).not.toBe(lapso.id);
+
+                // Retirada del ciclo: su ficha sigue enseñando lo que hizo en él.
+                await prisma.studentClassroom.updateMany({ where: { studentId: ana.id, classroomId: seccion.id }, data: { isActive: false } });
+                const historia = await actividadesDe(tk.admin, ana.id).query({ academicYearId });
+                expect(historia.body.actividades.find((a: any) => a.title === 'Maqueta del sistema solar')).toBeDefined();
+            } finally {
+                await prisma.studentClassroom.updateMany({ where: { studentId: ana.id, classroomId: seccion.id }, data: { isActive: true } });
+                await prisma.period.delete({ where: { id: lapso.id } });
+            }
+        }, 60000);
+
         it('ACT-03: un alumno no puede preguntar por otro; su representante sí', async () => {
             expect((await actividadesDe(tk.luis, ana.id)).status).toBe(403);
             expect((await actividadesDe(tk.madre, ana.id)).status).toBe(200);

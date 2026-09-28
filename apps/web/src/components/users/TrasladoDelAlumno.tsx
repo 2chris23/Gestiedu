@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowRightLeft, Download, FileText, Loader2, Trash2 } from 'lucide-react';
+import { ArrowRightLeft, Download, FileText, Loader2, Trash2, UserMinus } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
@@ -13,8 +13,9 @@ import { getApiErrorMessage, cn } from '@/lib/utils';
 import api from '@/lib/axios';
 
 /**
- * EL TRASLADO Y EL RETIRO, EN LA FICHA DEL ALUMNO
+ * EL TRASLADO Y EL RETIRO, EN LA CABECERA DE LA FICHA
  *
+ * Dos botones, cada uno con su ventana.
  * Retirarlo (fecha y motivo), la hoja de notas parciales para imprimir y el
  * archivo de traslado: si el otro liceo usa Gestiedu, lo importa y el alumno
  * llega con todo (`services/traslado.service.ts`). Y, si llegó trasladado,
@@ -34,6 +35,7 @@ export function TrasladoDelAlumno({ studentId, archivado }: { studentId: string;
     const { yo } = useQuienSoy();
     const cola = useQueryClient();
     const [retirando, setRetirando] = React.useState(false);
+    const [trasladando, setTrasladando] = React.useState(false);
     const [bajando, setBajando] = React.useState(false);
     const esAdmin = yo?.role === 'ADMIN';
     const traidas = useQuery<NotaTraida[]>({
@@ -69,54 +71,76 @@ export function TrasladoDelAlumno({ studentId, archivado }: { studentId: string;
     };
 
     const boton = 'inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold hover:bg-gray-50';
+    const enCabecera =
+        'inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-sm font-semibold transition-colors disabled:opacity-60';
     return (
-        <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm" aria-labelledby="traslado-titulo">
-            <h3 id="traslado-titulo" className="mb-1 flex items-center gap-2 font-bold text-gray-800">
-                <ArrowRightLeft size={18} className="text-amber-600" aria-hidden /> Traslado y retiro
-            </h3>
-            <p className="text-sm text-gray-600">
-                {archivado
-                    ? 'Está retirado. Su hoja de notas y su archivo de traslado siguen aquí.'
-                    : 'Si se va a otro liceo: se le retira, se le imprimen sus notas y se le da el archivo para que el otro liceo lo importe.'}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-                {!archivado && (
-                    <button type="button" onClick={() => setRetirando(true)} className={cn(boton, 'text-rose-700')}>
-                        Retirar del liceo
-                    </button>
-                )}
-                <Link href={`/dashboard/notas-parciales/${encodeURIComponent(studentId)}`} className={cn(boton, 'text-indigo-700')}>
-                    <FileText className="h-4 w-4" aria-hidden /> Notas parciales
-                </Link>
-                <button type="button" onClick={bajarArchivo} disabled={bajando} className={cn(boton, 'text-indigo-700')}>
-                    {bajando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />} Archivo de traslado
-                </button>
-            </div>
-            {(traidas.data?.length ?? 0) > 0 && (
-                <div className="mt-4">
-                    <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Lapsos traídos de {traidas.data![0].plantel}</p>
-                    <ul className="mt-1 space-y-1">
-                        {traidas.data!.map((n) => (
-                            <li key={n.id} className="flex items-center justify-between gap-2 text-sm text-gray-800">
-                                <span>
-                                    {n.subject.name} · {n.period.name}: <strong>{n.nota}</strong>
-                                    {n.materiaDeOrigen !== n.subject.name ? <span className="text-gray-500"> (allá: {n.materiaDeOrigen})</span> : null}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => quitar.mutate(n.id)}
-                                    aria-label={`Quitar la nota traída de ${n.subject.name}, ${n.period.name}`}
-                                    className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-gray-500 hover:bg-gray-50"
-                                >
-                                    <Trash2 className="h-4 w-4" aria-hidden />
+        <>
+            <button
+                type="button"
+                onClick={() => setTrasladando(true)}
+                className={cn(enCabecera, 'border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50')}
+            >
+                <ArrowRightLeft className="h-4 w-4" aria-hidden /> Traslado
+            </button>
+            <button
+                type="button"
+                onClick={() => setRetirando(true)}
+                disabled={archivado}
+                title={archivado ? 'Ya está retirado' : undefined}
+                className={cn(enCabecera, 'border-rose-200 bg-white text-rose-700 hover:bg-rose-50')}
+            >
+                <UserMinus className="h-4 w-4" aria-hidden /> {archivado ? 'Retirado' : 'Retiro'}
+            </button>
+
+            {trasladando && (
+                <Dialog open onOpenChange={(v) => !v && setTrasladando(false)}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Traslado</DialogTitle>
+                            <DialogDescription>
+                                {archivado
+                                    ? 'Está retirado. Su hoja de notas y su archivo de traslado siguen aquí.'
+                                    : 'Si se va a otro liceo: se le imprimen sus notas y se le da el archivo para que el otro liceo lo importe. Antes, retíralo con «Retiro».'}
+                            </DialogDescription>
+                        </DialogHeader>
+                        <section aria-label="Traslado y retiro" className="space-y-4">
+                            <div className="flex flex-wrap gap-2">
+                                <Link href={`/dashboard/notas-parciales/${encodeURIComponent(studentId)}`} className={cn(boton, 'text-indigo-700')}>
+                                    <FileText className="h-4 w-4" aria-hidden /> Notas parciales
+                                </Link>
+                                <button type="button" onClick={bajarArchivo} disabled={bajando} className={cn(boton, 'text-indigo-700')}>
+                                    {bajando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />} Archivo de traslado
                                 </button>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
+                            </div>
+                            {(traidas.data?.length ?? 0) > 0 && (
+                                <div>
+                                    <p className="text-xs font-bold uppercase tracking-wider text-gray-600">Lapsos traídos de {traidas.data![0].plantel}</p>
+                                    <ul className="mt-1 space-y-1">
+                                        {traidas.data!.map((n) => (
+                                            <li key={n.id} className="flex items-center justify-between gap-2 text-sm text-gray-800">
+                                                <span>
+                                                    {n.subject.name} · {n.period.name}: <strong>{n.nota}</strong>
+                                                    {n.materiaDeOrigen !== n.subject.name ? <span className="text-gray-600"> (allá: {n.materiaDeOrigen})</span> : null}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => quitar.mutate(n.id)}
+                                                    aria-label={`Quitar la nota traída de ${n.subject.name}, ${n.period.name}`}
+                                                    className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-gray-600 hover:bg-gray-50"
+                                                >
+                                                    <Trash2 className="h-4 w-4" aria-hidden />
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </section>
+                    </DialogContent>
+                </Dialog>
             )}
             {retirando && <Retirar studentId={studentId} alCerrar={() => setRetirando(false)} />}
-        </section>
+        </>
     );
 }
 
@@ -129,7 +153,7 @@ function Retirar({ studentId, alCerrar }: { studentId: string; alCerrar: () => v
     const retirar = useMutation({
         mutationFn: async () => (await api.post(`/students/${encodeURIComponent(studentId)}/retiro`, { fecha, motivo, detalle: detalle.trim() || undefined })).data,
         onSuccess: () => {
-            toast.success('Retirado. Ya puedes imprimir sus notas y darle el archivo de traslado.');
+            toast.success('Retirado. Ya puedes imprimir sus notas y darle el archivo de traslado (botón «Traslado»).');
             void cola.invalidateQueries({ queryKey: ['usuario', studentId] });
             void cola.invalidateQueries({ queryKey: ['usuarios'] });
             alCerrar();

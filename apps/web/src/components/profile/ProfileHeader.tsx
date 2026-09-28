@@ -24,14 +24,16 @@ interface Props {
     alCambiarFoto?: (archivo: File) => void;
     alQuitarFoto?: () => void;
     subiendoFoto?: boolean;
+    /** A la derecha del nombre: en el alumno, inscripción, traslado, retiro y documentos. */
+    acciones?: React.ReactNode;
 }
 
-export default function ProfileHeader({ user, onEdit, alCambiarFoto, alQuitarFoto, subiendoFoto }: Props) {
+export default function ProfileHeader({ user, onEdit, alCambiarFoto, alQuitarFoto, subiendoFoto, acciones }: Props) {
     const isStudent = user.role === 'student';
     const elegir = React.useRef<HTMLInputElement>(null);
 
     return (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 flex flex-col md:flex-row items-start md:items-center gap-6 relative overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 flex flex-col md:flex-row md:flex-wrap items-start md:items-center gap-6 relative overflow-hidden">
 
             {/* Background Decoration */}
             <div className={`absolute top-0 left-0 w-full h-2 ${isStudent ? 'bg-blue-500' : 'bg-purple-600'}`}></div>
@@ -89,12 +91,14 @@ export default function ProfileHeader({ user, onEdit, alCambiarFoto, alQuitarFot
             </div>
 
             {/* Main Info */}
-            <div className="flex-1 min-w-0">
+            <div className="min-w-0 flex-1 md:min-w-[16rem]">
                 <div className="flex flex-wrap items-center gap-3 mb-2">
-                    <h1 className="text-seccion sm:text-pantalla font-bold text-gray-900 truncate">{user.name}</h1>
+                    <h1 className="text-seccion sm:text-pantalla font-bold text-gray-900 break-words">{user.name}</h1>
                     <RoleBadge role={user.role} />
                 </div>
             </div>
+
+            {acciones && <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:justify-end">{acciones}</div>}
 
             {/* Solo si alguien sabe editar: la ficha lo pasaba con un aviso de
                 «no disponible en demo», un botón que prometía y no hacía nada. */}

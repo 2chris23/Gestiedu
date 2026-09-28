@@ -40,14 +40,16 @@ test.describe('Traslado', () => {
             const admin = await loginApi('admin@testing.edu.ve', '123456');
             await injectSessionCookies(page, admin);
             await page.goto(`${WEB_BASE}/dashboard/usuarios/${encodeURIComponent(cedula)}`);
-            const bloque = page.getByRole('region', { name: 'Traslado y retiro' });
-            await bloque.getByRole('button', { name: 'Retirar del liceo' }).click({ timeout: 60000 });
+            // En la cabecera de la ficha: «Retiro» y «Traslado», cada uno con su ventana.
+            await page.getByRole('button', { name: 'Retiro', exact: true }).click({ timeout: 60000 });
             await page.getByLabel('A qué liceo (opcional)').fill('U.E. Simón Rodríguez');
             await page.getByRole('button', { name: 'Retirar', exact: true }).click();
             await expect(page.getByText(/Retirado\./)).toBeVisible({ timeout: 15000 });
             const [inscripcion] = await queryTenantDb(`SELECT "isActive", "motivoDeRetiro" FROM student_classrooms WHERE "studentId" = $1`, [cedula]);
             expect(inscripcion).toEqual({ isActive: false, motivoDeRetiro: 'Traslado a U.E. Simón Rodríguez' });
 
+            await expect(page.getByRole('button', { name: 'Retirado' })).toBeDisabled({ timeout: 15000 });
+            await page.getByRole('button', { name: 'Traslado', exact: true }).click();
             const descarga = page.waitForEvent('download');
             await page.getByRole('region', { name: 'Traslado y retiro' }).getByRole('button', { name: 'Archivo de traslado' }).click();
             const archivo = await descarga;

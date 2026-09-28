@@ -317,6 +317,18 @@ en vivo, el horario en vivo, la rejilla del plan y el calendario. La clase en
 vivo contaba desde el inicio del AÑO y la rejilla desde el del LAPSO: en el 2º
 y 3er lapso su «Semana N» no era la misma.
 
+## La ficha del alumno
+
+**La cabecera trae lo del admin**: la inscripción como un anillo que se llena
+(`avance` de `GET /students/:id/recaudos`: los cinco datos del Ministerio y
+cada recaudo; completa, una marca), «Traslado», «Retiro» y «Documentos»
+(constancias, carnet, certificación), cada uno con su ventana. **Las
+actividades van dentro de cada ciclo**: al pulsar el promedio, todas; al pulsar
+una materia, las suyas; respetan el lapso elegido (cada actividad trae su
+`periodId`) y al pulsar una se abre su clase. En cada ciclo, la boleta del lapso
+que se mira (`/boleta/:id?ciclo=&lapso=`: ese lapso y los anteriores, sin
+definitiva) o la completa y las notas parciales (PERFIL-UI-01/02, ACT-04).
+
 ## Lo que ve el alumno de su clase
 
 Al tocar una clase en su horario, el alumno (y su representante, con

@@ -14,9 +14,14 @@ import {
     Loader2,
     Clock,
     User,
-    CheckCircle2
+    CheckCircle2,
+    FileText,
+    ChevronRight
 } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
+import { diferido } from '@/components/common/Diferido';
 import { cn } from '@/lib/utils';
 import { studentsService } from '@/services/students.service';
 import { StudentDashboardStats } from '@/types/student';
@@ -27,8 +32,32 @@ export interface StudentCycleEntry {
     name: string;
     sectionName: string;
     classroomId: string;
-    periods: Array<{ id: string; name: string }>;
+    periods: Array<{ id: string; name: string; startDate?: string }>;
     isLatest?: boolean;
+}
+
+// La ventana de las actividades baja al abrirla (carga diferida).
+const ActividadesDelCiclo = diferido(() => import('@/components/profile/ActividadesDelCiclo'), { sinEsqueleto: true });
+
+const ORDINAL: Record<string, number> = { primer: 1, segundo: 2, tercer: 3, cuarto: 4 };
+
+/**
+ * LOS LAPSOS EN SU ORDEN
+ *
+ * Llegaban como los devolvía la base: «Segundo, Tercer, Primer». Por su fecha
+ * de inicio; sin ella, por el número o la palabra de su nombre.
+ */
+export function lapsosEnOrden<T extends { name: string; startDate?: string }>(lapsos: T[]): T[] {
+    const puesto = (l: T) => {
+        const nombre = l.name.toLowerCase();
+        const n = nombre.match(/(\d+)/)?.[1];
+        if (n) return Number(n);
+        const palabra = Object.keys(ORDINAL).find((p) => nombre.includes(p));
+        return palabra ? ORDINAL[palabra] : 99;
+    };
+    return [...lapsos].sort((a, b) =>
+        a.startDate && b.startDate ? String(a.startDate).localeCompare(String(b.startDate)) : puesto(a) - puesto(b)
+    );
 }
 
 interface Props {
@@ -45,6 +74,13 @@ export default function StudentCycleAccordion({
     initialOpenCycleId = null,
 }: Props) {
     const router = useRouter();
+    const { yo } = useQuienSoy();
+    /** La ventana de actividades: del ciclo, con su lapso y, si se pulsó una, su materia. */
+    const [actividades, setActividades] = useState<{
+        cycle: StudentCycleEntry;
+        lapso: { id: string; name: string } | null;
+        materia: { id: string; name: string } | null;
+    } | null>(null);
 
     // Estado de qué acordeones están abiertos (clave: cycleId -> boolean)
     const [openCycles, setOpenCycles] = useState<Record<string, boolean>>(() => {
@@ -173,6 +209,8 @@ export default function StudentCycleAccordion({
 
             {cycles.map((cycle) => {
                 const isOpen = !!openCycles[cycle.id];
+                const lapsos = lapsosEnOrden(cycle.periods);
+                const lapsoActivo = lapsos.find((p) => p.id === selectedLapsos[cycle.id]) ?? null;
                 const activePeriodId = selectedLapsos[cycle.id];
                 const cacheKey = `${cycle.id}-${activePeriodId || 'all'}`;
                 const stats = cycleStats[cacheKey];
@@ -262,8 +300,9 @@ export default function StudentCycleAccordion({
                                         <button
                                             type="button"
                                             onClick={() => handleLapsoChange(cycle.id, undefined)}
+                                            aria-pressed={!activePeriodId}
                                             className={cn(
-                                                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                                                "min-h-11 px-3 rounded-lg text-xs font-bold transition-all",
                                                 !activePeriodId
                                                     ? "bg-indigo-600 text-white shadow-2xs"
                                                     : "bg-gray-100 text-gray-600 hover:bg-gray-200/70"
@@ -272,13 +311,14 @@ export default function StudentCycleAccordion({
                                             Todo el ciclo escolar
                                         </button>
 
-                                        {cycle.periods.map((period) => (
+                                        {lapsos.map((period) => (
                                             <button
                                                 key={period.id}
                                                 type="button"
                                                 onClick={() => handleLapsoChange(cycle.id, period.id)}
+                                                aria-pressed={activePeriodId === period.id}
                                                 className={cn(
-                                                    "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                                                    "min-h-11 px-3 rounded-lg text-xs font-bold transition-all",
                                                     activePeriodId === period.id
                                                         ? "bg-indigo-600 text-white shadow-2xs"
                                                         : "bg-gray-100 text-gray-600 hover:bg-gray-200/70"
@@ -288,6 +328,27 @@ export default function StudentCycleAccordion({
                                             </button>
                                         ))}
                                     </div>
+                                </div>
+
+                                {/* LOS PAPELES DE LO QUE SE ESTÁ VIENDO: la boleta del
+                                    lapso elegido, o la del ciclo entero (y las notas
+                                    parciales, que son del ciclo en curso). */}
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Link
+                                        href={`/dashboard/boleta/${encodeURIComponent(studentId)}?ciclo=${encodeURIComponent(cycle.id)}${lapsoActivo ? `&lapso=${encodeURIComponent(lapsoActivo.id)}` : ''}`}
+                                        className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-indigo-200 bg-white px-4 text-sm font-semibold text-indigo-700 shadow-2xs hover:bg-indigo-50"
+                                    >
+                                        <FileText className="h-4 w-4" aria-hidden />
+                                        {lapsoActivo ? `Boleta · ${lapsoActivo.name}` : 'Boleta completa'}
+                                    </Link>
+                                    {!lapsoActivo && cycle.isLatest && yo?.role === 'ADMIN' && (
+                                        <Link
+                                            href={`/dashboard/notas-parciales/${encodeURIComponent(studentId)}`}
+                                            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-800 shadow-2xs hover:bg-gray-50"
+                                        >
+                                            <FileText className="h-4 w-4" aria-hidden /> Notas parciales
+                                        </Link>
+                                    )}
                                 </div>
 
                                 {isLoading ? (
@@ -304,14 +365,19 @@ export default function StudentCycleAccordion({
                                                 Indicadores de Rendimiento General
                                                 {activePeriodId && (
                                                     <span className="text-indigo-600 font-semibold normal-case">
-                                                        ({cycle.periods.find(p => p.id === activePeriodId)?.name})
+                                                        ({lapsoActivo?.name})
                                                     </span>
                                                 )}
                                             </h5>
 
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
-                                                {/* Card 1: Promedio Global */}
-                                                <div className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-2xs flex flex-col justify-between">
+                                                {/* Card 1: Promedio Global — al pulsarlo, sus actividades */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setActividades({ cycle, lapso: lapsoActivo, materia: null })}
+                                                    aria-label={`Promedio ${avg.toFixed(1)}: ver sus actividades`}
+                                                    className="bg-white p-4 rounded-xl border border-indigo-200 shadow-2xs flex flex-col justify-between text-left transition-all hover:border-indigo-400 hover:shadow-md group"
+                                                >
                                                     <div className="flex items-center justify-between gap-1 mb-2">
                                                         <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tight">
                                                             Promedio Global
@@ -334,8 +400,11 @@ export default function StudentCycleAccordion({
                                                         )}>
                                                             {avg >= 10 ? 'Aprobatorio' : 'En Riesgo'}
                                                         </span>
+                                                        <span className="mt-2 flex items-center gap-0.5 whitespace-nowrap text-xs font-bold text-indigo-700 group-hover:underline">
+                                                            Ver actividades <ChevronRight className="h-3 w-3" aria-hidden />
+                                                        </span>
                                                     </div>
-                                                </div>
+                                                </button>
 
                                                 {/* Card 2: Riesgo Académico */}
                                                 <div className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-2xs flex flex-col justify-between">
@@ -443,7 +512,7 @@ export default function StudentCycleAccordion({
                                                 </h5>
                                                 {activePeriodId && (
                                                     <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">
-                                                        {cycle.periods.find(p => p.id === activePeriodId)?.name}
+                                                        {lapsoActivo?.name}
                                                     </span>
                                                 )}
                                             </div>
@@ -455,7 +524,7 @@ export default function StudentCycleAccordion({
                                                     <p className="text-[11px]">No se encontraron notas registradas para este período.</p>
                                                 </div>
                                             ) : (
-                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
                                                     {subjects.map((sub, idx) => {
                                                         const score = sub.average || 0;
                                                         const hasNote = score > 0;
@@ -475,28 +544,32 @@ export default function StudentCycleAccordion({
                                                             : 'bg-gray-50 text-gray-400 border-gray-200';
 
                                                         return (
-                                                            <div
+                                                            <button
+                                                                type="button"
                                                                 key={sub.id || idx}
-                                                                className="p-3.5 rounded-xl bg-white border border-gray-200 hover:border-indigo-300 hover:shadow-xs transition-all flex flex-col justify-between"
+                                                                onClick={() => setActividades({ cycle, lapso: lapsoActivo, materia: { id: sub.id, name: sub.name } })}
+                                                                aria-label={`${sub.name}: ${hasNote ? score : 'sin nota'}. Ver sus actividades`}
+                                                                className="w-full p-3.5 rounded-xl bg-white border border-gray-200 hover:border-indigo-300 hover:shadow-xs transition-all flex flex-col justify-between text-left"
                                                             >
                                                                 <div>
-                                                                    <div className="flex items-start justify-between gap-1.5 mb-2">
-                                                                        <p className="font-bold text-xs text-gray-800 leading-tight line-clamp-1" title={sub.name}>
-                                                                            {sub.name}
-                                                                        </p>
+                                                                    {/* El nombre con todo el ancho: al lado de la nota,
+                                                                        «Castellano» salía «Castellanc». */}
+                                                                    <p className="min-h-[2rem] font-bold text-xs text-gray-800 leading-tight line-clamp-2" title={sub.name}>
+                                                                        {sub.name}
+                                                                    </p>
+                                                                    <div className="mt-2 flex items-center gap-2">
+                                                                        <div className="h-1.5 flex-1 rounded-full bg-gray-100 overflow-hidden">
+                                                                            <div
+                                                                                className={cn("h-1.5 rounded-full transition-all duration-500", barColor)}
+                                                                                style={{ width: `${Math.round(ratio * 100)}%` }}
+                                                                            />
+                                                                        </div>
                                                                         <span className={cn(
                                                                             "shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black border",
                                                                             badgeStyle
                                                                         )}>
                                                                             {hasNote ? score : '—'}
                                                                         </span>
-                                                                    </div>
-
-                                                                    <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden mt-2">
-                                                                        <div
-                                                                            className={cn("h-1.5 rounded-full transition-all duration-500", barColor)}
-                                                                            style={{ width: `${Math.round(ratio * 100)}%` }}
-                                                                        />
                                                                     </div>
                                                                 </div>
 
@@ -509,7 +582,7 @@ export default function StudentCycleAccordion({
                                                                         <AlertCircle size={12} className="text-rose-500" />
                                                                     )}
                                                                 </div>
-                                                            </div>
+                                                            </button>
                                                         );
                                                     })}
                                                 </div>
@@ -522,6 +595,17 @@ export default function StudentCycleAccordion({
                     </div>
                 );
             })}
+
+            {actividades && (
+                <ActividadesDelCiclo
+                    studentId={studentId}
+                    cicloId={actividades.cycle.id}
+                    cicloNombre={actividades.cycle.name}
+                    lapso={actividades.lapso}
+                    materia={actividades.materia}
+                    alCerrar={() => setActividades(null)}
+                />
+            )}
 
             {/* ========================================================= */}
             {/* MODAL / VENTANA EMERGENTE DE OBSERVACIONES */}

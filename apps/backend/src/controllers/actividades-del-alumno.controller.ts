@@ -41,11 +41,12 @@ export async function actividadesDelAlumno(
 
         await assertCanSeeStudent(prisma, request.user as any, studentId);
 
+        // Un ciclo pedido por su id es su historia: la inscripción de un año
+        // ya cerrado deja de estar activa, y sus actividades siguen siendo suyas.
         const inscripciones = await prisma.studentClassroom.findMany({
             where: {
                 studentId,
-                isActive: true,
-                ...(academicYearId ? { classroom: { academicYearId } } : {}),
+                ...(academicYearId ? { classroom: { academicYearId } } : { isActive: true }),
             },
             select: {
                 classroom: {
@@ -89,12 +90,31 @@ export async function actividadesDelAlumno(
                 createdAt: true,
                 classroomId: true,
                 subject: { select: { id: true, name: true, color: true } },
+                classSessionId: true,
                 classSession: { select: { date: true } },
             },
             orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
         });
 
         const hoy = todayInTimezone(await instituteTimezone(prisma));
+
+        /**
+         * EL LAPSO DE CADA ACTIVIDAD
+         *
+         * El perfil filtra por lapso. Cuenta el día de la clase donde se puso
+         * (si no, el de entrega): una tarea dejada el último día del lapso para
+         * la semana siguiente es de ese lapso.
+         */
+        const anos = [...new Set(elegidas.map((i) => i.classroom!.academicYear!.id))];
+        const lapsos = await prisma.period.findMany({
+            where: { academicYearId: { in: anos } },
+            select: { id: true, startDate: true, endDate: true },
+        });
+        const lapsoDelDia = (dia: string | null) => {
+            if (!dia) return null;
+            const l = lapsos.find((p) => soloElDia(p.startDate) <= dia && dia <= soloElDia(p.endDate));
+            return l?.id ?? null;
+        };
         const nombreDeLaSeccion = new Map(elegidas.map((i) => [i.classroom!.id, i.classroom!.name]));
 
         const lista = actividades.map((a) => {
@@ -126,6 +146,10 @@ export async function actividadesDelAlumno(
                 otraForma: ((a.evaluadoDeOtraForma ?? {}) as Record<string, { metodo: string; motivo?: string }>)[studentId] ?? null,
                 subject: a.subject,
                 classroom: { id: a.classroomId, name: nombreDeLaSeccion.get(a.classroomId) ?? '' },
+                /** El día de la clase donde se puso (para abrirla). */
+                diaDeLaClase: a.classSession?.date ? soloElDia(a.classSession.date) : null,
+                classSessionId: a.classSessionId ?? null,
+                periodId: lapsoDelDia(a.classSession?.date ? soloElDia(a.classSession.date) : dia),
             };
         });
 

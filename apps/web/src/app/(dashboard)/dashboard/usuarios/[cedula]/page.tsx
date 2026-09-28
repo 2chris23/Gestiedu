@@ -24,8 +24,7 @@ import { InscripcionDelAlumno } from '@/components/users/InscripcionDelAlumno';
 import { TrasladoDelAlumno } from '@/components/users/TrasladoDelAlumno';
 import { LaborSocialDelAlumno } from '@/components/labor-social/LaborSocialDelAlumno';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
-import { CONSTANCIAS_DE_LA_FICHA, NOMBRE_DE_LA_CONSTANCIA, type TipoDeConstancia } from '@/hooks/useConstancia';
-import ActividadesDelAlumno from '@/components/profile/ActividadesDelAlumno';
+import { DocumentosDelAlumno } from '@/components/users/DocumentosDelAlumno';
 import api from '@/lib/axios';
 import { comprimirFotoEnElDispositivo, pesoLegible } from '@/lib/foto-comprimida';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -372,6 +371,15 @@ export default function UserProfilePage({ params }: PageProps) {
                     alCambiarFoto={cambiarFoto}
                     alQuitarFoto={quitarFoto}
                     subiendoFoto={subiendoFoto}
+                    acciones={
+                        user.role === 'student' ? (
+                            <>
+                                <InscripcionDelAlumno studentId={user.cedula} />
+                                <TrasladoDelAlumno studentId={user.cedula} archivado={dbUser?.isActive === false} />
+                                <DocumentosDelAlumno cedula={user.cedula} />
+                            </>
+                        ) : undefined
+                    }
                 />
             </div>
 
@@ -396,17 +404,10 @@ export default function UserProfilePage({ params }: PageProps) {
 
                 {/* Left Column: Personal Information Detail (Ficha) */}
                 <div className="lg:col-span-1 space-y-6 animate-in slide-in-from-left duration-500 delay-150">
-                    {/* Lo que le falta al alumno: la pregunta que más se hace un
-                        representante y que la ficha no sabía responder. */}
-                    {user.role === 'student' && <InscripcionDelAlumno studentId={user.cedula} />}
-                    {user.role === 'student' && <TrasladoDelAlumno studentId={user.cedula} archivado={dbUser?.isActive === false} />}
+                    {/* La inscripción, el traslado, el retiro y los documentos
+                        van en la cabecera; las actividades, en cada ciclo (al
+                        pulsar el promedio o una materia). */}
                     {user.role === 'student' && <LaborSocialDelAlumno studentId={user.cedula} />}
-                    {user.role === 'student' && (
-                        <ActividadesDelAlumno
-                            studentId={user.cedula}
-                            academicYearId={selectedStudentYearId || undefined}
-                        />
-                    )}
 
                     {/* Teacher Guide Section - First for teachers */}
                     {user.role === 'teacher' && (
@@ -481,45 +482,6 @@ export default function UserProfilePage({ params }: PageProps) {
                                     <span className="text-gray-400 italic text-sm">Sin dirección registrada</span>
                                 )}
                             </div>
-                            {user.role === 'student' && (
-                                <Link
-                                    href={`/dashboard/boleta/${encodeURIComponent(user.cedula)}`}
-                                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
-                                >
-                                    <FileText className="h-4 w-4" /> Ver la boleta
-                                </Link>
-                            )}
-                            {user.role === 'student' && (
-                                // Los documentos del liceo: el admin, todos; el resto
-                                // del personal, la de estudio (el servidor decide).
-                                <div className="flex flex-wrap gap-2">
-                                    {(yo?.role === 'ADMIN' ? CONSTANCIAS_DE_LA_FICHA : (['ESTUDIO'] as TipoDeConstancia[])).map((tipo) => (
-                                        <Link
-                                            key={tipo}
-                                            href={`/dashboard/constancia/${encodeURIComponent(user.cedula)}${tipo === 'ESTUDIO' ? '' : `?tipo=${tipo}`}`}
-                                            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
-                                        >
-                                            <FileText className="h-4 w-4" /> {NOMBRE_DE_LA_CONSTANCIA[tipo]}
-                                        </Link>
-                                    ))}
-                                    {yo?.role === 'ADMIN' && (
-                                        <Link
-                                            href={`/dashboard/carnets?alumno=${encodeURIComponent(user.cedula)}`}
-                                            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
-                                        >
-                                            <FileText className="h-4 w-4" /> Carnet
-                                        </Link>
-                                    )}
-                                    {yo?.role === 'ADMIN' && (
-                                        <Link
-                                            href={`/dashboard/certificacion/${encodeURIComponent(user.cedula)}`}
-                                            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
-                                        >
-                                            <FileText className="h-4 w-4" /> Certificación de calificaciones
-                                        </Link>
-                                    )}
-                                </div>
-                            )}
                             {/* El personal: su carga horaria (el admin, o el propio profesor) y su constancia de trabajo (el admin). */}
                             {(user.role === 'teacher' || user.role === 'admin') && (yo?.role === 'ADMIN' || yo?.id === user.cedula) && (
                                 <div className="flex flex-wrap gap-2">

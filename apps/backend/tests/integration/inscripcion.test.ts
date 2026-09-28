@@ -122,8 +122,12 @@ describe('La inscripción sin castigar al liceo (CREAR-01, REC-01…04)', () => 
         const total = antes.body.data.recaudos.length;
         expect(antes.body.data.faltan).toBe(total);
 
+        // El anillo de la ficha: los cinco datos del Ministerio (Ana los tiene) y cada recaudo.
+        expect(antes.body.data.avance).toEqual({ hecho: 5, total: 5 + total });
+
         const marcado = await api().put(`${url}/FOTOS`).set(comoAdmin()).send({ entregado: true }).expect(200);
         expect(marcado.body.data.faltan).toBe(total - 1);
+        expect(marcado.body.data.avance).toEqual({ hecho: 6, total: 5 + total });
         expect(marcado.body.data.recaudos.find((r: any) => r.clave === 'FOTOS')).toMatchObject({ entregado: true });
         // Marcar dos veces no duplica.
         await api().put(`${url}/FOTOS`).set(comoAdmin()).send({ entregado: true }).expect(200);

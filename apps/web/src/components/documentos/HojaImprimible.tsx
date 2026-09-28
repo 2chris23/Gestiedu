@@ -153,7 +153,9 @@ export function HojaImprimible({
 export function Firma({ nombre, detalle }: { nombre?: string | null; detalle?: React.ReactNode }) {
     return (
         <div className="break-inside-avoid pt-12 text-center text-sm">
-            <div className="mx-auto w-56 border-t border-gray-600 pt-1">
+            {/* Hasta 224 px, y menos si no cabe: dos firmas lado a lado en un
+                teléfono se salían de ancho. */}
+            <div className="mx-auto w-full max-w-56 border-t border-gray-600 pt-1">
                 {nombre && <span className="block font-medium">{nombre}</span>}
                 {detalle && <span className="block text-gray-700">{detalle}</span>}
             </div>

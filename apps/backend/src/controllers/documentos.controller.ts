@@ -1,7 +1,7 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { certificacionDelAlumno, cargarAnoExterno, calificacionesExternas, quitarAnoExterno } from '../services/certificacion.service';
 import { todasLasPlantillas, guardarPlantilla, esTipoDePlantilla, PLANTILLAS_POR_DEFECTO } from '../services/plantillas-de-documentos.service';
-import { recaudosDelLiceo, guardarRecaudos, recaudosDelAlumno, marcarRecaudo, loQueLeFalta, planillaDeInscripcion } from '../services/inscripcion.service';
+import { recaudosDelLiceo, guardarRecaudos, recaudosDelAlumno, marcarRecaudo, loQueLeFalta, planillaDeInscripcion, avanceDeLaInscripcion } from '../services/inscripcion.service';
 import { instituteTimezone, todayInTimezone } from '../utils/school-time';
 import { responderErrorClaro } from '../utils/error-claro';
 
@@ -114,7 +114,7 @@ export async function verRecaudosDelAlumno(request: ConAlumno, reply: FastifyRep
             recaudosDelAlumno(request.tenantPrisma, instituteId, request.params.id),
             loQueLeFalta(request.tenantPrisma, instituteId, request.params.id),
         ]);
-        return reply.send({ success: true, data: { ...recaudos, falta } });
+        return reply.send({ success: true, data: { ...recaudos, falta, avance: avanceDeLaInscripcion(recaudos, falta) } });
     } catch (e) {
         return responderErrorClaro(reply, e);
     }
@@ -127,7 +127,8 @@ export async function marcarRecaudoDelAlumno(
     try {
         const instituteId = instituteIdDe(request);
         const hecho = await marcarRecaudo(request.tenantPrisma, instituteId, actorDe(request), request.params.id, request.params.clave, request.body.entregado);
-        return reply.send({ success: true, data: { ...hecho, falta: await loQueLeFalta(request.tenantPrisma, instituteId, request.params.id) } });
+        const falta = await loQueLeFalta(request.tenantPrisma, instituteId, request.params.id);
+        return reply.send({ success: true, data: { ...hecho, falta, avance: avanceDeLaInscripcion(hecho, falta) } });
     } catch (e) {
         return responderErrorClaro(reply, e);
     }

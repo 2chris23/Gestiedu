@@ -32,7 +32,9 @@ export default function ResumenDelComedorPage() {
         >
             {data && (
                 <>
-                    <table className="mt-4 w-full border-collapse text-sm" aria-label="Resumen por comida">
+                    {/* En el teléfono se desliza de lado; en el papel, entera. */}
+                    <div className="relative mt-4 overflow-x-auto print:overflow-visible" data-carril-a-proposito>
+                    <table className="w-full border-collapse text-sm" aria-label="Resumen por comida">
                         <thead>
                             <tr className="bg-gray-100">
                                 <th scope="col" className={`${CELDA} text-left`}>Comida</th>
@@ -61,9 +63,11 @@ export default function ResumenDelComedorPage() {
                             </tr>
                         </tbody>
                     </table>
+                    </div>
 
                     {data.registros.length > 0 && (
-                        <table className="mt-6 w-full border-collapse text-xs" aria-label="Día a día">
+                        <div className="relative mt-6 overflow-x-auto print:overflow-visible" data-carril-a-proposito>
+                        <table className="w-full border-collapse text-xs" aria-label="Día a día">
                             <thead>
                                 <tr className="bg-gray-100">
                                     <th scope="col" className={`${CELDA} text-left`}>Fecha</th>
@@ -87,6 +91,7 @@ export default function ResumenDelComedorPage() {
                                 ))}
                             </tbody>
                         </table>
+                        </div>
                     )}
                     <div className="grid grid-cols-2 gap-8">
                         <Firma detalle="Responsable del comedor" />

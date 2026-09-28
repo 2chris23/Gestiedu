@@ -25,6 +25,11 @@ export interface ActividadDelAlumno {
     otraForma?: { metodo: string; motivo?: string | null } | null;
     subject: { id: string; name: string; color?: string | null };
     classroom: { id: string; name: string };
+    /** El día de la clase donde se puso, para abrirla. */
+    diaDeLaClase?: string | null;
+    classSessionId?: string | null;
+    /** El lapso en que cae (por el día de su clase o, si no, el de entrega). */
+    periodId?: string | null;
 }
 
 export interface ResumenDeActividades {

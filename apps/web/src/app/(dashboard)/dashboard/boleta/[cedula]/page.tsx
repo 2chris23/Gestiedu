@@ -2,7 +2,7 @@
 
 import { use } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, FileText, Printer } from 'lucide-react';
 import { useBoleta } from '@/hooks/useBoleta';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
@@ -38,7 +38,17 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
     // `/dashboard/boleta/mia`: la del propio alumno (el acceso de su menú).
     const { yo } = useQuienSoy();
     const deQuien = cedula === 'mia' ? (yo?.id ?? '') : decodeURIComponent(cedula);
-    const { data: b, isLoading: cargandoBoleta, error } = useBoleta(deQuien);
+    /**
+     * DE QUÉ CICLO Y HASTA QUÉ LAPSO
+     *
+     * Desde la ficha del alumno: `?ciclo=` es el año que se mira (sin él, el
+     * actual) y `?lapso=` saca la boleta de ese lapso, con los anteriores y
+     * sin definitiva, que aún no existe.
+     */
+    const consulta = useSearchParams();
+    const ciclo = consulta.get('ciclo') || undefined;
+    const lapso = consulta.get('lapso');
+    const { data: b, isLoading: cargandoBoleta, error } = useBoleta(deQuien, ciclo);
     const isLoading = cargandoBoleta || (cedula === 'mia' && !yo?.id);
 
     if (isLoading) {
@@ -67,7 +77,10 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
     const conNota = b.materias.filter((m) => !m.cualitativa);
     const conApreciacion = b.materias.filter((m) => m.cualitativa);
     // La columna de revisión sale solo si alguna materia la tiene.
-    const conRevision = conNota.some((m) => m.revision != null);
+    const hastaEl = lapso ? b.lapsos.findIndex((l) => l.id === lapso) : -1;
+    const lapsos = hastaEl >= 0 ? b.lapsos.slice(0, hastaEl + 1) : b.lapsos;
+    const completa = hastaEl < 0;
+    const conRevision = completa && conNota.some((m) => m.revision != null);
 
     return (
         <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6 print:max-w-none print:p-0">
@@ -101,7 +114,10 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                         respaldo={{ nombre: b.liceo.nombre, direccion: [b.liceo.direccion, b.liceo.ciudad].filter(Boolean).join(' · ') }}
                     />
                     <h1 className="mt-3 text-base font-bold uppercase tracking-wide text-gray-900">Boleta de calificaciones</h1>
-                    <p className="text-sm text-gray-700">Año escolar {b.ciclo.nombre}</p>
+                    <p className="text-sm text-gray-700">
+                        Año escolar {b.ciclo.nombre}
+                        {!completa && ` · ${b.lapsos[hastaEl].nombre}`}
+                    </p>
                 </header>
 
                 <dl className="grid grid-cols-1 gap-x-6 gap-y-1 py-4 text-sm sm:grid-cols-2">
@@ -116,10 +132,10 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                         <thead>
                             <tr className="bg-gray-50 text-gray-700">
                                 <th scope="col" className="border border-gray-200 px-2 py-2 text-left">Materia</th>
-                                {b.lapsos.map((l) => (
+                                {lapsos.map((l) => (
                                     <th key={l.id} scope="col" className="border border-gray-200 px-2 py-2 text-center">{l.nombre}</th>
                                 ))}
-                                <th scope="col" className="border border-gray-200 px-2 py-2 text-center">Definitiva</th>
+                                {completa && <th scope="col" className="border border-gray-200 px-2 py-2 text-center">Definitiva</th>}
                                 {conRevision && <th scope="col" className="border border-gray-200 px-2 py-2 text-center">Revisión</th>}
                             </tr>
                         </thead>
@@ -127,7 +143,7 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                             {conNota.map((m) => (
                                 <tr key={m.id}>
                                     <th scope="row" className="border border-gray-200 px-2 py-1.5 text-left font-medium text-gray-900">{m.nombre}</th>
-                                    {b.lapsos.map((l) => {
+                                    {lapsos.map((l) => {
                                         const n = m.notas[l.id];
                                         return (
                                             <td key={l.id} className={`border border-gray-200 px-2 py-1.5 text-center tabular-nums ${n !== null && n < b.reglas.notaMinima ? 'font-semibold text-red-700' : 'text-gray-900'}`}>
@@ -135,9 +151,11 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                                             </td>
                                         );
                                     })}
-                                    <td className={`border border-gray-200 px-2 py-1.5 text-center font-bold tabular-nums ${m.aprobada === false && m.revision == null ? 'text-red-700' : 'text-gray-900'}`}>
-                                        {nota(m.definitiva)}
-                                    </td>
+                                    {completa && (
+                                        <td className={`border border-gray-200 px-2 py-1.5 text-center font-bold tabular-nums ${m.aprobada === false && m.revision == null ? 'text-red-700' : 'text-gray-900'}`}>
+                                            {nota(m.definitiva)}
+                                        </td>
+                                    )}
                                     {conRevision && (
                                         <td className={`border border-gray-200 px-2 py-1.5 text-center font-bold tabular-nums ${m.revision != null && m.aprobada === false ? 'text-red-700' : 'text-gray-900'}`}>
                                             {m.revision == null ? '' : nota(m.revision)}
@@ -147,14 +165,14 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                             ))}
                             <tr className="bg-gray-50">
                                 <th scope="row" className="border border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-800">Promedio</th>
-                                {b.lapsos.map((l) => (
+                                {lapsos.map((l) => (
                                     <td key={l.id} className="border border-gray-200 px-2 py-1.5 text-center font-semibold tabular-nums">{nota(b.promedios[l.id])}</td>
                                 ))}
-                                <td className="border border-gray-200 px-2 py-1.5 text-center font-bold tabular-nums" colSpan={conRevision ? 2 : 1}>{nota(b.promedios.definitivo)}</td>
+                                {completa && <td className="border border-gray-200 px-2 py-1.5 text-center font-bold tabular-nums" colSpan={conRevision ? 2 : 1}>{nota(b.promedios.definitivo)}</td>}
                             </tr>
                             <tr>
                                 <th scope="row" className="border border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-800">Inasistencias</th>
-                                {b.lapsos.map((l) => {
+                                {lapsos.map((l) => {
                                     const i = b.inasistencias[l.id];
                                     return (
                                         <td key={l.id} className="border border-gray-200 px-2 py-1.5 text-center text-xs text-gray-800">
@@ -162,7 +180,7 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                                         </td>
                                     );
                                 })}
-                                <td className="border border-gray-200 px-2 py-1.5" colSpan={conRevision ? 2 : 1} />
+                                {completa && <td className="border border-gray-200 px-2 py-1.5" colSpan={conRevision ? 2 : 1} />}
                             </tr>
                         </tbody>
                     </table>
@@ -174,24 +192,26 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                             <thead>
                                 <tr className="bg-gray-50 text-gray-700">
                                     <th scope="col" className="border border-gray-200 px-2 py-2 text-left">Área (apreciación)</th>
-                                    {b.lapsos.map((l) => (
+                                    {lapsos.map((l) => (
                                         <th key={l.id} scope="col" className="border border-gray-200 px-2 py-2 text-center">{l.nombre}</th>
                                     ))}
-                                    <th scope="col" className="border border-gray-200 px-2 py-2 text-center">Final</th>
+                                    {completa && <th scope="col" className="border border-gray-200 px-2 py-2 text-center">Final</th>}
                                 </tr>
                             </thead>
                             <tbody>
                                 {conApreciacion.map((m) => (
                                     <tr key={m.id}>
                                         <th scope="row" className="border border-gray-200 px-2 py-1.5 text-left font-medium text-gray-900">{m.nombre}</th>
-                                        {b.lapsos.map((l) => (
+                                        {lapsos.map((l) => (
                                             <td key={l.id} className="border border-gray-200 px-2 py-1.5 text-center text-gray-900">
                                                 {m.apreciaciones?.[l.id] ?? '—'}
                                             </td>
                                         ))}
-                                        <td className="border border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-900">
-                                            {m.apreciaciones?.FINAL ?? '—'}
-                                        </td>
+                                        {completa && (
+                                            <td className="border border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-900">
+                                                {m.apreciaciones?.FINAL ?? '—'}
+                                            </td>
+                                        )}
                                     </tr>
                                 ))}
                             </tbody>

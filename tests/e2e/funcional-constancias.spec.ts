@@ -37,7 +37,9 @@ test.describe('Las constancias', () => {
             await injectSessionCookies(page, admin);
             const [alumno] = await queryTenantDb<{ id: string }>(`SELECT id FROM users WHERE email = 'est0575@testing.edu.ve'`);
             await page.goto(`${WEB_BASE}/dashboard/usuarios/${encodeURIComponent(alumno.id)}`);
-            await page.getByRole('link', { name: /Constancia de buena conducta/ }).click();
+            // Las constancias están en «Documentos», en la cabecera de la ficha.
+            await page.getByRole('button', { name: 'Documentos', exact: true }).click({ timeout: 60000 });
+            await page.getByRole('dialog', { name: 'Documentos' }).getByRole('link', { name: /Constancia de buena conducta/ }).click();
             const hoja = page.getByRole('article', { name: 'Constancia de buena conducta' });
             await expect(hoja).toBeVisible({ timeout: 30000 });
             await expect(hoja).toContainText('buena conducta');
