@@ -37,6 +37,7 @@ import LiveGradesSliderInput from '@/components/live-class/LiveGradesSliderInput
 import { diferido } from '@/components/common/Diferido';
 import { toLocalYMD } from '@/utils/date.utils';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
+const CalificarConInstrumento = diferido(() => import('@/components/live-class/CalificarConInstrumento'), { alto: 320 });
 
 // Lo que se abre al pulsar baja al pulsarlo, no con la clase (carga diferida).
 const PaseDeListaQr = diferido(() => import('@/components/asistencia/PaseDeListaQr'), { sinEsqueleto: true });
@@ -713,6 +714,7 @@ function LiveClassPageInner() {
                                     </div>
 
                                     <div className="flex items-center gap-2">
+                                        {!activeGradingActivity.instrumento && (
                                         <button
                                             type="button"
                                             onClick={handleSaveCurrentActivityGrades}
@@ -722,6 +724,7 @@ function LiveClassPageInner() {
                                             {saveActivityGrades.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                                             Guardar Notas
                                         </button>
+                                        )}
                                         <button
                                             type="button"
                                             onClick={() => setActiveGradingActivity(null)}
@@ -731,6 +734,18 @@ function LiveClassPageInner() {
                                         </button>
                                     </div>
                                 </div>
+                            )}
+
+                            {/* Con instrumento: se califica marcando sus casillas (la nota sale sola). */}
+                            {activeGradingActivity?.instrumento && (
+                                <CalificarConInstrumento
+                                    key={activeGradingActivity.id}
+                                    activityId={activeGradingActivity.id}
+                                    instrumento={activeGradingActivity.instrumento}
+                                    detalle={(currentActivitiesList.find((a) => a.id === activeGradingActivity.id) ?? activeGradingActivity).detalleDelInstrumento}
+                                    alumnos={classStudents}
+                                    puedeEditar={canEdit}
+                                />
                             )}
 
                             {/* Fila con buscador y contadores de asistencia */}
@@ -992,6 +1007,15 @@ function LiveClassPageInner() {
                                                           const viva =
                                                               currentActivitiesList.find((a) => a.id === activeGradingActivity.id) ??
                                                               activeGradingActivity;
+                                                          // Con instrumento, la nota sale de las marcas de arriba.
+                                                          if (viva.instrumento) {
+                                                              const nota = viva.scores?.[student.id];
+                                                              return (
+                                                                  <span className="text-xs font-bold tabular-nums text-gray-800">
+                                                                      {typeof nota === 'number' ? `${nota} / ${viva.maxScore ?? 20}` : 'Sin nota'}
+                                                                  </span>
+                                                              );
+                                                          }
                                                           return (
                                                               <span className="flex flex-col items-start gap-1">
                                                                   <LiveGradesSliderInput

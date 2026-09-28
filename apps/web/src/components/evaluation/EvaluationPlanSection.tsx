@@ -22,6 +22,7 @@ import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_PLAN_COLUMNS, type PlanColumnDef } from './planColumns';
 import PlanPorBloques from './PlanPorBloques';
+import InstrumentosDelPlan from './InstrumentosDelPlan';
 import { MembreteOficial } from '@/components/documentos/MembreteOficial';
 import { type WeekRow, getWeekDates, buildEmptyWeekRows, dbRowsToWeekRows } from './planEnSemanas';
 import CamposDelPlan from './CamposDelPlan';
@@ -1047,6 +1048,7 @@ export default function EvaluationPlanSection({
   // VIEW MODE
   // ────────────────────────────────────────────────
   return (
+    <>
     <div className="flex flex-col" style={{ height: 'calc(100vh - 240px)', minHeight: 400 }}>
       {/* Top bar */}
       <div className="flex items-center justify-between bg-white px-4 py-3 rounded-xl shadow-sm border border-gray-100 print:hidden mb-3 shrink-0">
@@ -1199,5 +1201,7 @@ export default function EvaluationPlanSection({
       </div>
 
     </div>
+    <InstrumentosDelPlan classroomId={classroomId} subjectId={subjectId} lapso={selectedLapso} canEdit={Boolean(canEdit)} />
+    </>
   );
 }

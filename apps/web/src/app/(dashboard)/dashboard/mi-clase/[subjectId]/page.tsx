@@ -13,6 +13,7 @@ import { dbRowsToWeekRows, getWeekDates } from '@/components/evaluation/planEnSe
 import { DEFAULT_PLAN_COLUMNS, type PlanColumnDef } from '@/components/evaluation/planColumns';
 import { cn } from '@/lib/utils';
 import { BotonesDeAsistencia } from '@/components/asistencia/AsistenciaDelAlumno';
+import { NIVELES_POR_DEFECTO, type Instrumento, type Marcas } from '@/lib/instrumentos';
 
 /**
  * «MI CLASE»: LA MATERIA, VISTA POR EL ALUMNO O SU REPRESENTANTE
@@ -44,6 +45,33 @@ const CAMPOS_DEL_MEMBRETE: Array<{ clave: string; texto: string }> = [
     { clave: 'intencionalidad', texto: 'Intencionalidad' },
 ];
 
+/**
+ * Cómo le fue en cada criterio del instrumento: «Portada 2/2 · Firmas 0/5…»,
+ * o el nivel en la escala. Solo lo suyo (MICLASE-07).
+ */
+function DesgloseDelInstrumento({ instrumento, marcas }: { instrumento: Instrumento; marcas: Marcas }) {
+    const niveles = instrumento.niveles ?? NIVELES_POR_DEFECTO;
+    return (
+        <ul className="mt-1 space-y-0.5 rounded-md bg-gray-50 px-2 py-1 text-xs text-gray-800" aria-label="Cómo le fue en cada criterio">
+            {instrumento.criterios.map((c) => {
+                const m = marcas?.[c.id];
+                const que =
+                    instrumento.tipo === 'COTEJO'
+                        ? `${m === true ? c.puntos : 0} / ${c.puntos}`
+                        : instrumento.tipo === 'PUNTOS'
+                          ? `${typeof m === 'number' ? m : '—'} / ${c.puntos}`
+                          : niveles.find((n) => n.id === m)?.nombre ?? '—';
+                return (
+                    <li key={c.id} className="flex justify-between gap-3">
+                        <span>{c.texto}</span>
+                        <span className="font-semibold tabular-nums">{que}</span>
+                    </li>
+                );
+            })}
+        </ul>
+    );
+}
+
 function Actividad({ a }: { a: ActividadDeMiClase }) {
     const estado = ESTADO_DE_ACTIVIDAD[a.estado];
     return (
@@ -57,6 +85,7 @@ function Actividad({ a }: { a: ActividadDeMiClase }) {
                     {a.semana ? ` · Semana ${a.semana}` : ''}
                 </p>
                 {a.criterio && <p className="mt-0.5 text-xs text-gray-600">Del plan: {a.criterio}</p>}
+                {a.instrumento && a.miDetalle && <DesgloseDelInstrumento instrumento={a.instrumento} marcas={a.miDetalle.marcas} />}
                 {a.otraForma && (
                     <p className="mt-1 inline-flex rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-900">
                         Evaluado con: {a.otraForma.metodo}

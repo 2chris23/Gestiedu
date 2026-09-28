@@ -17,6 +17,9 @@ export interface ActividadDeMiClase {
     semana: number | null;
     /** Si a este alumno se le evalúa de otra forma en esta actividad. */
     otraForma?: { metodo: string; motivo?: string | null } | null;
+    /** El instrumento con que se le calificó y SUS marcas (nunca las de otros). */
+    instrumento?: import('@/lib/instrumentos').Instrumento | null;
+    miDetalle?: { marcas: import('@/lib/instrumentos').Marcas; total: number | null } | null;
 }
 
 export interface ObservacionDeMiClase {

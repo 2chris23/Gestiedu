@@ -207,6 +207,8 @@ async function losRecorridos() {
                 ['Consejo de sección', `/dashboard/consejo/${seccion?.id}`],
                 ['Carnets', `/dashboard/carnets?seccion=${seccion?.id}`],
                 ['Plan de evaluación impreso', `/dashboard/plan-de-evaluacion/${seccion?.id}/${materia?.id}?lapso=1`],
+                ['Acta de socialización', `/dashboard/acta-de-socializacion/${seccion?.id}/${materia?.id}?lapso=1`],
+                ['Instrumentos de evaluación', `/dashboard/instrumentos-de-evaluacion/${seccion?.id}/${materia?.id}?lapso=1`],
                 ['Comedor', '/dashboard/comedor'],
                 ['Resumen del comedor', `/dashboard/comedor/resumen?mes=${new Date().toISOString().slice(0, 7)}`],
                 ['Pendientes', '/dashboard/materias-pendientes'],

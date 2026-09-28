@@ -140,6 +140,8 @@ export async function miClase(
                     maxScore: true,
                     scores: true,
                     evaluadoDeOtraForma: true,
+                    instrumento: true,
+                    detalleDelInstrumento: true,
                     createdAt: true,
                     classSession: { select: { date: true } },
                     planRow: { select: { weekNumber: true, actividadEval: true, lapso: true } },
@@ -180,6 +182,9 @@ export async function miClase(
                 semana: a.planRow?.weekNumber ?? null,
                 // Si a ÉL se le evalúa de otra forma (solo lo suyo, no el mapa entero).
                 otraForma: ((a.evaluadoDeOtraForma ?? {}) as Record<string, { metodo: string; motivo?: string }>)[studentId] ?? null,
+                // Con instrumento: cómo es y SUS marcas (nunca las de los compañeros, MICLASE-07).
+                instrumento: a.instrumento ?? null,
+                miDetalle: ((a.detalleDelInstrumento ?? {}) as Record<string, unknown>)[studentId] ?? null,
             };
         });
 

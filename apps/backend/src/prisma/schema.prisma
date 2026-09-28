@@ -878,6 +878,10 @@ model EvaluationPlanRow {
   // Actividades de Clase en Vivo vinculadas a este criterio/bloque
   classActivities ClassActivity[]
 
+  /// El instrumento con que se califica esta evaluación (lista de cotejo,
+  /// escala de estimación, rúbrica…). Ver `utils/instrumentos.ts`.
+  instrumento InstrumentoDeEvaluacion?
+
   // Link a Activity para calificaciones
   activityId String?   @unique
   activity   Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
@@ -1998,21 +2002,28 @@ model ClassReplacement {
 // =====================================================
 
 model ClassActivity {
-  id                  String    @id @default(cuid())
-  title               String
-  description         String?
-  type                String    @default("TAREA") // TAREA | EXAMEN | ACTIVIDAD
-  target              String    @default("NEXT") // CURRENT (esta clase) | NEXT (próxima clase)
-  tag                 String? // Etiqueta personalizada (ej: Examen, Taller, Tarea, Proyecto...)
-  dueDate             DateTime? // Fecha asignada o fecha límite
-  maxScore            Float?    @default(20)
-  scores              Json? // Mapa de puntajes por estudiante: { "studentId": score }
+  id                    String    @id @default(cuid())
+  title                 String
+  description           String?
+  type                  String    @default("TAREA") // TAREA | EXAMEN | ACTIVIDAD
+  target                String    @default("NEXT") // CURRENT (esta clase) | NEXT (próxima clase)
+  tag                   String? // Etiqueta personalizada (ej: Examen, Taller, Tarea, Proyecto...)
+  dueDate               DateTime? // Fecha asignada o fecha límite
+  maxScore              Float?    @default(20)
+  scores                Json? // Mapa de puntajes por estudiante: { "studentId": score }
   /// Alumnos evaluados de otra forma en esta actividad (p. ej. con el cuaderno
   /// quien no puede hacer deporte): { "studentId": { metodo, motivo? } }. Su
   /// nota va en `scores` y cuenta igual que la de los demás.
-  evaluadoDeOtraForma Json?
-  isDone              Boolean   @default(false)
-  carriedOver         Boolean   @default(false) // true si fue movida por suspensión
+  evaluadoDeOtraForma   Json?
+  /// Copia del instrumento de su evaluación del plan al empezar a calificarla:
+  /// editar el plan después no cambia lo que ya significan las marcas.
+  instrumento           Json?
+  /// Las marcas de cada alumno en el instrumento y su total:
+  /// { "studentId": { "marcas": { criterioId: valor }, "total": n | null } }.
+  /// La nota sigue yendo a `scores`.
+  detalleDelInstrumento Json?
+  isDone                Boolean   @default(false)
+  carriedOver           Boolean   @default(false) // true si fue movida por suspensión
 
   classroomId String
   classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
@@ -2121,4 +2132,28 @@ model PaeRegistro {
   @@unique([fecha, comida])
   @@index([fecha])
   @@map("pae_registros")
+}
+
+/// EL INSTRUMENTO DE UNA EVALUACIÓN DEL PLAN
+///
+/// Lista de cotejo, escala de estimación, rúbrica o reparto por puntos (Ser,
+/// Hacer, Conocer, Convivir). Aparte de la fila del plan a propósito: guardar el
+/// plan compara filas «sin cambios» y una columna más la daría siempre por
+/// cambiada (409 falsos a quien tiene el plan abierto). `version` sube en cada
+/// guardado: dos profesores no se pisan. Ver `utils/instrumentos.ts`.
+model InstrumentoDeEvaluacion {
+  id String @id @default(cuid())
+
+  planRowId String            @unique
+  planRow   EvaluationPlanRow @relation(fields: [planRowId], references: [id], onDelete: Cascade)
+
+  /// COTEJO | ESCALA | RUBRICA | PUNTOS
+  tipo       String
+  definicion Json
+  version    Int    @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("instrumentos_de_evaluacion")
 }

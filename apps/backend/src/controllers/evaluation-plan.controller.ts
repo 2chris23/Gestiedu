@@ -643,6 +643,12 @@ export async function copyPlan(
       orderBy: [{ weekNumber: 'asc' }, { orderIndex: 'asc' }]
     });
 
+    // Los instrumentos de sus evaluaciones van con el plan.
+    const instrumentos = await db.instrumentoDeEvaluacion.findMany({
+      where: { planRowId: { in: sourceRows.map((r: any) => r.id) } },
+    });
+    const instrumentoDe = new Map(instrumentos.map((i: any) => [i.planRowId, i]));
+
     let copiedCount = 0;
 
     for (const targetClassroomId of targetClassroomIds) {
@@ -678,9 +684,14 @@ export async function copyPlan(
         const nuevas: any[] = [];
         for (const row of sourceRows) {
           const { id, classroomId: _, activityId, createdAt, updatedAt, ...rowData } = row;
-          nuevas.push(await tx.evaluationPlanRow.create({
+          const nueva = await tx.evaluationPlanRow.create({
             data: { ...rowData, classroomId: targetClassroomId }
-          }));
+          });
+          nuevas.push(nueva);
+          const inst: any = instrumentoDe.get(id);
+          if (inst) {
+            await tx.instrumentoDeEvaluacion.create({ data: { planRowId: nueva.id, tipo: inst.tipo, definicion: inst.definicion } });
+          }
         }
         for (const a of enganchadas) {
           const semana = a.planRow?.weekNumber;

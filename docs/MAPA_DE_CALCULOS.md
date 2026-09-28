@@ -40,6 +40,24 @@ Las actividades de antes que quedaron en una fila vacía se enganchan con
 `--aplicar`). **Cambia promedios del lapso**: avisar al liceo antes. Pruebas
 ACTDIA-01…06, SEMEVAL-01…07.
 
+### 1a-bis. La nota de una actividad calificada con un instrumento
+
+**Añadido el 2026-09-28** (`utils/instrumentos.ts`, copiada en `apps/web/src/lib/instrumentos.ts`;
+INSTR-*). El instrumento se arma en la evaluación del plan; la actividad guarda su copia al
+calificarse (cambiar el plan después no cambia lo ya calificado).
+
+| Tipo | Nota de la actividad | Máximo | Sin nota cuando… |
+| :--- | :--- | :--- | :--- |
+| Lista de cotejo | suma de los puntos de lo marcado «sí» | suma de los puntos | nunca (lo no marcado es «no») |
+| Escala de estimación | suma de valor del nivel × peso (AD 4, A 3, B 2, C 1 por defecto) | nivel más alto × suma de pesos | falta el nivel de algún criterio |
+| Rúbrica | igual que la escala | igual | igual |
+| Por puntos (Ser, Hacer, Conocer, Convivir) | suma de los puntos de cada criterio (0 a su máximo) | suma de los puntos | falta algún criterio |
+
+La nota va a `ClassActivity.scores` y `maxScore` = máximo del instrumento: desde ahí sigue el
+nivel 1 de siempre (se lleva a 20 y se promedia con las demás de la evaluación). Con
+instrumento no se pone nota a mano (409 `NOTA_POR_INSTRUMENTO`), salvo al alumno evaluado de
+otra forma.
+
 ### 1b. Las materias con apreciación (sin nota) no entran en ningún promedio
 
 **Añadido el 2026-09-26.** Cada materia dice cómo se evalúa (`Subject.evaluacion`):

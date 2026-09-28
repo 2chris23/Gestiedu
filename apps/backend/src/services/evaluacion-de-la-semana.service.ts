@@ -50,7 +50,7 @@ export interface EvaluacionesDeLaFecha {
     semana: number | null;
     /** ¿El plan del lapso tiene evaluaciones con puntos? Sin eso, toda actividad cuenta. */
     planConPuntos: boolean;
-    evaluaciones: Array<{ id: string; actividad: string; puntos: number; semana: number; instrumentos: string | null }>;
+    evaluaciones: Array<{ id: string; actividad: string; puntos: number; semana: number; instrumentos: string | null; tipoDeInstrumento: string | null }>;
 }
 
 /** Las evaluaciones del plan a las que puede sumar una actividad de ese día. */
@@ -64,7 +64,7 @@ export async function evaluacionesDeLaFecha(prisma: any, classroomId: string, su
     const sem = meta.fechaDesde ? await semanaDelPlan(prisma, classroomId, fecha, new Date(meta.fechaDesde)) : base;
     const filas = await prisma.evaluationPlanRow.findMany({
         where: { classroomId, subjectId, lapso: meta.lapso, rowType: 'EVALUATION' },
-        select: { id: true, weekNumber: true, puntos: true, extraData: true, actividadEval: true, instrumentos: true, rowType: true, orderIndex: true },
+        select: { id: true, weekNumber: true, puntos: true, extraData: true, actividadEval: true, instrumentos: true, rowType: true, orderIndex: true, instrumento: { select: { tipo: true } } },
         orderBy: [{ weekNumber: 'asc' }, { orderIndex: 'asc' }],
     });
     const planConPuntos = filas.some((f: any) => (f.puntos ?? 0) > 0);
@@ -80,6 +80,7 @@ export async function evaluacionesDeLaFecha(prisma: any, classroomId: string, su
             puntos: f.puntos,
             semana: f.weekNumber,
             instrumentos: f.instrumentos ?? null,
+            tipoDeInstrumento: f.instrumento?.tipo ?? null,
         })),
     };
 }

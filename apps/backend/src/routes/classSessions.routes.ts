@@ -18,6 +18,8 @@ import {
     searchStudentsForSession,
     savePlanWeekRow,
 } from '../controllers/classSessions.controller';
+import { calificarConInstrumento } from '../services/instrumentos.service';
+import { responderErrorClaro } from '../utils/error-claro';
 
 export async function classSessionsRoutes(fastify: FastifyInstance) {
     // Rutas protegidas - requieren autenticación
@@ -73,6 +75,25 @@ export async function classSessionsRoutes(fastify: FastifyInstance) {
             '/activities/:activityId',
             { onRequest: [requireTeacher] },
             deleteClassActivity as any
+        );
+        // Calificar marcando el instrumento de su evaluación del plan: la nota
+        // sale sola (`services/instrumentos.service.ts`).
+        authenticatedRoutes.post(
+            '/activities/:activityId/instrumento',
+            {
+                onRequest: [requireTeacher],
+                schema: { body: { type: 'object', required: ['marcas'], properties: { marcas: { type: 'object' } } } },
+            },
+            (async (r: any, reply: any) => {
+                try {
+                    const data = await calificarConInstrumento(r.tenantPrisma, r.user, r.params.activityId, r.body.marcas);
+                    const a = await r.tenantPrisma.classActivity.findUnique({ where: { id: r.params.activityId }, select: { classroomId: true } });
+                    r.aQuienAfecta = { studentIds: Object.keys(r.body.marcas || {}), classroomId: a?.classroomId };
+                    return reply.send({ success: true, data });
+                } catch (e) {
+                    return responderErrorClaro(reply, e);
+                }
+            }) as any
         );
         // Evaluar a un alumno de otra forma en una actividad (p. ej. con el
         // cuaderno quien no puede hacer deporte). Su nota cuenta igual.

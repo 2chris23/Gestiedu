@@ -30,7 +30,8 @@ export type TipoDePlantilla =
     | 'NOTAS_PARCIALES'
     | 'TITULO_EN_TRAMITE'
     | 'ACTA_CONSEJO'
-    | 'TRABAJO';
+    | 'TRABAJO'
+    | 'ACTA_SOCIALIZACION_PLAN';
 export const TIPOS_DE_PLANTILLA: TipoDePlantilla[] = [
     'ESTUDIO',
     'BUENA_CONDUCTA',
@@ -44,6 +45,7 @@ export const TIPOS_DE_PLANTILLA: TipoDePlantilla[] = [
     'TITULO_EN_TRAMITE',
     'ACTA_CONSEJO',
     'TRABAJO',
+    'ACTA_SOCIALIZACION_PLAN',
 ];
 export const esTipoDePlantilla = (v: unknown): v is TipoDePlantilla => typeof v === 'string' && (TIPOS_DE_PLANTILLA as string[]).includes(v);
 
@@ -61,6 +63,7 @@ export const NOMBRE_DE_LA_PLANTILLA: Record<TipoDePlantilla, string> = {
     TITULO_EN_TRAMITE: 'Constancia de título en trámite',
     ACTA_CONSEJO: 'Acta del consejo de sección',
     TRABAJO: 'Constancia de trabajo',
+    ACTA_SOCIALIZACION_PLAN: 'Acta de socialización del plan de evaluación',
 };
 
 /** Marcador → [qué pone, un ejemplo para la vista previa]. */
@@ -107,6 +110,17 @@ const DEL_TRABAJADOR: Marcadores = {
     conCargaHoraria: ['«, con una carga horaria de 24 horas semanales» (vacío si no da clases)', ', con una carga horaria de 24 horas semanales'],
 };
 
+/** Los del plan de evaluación de una materia (el acta de socialización). */
+const DEL_PLAN: Marcadores = {
+    docente: ['Nombres y apellidos del docente', 'Juan Uribe'],
+    cedulaDelDocente: ['Su cédula', 'V-14602932'],
+    area: ['El área de formación', 'Física'],
+    grado: ['El año (p. ej. «4to año»)', '4to año'],
+    seccion: ['La letra de la sección', 'C'],
+    lapso: ['El momento (p. ej. «primer momento»)', 'primer momento'],
+    ciclo: ['El año escolar', '2026-2027'],
+};
+
 /** Los que solo tienen sentido en uno. */
 const PROPIOS: Partial<Record<TipoDePlantilla, Marcadores>> = {
     PROSECUCION: { gradoSiguiente: ['El año al que puede proseguir (p. ej. «4to año»)', '4to año'] },
@@ -134,7 +148,7 @@ const PROPIOS: Partial<Record<TipoDePlantilla, Marcadores>> = {
  * Qué grupos de marcadores lleva cada documento, además de los del plantel.
  * Sin decir nada, los del alumno (las constancias son de un alumno).
  */
-const GRUPOS: Partial<Record<TipoDePlantilla, Marcadores[]>> = { ACTA_CONSEJO: [DE_LA_SECCION], TRABAJO: [DEL_TRABAJADOR] };
+const GRUPOS: Partial<Record<TipoDePlantilla, Marcadores[]>> = { ACTA_CONSEJO: [DE_LA_SECCION], TRABAJO: [DEL_TRABAJADOR], ACTA_SOCIALIZACION_PLAN: [DEL_PLAN] };
 
 function marcadoresCompletos(tipo: TipoDePlantilla): Marcadores {
     const grupos = GRUPOS[tipo] ?? [DEL_ALUMNO];
@@ -201,6 +215,11 @@ export const PLANTILLAS_POR_DEFECTO: Record<TipoDePlantilla, { titulo: string; t
         titulo: 'Notas parciales',
         texto:
             'Quien suscribe, {firmante}, en su carácter de {cargo} de {liceo}, hace constar que el (la) estudiante {alumno}, titular de la {tipoDeCedula} {cedula}, {cursa} el {grado}, sección «{seccion}», de {nivel} en esta institución durante el año escolar {ciclo}, con las calificaciones parciales que se indican.\n\nSe expide a petición de la parte interesada {lugarYFecha}.',
+    },
+    ACTA_SOCIALIZACION_PLAN: {
+        titulo: 'Acta de socialización del plan de evaluación',
+        texto:
+            'Después de socializar el plan del {lapso} y su plan de evaluación, conjuntamente con los estudiantes del {grado}, sección «{seccion}», el (la) docente {docente}, titular de la cédula de identidad {cedulaDelDocente}, del área de formación {area}, y los estudiantes firman conforme que toda la matrícula será evaluada en las condiciones propuestas, durante las fechas pautadas, en el año escolar {ciclo}.',
     },
     CITACION: {
         titulo: 'Citación',

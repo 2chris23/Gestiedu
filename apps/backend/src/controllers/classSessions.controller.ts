@@ -34,6 +34,8 @@ import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 import { revisarNotas, sumarNotas, arreglarNotasGuardadasComoTexto, Notas } from '../utils/notas-de-clase';
 import { clasificar, diaDeLaActividad } from '../utils/actividad-del-dia';
 import { evaluacionesDeLaFecha } from '../services/evaluacion-de-la-semana.service';
+import { instrumentoDeLaActividad, notaAManoProhibida } from '../services/instrumentos.service';
+import { maximoDelInstrumento } from '../utils/instrumentos';
 
 /**
  * La sesión de una clase en un día («YYYY-MM-DD»): la que hay, o una nueva.
@@ -326,6 +328,8 @@ export async function getLiveClassDetail(
                     classSession: {
                         select: { id: true, date: true },
                     },
+                    // El instrumento de su evaluación, para las que aún no tienen copia.
+                    planRow: { select: { instrumento: { select: { definicion: true } } } },
                 },
                 orderBy: [{ isDone: 'asc' }, { createdAt: 'desc' }],
             }),
@@ -421,8 +425,10 @@ export async function getLiveClassDetail(
             // utils/actividad-del-dia.ts: el día de la actividad es el de su
             // clase, o el de su creación EN LA ZONA DEL LICEO (no en UTC).
             const c = clasificar(a, diaDeLaClase, session?.id, zonaLiceo);
+            const { planRow, ...resto } = a as any;
             return {
-                ...a,
+                ...resto,
+                instrumento: a.instrumento ?? planRow?.instrumento?.definicion ?? null,
                 createdDate: `${diaDeLaActividad(a, zonaLiceo)}T12:00:00.000Z`,
                 createdOnThisClass: c.nacioAqui,
                 belongsToSession: c.nacioAqui,
@@ -1076,6 +1082,14 @@ export async function createClassActivity(
                 classSessionId: sesion?.id ?? null,
             },
         });
+        // Si su evaluación del plan tiene instrumento, se califica con él.
+        const def = fila ? await instrumentoDeLaActividad(prisma, { id: activity.id, instrumento: null, planRowId: fila }) : null;
+        if (def) {
+            Object.assign(
+                activity,
+                await prisma.classActivity.update({ where: { id: activity.id }, data: { instrumento: def as any, maxScore: maximoDelInstrumento(def), detalleDelInstrumento: {} } })
+            );
+        }
 
         // Una actividad nueva cambia el horario en vivo de ESA sección: sus
         // alumnos, sus representantes y su personal. Sin esta línea se tiraba la
@@ -1148,6 +1162,15 @@ export async function updateClassActivity(
         // Las notas que vengan aquí se AÑADEN, como en la puerta de las notas:
         // antes reemplazaban el mapa entero y borraban las del resto de la clase.
         if (scores !== undefined) {
+            // Con instrumento, la nota sale de las marcas: a mano, solo al alumno
+            // evaluado de otra forma (INSTR-05).
+            const noSe = await notaAManoProhibida(prisma, activityId, Object.keys(scores || {}));
+            if (noSe) {
+                return reply.status(409).send({
+                    error: 'Esta actividad se califica con el instrumento de su evaluación del plan: marca sus casillas',
+                    code: 'NOTA_POR_INSTRUMENTO',
+                });
+            }
             const actual = await prisma.classActivity.findUnique({
                 where: { id: activityId },
                 select: { maxScore: true, scores: true },
@@ -1219,6 +1242,16 @@ export async function saveClassActivityGrades(
         }
 
         await exigirActividadPropia(request, activityId, 'dar notas');
+
+        // Con instrumento, la nota sale de las marcas: a mano, solo al alumno
+        // evaluado de otra forma (INSTR-05).
+        const noSe = await notaAManoProhibida(prisma, activityId, Object.keys(scores || {}));
+        if (noSe) {
+            return reply.status(409).send({
+                error: 'Esta actividad se califica con el instrumento de su evaluación del plan: marca sus casillas',
+                code: 'NOTA_POR_INSTRUMENTO',
+            });
+        }
 
         const escala = maxScore !== undefined ? Number(maxScore) : (activity.maxScore ?? 20);
         const problema = revisarNotas(scores, escala);

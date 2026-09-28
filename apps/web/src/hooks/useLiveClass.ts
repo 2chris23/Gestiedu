@@ -41,6 +41,10 @@ export interface ClassActivity {
     scores?: Record<string, number | null> | null;
     /** Alumnos evaluados de otra forma (p. ej. con el cuaderno): su nota cuenta igual. */
     evaluadoDeOtraForma?: Record<string, OtraFormaDeEvaluar> | null;
+    /** El instrumento con que se califica (el de su evaluación del plan). */
+    instrumento?: import('@/lib/instrumentos').Instrumento | null;
+    /** Las marcas de cada alumno y su total. */
+    detalleDelInstrumento?: Record<string, { marcas: import('@/lib/instrumentos').Marcas; total: number | null }> | null;
     isDone: boolean;
     carriedOver: boolean;
     planRowId?: string | null;
