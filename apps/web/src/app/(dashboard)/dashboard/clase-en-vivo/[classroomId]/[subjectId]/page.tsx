@@ -681,6 +681,10 @@ function LiveClassPageInner() {
                                 canEdit={canEdit}
                                 planRowId={data?.weekRow?.id}
                                 classSessionId={data?.session?.id}
+                                date={date}
+                                esFuturo={Boolean(hoyDelLiceo) && date > hoyDelLiceo}
+                                evaluaciones={data?.evaluacionesDeLaSemana}
+                                planConPuntos={data?.planConPuntos}
                             />
                         </div>
                     </div>

@@ -32,6 +32,23 @@ import { instituteTimezone, isFutureDate, todayInTimezone } from '../utils/schoo
 import { assertClassroomScope, assertCanSeeClassroom, assertCanSeeStudent, teacherClassroomIds } from '../services/authorization.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 import { revisarNotas, sumarNotas, arreglarNotasGuardadasComoTexto, Notas } from '../utils/notas-de-clase';
+import { clasificar, diaDeLaActividad } from '../utils/actividad-del-dia';
+import { evaluacionesDeLaFecha } from '../services/evaluacion-de-la-semana.service';
+
+/**
+ * La sesión de una clase en un día («YYYY-MM-DD»): la que hay, o una nueva.
+ * Toda actividad nueva queda atada a la clase del día que se ve: sin eso, la
+ * que se creaba un día sin asistencia guardada no salía en ninguna lista
+ * (utils/actividad-del-dia.ts).
+ */
+async function sesionDelDia(db: any, classroomId: string, subjectId: string, dia: string) {
+    const date = new Date(`${dia}T00:00:00.000Z`);
+    return db.classSession.upsert({
+        where: { classroomId_subjectId_date: { classroomId, subjectId, date } },
+        update: {},
+        create: { publicId: randomUUID(), classroomId, subjectId, date },
+    });
+}
 
 /**
  * Parsea una fecha de input <input type="date"> (YYYY-MM-DD) a mediodía LOCAL.
@@ -273,7 +290,7 @@ export async function getLiveClassDetail(
          * de abajo salen juntas; lo que sí depende de otra cosa (la semana del
          * plan, los alumnos de fuera) sigue después.
          */
-        const [session, classroomSubject, enrollments, attendances, planDelDia, activities] = await Promise.all([
+        const [session, classroomSubject, enrollments, attendances, planDelDia, activities, zonaLiceo, deLaSemana] = await Promise.all([
             // 1. Sesión de clase existente para esta materia y fecha
             prisma.classSession.findFirst({
                 where: { classroomId, subjectId: targetSubjectId, date: { gte: startOfDay, lte: endOfDay } },
@@ -312,6 +329,9 @@ export async function getLiveClassDetail(
                 },
                 orderBy: [{ isDone: 'asc' }, { createdAt: 'desc' }],
             }),
+            instituteTimezone(prisma),
+            // 7. A qué evaluaciones del plan puede sumar lo que se haga este día.
+            evaluacionesDeLaFecha(prisma, classroomId, targetSubjectId, dayDate),
         ]);
         const students = enrollments.map((e: any) => e.student).filter((s: any) => s && s.isActive);
 
@@ -396,36 +416,18 @@ export async function getLiveClassDetail(
         //   o actividades realizadas en esta misma sesión (target === 'CURRENT' && createdOnThisClass).
         // - "Próxima Clase": actividades CREADAS / ASIGNADAS en ESTA sesión (createdOnThisClass)
         //   para ser entregadas en una fecha futura. No se arrastran a todas las semanas arbitrariamente.
-        const classDateNoon = dayDate;
-        const dayOf = (dd: Date) => new Date(dd.getUTCFullYear(), dd.getUTCMonth(), dd.getUTCDate());
-        const classDay = dayOf(classDateNoon);
-
+        const diaDeLaClase = date.slice(0, 10);
         const activitiesWithDue = activities.map(a => {
-            const createdDay = a.classSession?.date ? dayOf(new Date(a.classSession.date)) : dayOf(new Date(a.createdAt));
-            const boundToSession = Boolean(a.classSessionId && session?.id && a.classSessionId === session.id);
-            const createdOnThisClass = Boolean(boundToSession || createdDay.getTime() === classDay.getTime());
-
-            const dueDay = a.dueDate ? dayOf(new Date(a.dueDate)) : null;
-            const dueOnClassDate = Boolean(dueDay && dueDay.getTime() === classDay.getTime());
-
-            const dueToday = Boolean(dueOnClassDate || (a.target === 'CURRENT' && createdOnThisClass));
-            // REGLA DEL PRODUCTO — no cambiar sin hablarlo:
-            // Una actividad para la PRÓXIMA clase se anuncia SOLO en la clase donde
-            // se creó (`createdOnThisClass`). Dos motivos:
-            //   1. así se sabe en qué clase se mandó, y
-            //   2. si se anunciara en todas las clases anteriores, 'Próxima clase'
-            //      se llenaría de actividades acumuladas.
-            // El día que toca entregarla aparece como 'Clase de hoy' por su fecha
-            // (`dueOnClassDate`), esté donde esté el profesor.
-            const isFuture = Boolean(a.target === 'NEXT' && createdOnThisClass && !dueToday);
-
+            // utils/actividad-del-dia.ts: el día de la actividad es el de su
+            // clase, o el de su creación EN LA ZONA DEL LICEO (no en UTC).
+            const c = clasificar(a, diaDeLaClase, session?.id, zonaLiceo);
             return {
                 ...a,
-                createdDate: createdDay.toISOString(),
-                createdOnThisClass,
-                belongsToSession: createdOnThisClass,
-                dueToday,
-                isFuture,
+                createdDate: `${diaDeLaActividad(a, zonaLiceo)}T12:00:00.000Z`,
+                createdOnThisClass: c.nacioAqui,
+                belongsToSession: c.nacioAqui,
+                dueToday: c.hoy,
+                isFuture: c.proxima,
             };
         });
         const activitiesFiltered = activitiesWithDue;
@@ -620,6 +622,11 @@ export async function getLiveClassDetail(
             planColumns,
             planLapso: planLapso || '1',
             weekRow,
+            // Las evaluaciones del plan que cubren este día (una actividad suma
+            // a una de ellas) y si el plan tiene puntos: sin evaluación, lo que
+            // se haga hoy no suma a la nota del lapso y la pantalla lo dice.
+            evaluacionesDeLaSemana: deLaSemana.evaluaciones,
+            planConPuntos: deLaSemana.planConPuntos,
             activities: activitiesFiltered,
             sessionObservations,
         });
@@ -966,6 +973,8 @@ export async function createClassActivity(
             maxScore?: number;
             planRowId?: string;
             classSessionId?: string;
+            /** El día de la clase que se ve («YYYY-MM-DD»). */
+            date?: string;
         };
     }>,
     reply: FastifyReply
@@ -983,11 +992,15 @@ export async function createClassActivity(
             maxScore = 20,
             planRowId,
             classSessionId,
+            date,
         } = request.body;
         const prisma = request.tenantPrisma;
 
         if (!classroomId || !subjectId || !title) {
             return reply.status(400).send({ error: 'Faltan parámetros requeridos' });
+        }
+        if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            return reply.status(400).send({ error: 'Fecha inválida', code: 'FECHA_INVALIDA' });
         }
 
         let targetSubjectId = subjectId;
@@ -998,6 +1011,54 @@ export async function createClassActivity(
         if (sub) targetSubjectId = sub.id;
 
         await exigirClasePropia(request, classroomId, targetSubjectId, 'dejar actividades');
+        const zonaLiceo = await instituteTimezone(prisma);
+
+        // La clase donde nace: la que manda la pantalla (si es de ESTA clase) o
+        // la del día que se ve. Sin ella la actividad no salía en ninguna lista.
+        let sesion: { id: string; date: Date } | null = null;
+        if (classSessionId) {
+            sesion = await prisma.classSession.findFirst({
+                where: { id: classSessionId, classroomId, subjectId: targetSubjectId },
+                select: { id: true, date: true },
+            });
+            if (!sesion) {
+                return reply.status(400).send({ error: 'Esa clase no es de esta sección y materia', code: 'SESION_AJENA' });
+            }
+        } else if (date) {
+            if (isFutureDate(date, zonaLiceo)) {
+                return reply.status(400).send({
+                    error: 'Esa clase todavía no ha llegado: crea la actividad hoy y ponle fecha de entrega',
+                    code: 'FUTURE_DATE',
+                    today: todayInTimezone(zonaLiceo),
+                });
+            }
+            sesion = await sesionDelDia(prisma, classroomId, targetSubjectId, date);
+        }
+
+        // A qué evaluación del plan suma: la de la semana en que se entrega
+        // (si tiene fecha) o la de la clase donde nace. Una candidata, esa;
+        // varias, la que elija el profesor; ninguna, no suma (formativa).
+        const diaDeLaSemana = dueDate || (sesion ? sesion.date.toISOString().slice(0, 10) : date) || todayInTimezone(zonaLiceo);
+        const { evaluaciones, planConPuntos } = await evaluacionesDeLaFecha(
+            prisma,
+            classroomId,
+            targetSubjectId,
+            parseDayDate(diaDeLaSemana)
+        );
+        let fila: string | null = null;
+        // Lo que mande la pantalla solo vale si es una de ellas (la de una
+        // pantalla vieja puede ser la fila vacía de la semana, o ajena).
+        if (planRowId && evaluaciones.some((e) => e.id === planRowId)) {
+            fila = planRowId;
+        } else if (evaluaciones.length === 1) {
+            fila = evaluaciones[0].id;
+        } else if (evaluaciones.length > 1) {
+            return reply.status(400).send({
+                error: 'Esta semana tiene varias evaluaciones en el plan: elige a cuál suma la actividad',
+                code: 'ELIGE_LA_EVALUACION',
+                evaluaciones,
+            });
+        }
 
         const activity = await prisma.classActivity.create({
             data: {
@@ -1011,8 +1072,8 @@ export async function createClassActivity(
                 dueDate: dueDate ? parseDayDate(dueDate) : null,
                 maxScore: maxScore ? Number(maxScore) : 20,
                 scores: {},
-                planRowId: planRowId || null,
-                classSessionId: classSessionId || null,
+                planRowId: fila,
+                classSessionId: sesion?.id ?? null,
             },
         });
 
@@ -1021,7 +1082,11 @@ export async function createClassActivity(
         // copia guardada del liceo entero.
         request.aQuienAfecta = { classroomId };
 
-        return reply.status(201).send({ activity });
+        // Dónde sale en la clase que se ve: la pantalla lo dice tal cual, y no
+        // «añadida» si no se va a ver.
+        const diaVisto = date || (sesion ? sesion.date.toISOString().slice(0, 10) : todayInTimezone(zonaLiceo));
+        const { dondeSale } = clasificar({ ...activity, classSession: sesion }, diaVisto, sesion?.id, zonaLiceo);
+        return reply.status(201).send({ activity, dondeSale, sumaALaNota: Boolean(fila) || !planConPuntos });
     } catch (error) {
         // Los errores con motivo propio (permisos, no encontrado…) se responden tal
         // cual: convertirlos en 500 esconde por qué se negó.
@@ -1366,7 +1431,7 @@ export async function getLiveOverview(
         const finDelDia = new Date(parsedDate);
         finDelDia.setUTCHours(23, 59, 59, 999);
 
-        const [subjects, classroom, metas, sesionesDelDia] = await Promise.all([
+        const [subjects, classroom, metas, sesionesDelDia, zonaLiceo] = await Promise.all([
             prisma.classroomSubject.findMany({
                 where: { classroomId },
                 include: { subject: { select: { id: true, name: true, color: true } } },
@@ -1388,6 +1453,7 @@ export async function getLiveOverview(
                 where: { classroomId, date: { gte: inicioDelDia, lte: finDelDia } },
                 select: { id: true, subjectId: true, status: true },
             }),
+            instituteTimezone(prisma),
         ]);
 
         const yearStart = classroom?.academicYear?.startDate ? new Date(classroom.academicYear.startDate) : null;
@@ -1449,6 +1515,12 @@ export async function getLiveOverview(
                 OR: [
                     ...(idsDeSesion.length ? [{ classSessionId: { in: idsDeSesion } }] : []),
                     { dueDate: { gte: inicioDelDia, lte: finDelDia } },
+                    // Las viejas sin clase: se fechan por su creación en la zona
+                    // del liceo (utils/actividad-del-dia.ts); ±1 día de margen.
+                    {
+                        classSessionId: null,
+                        createdAt: { gte: new Date(inicioDelDia.getTime() - 86400000), lte: new Date(finDelDia.getTime() + 86400000) },
+                    },
                 ],
             },
             orderBy: { createdAt: 'asc' },
@@ -1494,7 +1566,10 @@ export async function getLiveOverview(
 
             for (const a of deLaMateria) {
                 const venceHoy = Boolean(a.dueDate && soloElDia(a.dueDate).getTime() === diaDeClase.getTime());
-                const naceHoy = Boolean(sesion && a.classSessionId === sesion.id);
+                const naceHoy = Boolean(
+                    (sesion && a.classSessionId === sesion.id) ||
+                        (!a.classSessionId && diaDeLaActividad(a, zonaLiceo) === date.slice(0, 10))
+                );
                 if (!venceHoy && !naceHoy) continue;
 
                 // Puesta en esta clase para otro día: eso es "Próx."

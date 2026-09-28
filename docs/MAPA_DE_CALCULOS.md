@@ -18,6 +18,28 @@ Principio arquitectural: **Todo promedio superior es una agregación recursiva d
 | **5** | Dashboard de Año Académico (1er a 5to Año) | Promedio del Año (Nivel Académico) | Media aritmética del Nivel 4 de todas las secciones pertenecientes a ese año: PromAño = suma(Nivel4(sec)) / TotalSeccionesConNota | `aggregationService.yearGradeAverage` (`apps/backend/src/services/aggregation.service.ts`) | `Classroom` (filtrado por `grade`), `Grade` | Secciones vacías o sin notas cargadas se excluyen. |
 | **6** | Dashboard Ciclo Escolar / Estadísticas Globales | Promedio Global del Ciclo Escolar | Media aritmética del Nivel 5 de todos los años/grados del ciclo: PromCiclo = suma(Nivel5(g)) / TotalGradosConNota | `aggregationService.cycleAverage` (`apps/backend/src/services/aggregation.service.ts`) | `AcademicYear`, `Classroom` | Si solo 1er Año tiene notas cargadas, el promedio del ciclo es idéntico al de 1er Año. |
 
+### 1a. A qué evaluación del plan suma cada actividad de la clase
+
+**Añadido el 2026-09-27** (`services/evaluacion-de-la-semana.service.ts`). El nivel 1
+no cambia: nota de la evaluación = promedio de sus actividades calificadas (cada una
+llevada a 20) ÷ 20 × sus puntos (`utils/lapso-average.ts`). Ejemplo: vale 4 pts, 4
+actividades con 20 → 4 pts; con 20, 10, 20, 10 → 3 pts. Es **promedio, no suma**.
+Lo que cambia es **qué actividades son de cada evaluación**:
+
+| Regla | Antes | Ahora |
+| :--- | :--- | :--- |
+| Semana de la actividad | La de la clase que se veía (y sin sesión, su `createdAt` en UTC) | La de su fecha de entrega si la tiene; si no, la de su clase (`utils/actividad-del-dia.ts`, en la zona del liceo) |
+| Evaluación que cubre la semana | La fila de la semana EXACTA, la primera | Toda fila con puntos desde su semana hasta la última unida en su actividad o sus puntos (`extraData.__uniones`; no `endWeekNumber`) |
+| Varias en la semana | Iba a la primera | El profesor elige (400 `ELIGE_LA_EVALUACION` si no) |
+| Ninguna en la semana | Quedaba en la fila vacía (0 pts) y no contaba, sin avisar | Igual no cuenta (formativa), pero la pantalla lo dice al crearla |
+| Guardar el plan quitando o dejando en 0 una evaluación con notas | Sus notas salían del promedio | 409 `EVALUACION_CON_NOTAS` |
+| Copiar el plan encima de otra sección | Las actividades del destino quedaban sin evaluación | Se enganchan a la nueva que cubra su semana |
+
+Las actividades de antes que quedaron en una fila vacía se enganchan con
+`npx tsx src/scripts/reenlazar-actividades-al-plan.ts [slug] --aplicar` (en seco sin
+`--aplicar`). **Cambia promedios del lapso**: avisar al liceo antes. Pruebas
+ACTDIA-01…06, SEMEVAL-01…07.
+
 ### 1b. Las materias con apreciación (sin nota) no entran en ningún promedio
 
 **Añadido el 2026-09-26.** Cada materia dice cómo se evalúa (`Subject.evaluacion`):

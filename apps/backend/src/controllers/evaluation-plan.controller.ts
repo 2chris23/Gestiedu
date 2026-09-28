@@ -1,4 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { criteriosQueCubren } from '../services/evaluacion-de-la-semana.service';
 import { logger } from '../utils/logger';
 import { AppErrors } from '../middleware/error.middleware';
 import { RequestUser } from '../types/fastify';
@@ -11,6 +12,21 @@ import { versionDelPlan, filaSinCambios } from '../utils/version-del-plan';
 
 /** Alguien guardó este plan después de que quien guarda ahora lo abriera. */
 class PlanCambiadoEnOtroSitio extends Error {}
+
+/**
+ * Una evaluación del plan con notas puestas no se quita ni se deja sin puntos
+ * guardando el plan: sus actividades quedaban sin evaluación y su nota salía
+ * del promedio del lapso sin que nadie se enterase (SEMEVAL-05).
+ */
+class EvaluacionConNotas extends Error {
+  constructor(public evaluaciones: string[]) {
+    super('evaluación con notas');
+  }
+}
+
+/** ¿Alguna de estas actividades de clase tiene una nota puesta? */
+const conNotaPuesta = (a: { scores: any }) =>
+  Boolean(a.scores && typeof a.scores === 'object' && Object.values(a.scores).some((v) => v !== null && v !== undefined && v !== ''));
 
 // Helper para obtener el cliente DB del tenant.
 // SEGURIDAD: No hay fallback al platform DB. Si tenantPrisma no está resuelto,
@@ -371,6 +387,8 @@ export async function batchUpsertRows(
 
       const savedRows = [];
       const usedIds = new Set<string>();
+      // Evaluaciones que tenían puntos y se quedan sin ellos: si tienen notas, no.
+      const bajanACero: string[] = [];
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
@@ -410,6 +428,10 @@ export async function batchUpsertRows(
         }
         if (!existingMatch && row.weekNumber) {
           existingMatch = currentRows.find((cr: any) => cr.weekNumber === row.weekNumber && cr.rowType === (row.rowType || 'EVALUATION') && !usedIds.has(cr.id));
+        }
+
+        if (existingMatch && (existingMatch.puntos ?? 0) > 0 && !(rawPuntos != null && rawPuntos > 0)) {
+          bajanACero.push(existingMatch.id);
         }
 
         let savedRow;
@@ -477,6 +499,21 @@ export async function batchUpsertRows(
         .filter((cr: any) => !usedIds.has(cr.id))
         .map((cr: any) => cr.id);
 
+      const enRiesgo = [...idsToDelete, ...bajanACero];
+      if (enRiesgo.length > 0) {
+        const actividades = await tx.classActivity.findMany({
+          where: { planRowId: { in: enRiesgo } },
+          select: { planRowId: true, scores: true },
+        });
+        const conNotas = [...new Set(actividades.filter(conNotaPuesta).map((a: any) => a.planRowId as string))];
+        if (conNotas.length > 0) {
+          const nombres = currentRows
+            .filter((cr: any) => conNotas.includes(cr.id))
+            .map((cr: any) => `${cr.actividadEval || 'Evaluación'} (semana ${cr.weekNumber})`);
+          throw new EvaluacionConNotas(nombres);
+        }
+      }
+
       if (idsToDelete.length > 0) {
         const rowsWithGrades = await tx.evaluationPlanRow.findMany({
           where: {
@@ -523,6 +560,14 @@ export async function batchUpsertRows(
         success: false,
         error: 'Este plan se guardó desde otro sitio (otra pestaña u otro dispositivo) mientras lo editabas. No se ha cambiado nada: tus cambios siguen en pantalla.',
         code: 'PLAN_CAMBIADO_EN_OTRO_SITIO',
+      });
+    }
+    if (error instanceof EvaluacionConNotas) {
+      return reply.status(409).send({
+        success: false,
+        error: `No se guardó: ${error.evaluaciones.join(', ')} ya tiene notas puestas en la clase. Si la quitas o la dejas sin puntos, esas notas saldrían del promedio del lapso. Muévela de semana o cambia sus puntos, pero no la dejes en 0.`,
+        code: 'EVALUACION_CON_NOTAS',
+        evaluaciones: error.evaluaciones,
       });
     }
     logger.error('Error al guardar filas del plan', { error });
@@ -612,6 +657,15 @@ export async function copyPlan(
           });
         }
 
+        // Las actividades del destino que suman a su plan: se vuelven a enganchar
+        // a la evaluación nueva que cubra su semana. Borrar las filas las dejaba
+        // sin evaluación (la llave es SET NULL) y sus notas salían del promedio
+        // sin avisar (SEMEVAL-06).
+        const enganchadas = await tx.classActivity.findMany({
+          where: { classroomId: targetClassroomId, subjectId: sourceSubjectId, planRow: { lapso: sourceLapso } },
+          select: { id: true, planRow: { select: { weekNumber: true } } },
+        });
+
         // Eliminar filas existentes del destino (sin actividades con calificaciones)
         await borrarGuardandoCopia(
           tx,
@@ -621,11 +675,18 @@ export async function copyPlan(
         );
 
         // Copiar filas (sin activityId)
+        const nuevas: any[] = [];
         for (const row of sourceRows) {
           const { id, classroomId: _, activityId, createdAt, updatedAt, ...rowData } = row;
-          await tx.evaluationPlanRow.create({
+          nuevas.push(await tx.evaluationPlanRow.create({
             data: { ...rowData, classroomId: targetClassroomId }
-          });
+          }));
+        }
+        for (const a of enganchadas) {
+          const semana = a.planRow?.weekNumber;
+          if (semana == null) continue;
+          const nueva = criteriosQueCubren(nuevas, semana)[0];
+          if (nueva) await tx.classActivity.update({ where: { id: a.id }, data: { planRowId: nueva.id } });
         }
       });
       copiedCount++;

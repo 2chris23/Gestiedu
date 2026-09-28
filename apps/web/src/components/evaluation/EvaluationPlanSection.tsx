@@ -522,6 +522,12 @@ export default function EvaluationPlanSection({
       toast.success('Plan de evaluación guardado');
     } catch (error: any) {
       const datos = error?.response?.data;
+      // Una evaluación con notas puestas no se quita ni se deja sin puntos:
+      // no es un choque con otra pestaña, es algo que el profesor arregla aquí.
+      if (datos?.code === 'EVALUACION_CON_NOTAS') {
+        toast.error(datos.error, { duration: 12000 });
+        return;
+      }
       if (error?.response?.status === 409) {
         setChoque(datos?.error || 'Este plan se guardó desde otro sitio mientras lo editabas.');
         return;

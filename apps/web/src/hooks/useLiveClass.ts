@@ -77,6 +77,9 @@ export interface LiveClassDetail {
     planContent?: LiveClassPlanContent;
     planColumns?: PlanColumnDef[] | null;
     planLapso?: string;
+    /** Las evaluaciones del plan que cubren este día. */
+    evaluacionesDeLaSemana?: Array<{ id: string; actividad: string; puntos: number; semana: number; instrumentos: string | null }>;
+    planConPuntos?: boolean;
     weekRow?: {
         id: string;
         title: string;
@@ -255,6 +258,8 @@ export function useCreateClassActivity() {
             maxScore?: number;
             planRowId?: string;
             classSessionId?: string;
+            /** El día de la clase que se ve: ahí nace la actividad. */
+            date?: string;
         }) => {
             const { data } = await api.post('/sessions/activities', payload);
             return data;

@@ -42,6 +42,14 @@ interface Props {
     canEdit: boolean;
     planRowId?: string | null;
     classSessionId?: string | null;
+    /** El día de la clase que se ve («YYYY-MM-DD»): la actividad nace en esa clase. */
+    date: string;
+    /** Un día que no ha llegado: ahí no se crean actividades. */
+    esFuturo?: boolean;
+    /** Las evaluaciones del plan que cubren este día (a una de ellas suma la actividad). */
+    evaluaciones?: Array<{ id: string; actividad: string; puntos: number }>;
+    /** ¿El plan del lapso tiene puntos? Si sí y no hay evaluación esta semana, no suma. */
+    planConPuntos?: boolean;
 }
 
 export default function LiveActivitiesCard({
@@ -53,6 +61,10 @@ export default function LiveActivitiesCard({
     canEdit,
     planRowId,
     classSessionId,
+    date,
+    esFuturo = false,
+    evaluaciones = [],
+    planConPuntos = false,
 }: Props) {
     const createActivity = useCreateClassActivity();
     const updateActivity = useUpdateClassActivity();
@@ -68,6 +80,9 @@ export default function LiveActivitiesCard({
     const [customTags, setCustomTags] = useState<string[]>([]);
     const [dueDate, setDueDate] = useState('');
     const [maxScore, setMaxScore] = useState('20');
+    const [evaluacion, setEvaluacion] = useState<string>('');
+    // Sin evaluación esta semana en un plan con puntos: se guarda, pero no suma.
+    const noSuma = planConPuntos && evaluaciones.length === 0;
 
     // ============================================================
     // CORRECCIÓN (reporte usuario): las actividades se clasifican
@@ -92,6 +107,10 @@ export default function LiveActivitiesCard({
     };
 
     const handleOpenAdd = (target: 'CURRENT' | 'NEXT') => {
+        if (esFuturo) {
+            toast.error('Esta clase todavía no ha llegado: crea la actividad hoy y ponle fecha de entrega');
+            return;
+        }
         setModalTarget(target);
         setTitle('');
         setDescription('');
@@ -99,6 +118,7 @@ export default function LiveActivitiesCard({
         setCustomTagInput('');
         setDueDate('');
         setMaxScore('20');
+        setEvaluacion(evaluaciones.length === 1 ? evaluaciones[0].id : '');
         setIsAddModalOpen(true);
     };
 
@@ -117,8 +137,12 @@ export default function LiveActivitiesCard({
             toast.error('Escribe un título para la actividad');
             return;
         }
+        if (evaluaciones.length > 1 && !evaluacion) {
+            toast.error('Elige a qué evaluación del plan suma esta actividad');
+            return;
+        }
         try {
-            await createActivity.mutateAsync({
+            const r = await createActivity.mutateAsync({
                 classroomId,
                 subjectId,
                 title: title.trim(),
@@ -128,11 +152,17 @@ export default function LiveActivitiesCard({
                 tag: selectedTag,
                 dueDate: dueDate || undefined,
                 maxScore: maxScore ? parseFloat(maxScore) : 20,
-                planRowId: planRowId || undefined,
-                classSessionId: modalTarget === 'CURRENT' ? (classSessionId || undefined) : undefined,
+                planRowId: evaluacion || planRowId || undefined,
+                // Nace en la clase que se ve (sea de hoy o de otro día): así sale
+                // en su lista. Antes, sin asistencia guardada, no salía en ninguna.
+                classSessionId: classSessionId || undefined,
+                date,
             });
             setIsAddModalOpen(false);
-            toast.success(modalTarget === 'CURRENT' ? 'Actividad añadida a la clase de hoy' : 'Actividad programada para la próxima clase');
+            // Lo que dice el servidor, no lo que se supone.
+            if (r?.dondeSale === 'HOY') toast.success('Actividad añadida a esta clase');
+            else if (r?.dondeSale === 'PROXIMA') toast.success('Actividad programada para la próxima clase');
+            else toast.success(`Actividad creada: sale en la clase del ${formatDayDate(`${dueDate || date}T12:00:00Z`)}`);
         } catch {
             // error handled
         }
@@ -194,13 +224,21 @@ export default function LiveActivitiesCard({
                     <button
                         type="button"
                         onClick={() => handleOpenAdd('CURRENT')}
-                        className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap px-4 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
+                        disabled={esFuturo}
+                        title={esFuturo ? 'Esta clase todavía no ha llegado: crea la actividad hoy y ponle fecha de entrega' : undefined}
+                        className="disabled:opacity-50 inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap px-4 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
                     >
                         <Plus className="w-4 h-4" aria-hidden />
                         <span>Nueva Actividad</span>
                     </button>
                 )}
             </div>
+
+            {canEdit && esFuturo && (
+                <p className="mx-4 mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:mx-5" role="note">
+                    Esta clase todavía no ha llegado: crea la actividad en la clase de hoy y ponle fecha de entrega.
+                </p>
+            )}
 
             {/* Contenido dividido en 2 Sub-Tarjetas */}
             <div className="p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1">
@@ -531,6 +569,38 @@ export default function LiveActivitiesCard({
                                     </button>
                                 </div>
                             </div>
+
+                            {/* A qué evaluación del plan suma */}
+                            {evaluaciones.length > 1 && (
+                                <div>
+                                    <label htmlFor="evaluacion-del-plan" className="block text-xs font-bold uppercase text-gray-600 mb-1.5">
+                                        ¿A qué evaluación del plan suma? *
+                                    </label>
+                                    <select
+                                        id="evaluacion-del-plan"
+                                        value={evaluacion}
+                                        onChange={(e) => setEvaluacion(e.target.value)}
+                                        className="w-full min-h-11 px-3 border border-gray-200 rounded-xl text-sm"
+                                    >
+                                        <option value="">Elige una</option>
+                                        {evaluaciones.map((e) => (
+                                            <option key={e.id} value={e.id}>
+                                                {(e.actividad || 'Evaluación') + ` · ${e.puntos} pts`}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                            {evaluaciones.length === 1 && (
+                                <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                                    Suma a la evaluación del plan: <strong>{evaluaciones[0].actividad || 'la de esta semana'}</strong> ({evaluaciones[0].puntos} pts).
+                                </p>
+                            )}
+                            {noSuma && (
+                                <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900" role="note">
+                                    Esta semana no tiene evaluación en el plan: la actividad se guarda y se califica, pero su nota <strong>no suma</strong> a la nota del lapso.
+                                </p>
+                            )}
 
                             {/* Título */}
                             <div>
