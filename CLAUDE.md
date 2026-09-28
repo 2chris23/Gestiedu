@@ -23,8 +23,8 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
 ```bash
 cd apps/backend && npm run dev      # API en :3001
 cd apps/web && npm run dev          # web en :3000
-cd apps/backend && npx jest         # 1095 pruebas en 135 archivos (integración + cálculo)
-npm run test:e2e                    # 267 pruebas de navegador (Playwright), con los dos servidores arriba
+cd apps/backend && npx jest         # 1158 pruebas en 147 archivos (integración + cálculo)
+npm run test:e2e                    # 289 pruebas de navegador (Playwright), con los dos servidores arriba
 cd apps/backend && npm run typecheck
 cd apps/backend && npm run migrate:plataforma        # la base de la plataforma
 cd apps/backend && npm run migrate:tenants[:status]   # migra todos los liceos
@@ -375,6 +375,58 @@ certificación junta de 1.º a 5.º, con los años de otro plantel cargados a ma
 - **Labor social**: la anotan el admin y el profesor guía; cuenta para egresar
   según el liceo (bloquea, avisa o nada; `MAPA` §8d).
 
+## Lo que el liceo hace en el plantel (septiembre 2026)
+
+- **Crear una cuenta pide lo mínimo**: nombre, apellido, correo, cédula,
+  contraseña, rol y sexo. Lo demás (nacimiento, teléfono, datos del Ministerio) y
+  los **recaudos** de inscripción (lista del liceo, `inscripcion.service.ts`) se
+  completan en el perfil. Usuarios → «les falta algo».
+- **Avisos** (`avisos.service.ts`, `avisar(...)`): campana en la app, tiempo real
+  y al teléfono con la app cerrada (Web Push para la PWA; FCM para la APK, que
+  espera el proyecto de Firebase del dueño: `docs/APP-MOVIL.md`). En la pantalla
+  bloqueada, qué y cuándo, sin detalles. `/api/avisos` y `/api/citaciones` no se
+  guardan en la memoria rápida (los escribe otro).
+- **Observaciones** en su panel; desde una, **citar al representante** (aviso,
+  hoja impresa, ¿vino?).
+- **Traslado**: hoja de notas parciales y archivo firmado (Ed25519,
+  `TRASLADO_LLAVE_PRIVADA`) que otro liceo con Gestiedu importa; las notas de
+  los lapsos traídos cuentan (`MAPA` §1c).
+- **Matrícula** (`MAPA` §8f), **graduandos y título**, **consejo de sección**,
+  **constancia de trabajo y carga horaria**, **carnet** (sin QR, decidido).
+- **Comedor (PAE)**: módulo que se activa como los pagos (403 `PAE_APAGADO`),
+  solo el admin, `pae.service.ts`.
+
+## Las actividades de la clase y el plan
+
+- **Una actividad nace en la clase que se ve**: el POST lleva `date` y, si ese
+  día no tiene sesión, se crea. Antes, un día sin asistencia guardada la dejaba
+  sin sesión, fechada por su creación en UTC, y no salía en ninguna lista
+  aunque el servidor respondía 201 (`utils/actividad-del-dia.ts`, ACTDIA-*).
+  Ninguna prueba pulsaba «Nueva Actividad»: ahora CLASE-UI-06/07.
+- **Suma a la evaluación del plan que cubre su semana** (la de su entrega si la
+  tiene), también si está unida a varias semanas (`__uniones` de la actividad o
+  los puntos, no `endWeekNumber`); con varias, elige el profesor; sin ninguna,
+  se avisa que no suma. Guardar el plan quitando una evaluación con notas: 409
+  (`evaluacion-de-la-semana.service.ts`, SEMEVAL-*, `MAPA` §1a).
+- **Instrumentos de evaluación** (lista de cotejo, escala, rúbrica, por puntos):
+  se arman en cada evaluación del plan; en la clase se califica marcando y la
+  nota va a `scores`. La actividad guarda su copia; con instrumento no hay nota
+  a mano salvo «otra forma». El alumno ve SU desglose. Una cuenta copiada en
+  `utils/instrumentos.ts` y `lib/instrumentos.ts` (INSTR-*, `MAPA` §1a-bis).
+
+## Los documentos salen limpios
+
+Toda pantalla de papel está en `lib/documentos.ts` (`esDocumento`) y se ve **sin
+el armazón de la app**; una prueba exige que la que imprime esté en la lista. El
+corte `lateral:` se mide contra el ancho del PAPEL: dentro del armazón, en carta
+se imprimía la cabecera del teléfono y la barra de abajo en cada hoja. El
+`@media print` de `globals.css` declara las cajas del margen vacías (Chrome 131+
+quita así la fecha y la dirección del navegador). Para hojas nuevas,
+`HojaImprimible` (papel, «Página N de M», nombre del PDF). En la APK imprime
+`ImprimirPlugin.java` (`lib/imprimir.ts`). Se comprueba con DOC-LIMPIO-* a 703 px
+(el ancho de una carta), no a 1280. El plan de evaluación, el acta de
+socialización y los instrumentos tienen su propia hoja.
+
 ## Dos ayudas del servidor
 
 - **`utils/error-claro.ts`**: el manejador global cambia los 4xx por uno
@@ -458,7 +510,7 @@ sobre el contenido (visto en un Motorola; MOVIL-02 lo mide).
 ## En el teléfono, lo que se comprueba cada vez
 
 ```bash
-npm run movil            # 35 pantallas, los 4 roles, con foto de cada una
+npm run movil            # 51 pantallas, los 4 roles, con foto de cada una
 npm run movil -- --exigir   # y acaba en rojo si algo incumple
 ```
 

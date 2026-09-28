@@ -131,10 +131,11 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 <AvisoSinConexion />
                 <ActualizarLaApp />
                 <main className="pb-[calc(1.5rem+var(--zona-segura-abajo))] print:p-0">{children}</main>
+                {/* Y la barra de gestos, tapada igual (sin barra de abajo, nada la tapaba). */}
+                <div className="zona-segura-abajo fixed inset-x-0 bottom-0 z-40 bg-white print:hidden" aria-hidden />
             </div>
         );
     }
-
     return (
         <div className="min-h-screen bg-gray-50 print:min-h-0 print:bg-white" suppressHydrationWarning={true}>
             {/* En el teléfono: una foto y un nombre, y el hueco del reloj. */}

@@ -3502,3 +3502,66 @@ del año, resumen final, pendientes, labor social, certificación, constancia),
 0 con algo que arreglar.
 
 **No probado:** nada en un teléfono de verdad; ni impreso en papel oficio.
+
+## 61. Lo que el liceo hace en el plantel, las actividades del plan y los papeles limpios (27 y 28 de septiembre de 2026)
+
+Dos tandas. La primera, lo que faltaba del plantel (P1–P10); la segunda, lo que
+trajo el dueño con el plan de Física de su padre: no podía crear actividades,
+los documentos salían «sucios» y quería los instrumentos de evaluación.
+
+| | Qué | Commit | Pruebas |
+| :--- | :--- | :--- | :--- |
+| P1 | Crear una cuenta con lo mínimo; lo demás y los recaudos, en la ficha | 835c428 | |
+| P2 | Avisos: campana, tiempo real, Web Push y FCM (espera Firebase) | f3a69e5 | |
+| P3 | Panel de observaciones y citar al representante | 3e10634 | |
+| P4 | Traslado y retiro, en papel y en archivo firmado (Ed25519) | c3e8616 | |
+| P5 | Estadística de matrícula | 11bb164 | |
+| P6 | Graduandos y título | b39517d | |
+| P7 | Consejo de sección | 55fdccf | |
+| P8 | Carga horaria y constancia de trabajo | f05088f | |
+| P9 | Carnet estudiantil | 790bfae | |
+| A1-A2 | Las actividades salen en su clase y suman a su evaluación del plan | a405d90 | ACTDIA-01…06, SEMEVAL-01…07, CLASE-UI-06/07 |
+| A3 | Documentos limpios, también desde la APK (`ImprimirPlugin.java`) | 8f177d7 | DOC-LIMPIO-01…08 |
+| P10 | Comedor (PAE) | 3d9e458 | PAE-01…04, PAE-UI-01 |
+| B | Instrumentos de evaluación (cotejo, escala, rúbrica, puntos), acta de socialización, instrumentos del lapso | e94422a | INSTR-01…10, INSTR-WEB-01, MICLASE-07, PAPEL-01/02, INSTR-UI-01…03 |
+
+Reglas de cálculo en `MAPA_DE_CALCULOS.md` §1a y §1a-bis.
+
+**Lo que se encontró por el camino:**
+
+- **«No puedo crear actividades»**: el servidor SÍ las guardaba (201), pero
+  un día sin asistencia guardada no tenía sesión, la actividad quedaba fechada
+  por su creación en UTC y no salía en ninguna lista. El aviso «Actividad
+  añadida» salía igual, y por eso el dueño la creó dos veces. Ninguna prueba
+  pulsaba «Nueva Actividad»: la e2e la creaba por la API con una fecha que la
+  ventana real no manda nunca.
+- **Una evaluación unida a varias semanas solo recogía las actividades de la
+  primera**; las demás caían en una fila de 0 puntos y no contaban. Y guardar
+  el plan podía borrar filas con notas sin avisar (ahora 409).
+- **La cuenta que preguntó el dueño estaba bien**: 4 actividades con 20 en una
+  evaluación de 4 puntos dan 4 puntos. Es el promedio, no la suma.
+- **Documentos sucios**: el corte `lateral:` se mide contra el ancho del
+  papel, así que en carta se imprimía la versión de teléfono del armazón
+  (cabecera y barra de abajo en cada hoja). Y en la APK `window.print()` no
+  hacía nada.
+- **La tanda completa sacó cuatro pruebas viejas en rojo** por lo nuevo:
+  BORRA-01 y MEZCLA-08 (las suscripciones de avisos, excepciones justificadas),
+  LISTA-02 y PANEL-01 (una consulta más por las notas traídas: va ahora en
+  paralelo). Y en el navegador, TR-03 (el menú nuevo «Observaciones» se
+  confundía con el panel) y DISENO-07 («1RA HORA» cortada en días de clase).
+- **La auditoría del teléfono** pilló la barra de gestos destapada en las
+  hojas (sin barra de abajo, nada la tapaba) y el plan y el acta saliéndose de
+  ancho; ahora se deslizan de lado en pantalla y salen enteros en el papel.
+
+**Supuestos a confirmar con el dueño:** la semana de una actividad «para la
+próxima clase» con fecha de entrega es la de su entrega.
+
+**No probado:** los avisos con la app cerrada en la APK (esperan el proyecto de
+Firebase del dueño); imprimir desde la APK en un teléfono de verdad.
+
+**Medido al cerrar:** servidor, 1158 de 1158 (147 archivos, con
+`REDIS_PRUEBAS_URL`); web, 89 de 89; navegador, 283 de 289 en la tanda
+completa (2 saltadas) y las 4 en rojo en verde tras el arreglo o al repetir
+(CARRIL-01 y PAGOS-UI-01 son inestables, no de esta tanda); `npm run movil --
+--exigir`: **51 pantallas**, 0 con algo que arreglar. Deriva del esquema: solo
+la vieja.

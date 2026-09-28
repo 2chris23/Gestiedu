@@ -19,6 +19,8 @@ const POR_HOJA = 40;
 
 function Mitad({ filas, desde }: { filas: Array<AlumnoDeLaLista | null>; desde: number }) {
     return (
+        // En el teléfono se desliza de lado; en el papel, entera.
+        <div className="relative overflow-x-auto print:overflow-visible" data-carril-a-proposito>
         <table className="w-full border-collapse text-[11px]">
             <thead>
                 <tr className="bg-gray-100">
@@ -41,6 +43,7 @@ function Mitad({ filas, desde }: { filas: Array<AlumnoDeLaLista | null>; desde: 
                 ))}
             </tbody>
         </table>
+        </div>
     );
 }
 

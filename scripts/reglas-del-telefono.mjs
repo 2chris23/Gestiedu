@@ -170,6 +170,12 @@ export const MEDIR = ({ bandaArriba, bandaAbajo, dedo, letra }) => {
         if (r.width < 2 || r.height < 2) continue; // escondido de verdad
         if (r.top > altoDelTelefono || r.bottom < 0) continue; // fuera de la vista
         if (r.height >= dedo && r.width >= dedo) continue;
+        // Una casilla dentro de su <label>: se pulsa la etiqueta entera (el
+        // navegador la marca igual), así que lo que mide es la etiqueta.
+        if (el.tagName === 'INPUT' && el.closest('label')) {
+            const e = el.closest('label').getBoundingClientRect();
+            if (e.height >= dedo && e.width >= dedo) continue;
+        }
         // Un enlace dentro de un párrafo no es un botón: se salta el texto corrido.
         if (el.tagName === 'A' && el.parentElement && /^(P|SPAN|LI|TD)$/.test(el.parentElement.tagName)) continue;
         pequenos.push(`${comoSeLlama(el)} mide ${Math.round(r.width)}×${Math.round(r.height)}`);

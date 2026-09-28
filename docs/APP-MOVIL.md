@@ -395,3 +395,29 @@ analizarla es lo correcto.
 - Publicación en Google Play: cuenta de desarrollador (25 $ una vez), ficha,
   capturas y política de privacidad.
 - Firmarla y publicarla: falta la llave y la cuenta de desarrollador.
+
+
+## Avisos al teléfono (septiembre 2026)
+
+Como en WhatsApp: el aviso llega aunque la app esté cerrada.
+
+- **App instalada desde el navegador**: Web Push, con las llaves `VAPID_*` del
+  servidor (`docs/DESPLIEGUE.md`). Se pide permiso una vez, al entrar, con una
+  explicación antes. En iPhone, solo con la app añadida a la pantalla de inicio.
+- **APK**: Firebase Cloud Messaging. Hace falta un proyecto de Firebase **creado
+  por el dueño con su cuenta de Google**, con cada paquete de liceo como app
+  Android. Su `google-services.json` va junto a la APK
+  (`preparar-liceo.mjs --firebase=<ruta>` lo copia; no va a git) y la llave de
+  servicio, en `FCM_CUENTA_DE_SERVICIO`. Hasta entonces la APK tiene la campana
+  y el tiempo real, sin avisos con la app cerrada.
+- El aviso en la pantalla bloqueada dice **qué y cuándo, sin detalles** (el motivo
+  de una citación se ve al abrir la app, con sesión). Al cerrar sesión, ese
+  teléfono deja de recibir avisos.
+
+## Imprimir desde la APK
+
+`window.print()` no hace nada dentro de una app de Android. La APK trae
+`ImprimirPlugin.java`, que abre el diálogo de impresión de Android (con «Guardar
+como PDF»); la web lo usa sola (`lib/imprimir.ts`). Una APK de antes no lo tiene:
+al pulsar «Imprimir» dice que hay que actualizar la app. Lo que sale es la hoja
+sola, igual que en el navegador (`lib/documentos.ts`).

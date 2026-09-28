@@ -652,8 +652,10 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                     >
                                         {/* Header del Bloque: Hora + Badge En Curso */}
                                         <div>
-                                            <div className="flex items-center justify-between mb-0.5">
-                                                <span className="text-[10px] font-black text-gray-500 uppercase tracking-wider truncate">
+                                            {/* Sin «…»: con «EN CURSO» al lado, «1RA HORA» se cortaba
+                                                en el teléfono (DISENO-07, solo en días de clase). */}
+                                            <div className="flex flex-wrap items-center justify-between gap-1 mb-0.5">
+                                                <span className="min-w-0 text-[10px] font-black text-gray-500 uppercase tracking-wider">
                                                     {period.label}
                                                 </span>
                                                 {status === 'current' && (

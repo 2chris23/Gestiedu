@@ -310,6 +310,8 @@ describe('La memoria rápida no mezcla liceos', () => {
                 'son los formatos de imagen aceptados (jpeg, png...), no datos de nadie',
             'src/services/resumen-final.service.ts|PALABRAS_VACIAS':
                 'son palabras del castellano («y», «de»...) que no cuentan en una abreviatura, no datos de nadie',
+            'src/services/avisos.service.ts|pendientes':
+                'los envíos al teléfono que aún van en camino (promesas), para esperarlos en las pruebas: no guarda datos de nadie',
             'src/scripts/medir-concurrencia.ts|credenciales':
                 'guion de medición, no corre en el servidor',
         };

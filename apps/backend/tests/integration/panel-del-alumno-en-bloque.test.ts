@@ -121,7 +121,9 @@ describe('El panel del alumno, en bloque', () => {
 
         // Mismo trabajo con 2 materias que con 8: la firma de que es en bloque.
         expect(b.consultas - a.consultas).toBeLessThanOrEqual(2);
-        expect(b.consultas).toBeLessThan(40);
+        // 41 desde las notas traídas de otro liceo (MAPA §1c): una consulta más
+        // del bloque, que sale a la vez que las otras.
+        expect(b.consultas).toBeLessThan(42);
     }, 240000);
 
     it('PANEL-02: los promedios son exactamente los de siempre, materia por materia y lapso por lapso', async () => {

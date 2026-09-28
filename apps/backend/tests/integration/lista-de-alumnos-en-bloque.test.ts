@@ -111,10 +111,11 @@ describe('La lista de alumnos, en bloque', () => {
     it('LISTA-02: con una materia y sin sección, las consultas no crecen con los alumnos', async () => {
         const pocos = await lista(`page=1&limit=3&subjectId=${materia.id}`);
         const muchos = await lista(`page=1&limit=12&subjectId=${materia.id}`);
-        // Como mucho, el bloque de una sección más (4 consultas: los 12 están en
-        // dos secciones y los 3 pueden estar en una). Nunca por alumno: antes
-        // eran 30 consultas más por 9 alumnos más.
-        expect(muchos.consultas - pocos.consultas).toBeLessThanOrEqual(4);
+        // Como mucho, el bloque de una sección más (5 consultas a la vez: la 5.ª,
+        // las notas traídas de otro liceo, MAPA §1c; los 12 están en dos
+        // secciones y los 3 pueden estar en una). Nunca por alumno: antes eran
+        // 30 consultas más por 9 alumnos más.
+        expect(muchos.consultas - pocos.consultas).toBeLessThanOrEqual(5);
     }, 120000);
 
     it('LISTA-03: la asistencia es la del ciclo de su sección, no la de toda su vida escolar', async () => {

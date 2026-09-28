@@ -101,7 +101,7 @@ export async function bulkSubjectAveragesConDatos(
     );
     if (studentIds.length === 0 || subjectIds.length === 0) return empty;
 
-    // --- 4 consultas para toda la sección ---
+    // --- 5 consultas para toda la sección, a la vez ---
     //
     // Las filas del plan y las actividades se piden del CICLO entero (no solo de
     // esta sección) para el alumno que se cambió de sección: sus notas de la
@@ -109,7 +109,7 @@ export async function bulkSubjectAveragesConDatos(
     // `gradesService.seccionesDelAlumno`). Siguen siendo 4 consultas: de las
     // otras secciones solo vienen las actividades con notas de estos alumnos.
     const delMismoCiclo = { academicYear: { classrooms: { some: { id: classroomId } } } };
-    const [lapsosDelCiclo, rowsDelCiclo, grades, activities] = await Promise.all([
+    const [lapsosDelCiclo, rowsDelCiclo, grades, activities, notasTraidas] = await Promise.all([
         // Todos los lapsos del ciclo, con sus fechas: hacen falta para saber de
         // qué lapso es una nota suelta de Clase en Vivo (LAP-03).
         prisma.period.findMany({
@@ -146,6 +146,12 @@ export async function bulkSubjectAveragesConDatos(
                AND c."academicYearId" = mia."academicYearId"
                AND (ca."classroomId" = ${classroomId}
                     OR (jsonb_typeof(ca.scores) = 'object' AND ca.scores ?| ${studentIds}::text[]))`,
+        // 5. Los lapsos que un alumno trasladado cursó en otro liceo (MAPA §1c).
+        // A la vez que las otras cuatro: una consulta más, ninguna espera más.
+        (prisma as any).notaDeOtroPlantel.findMany({
+            where: { studentId: { in: studentIds }, subjectId: { in: subjectIds } },
+            select: { studentId: true, subjectId: true, periodId: true, nota: true },
+        }) as Promise<Array<{ studentId: string; subjectId: string; periodId: string; nota: number }>>,
     ]);
 
     const periods = periodId ? lapsosDelCiclo.filter((p) => p.id === periodId) : lapsosDelCiclo;
@@ -222,10 +228,7 @@ export async function bulkSubjectAveragesConDatos(
     // Los lapsos que un alumno trasladado cursó en otro liceo (igual que
     // `gradesService.promedioDelLapso`: cuentan solo si aquí no tiene notas).
     const traidas = new Map<string, number>();
-    for (const t of await (prisma as any).notaDeOtroPlantel.findMany({
-        where: { studentId: { in: studentIds }, subjectId: { in: subjectIds }, periodId: { in: periods.map((p) => p.id) } },
-        select: { studentId: true, subjectId: true, periodId: true, nota: true },
-    })) {
+    for (const t of notasTraidas) {
         traidas.set(`${t.studentId}|${t.subjectId}|${t.periodId}`, t.nota);
     }
 

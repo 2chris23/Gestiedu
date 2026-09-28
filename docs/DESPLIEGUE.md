@@ -383,6 +383,16 @@ pg_restore --clean --if-exists --no-owner --dbname=gestion_escolar_platform back
 | `HORA_DE_RESPALDO` | A qué hora del país (`TZ`) corre el respaldo de cada noche (servicio `respaldos`). | `02:00` |
 | `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`, `BACKUP_S3_REGION` | La copia **fuera** del servidor, en R2 o cualquier S3. Vacío = desactivada. | desactivada |
 
+### Avisos al teléfono y traslados (septiembre 2026)
+
+Van en el `.env` del servidor, **nunca** en el repositorio ni en un chat.
+
+| Variable | Para qué | Sin ella |
+|---|---|---|
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Avisos al teléfono de la app instalada desde el navegador (Web Push). Se generan una vez: `npx web-push generate-vapid-keys`. | la campana funciona; no llega nada con la app cerrada |
+| `FCM_CUENTA_DE_SERVICIO` | La llave de servicio del proyecto de Firebase (JSON en una línea) para los avisos de la APK. El proyecto lo crea el dueño con su cuenta de Google. | la APK no recibe avisos con la app cerrada |
+| `TRASLADO_LLAVE_PRIVADA` | Firma los archivos de traslado de un alumno (Ed25519, PKCS8 en base64). Es la identidad de la plataforma: si se pierde, los archivos ya emitidos no se pueden comprobar. Va en el respaldo del servidor. | no se emiten archivos de traslado (la hoja impresa sí) |
+
 `/health` dice cómo fue el último respaldo (`respaldos`: `al-dia`, `atrasado`
 —más de 26 horas—, `fallo` o `sin-programar`), y un fallo deja una alerta
 crítica en el panel del superadmin.

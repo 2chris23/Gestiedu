@@ -81,7 +81,8 @@ export default function PlanImpreso({ classroomId, subjectId, lapso }: { classro
 
     return (
         <div className="mt-3 space-y-3 text-[10px] leading-tight text-gray-900 print:text-[9px]">
-            <table className="w-full border-collapse" aria-label="Datos del plan">
+            <div className="relative overflow-x-auto print:overflow-visible" data-carril-a-proposito>
+<table className="w-full border-collapse" aria-label="Datos del plan">
                 <tbody>
                     <tr>
                         <th scope="row" className={ETIQUETA}>Docente</th>
@@ -127,8 +128,10 @@ export default function PlanImpreso({ classroomId, subjectId, lapso }: { classro
                         ))}
                 </tbody>
             </table>
+            </div>
 
-            <table className="w-full border-collapse" aria-label="Plan del lapso">
+            <div className="relative overflow-x-auto print:overflow-visible" data-carril-a-proposito>
+<table className="w-full border-collapse" aria-label="Plan del lapso">
                 <thead>
                     <tr>
                         <th className={`${ETIQUETA} text-center`} colSpan={columnas.length + 1} style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
@@ -192,8 +195,10 @@ export default function PlanImpreso({ classroomId, subjectId, lapso }: { classro
                     </tr>
                 </tfoot>
             </table>
+            </div>
 
-            <table className="w-full border-collapse break-inside-avoid" aria-label="Entrega del plan">
+            <div className="relative overflow-x-auto print:overflow-visible" data-carril-a-proposito>
+<table className="w-full border-collapse break-inside-avoid" aria-label="Entrega del plan">
                 <tbody>
                     <tr>
                         <th scope="row" className={ETIQUETA}>Entregado por</th>
@@ -211,6 +216,7 @@ export default function PlanImpreso({ classroomId, subjectId, lapso }: { classro
                     </tr>
                 </tbody>
             </table>
+            </div>
 
             <div className="grid grid-cols-2 gap-16 break-inside-avoid pt-10 text-center text-xs">
                 <div className="border-t border-gray-600 pt-1">

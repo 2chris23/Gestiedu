@@ -129,7 +129,9 @@ test.describe('Tiempo real', () => {
             await page.goto(
                 `${WEB_BASE}/dashboard/academico/${fila.year_id}/${fila.slug}/${fila.subject_id}`
             );
-            await page.getByText('OBSERVACIONES').first().waitFor({ state: 'visible', timeout: 30000 });
+            // Dentro de la pantalla: «Observaciones» también está en el menú
+            // (desde el panel de observaciones), y encontrarlo ahí no espera a nada.
+            await page.locator('main').getByText('OBSERVACIONES').first().waitFor({ state: 'visible', timeout: 30000 });
 
             const leerObservaciones = async () => {
                 const texto = await page.locator('main').first().innerText();
