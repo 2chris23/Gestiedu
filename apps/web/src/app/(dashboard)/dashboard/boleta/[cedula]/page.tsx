@@ -7,6 +7,7 @@ import { ChevronLeft, FileText, Printer } from 'lucide-react';
 import { useBoleta } from '@/hooks/useBoleta';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { MembreteOficial } from '@/components/documentos/MembreteOficial';
+import { EstiloDelPapel, imprimirConAviso, useNombreDelDocumento } from '@/components/documentos/HojaImprimible';
 
 /**
  * LA BOLETA DEL ALUMNO, PARA VER E IMPRIMIR
@@ -31,6 +32,7 @@ const fechaLarga = (ymd: string) => {
 };
 
 export default function BoletaPage({ params }: { params: Promise<{ cedula: string }> }) {
+    useNombreDelDocumento('Boleta de calificaciones');
     const { cedula } = use(params);
     const router = useRouter();
     // `/dashboard/boleta/mia`: la del propio alumno (el acceso de su menú).
@@ -69,6 +71,7 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
 
     return (
         <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6 print:max-w-none print:p-0">
+            <EstiloDelPapel papel="carta" />
             <div className="flex items-center justify-between gap-2 print:hidden">
                 <button onClick={() => router.back()} className="inline-flex min-h-[44px] items-center gap-1 text-sm text-gray-700 hover:text-gray-900">
                     <ChevronLeft className="h-4 w-4" /> Volver
@@ -84,7 +87,7 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                     </Link>
                 )}
                 <button
-                    onClick={() => window.print()}
+                    onClick={() => void imprimirConAviso()}
                     className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700"
                 >
                     <Printer className="h-4 w-4" /> Imprimir
@@ -92,7 +95,7 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                 </div>
             </div>
 
-            <article className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-8 print:border-0 print:shadow-none" aria-label="Boleta de calificaciones">
+            <article className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-8 print:p-0 print:border-0 print:shadow-none" aria-label="Boleta de calificaciones">
                 <header className="border-b border-gray-200 pb-4 text-center">
                     <MembreteOficial
                         respaldo={{ nombre: b.liceo.nombre, direccion: [b.liceo.direccion, b.liceo.ciudad].filter(Boolean).join(' · ') }}

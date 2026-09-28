@@ -105,6 +105,7 @@ export default function MatriculaPage({ params }: { params: Promise<{ cycleId: s
 
     return (
         <HojaImprimible
+            paginas
             etiqueta="Estadística de matrícula"
             titulo="Estadística de matrícula"
             subtitulo={r ? `Año escolar ${r.ciclo.nombre} · del ${fechaCorta(r.desde)} al ${fechaCorta(r.hasta)}` : undefined}

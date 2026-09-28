@@ -107,6 +107,7 @@ public class MainActivity extends BridgeActivity {
         // registrados cuando arranca el puente.
         registerPlugin(ActualizarAppPlugin.class);
         registerPlugin(AsistenciaQrPlugin.class);
+        registerPlugin(ImprimirPlugin.class);
         super.onCreate(savedInstanceState);
 
         dejarSitioParaElReloj();

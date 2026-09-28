@@ -8,6 +8,7 @@ import { getAssetUrl } from '@/config/env';
 import { useMembrete } from '@/hooks/useMembrete';
 import { esFotoDelSistema, useFotoDePerfil } from '@/hooks/useFotoDePerfil';
 import { getApiErrorMessage } from '@/lib/utils';
+import { EstiloDelPapel, imprimirConAviso, useNombreDelDocumento } from '@/components/documentos/HojaImprimible';
 
 /**
  * LOS CARNETS, PARA IMPRIMIR
@@ -48,6 +49,7 @@ function Foto({ src, nombre }: { src: string | null; nombre: string }) {
 }
 
 export default function CarnetsPage() {
+    useNombreDelDocumento('Carnets estudiantiles');
     const router = useRouter();
     const buscar = useSearchParams();
     const alumno = buscar.get('alumno');
@@ -76,7 +78,7 @@ export default function CarnetsPage() {
                     {h.seccion ? ` · ${h.seccion}` : ''}
                 </p>
                 <button
-                    onClick={() => window.print()}
+                    onClick={() => void imprimirConAviso()}
                     className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700"
                 >
                     <Printer className="h-4 w-4" aria-hidden /> Imprimir

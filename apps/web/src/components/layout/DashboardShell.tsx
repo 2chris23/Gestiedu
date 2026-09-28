@@ -25,6 +25,7 @@ import { olvidarEsteTelefono } from '@/lib/avisos-al-telefono';
 import CabeceraMovil from '@/components/layout/CabeceraMovil';
 import UserAvatar from '@/components/ui/UserAvatar';
 import Image from 'next/image';
+import { esDocumento } from '@/lib/documentos';
 
 interface DashboardUser {
     id: string;
@@ -114,8 +115,26 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
     const nombre = user.firstName?.split(' ')[0] || '';
     const apellido = user.lastName?.split(' ')[0] || '';
 
+    /**
+     * UN PAPEL SE VE SOLO (`lib/documentos.ts`)
+     *
+     * Sin cabecera, barra lateral ni barra de abajo: en pantalla, la hoja con
+     * «Volver» e «Imprimir»; en el papel, solo la hoja. La franja del reloj
+     * del teléfono se tapa igual (una banda blanca, que no se imprime).
+     */
+    if (esDocumento(pathname)) {
+        return (
+            <div className="min-h-screen bg-gray-100 print:min-h-0 print:bg-white" suppressHydrationWarning={true}>
+                <div className="zona-segura-arriba sticky top-0 z-40 bg-white print:hidden" aria-hidden />
+                <AvisoSinConexion />
+                <ActualizarLaApp />
+                <main className="pb-[calc(1.5rem+var(--zona-segura-abajo))] print:p-0">{children}</main>
+            </div>
+        );
+    }
+
     return (
-        <div className="min-h-screen bg-gray-50" suppressHydrationWarning={true}>
+        <div className="min-h-screen bg-gray-50 print:min-h-0 print:bg-white" suppressHydrationWarning={true}>
             {/* En el teléfono: una foto y un nombre, y el hueco del reloj. */}
             <CabeceraMovil
                 nombre={nombre}
@@ -146,7 +165,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 menú entero estaba a dos toques (abrir, elegir) y obligaba a
                 tapar la pantalla que se acababa de abrir. Aquí ya no se pinta.
             */}
-            <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 bg-white shadow-lg lateral:block">
+            <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 bg-white shadow-lg lateral:block print:!hidden">
                 <div className="flex h-full flex-col">
                     {/* Logo / User Info */}
                     <div className="p-6 border-b">
@@ -224,11 +243,11 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
             </aside>
 
             {/* Main Content */}
-            <main className="min-h-screen lateral:ml-64">
+            <main className="min-h-screen lateral:ml-64 print:min-h-0 print:!ml-0">
                 {/* El hueco de abajo es la barra del teléfono MÁS la del
                     sistema: sin él, lo último de cada pantalla queda donde el
                     dedo pulsa la barra de gestos. */}
-                <div className="mx-auto max-w-7xl px-4 py-6 pb-[calc(7rem+var(--zona-segura-abajo))] sm:px-6 lg:px-8 lateral:pb-6">
+                <div className="mx-auto max-w-7xl px-4 py-6 pb-[calc(7rem+var(--zona-segura-abajo))] sm:px-6 lg:px-8 lateral:pb-6 print:!p-0 print:max-w-none">
                     <OfrecerAvisos />
                     {children}
                 </div>

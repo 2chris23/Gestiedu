@@ -8,6 +8,7 @@ import { ChevronLeft, Printer } from 'lucide-react';
 import api from '@/lib/axios';
 import { MembreteOficial } from '@/components/documentos/MembreteOficial';
 import { Lista } from '@/components/ui/lista';
+import { EstiloDelPapel, imprimirConAviso, useNombreDelDocumento } from '@/components/documentos/HojaImprimible';
 
 /**
  * EL RESUMEN FINAL DEL RENDIMIENTO ESTUDIANTIL, CON EL FORMATO DEL MPPE
@@ -129,6 +130,7 @@ function AlumnosEnElTelefono({ r }: { r: ResumenFinal }) {
 }
 
 export default function ResumenFinalPage({ params }: { params: Promise<{ classroomId: string }> }) {
+    useNombreDelDocumento('Resumen final del rendimiento');
     const { classroomId } = use(params);
     const router = useRouter();
     const buscar = useSearchParams();
@@ -169,8 +171,8 @@ export default function ResumenFinalPage({ params }: { params: Promise<{ classro
 
     return (
         <div className="mx-auto max-w-7xl space-y-4 p-4 sm:p-6 print:max-w-none print:p-0">
+            <EstiloDelPapel papel="oficio-apaisado" paginas />
             {/* Horizontal y en oficio, como la planilla del Ministerio. */}
-            <style>{`@media print { @page { size: 330mm 216mm; margin: 8mm; } }`}</style>
             <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
                 <button onClick={() => router.back()} className="inline-flex min-h-[44px] items-center gap-1 text-sm text-gray-700 hover:text-gray-900">
                     <ChevronLeft className="h-4 w-4" /> Volver
@@ -180,7 +182,7 @@ export default function ResumenFinalPage({ params }: { params: Promise<{ classro
                         <Lista etiqueta="Tipo de resumen" valor={tipo} alCambiar={(v) => setTipo(v as Tipo)} opciones={TIPOS} />
                     </div>
                     <button
-                        onClick={() => window.print()}
+                        onClick={() => void imprimirConAviso()}
                         className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700"
                     >
                         <Printer className="h-4 w-4" /> Imprimir

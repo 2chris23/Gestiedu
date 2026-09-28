@@ -504,7 +504,7 @@
 
    44 px es el mínimo de Apple; Google pide 48. Se exige el menor de los dos.
    Lo comprueba `npm run movil`. */
-@media (pointer: coarse) and (max-width: 699px) {
+@media screen and (pointer: coarse) and (max-width: 699px) {
   button,
   [role='button'],
   select,
@@ -559,7 +559,7 @@
    densas (el horario, el plan de evaluación: `.rejilla-densa`), que son tablas
    de verdad: agrandar cada celda las rompería, y para trabajar con ellas se
    gira el teléfono a propósito. */
-@media (pointer: coarse) and (min-width: 700px) {
+@media screen and (pointer: coarse) and (min-width: 700px) {
   :where(button, [role='button'], select, summary):not(.rejilla-densa *) {
     min-height: 44px;
     min-width: 44px;
@@ -623,4 +623,49 @@ select,
   -webkit-user-select: text;
   user-select: text;
   -webkit-touch-callout: default;
+}
+
+/* ── EL PAPEL ───────────────────────────────────────────────────────────────
+
+   Lo que se imprime es la hoja y nada más (`lib/documentos.ts`: las pantallas
+   de papel se ven sin el armazón de la app).
+
+   · Las cajas del margen vacías: en Chrome (131+) y lo que va con su motor
+     (Edge, el WebView de Android) quitan la fecha, el título de la pestaña y
+     la dirección que el navegador ponía arriba y abajo de cada hoja. Sin eso
+     salía «27/9/26, 21:23 · Sistema de Gestión Escolar» encima del membrete.
+   · Fondo blanco: el gris de la app se imprimía debajo del plan (que pide
+     `print-color-adjust: exact` para sus cabeceras de color).
+   · Los avisos flotantes (sonner) no son del documento.
+   · Las reglas del dedo de arriba son de pantalla (`@media screen`): en un
+     teléfono agrandaban la letra y los botones del papel.
+
+   El tamaño del papel lo pone cada documento (`HojaImprimible`, `papel`). */
+@media print {
+  @page {
+    @top-left { content: ''; }
+    @top-center { content: ''; }
+    @top-right { content: ''; }
+    @bottom-left { content: ''; }
+    @bottom-center { content: ''; }
+    @bottom-right { content: ''; }
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+  /* Una hoja que se abre en una ventana (el acta de la promoción) va suelta
+     en <body>: al imprimirla, solo ella. Y sin el candado del fondo
+     (`FondoQuieto` bloquea el desplazamiento), que cortaba la hoja. */
+  body:has(> [data-hoja-suelta]) > :not([data-hoja-suelta]) {
+    display: none !important;
+  }
+  html,
+  body {
+    overflow: visible !important;
+    height: auto !important;
+  }
 }

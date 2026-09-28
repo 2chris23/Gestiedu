@@ -12,6 +12,8 @@ import {
 import { academicYearService } from '@/services/academic-year.service';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
 import { MembreteOficial } from '@/components/documentos/MembreteOficial';
+import { createPortal } from 'react-dom';
+import { imprimirConAviso } from '@/components/documentos/HojaImprimible';
 
 interface Suggestion {
     studentId: string;
@@ -1102,16 +1104,19 @@ export default function PromotionPage() {
                 </div>
             )}
 
-            {pendingModalStudent && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto print:p-0 print:bg-white" role="dialog" aria-modal="true" aria-label="Acta de compromiso de materias pendientes">
-                    <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 print:shadow-none print:max-w-full">
+            {/* El acta va suelta en <body> (`data-hoja-suelta`): al imprimir,
+                `globals.css` deja solo ella. Dentro de la página salía la
+                promoción entera detrás y el acta, fija, repetida en cada hoja. */}
+            {pendingModalStudent && createPortal(
+                <div data-hoja-suelta className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto print:static print:block print:p-0 print:bg-white print:overflow-visible print:backdrop-blur-none" role="dialog" aria-modal="true" aria-label="Acta de compromiso de materias pendientes">
+                    <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 print:shadow-none print:max-w-full print:rounded-none print:overflow-visible print:animate-none">
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-amber-50/70 print:hidden">
                             <div className="flex items-center gap-2 text-amber-900 font-bold text-base">
                                 <FileText className="w-5 h-5 text-amber-600" />
                                 Acta de Compromiso de Materias Pendientes (Arrastre)
                             </div>
                             <button
-                                onClick={() => window.print()}
+                                onClick={() => void imprimirConAviso()}
                                 className="px-3 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-1.5 shadow-2xs transition-colors"
                             >
                                 <Printer className="w-3.5 h-3.5" /> Imprimir Acta
@@ -1119,7 +1124,7 @@ export default function PromotionPage() {
                         </div>
 
                         {/* Documento Oficial Formateado para Venezuela */}
-                        <div className="p-8 space-y-6 text-gray-800 font-sans text-xs leading-relaxed print:p-8">
+                        <div className="p-8 space-y-6 text-gray-800 font-sans text-xs leading-relaxed print:p-0">
                             <div className="text-center border-b border-gray-200 pb-4 space-y-1">
                                 {/* El membrete del liceo: antes el acta no decía de qué liceo era. */}
                                 <MembreteOficial className="mb-3" />
@@ -1192,7 +1197,8 @@ export default function PromotionPage() {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

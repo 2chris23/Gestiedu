@@ -121,7 +121,7 @@ export function BarraInferiorMovil({ destinos }: Props) {
     return (
         <nav
             aria-label="Navegación principal"
-            className="zona-segura-abajo fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white shadow-[0_-1px_8px_rgba(15,23,42,0.06)] transition-transform duration-200 ease-out lateral:hidden"
+            className="zona-segura-abajo fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white shadow-[0_-1px_8px_rgba(15,23,42,0.06)] transition-transform duration-200 ease-out lateral:hidden print:!hidden"
             style={
                 escondida
                     ? { transform: 'translateY(calc(100% - var(--zona-segura-abajo)))' }

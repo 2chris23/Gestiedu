@@ -59,7 +59,7 @@ export function AvisoSinConexion() {
         <div
             data-aviso="sin-conexion"
             className={cn(
-                'fixed z-50',
+                'fixed z-50 print:!hidden',
                 // En el teléfono, dentro de la cabecera, a la derecha (ahí no hay
                 // nada). En el ordenador no hay cabecera: abajo a la derecha.
                 // (a la izquierda de la campana, que va en la esquina).

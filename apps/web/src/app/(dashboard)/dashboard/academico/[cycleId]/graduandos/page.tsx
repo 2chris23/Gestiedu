@@ -51,6 +51,7 @@ export default function GraduandosPage({ params }: { params: Promise<{ cycleId: 
 
     return (
         <HojaImprimible
+            paginas
             etiqueta="Lista de graduandos"
             titulo="Lista de graduandos"
             subtitulo={l ? `${l.grado}° año · año escolar ${l.ciclo.nombre}${l.ciclo.cerrado ? '' : ' · el año no se ha cerrado todavía'}` : undefined}

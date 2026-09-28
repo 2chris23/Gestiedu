@@ -6,6 +6,7 @@ import { ChevronLeft, Printer } from 'lucide-react';
 import { useConstancia, TIPOS_DE_CONSTANCIA, type TipoDeConstancia } from '@/hooks/useConstancia';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { MembreteOficial } from '@/components/documentos/MembreteOficial';
+import { EstiloDelPapel, imprimirConAviso, useNombreDelDocumento } from '@/components/documentos/HojaImprimible';
 
 /**
  * LAS CONSTANCIAS, PARA IMPRIMIR
@@ -18,6 +19,7 @@ import { MembreteOficial } from '@/components/documentos/MembreteOficial';
  */
 
 export default function ConstanciaPage({ params }: { params: Promise<{ cedula: string }> }) {
+    useNombreDelDocumento('Constancia');
     const { cedula } = use(params);
     const router = useRouter();
     const buscar = useSearchParams();
@@ -55,19 +57,20 @@ export default function ConstanciaPage({ params }: { params: Promise<{ cedula: s
 
     return (
         <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-6 print:max-w-none print:p-0">
+            <EstiloDelPapel papel="carta" />
             <div className="flex items-center justify-between gap-2 print:hidden">
                 <button onClick={() => router.back()} className="inline-flex min-h-[44px] items-center gap-1 text-sm text-gray-700 hover:text-gray-900">
                     <ChevronLeft className="h-4 w-4" /> Volver
                 </button>
                 <button
-                    onClick={() => window.print()}
+                    onClick={() => void imprimirConAviso()}
                     className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700"
                 >
                     <Printer className="h-4 w-4" /> Imprimir
                 </button>
             </div>
 
-            <article className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm sm:p-12 print:border-0 print:shadow-none" aria-label={titulo}>
+            <article className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm sm:p-12 print:p-0 print:border-0 print:shadow-none" aria-label={titulo}>
                 <header className="text-center">
                     <MembreteOficial
                         respaldo={{ nombre: c.liceo.nombre, direccion: [c.liceo.direccion, c.liceo.ciudad].filter(Boolean).join(' · ') }}

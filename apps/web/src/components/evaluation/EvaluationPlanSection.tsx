@@ -18,6 +18,7 @@ import {
   type AutoPopulatedData
 } from '@/hooks/useEvaluationPlan';
 import api from '@/lib/axios';
+import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_PLAN_COLUMNS, type PlanColumnDef } from './planColumns';
 import PlanPorBloques from './PlanPorBloques';
@@ -1064,9 +1065,14 @@ export default function EvaluationPlanSection({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => window.print()} className="flex items-center px-3 py-1.5 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs">
+          {/* El plan en papel tiene su propia hoja (`plan-de-evaluacion/...`):
+              imprimir esta pantalla sacaba la sección entera, cortada a una hoja. */}
+          <Link
+            href={`/dashboard/plan-de-evaluacion/${encodeURIComponent(classroomId)}/${encodeURIComponent(subjectId)}?lapso=${selectedLapso}`}
+            className="flex items-center px-3 py-1.5 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs"
+          >
             <Printer className="w-3.5 h-3.5 mr-1.5" /> Imprimir
-          </button>
+          </Link>
           {canEdit && (
             <button
               onClick={() => setCopiandoAbierto(true)}
@@ -1192,13 +1198,6 @@ export default function EvaluationPlanSection({
         </div>
       </div>
 
-      <style>{`
-        @media print {
-          @page { size: landscape; margin: 10mm; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .print\\:hidden { display: none !important; }
-        }
-      `}</style>
     </div>
   );
 }

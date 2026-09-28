@@ -10,6 +10,7 @@ import api from '@/lib/axios';
 import { MembreteOficial } from '@/components/documentos/MembreteOficial';
 import { Lista } from '@/components/ui/lista';
 import { getApiErrorMessage } from '@/lib/utils';
+import { EstiloDelPapel, imprimirConAviso, useNombreDelDocumento } from '@/components/documentos/HojaImprimible';
 
 /**
  * LA CERTIFICACIÓN DE CALIFICACIONES (1º A 5º AÑO), PARA IMPRIMIR
@@ -58,6 +59,7 @@ const nota = (n: number | null) => (n == null ? '' : Number.isInteger(n) ? Strin
 const fecha = (ymd: string | null) => (ymd ? ymd.split('-').reverse().join('/') : '—');
 
 export default function CertificacionPage({ params }: { params: Promise<{ cedula: string }> }) {
+    useNombreDelDocumento('Certificación de calificaciones');
     const { cedula } = use(params);
     const studentId = decodeURIComponent(cedula);
     const router = useRouter();
@@ -80,12 +82,13 @@ export default function CertificacionPage({ params }: { params: Promise<{ cedula
 
     return (
         <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6 print:max-w-none print:p-0">
+            <EstiloDelPapel papel="carta" />
             <div className="flex items-center justify-between gap-2 print:hidden">
                 <button onClick={() => router.back()} className="inline-flex min-h-[44px] items-center gap-1 text-sm text-gray-700 hover:text-gray-900">
                     <ChevronLeft className="h-4 w-4" /> Volver
                 </button>
                 <button
-                    onClick={() => window.print()}
+                    onClick={() => void imprimirConAviso()}
                     className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700"
                 >
                     <Printer className="h-4 w-4" /> Imprimir

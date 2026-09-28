@@ -41,6 +41,7 @@ export default function ActaDelConsejoPage({ params }: { params: Promise<{ class
 
     return (
         <HojaImprimible
+            paginas
             etiqueta="Acta del consejo de sección"
             titulo={a?.titulo}
             subtitulo={a ? `${a.seccion.nombre} · ${a.lapso.nombre} · ${fechaCorta(a.acta.fecha)}` : undefined}

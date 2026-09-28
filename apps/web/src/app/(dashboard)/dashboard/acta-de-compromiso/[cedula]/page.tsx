@@ -7,6 +7,7 @@ import { ChevronLeft, Printer } from 'lucide-react';
 import { MembreteOficial } from '@/components/documentos/MembreteOficial';
 import { materiasPendientes } from '@/lib/materias-pendientes';
 import { getApiErrorMessage } from '@/lib/utils';
+import { EstiloDelPapel, imprimirConAviso, useNombreDelDocumento } from '@/components/documentos/HojaImprimible';
 
 /**
  * EL ACTA DE COMPROMISO DE LAS MATERIAS PENDIENTES
@@ -18,6 +19,7 @@ import { getApiErrorMessage } from '@/lib/utils';
  * la ve lo decide el servidor (el alumno, su representante, el personal).
  */
 export default function ActaDeCompromisoPage({ params }: { params: Promise<{ cedula: string }> }) {
+    useNombreDelDocumento('Acta de compromiso');
     const { cedula } = use(params);
     const router = useRouter();
     const studentId = decodeURIComponent(cedula);
@@ -43,12 +45,13 @@ export default function ActaDeCompromisoPage({ params }: { params: Promise<{ ced
 
     return (
         <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-6 print:max-w-none print:p-0">
+            <EstiloDelPapel papel="carta" />
             <div className="flex items-center justify-between gap-2 print:hidden">
                 <button onClick={() => router.back()} className="inline-flex min-h-[44px] items-center gap-1 text-sm text-gray-700 hover:text-gray-900">
                     <ChevronLeft className="h-4 w-4" /> Volver
                 </button>
                 <button
-                    onClick={() => window.print()}
+                    onClick={() => void imprimirConAviso()}
                     disabled={a.pendientes.length === 0}
                     className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
                 >
@@ -56,7 +59,7 @@ export default function ActaDeCompromisoPage({ params }: { params: Promise<{ ced
                 </button>
             </div>
 
-            <article className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm sm:p-10 print:border-0 print:shadow-none" aria-label="Acta de compromiso">
+            <article className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm sm:p-10 print:p-0 print:border-0 print:shadow-none" aria-label="Acta de compromiso">
                 <header className="text-center">
                     <MembreteOficial />
                     <h1 className="mt-6 text-base font-bold uppercase tracking-widest text-gray-900">Acta de compromiso</h1>

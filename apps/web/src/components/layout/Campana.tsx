@@ -274,7 +274,7 @@ export function OfrecerAvisos() {
     };
     if (!ver) return null;
     return (
-        <section aria-label="Avisos en el teléfono" className="mb-4 flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 sm:flex-row sm:items-center">
+        <section aria-label="Avisos en el teléfono" className="mb-4 flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 sm:flex-row sm:items-center print:hidden">
             <BellRing className="h-6 w-6 shrink-0 text-indigo-700" aria-hidden />
             <p className="flex-1 text-sm text-gray-800">
                 ¿Te avisamos en el teléfono cuando el liceo te necesite (una citación, por ejemplo), aunque la app esté cerrada?

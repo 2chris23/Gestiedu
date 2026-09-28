@@ -39,6 +39,7 @@ export default function NotasParcialesPage({ params }: { params: Promise<{ cedul
 
     return (
         <HojaImprimible
+            paginas
             etiqueta="Notas parciales"
             titulo={h?.titulo}
             subtitulo={h ? `Año escolar ${h.ciclo.nombre} · ${h.seccion.grado}° año, sección «${h.seccion.seccion}»` : undefined}
