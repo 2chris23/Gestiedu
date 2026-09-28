@@ -228,6 +228,12 @@ Ahora mezcla con lo que había.
 **Solo el admin suspende.** Puede poner otra materia de la sección en ese hueco
 (`class_replacements`), solo si su profesor está libre. Ver `class-replacements.service.ts`.
 
+**Un día sin clases** es un evento con la franja del día entero (`00:00–23:59`,
+`DIA_ENTERO` en `hooks/useSchoolEvents.ts`): doble clic en el día del
+calendario de Eventos, o su botón en el panel, y se elige todo el liceo, unos
+años o unas secciones. El panel del día tiene Mañana y Tarde: antes pintaba
+solo la rejilla de la mañana (EVENTO-UI-01/02).
+
 ## Lo que ve cada rol en las listas
 
 `GET /api/classrooms` daba TODAS las secciones a cualquiera con sesión. Parecía

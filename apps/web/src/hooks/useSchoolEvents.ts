@@ -20,6 +20,18 @@ export interface SchoolEvent {
     createdBy: { id: string; firstName: string; lastName: string } | null;
 }
 
+/**
+ * UN DÍA SIN CLASES
+ *
+ * Es un evento más, con la franja del día entero: así cubre la mañana y la
+ * tarde, y el servidor suspende y reactiva sus clases por el mismo camino que
+ * las de cualquier evento.
+ */
+export const DIA_ENTERO = { startTime: '00:00', endTime: '23:59' } as const;
+
+export const esDiaEntero = (e: Pick<SchoolEvent, 'startTime' | 'endTime'>) =>
+    e.startTime === DIA_ENTERO.startTime && e.endTime === DIA_ENTERO.endTime;
+
 export interface ClassInSlot {
     blockId: string;
     classroomId: string;

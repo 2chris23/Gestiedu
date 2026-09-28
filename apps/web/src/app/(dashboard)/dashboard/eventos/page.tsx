@@ -1,8 +1,8 @@
 'use client';
 
 import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
-import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Coffee, Loader2, Trash2, Users } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { CalendarOff, ChevronLeft, ChevronRight, Coffee, Loader2, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
@@ -15,7 +15,9 @@ import {
     useEventsRange,
     EventScope,
     SchoolEvent,
+    esDiaEntero,
 } from '@/hooks/useSchoolEvents';
+import { TURNOS, turnoDeLaHora } from '@/lib/turnos';
 import type { Period } from '@/utils/schedule.utils';
 import { diferido } from '@/components/common/Diferido';
 
@@ -27,6 +29,11 @@ const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string) {
     return aStart < bEnd && bStart < aEnd;
 }
+
+/** La franja que se lee: «Todo el día» en vez de 00:00–23:59. */
+const franja = (e: SchoolEvent) => (esDiaEntero(e) ? 'Todo el día' : `${e.startTime}–${e.endTime}`);
+
+type TurnoDelDia = 'MANANA' | 'TARDE';
 
 function scopeLabel(e: SchoolEvent) {
     if (e.scope === 'INSTITUTE') return 'Todo el liceo';
@@ -60,6 +67,15 @@ export default function EventosPage() {
     });
     const [selectedDate, setSelectedDate] = useState<string>(today);
     const [modalPeriod, setModalPeriod] = useState<Period | null>(null);
+    /** Día sin clases: doble clic en el día, o su botón en el panel. */
+    const [diaEntero, setDiaEntero] = useState(false);
+    /**
+     * LAS HORAS DE LA TARDE TAMBIÉN
+     *
+     * El panel pintaba siempre la rejilla de la mañana: en un liceo con
+     * turno de tarde, sus clases no tenían dónde pulsarse.
+     */
+    const [turno, setTurno] = useState<TurnoDelDia>('MANANA');
 
     const confirmDialog = useConfirm();
     const days = useMemo(() => monthGrid(month), [month]);
@@ -68,7 +84,7 @@ export default function EventosPage() {
 
     const { data: monthEvents = [] } = useEventsRange(rangeFrom, rangeTo);
     const { data: day, isLoading: isLoadingDay, error: dayError } = useEventDay(selectedDate);
-    const { periods, isLoading: isLoadingPeriods } = useSchedulePeriods();
+    const { periods, isLoading: isLoadingPeriods } = useSchedulePeriods(turno);
     const createEvent = useCreateEvent();
     const deleteEvent = useDeleteEvent();
 
@@ -81,6 +97,23 @@ export default function EventosPage() {
     }, [monthEvents]);
 
     const classPeriods = periods.filter((p) => p.type !== 'break');
+
+    /** Cuántas clases tiene el día en cada turno, para el selector. */
+    const clasesPorTurno = useMemo(() => {
+        const n: Record<TurnoDelDia, number> = { MANANA: 0, TARDE: 0 };
+        for (const c of day?.classes ?? []) n[turnoDeLaHora(c.startTime) === 'TARDE' ? 'TARDE' : 'MANANA']++;
+        return n;
+    }, [day?.classes]);
+
+    // Un día que solo tiene clases de tarde abre en la tarde.
+    useEffect(() => {
+        if (clasesPorTurno.MANANA === 0 && clasesPorTurno.TARDE > 0) setTurno('TARDE');
+    }, [selectedDate, clasesPorTurno.MANANA, clasesPorTurno.TARDE]);
+
+    const cerrarVentana = () => {
+        setModalPeriod(null);
+        setDiaEntero(false);
+    };
 
     const handleCreate = async (payload: {
         title: string;
@@ -98,7 +131,7 @@ export default function EventosPage() {
                     ? `Evento creado. Se suspendieron ${res.suspendedSessions} clases.`
                     : 'Evento creado. No había clases en esa franja.'
             );
-            setModalPeriod(null);
+            cerrarVentana();
         } catch (error: any) {
             toast.error(error?.response?.data?.error || 'No se pudo crear el evento');
         }
@@ -131,7 +164,7 @@ export default function EventosPage() {
                 hay ratón, y es donde más se usa. */}
             <EncabezadoDePantalla
                 titulo="Eventos del Liceo"
-                descripcion="Elige un día y pulsa una hora para crear un evento. Las clases de esa franja se suspenden."
+                descripcion="Elige un día y pulsa una hora para crear un evento; con doble clic en el día, un día sin clases. Las clases de esa franja se suspenden."
             />
 
             <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-6">
@@ -141,7 +174,8 @@ export default function EventosPage() {
                         <button
                             type="button"
                             onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
-                            className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 cursor-pointer"
+                            aria-label="Mes anterior"
+                            className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 cursor-pointer"
                         >
                             <ChevronLeft size={18} />
                         </button>
@@ -151,7 +185,8 @@ export default function EventosPage() {
                         <button
                             type="button"
                             onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
-                            className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 cursor-pointer"
+                            aria-label="Mes siguiente"
+                            className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 cursor-pointer"
                         >
                             <ChevronRight size={18} />
                         </button>
@@ -179,6 +214,13 @@ export default function EventosPage() {
                                     key={ymd}
                                     type="button"
                                     onClick={() => setSelectedDate(ymd)}
+                                    onDoubleClick={() => {
+                                        setSelectedDate(ymd);
+                                        setModalPeriod(null);
+                                        setDiaEntero(true);
+                                    }}
+                                    title="Doble clic: día sin clases"
+                                    data-dia={ymd}
                                     className={`min-h-[76px] flex flex-col items-stretch p-1.5 rounded-lg border text-left transition-colors cursor-pointer ${
                                         isSelected
                                             ? 'border-indigo-500 bg-indigo-50'
@@ -196,9 +238,11 @@ export default function EventosPage() {
                                         {dayEvents.slice(0, 2).map((e) => (
                                             <div
                                                 key={e.id}
-                                                className="text-[10px] leading-tight font-medium text-amber-900 bg-amber-100 rounded px-1 py-0.5 truncate"
+                                                className={`text-[10px] leading-tight font-medium rounded px-1 py-0.5 truncate ${
+                                                    esDiaEntero(e) ? 'text-rose-900 bg-rose-100' : 'text-amber-900 bg-amber-100'
+                                                }`}
                                             >
-                                                {e.startTime} {e.title}
+                                                {esDiaEntero(e) ? e.title : `${e.startTime} ${e.title}`}
                                             </div>
                                         ))}
                                         {dayEvents.length > 2 && (
@@ -220,6 +264,38 @@ export default function EventosPage() {
                         {day ? `Ciclo ${day.academicYear.name}` : ' '}
                     </p>
 
+                    {day && (
+                        <div className="mb-4 space-y-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setModalPeriod(null);
+                                    setDiaEntero(true);
+                                }}
+                                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-800 transition-colors hover:bg-rose-100 cursor-pointer"
+                            >
+                                <CalendarOff size={16} aria-hidden />
+                                Día sin clases
+                            </button>
+                            <div role="group" aria-label="Turno" className="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1">
+                                {(['MANANA', 'TARDE'] as const).map((t) => (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        aria-pressed={turno === t}
+                                        onClick={() => setTurno(t)}
+                                        className={`min-h-11 rounded-md text-sm font-semibold transition-colors cursor-pointer ${
+                                            turno === t ? `border ${TURNOS[t].clases} shadow-sm` : 'text-gray-600 hover:bg-white/60'
+                                        }`}
+                                    >
+                                        {TURNOS[t].nombre}
+                                        <span className="ml-1.5 text-xs font-medium opacity-80">({clasesPorTurno[t]})</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {day && day.events.length > 0 && (
                         <div className="space-y-2 mb-4">
                             {day.events.map((e) => (
@@ -230,7 +306,7 @@ export default function EventosPage() {
                                     <div className="min-w-0">
                                         <div className="text-sm font-bold text-amber-900 truncate">{e.title}</div>
                                         <div className="text-[11px] text-amber-800">
-                                            {e.startTime}–{e.endTime} · {scopeLabel(e)}
+                                            {franja(e)} · {scopeLabel(e)}
                                             {typeof e.suspendedCount === 'number' &&
                                                 ` · ${e.suspendedCount} clases suspendidas`}
                                         </div>
@@ -368,14 +444,15 @@ export default function EventosPage() {
                 </div>
             </div>
 
-            {day && modalPeriod && (
+            {day && (modalPeriod || diaEntero) && (
                 <EventModal
                     open
                     day={day}
                     startPeriod={modalPeriod}
+                    diaEntero={diaEntero}
                     classPeriods={classPeriods}
                     isSaving={createEvent.isPending}
-                    onClose={() => setModalPeriod(null)}
+                    onClose={cerrarVentana}
                     onCreate={handleCreate}
                 />
             )}

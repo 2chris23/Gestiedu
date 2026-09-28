@@ -3,7 +3,7 @@
 import { Lista } from '@/components/ui/lista';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, X, Building2, Layers, LayoutGrid, AlertTriangle } from 'lucide-react';
-import { usePreviewEvent, EventScope, EventDay, ClassInSlot } from '@/hooks/useSchoolEvents';
+import { usePreviewEvent, EventScope, EventDay, ClassInSlot, DIA_ENTERO } from '@/hooks/useSchoolEvents';
 import type { Period } from '@/utils/schedule.utils';
 
 /**
@@ -12,6 +12,9 @@ import type { Period } from '@/utils/schedule.utils';
  * El número "se suspenderán N clases" lo calcula el servidor con la misma
  * función que la suspensión real (POST /events/preview), no el cliente: así no
  * puede prometer una cosa y hacer otra.
+ *
+ * Con `diaEntero` es un día sin clases (doble clic en el calendario): sin
+ * «Hasta», de la primera clase de la mañana a la última de la tarde.
  */
 
 interface EventModalProps {
@@ -19,6 +22,8 @@ interface EventModalProps {
     day: EventDay;
     /** Bloque sobre el que se hizo clic: marca el inicio del evento. */
     startPeriod: Period | null;
+    /** El día entero, mañana y tarde: un día sin clases. */
+    diaEntero?: boolean;
     classPeriods: Period[];
     isSaving: boolean;
     onClose: () => void;
@@ -45,6 +50,7 @@ export default function EventModal({
     open,
     day,
     startPeriod,
+    diaEntero = false,
     classPeriods,
     isSaving,
     onClose,
@@ -58,16 +64,20 @@ export default function EventModal({
     const [classroomIds, setClassroomIds] = useState<string[]>([]);
     const preview = usePreviewEvent();
 
-    // Reiniciar al abrir sobre otro bloque
+    /** La franja del evento: la del bloque pulsado, o la del día entero. */
+    const desde = diaEntero ? DIA_ENTERO.startTime : startPeriod?.startTime ?? '';
+    const hasta = diaEntero ? DIA_ENTERO.endTime : endTime;
+
+    // Reiniciar al abrir sobre otro bloque (o sobre el día entero)
     useEffect(() => {
-        if (!open || !startPeriod) return;
-        setTitle('');
+        if (!open || (!startPeriod && !diaEntero)) return;
+        setTitle(diaEntero ? 'Sin clases' : '');
         setDescription('');
-        setEndTime(startPeriod.endTime);
+        setEndTime(startPeriod?.endTime ?? '');
         setScope('INSTITUTE');
         setGrades([]);
         setClassroomIds([]);
-    }, [open, startPeriod]);
+    }, [open, startPeriod, diaEntero]);
 
     /** Bloques desde el pulsado en adelante: define hasta dónde llega el evento. */
     const endOptions = useMemo(
@@ -85,12 +95,12 @@ export default function EventModal({
 
     // Vista previa: cada cambio de franja o alcance vuelve a preguntar al servidor
     useEffect(() => {
-        if (!open || !startPeriod || !endTime || scopeIncomplete) return;
+        if (!open || !desde || !hasta || scopeIncomplete) return;
         const t = setTimeout(() => {
             preview.mutate({
                 date: day.date,
-                startTime: startPeriod.startTime,
-                endTime,
+                startTime: desde,
+                endTime: hasta,
                 scope,
                 grades,
                 classroomIds,
@@ -98,9 +108,9 @@ export default function EventModal({
         }, 250);
         return () => clearTimeout(t);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open, startPeriod, endTime, scope, grades, classroomIds, day.date, scopeIncomplete]);
+    }, [open, desde, hasta, scope, grades, classroomIds, day.date, scopeIncomplete]);
 
-    if (!open || !startPeriod) return null;
+    if (!open || (!startPeriod && !diaEntero)) return null;
 
     const toggle = <T,>(list: T[], value: T) =>
         list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -109,20 +119,20 @@ export default function EventModal({
     const canCreate = title.trim().length > 0 && !scopeIncomplete && !isSaving;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Nuevo evento">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={diaEntero ? 'Día sin clases' : 'Nuevo evento'}>
             <div className="absolute inset-0 bg-black/40" onClick={() => (!isSaving ? onClose() : undefined)} />
 
             <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-xl border border-gray-100">
                 <div className="flex items-start justify-between p-5 border-b border-gray-100">
                     <div>
-                        <h2 className="text-lg font-bold text-gray-900">Nuevo evento</h2>
+                        <h2 className="text-lg font-bold text-gray-900">{diaEntero ? 'Día sin clases' : 'Nuevo evento'}</h2>
                         <p className="text-xs text-gray-500 mt-0.5 capitalize">
                             {new Intl.DateTimeFormat('es-ES', {
                                 weekday: 'long',
                                 day: 'numeric',
                                 month: 'long',
                             }).format(new Date(`${day.date}T12:00:00`))}{' '}
-                            · desde {startPeriod.startTime}
+                            {diaEntero ? ' · todo el día, mañana y tarde' : ` · desde ${startPeriod?.startTime}`}
                         </p>
                     </div>
                     <button aria-label="Cerrar"
@@ -147,7 +157,7 @@ export default function EventModal({
                             onChange={(e) => setTitle(e.target.value)}
                             maxLength={150}
                             autoFocus
-                            placeholder="Acto cívico, reunión de representantes…"
+                            placeholder={diaEntero ? 'Feriado, jornada de vacunación…' : 'Acto cívico, reunión de representantes…'}
                             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                         />
                     </div>
@@ -165,7 +175,7 @@ export default function EventModal({
                         />
                     </div>
 
-                    <div>
+                    {!diaEntero && <div>
                         <label htmlFor="ev-end" className="block text-sm font-medium text-gray-700 mb-1.5">
                             Hasta
                         </label>
@@ -176,7 +186,7 @@ export default function EventModal({
                             alCambiar={setEndTime}
                             opciones={endOptions.map((p) => ({ valor: p.endTime, texto: `Fin de ${p.label} (${p.endTime})` }))}
                         />
-                    </div>
+                    </div>}
 
                     <div>
                         <span className="block text-sm font-medium text-gray-700 mb-1.5">¿A quién afecta?</span>
@@ -293,8 +303,8 @@ export default function EventModal({
                             onCreate({
                                 title: title.trim(),
                                 description: description.trim(),
-                                startTime: startPeriod.startTime,
-                                endTime,
+                                startTime: desde,
+                                endTime: hasta,
                                 scope,
                                 grades,
                                 classroomIds,
@@ -307,7 +317,7 @@ export default function EventModal({
                         }`}
                     >
                         {isSaving && <Loader2 size={16} className="animate-spin" />}
-                        Crear evento
+                        {diaEntero ? 'Suspender las clases' : 'Crear evento'}
                     </button>
                 </div>
             </div>
