@@ -22,6 +22,8 @@ export interface Membrete {
     direccion: string | null;
     telefono: string | null;
     logo: string | null;
+    /** Si lleva el logo del Ministerio (Configuración → Información General). */
+    logoDelMinisterio?: boolean;
 }
 
 export const membreteKey = ['membrete'] as const;

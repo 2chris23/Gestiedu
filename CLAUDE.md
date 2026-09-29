@@ -360,7 +360,9 @@ educativa, entidad federal, municipio, parroquia y las líneas del ministerio
 había: General y Académico (la firma) ya no se borran lo del otro.
 
 **Un solo membrete** (`components/documentos/MembreteOficial.tsx`, de
-`GET /institutes/current/membrete`) en la boleta, la constancia, el resumen
+`GET /institutes/current/membrete`), con el logo del Ministerio a la izquierda
+y el del liceo a la derecha (`public/documentos/logo-mppe.png`; el liceo lo
+quita en Información General, `logoDelMinisterio`, PLANTEL-05) en la boleta, la constancia, el resumen
 final, el plan de evaluación y el acta de compromiso; el horario descargado
 lleva el nombre y el DEA (MEMB-UI-01/02). Todo lo de un liceo venezolano, y
 dónde vive, en `docs/VENEZUELA-LO-QUE-FALTA.md`. **Nada se envía al Ministerio**:

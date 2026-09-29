@@ -66,6 +66,8 @@ test.describe.serial('El membrete oficial', () => {
             await expect(boleta).toContainText('Ministerio del Poder Popular para la Educación');
             await expect(boleta).toContainText('Código DEA: OD00541105');
             await expect(boleta).toContainText('Municipio Valencia · Estado Carabobo');
+            // El logo del Ministerio, arriba a la izquierda, como en el papel del MPPE.
+            await expect(boleta.getByRole('img', { name: 'Ministerio del Poder Popular para la Educación' })).toBeVisible();
             await boleta.locator('[data-membrete]').screenshot({ path: 'test-results/evidencia/membrete-boleta.png' });
 
             await page.goto(`${WEB_BASE}/dashboard/constancia/mia`);

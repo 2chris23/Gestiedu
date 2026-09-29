@@ -70,6 +70,15 @@ describe('Datos oficiales del plantel', () => {
         expect(m.body.data.ministerio).toEqual(['República Bolivariana de Venezuela', 'Ministerio del Poder Popular para la Educación']);
     });
 
+    it('PLANTEL-05: el logo del Ministerio sale por defecto; el liceo lo puede quitar y volver a poner', async () => {
+        expect((await membrete(tkAdmin)).body.data.logoDelMinisterio).toBe(true);
+        expect((await guardar({ logoDelMinisterio: 'NO' })).status).toBe(200);
+        expect((await membrete(tkAdmin)).body.data.logoDelMinisterio).toBe(false);
+        // Cualquier otra cosa (o vacío) es «que salga».
+        expect((await guardar({ logoDelMinisterio: '' })).status).toBe(200);
+        expect((await membrete(tkAdmin)).body.data.logoDelMinisterio).toBe(true);
+    });
+
     it('PLANTEL-02: un código mal escrito o una entidad inventada no se guardan', async () => {
         expect((await guardar({ codigoEstadistico: '12345' })).status).toBe(400);
         expect((await guardar({ codigoDependencia: 'abc' })).status).toBe(400);

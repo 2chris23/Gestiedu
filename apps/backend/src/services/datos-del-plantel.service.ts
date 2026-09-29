@@ -46,6 +46,8 @@ export interface DatosDelPlantel {
     parroquia?: string;
     /** Las líneas de arriba del membrete. Vacío = el del MPPE. */
     textoDelMinisterio?: string;
+    /** «NO» para quitar el logo del Ministerio del membrete; vacío = se pone. */
+    logoDelMinisterio?: string;
 }
 
 export const CAMPOS_DEL_PLANTEL: (keyof DatosDelPlantel)[] = [
@@ -59,6 +61,7 @@ export const CAMPOS_DEL_PLANTEL: (keyof DatosDelPlantel)[] = [
     'municipio',
     'parroquia',
     'textoDelMinisterio',
+    'logoDelMinisterio',
 ];
 
 /**
@@ -98,6 +101,13 @@ export function revisarDatosDelPlantel(entrada: Record<string, unknown>): { dato
             case 'entidadFederal':
                 if (!(ENTIDADES_FEDERALES as readonly string[]).includes(v)) errores.push('Elige la entidad federal de la lista.');
                 break;
+            case 'logoDelMinisterio':
+                // Solo se guarda el «no»: sin nada, el logo sale.
+                if (v !== 'NO') {
+                    datos[campo] = null;
+                    continue;
+                }
+                break;
             case 'textoDelMinisterio':
                 v = v.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 4).join('\n').slice(0, 300);
                 break;
@@ -123,6 +133,8 @@ export interface Membrete {
     direccion: string | null;
     telefono: string | null;
     logo: string | null;
+    /** Si el membrete lleva el logo del Ministerio (a la izquierda; el del liceo, a la derecha). */
+    logoDelMinisterio: boolean;
 }
 
 /** Lo que lleva arriba todo documento del liceo. */
@@ -147,5 +159,6 @@ export async function membreteDelLiceo(instituteId: string): Promise<Membrete> {
         direccion: [liceo?.address, liceo?.city].filter(Boolean).join(', ') || null,
         telefono: liceo?.phone ?? null,
         logo: liceo?.logo ?? null,
+        logoDelMinisterio: docs.logoDelMinisterio !== 'NO',
     };
 }

@@ -18,6 +18,13 @@ import { useMembrete, type Membrete } from '@/hooks/useMembrete';
  * nombre que traiga la hoja (`respaldo`): una boleta sin cabecera no sirve.
  */
 
+/**
+ * El logo del Ministerio del Poder Popular para la Educación, como lo lleva el
+ * papel del MPPE: arriba a la izquierda. El del liceo va a la derecha. Cada
+ * liceo lo puede quitar en Configuración → Información General.
+ */
+export const LOGO_DEL_MINISTERIO = '/documentos/logo-mppe.png';
+
 /** «Municipio Valencia · Estado Carabobo»: el Distrito Capital no es un estado. */
 export function lugarDelPlantel(m: Pick<Membrete, 'zonaEducativa' | 'parroquia' | 'municipio' | 'entidadFederal'>): string {
     const entidad = m.entidadFederal
@@ -69,12 +76,22 @@ export function MembreteOficial({
     const lugar = m ? lugarDelPlantel(m) : '';
     const direccion = [m?.direccion ?? respaldo?.direccion, m?.telefono && `Telf. ${m.telefono}`].filter(Boolean).join(' · ');
     const logo = m?.logo ? getAssetUrl(m.logo) : null;
+    const ministerio = m?.logoDelMinisterio ?? true;
+
+    // Los dos lados miden lo mismo: así el texto queda centrado en la hoja.
+    const lado = ministerio ? 'h-14 w-24 sm:h-16 sm:w-32' : 'h-14 w-14 sm:h-16 sm:w-16';
+    const izquierda = ministerio ? LOGO_DEL_MINISTERIO : logo;
+    const derecha = ministerio ? logo : null;
 
     return (
         <div className={`flex items-center gap-3 ${className}`} data-membrete>
-            {logo && (
+            {izquierda && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={logo} alt="" className="h-14 w-14 shrink-0 object-contain sm:h-16 sm:w-16" />
+                <img
+                    src={izquierda}
+                    alt={ministerio ? 'Ministerio del Poder Popular para la Educación' : ''}
+                    className={`${lado} shrink-0 object-contain object-left`}
+                />
             )}
             <div className="min-w-0 flex-1 text-center">
                 {m?.ministerio?.map((linea) => (
@@ -87,8 +104,12 @@ export function MembreteOficial({
                 {lugar && <p className="text-xs text-gray-700">{lugar}</p>}
                 {direccion && <p className="text-xs text-gray-700">{direccion}</p>}
             </div>
-            {/* Del mismo ancho que el logo: el texto queda centrado en la hoja. */}
-            {logo && <div className="h-14 w-14 shrink-0 sm:h-16 sm:w-16" aria-hidden />}
+            {derecha ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={derecha} alt="" className={`${lado} shrink-0 object-contain object-right`} />
+            ) : (
+                izquierda && <div className={`${lado} shrink-0`} aria-hidden />
+            )}
         </div>
     );
 }

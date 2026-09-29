@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, Printer } from 'lucide-react';
 import api from '@/lib/axios';
 import { getAssetUrl } from '@/config/env';
+import { LOGO_DEL_MINISTERIO } from '@/components/documentos/MembreteOficial';
 import { useMembrete } from '@/hooks/useMembrete';
 import { esFotoDelSistema, useFotoDePerfil } from '@/hooks/useFotoDePerfil';
 import { getApiErrorMessage } from '@/lib/utils';
@@ -97,7 +98,11 @@ export default function CarnetsPage() {
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={logo} alt="" className="h-6 w-6 shrink-0 rounded bg-white object-contain p-0.5" />
                             )}
-                            <p className="min-w-0 truncate text-xs print:text-[11px] font-bold uppercase leading-tight">{m?.nombre || h.liceo.nombre}</p>
+                            <p className="min-w-0 flex-1 truncate text-xs print:text-[11px] font-bold uppercase leading-tight">{m?.nombre || h.liceo.nombre}</p>
+                            {m?.logoDelMinisterio !== false && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={LOGO_DEL_MINISTERIO} alt="Ministerio del Poder Popular para la Educación" className="h-6 w-14 shrink-0 rounded bg-white object-contain p-0.5" />
+                            )}
                         </div>
                         <div className="flex flex-1 gap-2 p-2">
                             <div className="h-full w-[22mm] shrink-0 overflow-hidden rounded border border-gray-300 bg-gray-50">

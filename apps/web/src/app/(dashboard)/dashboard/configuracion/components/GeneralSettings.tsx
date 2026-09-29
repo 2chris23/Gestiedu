@@ -31,6 +31,8 @@ const DATOS_VACIOS = {
     municipio: '',
     parroquia: '',
     textoDelMinisterio: '',
+    /** «NO» = sin el logo del Ministerio en los documentos. */
+    logoDelMinisterio: '',
 };
 type DatosDelPlantel = typeof DATOS_VACIOS;
 
@@ -298,6 +300,14 @@ export function GeneralSettings() {
                             placeholder={'República Bolivariana de Venezuela\nMinisterio del Poder Popular para la Educación'}
                             value={plantel.textoDelMinisterio} onChange={(e) => setPlantel((p) => ({ ...p, textoDelMinisterio: e.target.value }))} />
                         <span className="mt-1 block text-xs text-gray-500">Vacío: el del Ministerio del Poder Popular para la Educación.</span>
+                    </label>
+                    <label htmlFor="logoDelMinisterio" className="flex min-h-[44px] cursor-pointer items-center gap-3 md:col-span-2">
+                        <input id="logoDelMinisterio" type="checkbox" className="h-5 w-5 accent-indigo-600"
+                            checked={plantel.logoDelMinisterio !== 'NO'}
+                            onChange={(e) => setPlantel((p) => ({ ...p, logoDelMinisterio: e.target.checked ? '' : 'NO' }))} />
+                        <span className="text-sm text-gray-800">
+                            Poner el logo del Ministerio en los documentos <span className="text-gray-600">(a la izquierda; el del liceo, a la derecha)</span>
+                        </span>
                     </label>
                 </div>
             </section>
