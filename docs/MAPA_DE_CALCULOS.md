@@ -48,7 +48,7 @@ calificarse (cambiar el plan después no cambia lo ya calificado).
 
 | Tipo | Nota de la actividad | Máximo | Sin nota cuando… |
 | :--- | :--- | :--- | :--- |
-| Lista de cotejo | suma de los puntos de lo marcado «sí» | suma de los puntos | nunca (lo no marcado es «no») |
+| Lista de cotejo | suma de los puntos que se le dan en cada indicador, de 0 a lo que vale (29-09-2026; antes solo sí/no: «sí» sigue valiendo todo y «no», 0) | suma de los puntos | nunca (lo que no se puntúa cuenta 0) |
 | Escala de estimación | suma de valor del nivel × peso (AD 4, A 3, B 2, C 1 por defecto) | nivel más alto × suma de pesos | falta el nivel de algún criterio |
 | Rúbrica | igual que la escala | igual | igual |
 | Por puntos (Ser, Hacer, Conocer, Convivir) | suma de los puntos de cada criterio (0 a su máximo) | suma de los puntos | falta algún criterio |

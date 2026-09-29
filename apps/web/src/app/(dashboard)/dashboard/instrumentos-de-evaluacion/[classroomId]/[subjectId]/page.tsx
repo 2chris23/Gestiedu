@@ -54,7 +54,8 @@ function Referencia({ def }: { def: Instrumento }) {
 
 function marcaLegible(def: Instrumento, m: Marcas[string] | undefined) {
     if (m === undefined || m === null) return '';
-    if (def.tipo === 'COTEJO') return m === true ? '✓' : '';
+    // La lista de cotejo guarda puntos (antes, sí/no: sí es todo lo que vale).
+    if (def.tipo === 'COTEJO') return m === true ? '✓' : m === false ? '' : String(m);
     return String(m);
 }
 

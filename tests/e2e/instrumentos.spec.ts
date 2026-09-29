@@ -73,7 +73,7 @@ test('INSTR-UI-01: armar una lista de cotejo en el plan', async ({ page }, testI
     }
 });
 
-test('INSTR-UI-02: calificar marcando las casillas en la clase en vivo', async ({ page }, testInfo) => {
+test('INSTR-UI-02: calificar en la tabla de la clase, cada indicador de 0 a lo que vale', async ({ page }, testInfo) => {
     try {
         // Una actividad de hoy de esa evaluación (la semana de hoy puede ser otra).
         await queryTenantDb(
@@ -87,10 +87,18 @@ test('INSTR-UI-02: calificar marcando las casillas en la clase en vivo', async (
         await tarjeta.getByRole('button', { name: 'Dar Nota' }).click({ timeout: 60000 });
         const calificar = page.getByRole('region', { name: 'Calificar con el instrumento' });
         await expect(calificar).toBeVisible({ timeout: 30000 });
-        const primero = calificar.getByRole('listitem').first();
-        await primero.getByRole('button', { name: /Portada/ }).click();
-        await primero.getByRole('button', { name: /Pulcritud/ }).click();
-        await expect(primero.getByText('5 / 20')).toBeVisible();
+        // La tabla de la clase cambia: una columna por indicador, y la nota al final.
+        const tabla = calificar.getByRole('table', { name: 'Notas con el instrumento' });
+        const primero = tabla.locator('tbody tr').first();
+        // La portada está pero mal hecha: 1,5 de 2. Y la pulcritud, completa.
+        await primero.getByRole('textbox', { name: /Portada \(de 0 a 2\)/ }).fill('1,5');
+        await primero.getByRole('textbox', { name: /Pulcritud.*\(de 0 a 3\)/ }).fill('3');
+        await expect(primero.getByText('4.5', { exact: true })).toBeVisible();
+        // Más de lo que vale no cabe: se queda en lo que vale.
+        await primero.getByRole('textbox', { name: /Portada \(de 0 a 2\)/ }).fill('9');
+        await expect(primero.getByText('5', { exact: true })).toBeVisible();
+        // Y la tabla de siempre no está debajo.
+        await expect(page.getByText('NOTA DE ACTIVIDAD', { exact: false })).toHaveCount(0);
         await expect(calificar.getByText(/Guardado \d/)).toBeVisible({ timeout: 15000 });
         const [a] = await queryTenantDb(`SELECT scores, "detalleDelInstrumento" AS d FROM class_activities WHERE title = $1`, [TITULO]);
         expect(Object.values(a.scores)).toEqual([5]);

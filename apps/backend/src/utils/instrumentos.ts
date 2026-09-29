@@ -5,9 +5,11 @@
  * instrumento = la hoja con que se registra lo que hizo cada alumno. En los
  * liceos venezolanos, sobre todo:
  *
- *  · COTEJO  — lista de cotejo: indicadores de sí/no; cada uno vale sus puntos
- *              («Portada 2, Plan firmado 5, Firmas 5, Ejercicios 5, Pulcritud 3»).
- *              Nota = suma de lo marcado.
+ *  · COTEJO  — lista de cotejo: indicadores que valen sus puntos («Portada 2,
+ *              Plan firmado 5, Firmas 5, Ejercicios 5, Pulcritud 3»). Cada uno
+ *              se puntúa de 0 a lo que vale: la portada está, pero mal hecha,
+ *              saca 1 de 2. Sí = todo, no = 0 (así se guardaba antes y vale
+ *              igual). Nota = suma.
  *  · ESCALA  — escala de estimación: cada criterio en un nivel (AD 4, A 3, B 2,
  *              C 1 por defecto). Nota = suma de valor × peso; sin nota hasta que
  *              todos los criterios tengan nivel.
@@ -45,7 +47,7 @@ export interface Instrumento {
     /** RUBRICA: criterio → nivel → lo que describe esa casilla. */
     descriptores?: Record<string, Record<string, string>>;
 }
-/** Lo marcado a un alumno: criterio → sí/no (COTEJO), id del nivel (ESCALA, RUBRICA) o puntos (PUNTOS). */
+/** Lo marcado a un alumno: criterio → puntos o sí/no (COTEJO), id del nivel (ESCALA, RUBRICA) o puntos (PUNTOS). */
 export type Marcas = Record<string, boolean | string | number | null>;
 
 export const NIVELES_POR_DEFECTO: Nivel[] = [
@@ -143,8 +145,10 @@ export function notaDelInstrumento(def: Instrumento, marcas: Marcas): number | n
     for (const c of def.criterios) {
         const m = marcas?.[c.id];
         if (def.tipo === 'COTEJO') {
-            if (m !== undefined && m !== null && typeof m !== 'boolean') mal('En la lista de cotejo cada criterio es sí o no');
+            if (m === undefined || m === null || m === false) continue;
             if (m === true) total += c.puntos ?? 0;
+            else if (!numero(m) || (m as number) < 0 || (m as number) > (c.puntos ?? 0)) mal(`«${c.texto}»: de 0 a ${c.puntos}`);
+            else total += m as number;
         } else if (def.tipo === 'PUNTOS') {
             if (m === undefined || m === null) return null;
             if (!numero(m) || (m as number) < 0 || (m as number) > (c.puntos ?? 0)) mal(`«${c.texto}»: de 0 a ${c.puntos}`);

@@ -2,25 +2,91 @@
 
 import * as React from 'react';
 import { toast } from 'sonner';
-import { Check, ClipboardList, Loader2 } from 'lucide-react';
+import { ClipboardList, Loader2, X } from 'lucide-react';
 import { useCalificarConInstrumento } from '@/hooks/useInstrumentos';
 import { NIVELES_POR_DEFECTO, maximoDelInstrumento, notaDelInstrumento, type Instrumento, type Marcas } from '@/lib/instrumentos';
 import { NOMBRE_DEL_TIPO } from '@/components/evaluation/nombres-de-instrumentos';
 import { getApiErrorMessage, cn } from '@/lib/utils';
 
 /**
- * CALIFICAR MARCANDO EL INSTRUMENTO
+ * CALIFICAR CON EL INSTRUMENTO: LA TABLA DE LA CLASE, CAMBIADA
  *
- * Una tarjeta por alumno con los criterios del instrumento de la evaluación
- * del plan: en la lista de cotejo, sí/no; en la escala y la rúbrica, el nivel;
- * por puntos, cuántos. La nota sale sola y se guarda sola, en tandas (lo que
- * se marca seguido va en UNA petición), como la asistencia.
+ * Al pulsar «Dar nota» en una actividad con instrumento, la tabla de alumnos
+ * pasa a tener una columna por indicador del instrumento y la nota al final.
+ * Antes era una tarjeta por alumno: treinta tarjetas que ocupaban la pantalla.
+ *
+ * Cada indicador se puntúa de 0 a lo que vale: la portada está pero mal hecha
+ * saca 1 de 2 (en la lista de cotejo y por puntos). En la escala y la rúbrica,
+ * el nivel. La nota sale sola y se guarda sola, en tandas (lo que se escribe
+ * seguido va en UNA petición), como la asistencia. En el teléfono la tabla se
+ * desliza de lado con el nombre fijo a la izquierda.
  */
 
 type Alumno = { id: string; firstName: string; lastName: string };
 type Detalle = Record<string, { marcas: Marcas; total: number | null }>;
 
 const ESPERA_MS = 700;
+
+/** Los puntos que enseña la casilla: una marca vieja de sí/no se lee como todo o nada. */
+function puntosEnLaCasilla(m: Marcas[string] | undefined, vale: number): string {
+    if (m === true) return String(vale);
+    if (m === false) return '0';
+    return typeof m === 'number' ? String(m) : '';
+}
+
+/**
+ * UNA CASILLA DE PUNTOS
+ *
+ * Lleva su propio texto mientras se escribe: con la casilla atada al número,
+ * «1,» se borraba al instante y no había forma de poner 1,5. Coma o punto, da
+ * igual; más de lo que vale se queda en lo que vale.
+ */
+function CeldaDePuntos({
+    valor,
+    vale,
+    disabled,
+    etiqueta,
+    alCambiar,
+}: {
+    valor: Marcas[string] | undefined;
+    vale: number;
+    disabled: boolean;
+    etiqueta: string;
+    alCambiar: (n: number | null) => void;
+}) {
+    const deFuera = puntosEnLaCasilla(valor, vale);
+    const [texto, setTexto] = React.useState(deFuera);
+    const escribiendo = React.useRef(false);
+    React.useEffect(() => {
+        if (!escribiendo.current) setTexto(deFuera);
+    }, [deFuera]);
+    return (
+        <input
+            type="text"
+            inputMode="decimal"
+            disabled={disabled}
+            value={texto}
+            placeholder="—"
+            onFocus={() => (escribiendo.current = true)}
+            onBlur={() => {
+                escribiendo.current = false;
+                setTexto(deFuera);
+            }}
+            onChange={(e) => {
+                const t = e.target.value.replace(/[^\d.,]/g, '');
+                setTexto(t);
+                if (t === '') return alCambiar(null);
+                const n = Number(t.replace(',', '.'));
+                if (!Number.isFinite(n)) return;
+                const puesto = Math.min(Math.max(n, 0), vale);
+                if (puesto !== n) setTexto(String(puesto));
+                alCambiar(puesto);
+            }}
+            className="min-h-[44px] w-20 rounded-lg border border-gray-300 px-2 text-right tabular-nums focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-gray-50"
+            aria-label={etiqueta}
+        />
+    );
+}
 
 export default function CalificarConInstrumento({
     activityId,
@@ -44,6 +110,7 @@ export default function CalificarConInstrumento({
     const reloj = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const maximo = maximoDelInstrumento(instrumento);
     const niveles = instrumento.niveles ?? NIVELES_POR_DEFECTO;
+    const porPuntos = instrumento.tipo === 'COTEJO' || instrumento.tipo === 'PUNTOS';
 
     // `mutate` cambia en cada pintada: por referencia, para que la limpieza de
     // abajo no mande la tanda antes de tiempo.
@@ -59,7 +126,7 @@ export default function CalificarConInstrumento({
             { activityId, marcas: tanda },
             {
                 onSuccess: () => setGuardadoA(new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })),
-                onError: (e) => toast.error(getApiErrorMessage(e, 'No se pudieron guardar las marcas')),
+                onError: (e) => toast.error(getApiErrorMessage(e, 'No se pudieron guardar las notas')),
             }
         );
     }, [activityId]);
@@ -94,12 +161,15 @@ export default function CalificarConInstrumento({
         }
     };
 
+    const celda = 'border-b border-gray-100 px-2 py-1.5';
+
     return (
         <section className="space-y-3" aria-label="Calificar con el instrumento">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-sm text-indigo-900">
                 <span className="flex items-center gap-2">
                     <ClipboardList className="h-4 w-4" aria-hidden />
                     {NOMBRE_DEL_TIPO[instrumento.tipo]} · vale {maximo}
+                    {porPuntos && <span className="text-xs text-indigo-800">· cada indicador de 0 a lo que vale</span>}
                 </span>
                 <span className="text-xs" role="status">
                     {calificar.isPending ? (
@@ -113,105 +183,111 @@ export default function CalificarConInstrumento({
                     )}
                 </span>
             </div>
-            <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {alumnos.map((a) => {
-                    const suyas = marcas[a.id];
-                    const nota = notaDe(suyas);
-                    const nombre = `${a.lastName}, ${a.firstName}`;
-                    return (
-                        <li key={a.id} className="space-y-2 rounded-xl border border-gray-200 bg-white p-3" aria-label={nombre}>
-                            <div className="flex items-center justify-between gap-2">
-                                <p className="min-w-0 truncate text-sm font-semibold text-gray-900">{nombre}</p>
-                                <span className={cn('shrink-0 rounded-lg px-2 py-1 text-sm font-bold tabular-nums', nota === null ? 'bg-gray-100 text-gray-600' : 'bg-emerald-50 text-emerald-800')}>
-                                    {nota === null ? (suyas ? 'Incompleto' : 'Sin nota') : `${nota} / ${maximo}`}
-                                </span>
-                            </div>
-                            <div className="space-y-1.5">
-                                {instrumento.criterios.map((c) => {
-                                    const valor = suyas?.[c.id];
-                                    const cambiar = (v: boolean | string | number | null) => marcar(a.id, { ...(suyas ?? {}), [c.id]: v });
-                                    if (instrumento.tipo === 'COTEJO') {
-                                        const si = valor === true;
-                                        return (
-                                            <button
-                                                key={c.id}
-                                                type="button"
-                                                disabled={!puedeEditar}
-                                                aria-pressed={si}
-                                                onClick={() => cambiar(!si)}
-                                                className={cn(
-                                                    'flex min-h-[44px] w-full items-center gap-2 rounded-lg border px-3 text-left text-sm',
-                                                    si ? 'border-emerald-600 bg-emerald-50 text-emerald-900' : 'border-gray-200 bg-white text-gray-800'
-                                                )}
-                                            >
-                                                <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded border', si ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-gray-400')}>
-                                                    {si && <Check className="h-3.5 w-3.5" aria-hidden />}
-                                                </span>
-                                                <span className="flex-1">{c.texto}</span>
-                                                <span className="text-xs text-gray-600">{c.puntos} pts</span>
-                                            </button>
-                                        );
-                                    }
-                                    if (instrumento.tipo === 'PUNTOS') {
-                                        return (
-                                            <label key={c.id} className="flex items-center justify-between gap-2 text-sm text-gray-800">
-                                                <span>
-                                                    {c.texto} <span className="text-xs text-gray-600">(de 0 a {c.puntos})</span>
-                                                </span>
-                                                <input
-                                                    type="number"
-                                                    inputMode="decimal"
-                                                    min={0}
-                                                    max={c.puntos}
-                                                    step={0.5}
-                                                    disabled={!puedeEditar}
-                                                    value={typeof valor === 'number' ? valor : ''}
-                                                    onChange={(e) => {
-                                                        const n = e.target.value === '' ? null : Number(e.target.value);
-                                                        if (n !== null && (n < 0 || n > (c.puntos ?? 0))) return;
-                                                        cambiar(n);
-                                                    }}
-                                                    className="min-h-[44px] w-20 rounded-lg border border-gray-300 px-2 text-right tabular-nums"
-                                                    aria-label={`${nombre}: ${c.texto}`}
-                                                />
-                                            </label>
-                                        );
-                                    }
-                                    return (
-                                        <div key={c.id} className="space-y-1">
-                                            <p className="text-sm text-gray-800">{c.texto}</p>
-                                            <div className="flex flex-wrap gap-1" role="radiogroup" aria-label={`${nombre}: ${c.texto}`}>
-                                                {niveles.map((n) => (
-                                                    <button
-                                                        key={n.id}
-                                                        type="button"
-                                                        role="radio"
-                                                        aria-checked={valor === n.id}
+
+            <div className="relative overflow-x-auto rounded-xl border border-gray-200 bg-white" data-carril-a-proposito>
+                <table className="w-full border-collapse text-sm" aria-label="Notas con el instrumento">
+                    <thead>
+                        <tr className="bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-700">
+                            <th scope="col" className="sticky left-0 z-10 min-w-[10rem] border-b border-gray-200 bg-gray-50 px-3 py-2">
+                                Alumno
+                            </th>
+                            {instrumento.criterios.map((c) => (
+                                <th key={c.id} scope="col" className="min-w-[6.5rem] border-b border-gray-200 px-2 py-2 align-bottom normal-case">
+                                    <span className="block text-xs font-semibold leading-tight text-gray-900">{c.texto}</span>
+                                    <span className="block text-xs font-medium text-gray-600">
+                                        {porPuntos ? `de 0 a ${c.puntos}` : (c.peso ?? 1) !== 1 ? `peso ${c.peso}` : 'nivel'}
+                                    </span>
+                                </th>
+                            ))}
+                            <th scope="col" className="border-b border-gray-200 px-2 py-2 text-right">
+                                Nota / {maximo}
+                            </th>
+                            {puedeEditar && <th scope="col" className="w-12 border-b border-gray-200"><span className="sr-only">Quitar</span></th>}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {alumnos.map((a) => {
+                            const suyas = marcas[a.id];
+                            const nota = notaDe(suyas);
+                            const nombre = `${a.lastName}, ${a.firstName}`;
+                            return (
+                                <tr key={a.id} className="hover:bg-indigo-50/30">
+                                    <th scope="row" className={cn(celda, 'sticky left-0 z-10 bg-white px-3 text-left font-semibold text-gray-900')}>
+                                        {nombre}
+                                    </th>
+                                    {instrumento.criterios.map((c) => {
+                                        const valor = suyas?.[c.id];
+                                        const cambiar = (v: boolean | string | number | null) => {
+                                            const nuevas: Marcas = { ...(suyas ?? {}) };
+                                            if (v === null) delete nuevas[c.id];
+                                            else nuevas[c.id] = v;
+                                            marcar(a.id, Object.keys(nuevas).length ? nuevas : null);
+                                        };
+                                        if (porPuntos) {
+                                            const vale = c.puntos ?? 0;
+                                            return (
+                                                <td key={c.id} className={celda}>
+                                                    <CeldaDePuntos
+                                                        valor={valor}
+                                                        vale={vale}
                                                         disabled={!puedeEditar}
-                                                        title={[n.nombre, instrumento.descriptores?.[c.id]?.[n.id]].filter(Boolean).join(': ')}
-                                                        onClick={() => cambiar(valor === n.id ? null : n.id)}
-                                                        className={cn(
-                                                            'min-h-[44px] min-w-[44px] rounded-lg border px-2 text-sm font-bold',
-                                                            valor === n.id ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300 bg-white text-gray-800'
-                                                        )}
-                                                    >
-                                                        {n.id}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                            {suyas && puedeEditar && (
-                                <button type="button" onClick={() => marcar(a.id, null)} className="min-h-[44px] text-xs font-semibold text-gray-600 hover:text-red-700">
-                                    Quitar su nota
-                                </button>
-                            )}
-                        </li>
-                    );
-                })}
-            </ul>
+                                                        etiqueta={`${nombre}: ${c.texto} (de 0 a ${vale})`}
+                                                        alCambiar={cambiar}
+                                                    />
+                                                </td>
+                                            );
+                                        }
+                                        return (
+                                            <td key={c.id} className={celda}>
+                                                <select
+                                                    disabled={!puedeEditar}
+                                                    value={typeof valor === 'string' ? valor : ''}
+                                                    onChange={(e) => cambiar(e.target.value || null)}
+                                                    title={typeof valor === 'string' ? instrumento.descriptores?.[c.id]?.[valor] : undefined}
+                                                    className="min-h-[44px] w-24 rounded-lg border border-gray-300 bg-white px-2 text-sm font-semibold focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-gray-50"
+                                                    aria-label={`${nombre}: ${c.texto}`}
+                                                >
+                                                    <option value="">—</option>
+                                                    {niveles.map((n) => (
+                                                        <option key={n.id} value={n.id}>
+                                                            {n.id} · {n.nombre}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </td>
+                                        );
+                                    })}
+                                    <td className={cn(celda, 'text-right')}>
+                                        <span
+                                            className={cn(
+                                                'inline-block whitespace-nowrap rounded-lg px-2 py-1 text-sm font-bold tabular-nums',
+                                                nota === null ? 'bg-gray-100 text-gray-700' : 'bg-emerald-50 text-emerald-800'
+                                            )}
+                                        >
+                                            {nota === null ? (suyas ? 'Incompleto' : 'Sin nota') : nota}
+                                        </span>
+                                    </td>
+                                    {puedeEditar && (
+                                        <td className={celda}>
+                                            {suyas && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => marcar(a.id, null)}
+                                                    aria-label={`Quitar la nota de ${nombre}`}
+                                                    title="Quitar su nota"
+                                                    className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-rose-50 hover:text-rose-700"
+                                                >
+                                                    <X className="h-4 w-4" aria-hidden />
+                                                </button>
+                                            )}
+                                        </td>
+                                    )}
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
         </section>
     );
 }

@@ -736,18 +736,6 @@ function LiveClassPageInner() {
                                 </div>
                             )}
 
-                            {/* Con instrumento: se califica marcando sus casillas (la nota sale sola). */}
-                            {activeGradingActivity?.instrumento && (
-                                <CalificarConInstrumento
-                                    key={activeGradingActivity.id}
-                                    activityId={activeGradingActivity.id}
-                                    instrumento={activeGradingActivity.instrumento}
-                                    detalle={(currentActivitiesList.find((a) => a.id === activeGradingActivity.id) ?? activeGradingActivity).detalleDelInstrumento}
-                                    alumnos={classStudents}
-                                    puedeEditar={canEdit}
-                                />
-                            )}
-
                             {/* Fila con buscador y contadores de asistencia */}
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                 <div className="relative max-w-sm w-full">
@@ -841,6 +829,20 @@ function LiveClassPageInner() {
                                     ))}
                                 </div>
                             )}
+                            {/* CON INSTRUMENTO, LA TABLA CAMBIA: una columna por indicador,
+                                con los puntos que saca cada alumno en cada uno (la nota
+                                sale sola). Antes era una tarjeta por alumno debajo de la
+                                tabla: treinta tarjetas y la tabla de siempre al final. */}
+                            {activeGradingActivity?.instrumento ? (
+                                <CalificarConInstrumento
+                                    key={activeGradingActivity.id}
+                                    activityId={activeGradingActivity.id}
+                                    instrumento={activeGradingActivity.instrumento}
+                                    detalle={(currentActivitiesList.find((a) => a.id === activeGradingActivity.id) ?? activeGradingActivity).detalleDelInstrumento}
+                                    alumnos={sortedStudents}
+                                    puedeEditar={canEdit}
+                                />
+                            ) : (
                             <TablaAdaptable<(typeof sortedStudents)[number]>
                                 compacta={!modoAsistencia && !activeGradingActivity}
                                 datos={sortedStudents}
@@ -1143,6 +1145,7 @@ function LiveClassPageInner() {
                                           ]),
                                 ]}
                             />
+                            )}
                         </div>
                     </div>
                 </>

@@ -57,7 +57,7 @@ function DesgloseDelInstrumento({ instrumento, marcas }: { instrumento: Instrume
                 const m = marcas?.[c.id];
                 const que =
                     instrumento.tipo === 'COTEJO'
-                        ? `${m === true ? c.puntos : 0} / ${c.puntos}`
+                        ? `${m === true ? c.puntos : typeof m === 'number' ? m : 0} / ${c.puntos}`
                         : instrumento.tipo === 'PUNTOS'
                           ? `${typeof m === 'number' ? m : '—'} / ${c.puntos}`
                           : niveles.find((n) => n.id === m)?.nombre ?? '—';

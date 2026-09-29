@@ -28,7 +28,7 @@ import { NOMBRE_DEL_TIPO } from './nombres-de-instrumentos';
  */
 
 const AYUDA: Record<TipoDeInstrumento, string> = {
-    COTEJO: 'Cada indicador es sí o no; lo marcado suma sus puntos.',
+    COTEJO: 'Cada indicador vale sus puntos; al calificar se le da de 0 a lo que vale (la portada mal hecha, 1 de 2).',
     ESCALA: 'Cada criterio se ubica en un nivel (logro destacado, esperado, en proceso, en inicio).',
     RUBRICA: 'Como la escala, y cada casilla dice qué se espera en ese nivel.',
     PUNTOS: 'Cada criterio recibe de 0 a sus puntos.',

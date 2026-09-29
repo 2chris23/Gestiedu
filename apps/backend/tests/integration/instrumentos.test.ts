@@ -43,6 +43,10 @@ describe('Instrumentos: la cuenta (INSTR-01/02)', () => {
         expect(maximoDelInstrumento(cotejo)).toBe(20);
         expect(notaDelInstrumento(cotejo, { c1: true, c2: true, c3: false, c4: true })).toBe(12);
         expect(notaDelInstrumento(cotejo, {})).toBe(0);
+        // Cada indicador de 0 a lo que vale: la portada está pero mal hecha, 1 de 2.
+        expect(notaDelInstrumento(cotejo, { c1: 1, c2: 5, c3: 2.5, c4: true, c5: 0 })).toBe(13.5);
+        expect(() => notaDelInstrumento(cotejo, { c1: 3 })).toThrow(/Portada»: de 0 a 2/);
+        expect(() => notaDelInstrumento(cotejo, { c1: 'mucho' })).toThrow(InstrumentoInvalido);
 
         const escala = validarInstrumento({ ...plantillaDe('ESCALA'), criterios: [...plantillaDe('ESCALA').criterios.slice(0, 4), { id: 'c5', texto: 'Proceso', peso: 2 }] });
         expect(maximoDelInstrumento(escala)).toBe(24);
