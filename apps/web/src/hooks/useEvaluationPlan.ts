@@ -51,6 +51,8 @@ export interface AutoPopulatedData {
     nombreAntesDelPlan?: string;
     lapsoEndDate?: string;
     lapsoWeeks?: number;
+    /** Las secciones del mismo año donde este profesor da esta materia («A-B-C-D»). */
+    seccionesDelProfesor?: string[];
 }
 
 export interface EvaluationPlanRow {

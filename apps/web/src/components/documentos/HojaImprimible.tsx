@@ -87,6 +87,7 @@ export function HojaImprimible({
     paginas = false,
     nombreDelArchivo,
     controles,
+    sinMembrete = false,
     children,
 }: {
     /** Nombre de la hoja para los lectores de pantalla (y las pruebas). */
@@ -103,6 +104,8 @@ export function HojaImprimible({
     nombreDelArchivo?: string;
     /** Lo que va junto a «Imprimir» (un selector de lapso, de tipo…). */
     controles?: React.ReactNode;
+    /** La hoja trae su propio membrete dentro (el plan de evaluación del MPPE). */
+    sinMembrete?: boolean;
     children?: React.ReactNode;
 }) {
     const router = useRouter();
@@ -138,11 +141,13 @@ export function HojaImprimible({
                 className="rounded-xl border border-gray-200 bg-white p-4 text-gray-900 shadow-sm sm:p-8 print:border-0 print:p-0 print:shadow-none"
                 aria-label={etiqueta}
             >
-                <header className="text-center">
-                    <MembreteOficial />
-                    {titulo && <h1 className="mt-4 text-base font-bold uppercase tracking-wide text-gray-900">{titulo}</h1>}
-                    {subtitulo && <div className="text-sm text-gray-700">{subtitulo}</div>}
-                </header>
+                {!sinMembrete && (
+                    <header className="text-center">
+                        <MembreteOficial />
+                        {titulo && <h1 className="mt-4 text-base font-bold uppercase tracking-wide text-gray-900">{titulo}</h1>}
+                        {subtitulo && <div className="text-sm text-gray-700">{subtitulo}</div>}
+                    </header>
+                )}
                 {children}
             </article>
         </div>

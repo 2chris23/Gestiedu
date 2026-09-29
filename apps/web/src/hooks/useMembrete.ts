@@ -19,6 +19,8 @@ export interface Membrete {
     entidadFederal: string | null;
     municipio: string | null;
     parroquia: string | null;
+    /** «Circuito N.º 2» (sale en el plan de evaluación). */
+    circuitoEducativo?: string | null;
     direccion: string | null;
     telefono: string | null;
     logo: string | null;

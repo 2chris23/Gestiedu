@@ -62,7 +62,7 @@ const PAPELES: Array<{ id: string; nombre: string; ruta: () => string; listo: st
     { id: 'DOC-LIMPIO-03', nombre: 'Constancia de trabajo', ruta: () => `/dashboard/constancia-de-trabajo/${encodeURIComponent(d.profe)}`, listo: 'article p', hojas: 1 },
     { id: 'DOC-LIMPIO-04', nombre: 'Boleta', ruta: () => `/dashboard/boleta/${encodeURIComponent(d.alumno)}`, listo: 'article[aria-label="Boleta de calificaciones"] table' },
     { id: 'DOC-LIMPIO-05', nombre: 'Planilla de inscripción', ruta: () => `/dashboard/planilla-de-inscripcion/${encodeURIComponent(d.alumno)}`, listo: 'article h1' },
-    { id: 'DOC-LIMPIO-06', nombre: 'Plan de evaluación', ruta: () => `/dashboard/plan-de-evaluacion/${d.seccion}/${d.materia}?lapso=1`, listo: 'table[aria-label="Plan del lapso"]' },
+    { id: 'DOC-LIMPIO-06', nombre: 'Plan de evaluación', ruta: () => `/dashboard/plan-de-evaluacion/${d.seccion}/${d.materia}?lapso=1`, listo: 'table[aria-label="Plan de evaluación"], table[aria-label="Plan del lapso"]' },
     { id: 'DOC-LIMPIO-07', nombre: 'Resumen final', ruta: () => `/dashboard/resumen-final/${d.seccion}`, listo: 'article' },
     { id: 'DOC-LIMPIO-08', nombre: 'Carnets', ruta: () => `/dashboard/carnets?seccion=${d.seccion}`, listo: 'ul[aria-label="Carnets"] li' },
 ];

@@ -44,6 +44,8 @@ export interface DatosDelPlantel {
     entidadFederal?: string;
     municipio?: string;
     parroquia?: string;
+    /** «Circuito N.º 2»: el circuito educativo del plantel (sale en el plan de evaluación). */
+    circuitoEducativo?: string;
     /** Las líneas de arriba del membrete. Vacío = el del MPPE. */
     textoDelMinisterio?: string;
     /** «NO» para quitar el logo del Ministerio del membrete; vacío = se pone. */
@@ -60,6 +62,7 @@ export const CAMPOS_DEL_PLANTEL: (keyof DatosDelPlantel)[] = [
     'entidadFederal',
     'municipio',
     'parroquia',
+    'circuitoEducativo',
     'textoDelMinisterio',
     'logoDelMinisterio',
 ];
@@ -130,6 +133,7 @@ export interface Membrete {
     entidadFederal: string | null;
     municipio: string | null;
     parroquia: string | null;
+    circuitoEducativo: string | null;
     direccion: string | null;
     telefono: string | null;
     logo: string | null;
@@ -156,6 +160,7 @@ export async function membreteDelLiceo(instituteId: string): Promise<Membrete> {
         entidadFederal: o(docs.entidadFederal),
         municipio: o(docs.municipio),
         parroquia: o(docs.parroquia),
+        circuitoEducativo: o(docs.circuitoEducativo),
         direccion: [liceo?.address, liceo?.city].filter(Boolean).join(', ') || null,
         telefono: liceo?.phone ?? null,
         logo: liceo?.logo ?? null,

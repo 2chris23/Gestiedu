@@ -30,6 +30,7 @@ const DATOS_VACIOS = {
     entidadFederal: '',
     municipio: '',
     parroquia: '',
+    circuitoEducativo: '',
     textoDelMinisterio: '',
     /** «NO» = sin el logo del Ministerio en los documentos. */
     logoDelMinisterio: '',
@@ -292,6 +293,11 @@ export function GeneralSettings() {
                         <span className="mb-1 block text-sm font-medium text-gray-700">Parroquia</span>
                         <input id="parroquia" className={CAMPO} maxLength={160}
                             value={plantel.parroquia} onChange={(e) => setPlantel((p) => ({ ...p, parroquia: e.target.value }))} />
+                    </label>
+                    <label htmlFor="circuitoEducativo" className="block">
+                        <span className="mb-1 block text-sm font-medium text-gray-700">Circuito educativo</span>
+                        <input id="circuitoEducativo" className={CAMPO} maxLength={160} placeholder="Circuito N.º 2"
+                            value={plantel.circuitoEducativo} onChange={(e) => setPlantel((p) => ({ ...p, circuitoEducativo: e.target.value }))} />
                     </label>
                     <label htmlFor="textoDelMinisterio" className="block md:col-span-2">
                         <span className="mb-1 block text-sm font-medium text-gray-700">Encabezado del ministerio (una línea por renglón)</span>

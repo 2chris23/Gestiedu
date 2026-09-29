@@ -16,7 +16,8 @@ export default function PlanDeEvaluacionImpresoPage({ params }: { params: Promis
     const { classroomId, subjectId } = use(params);
     const lapso = useSearchParams().get('lapso') || '1';
     return (
-        <HojaImprimible etiqueta="Plan de evaluación" titulo="Plan de evaluación" papel="carta-apaisada" paginas nombreDelArchivo="Plan de evaluación">
+        // El plan del MPPE lleva el membrete dentro de su tabla (PlanImpreso).
+        <HojaImprimible etiqueta="Plan de evaluación" papel="carta-apaisada" paginas sinMembrete nombreDelArchivo="Plan de evaluación">
             <PlanImpreso classroomId={decodeURIComponent(classroomId)} subjectId={decodeURIComponent(subjectId)} lapso={lapso} />
         </HojaImprimible>
     );

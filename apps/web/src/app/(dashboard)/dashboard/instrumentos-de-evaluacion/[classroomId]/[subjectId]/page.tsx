@@ -24,7 +24,8 @@ function Referencia({ def }: { def: Instrumento }) {
         // Lo que se mira en cada indicador y lo que vale.
         if (!def.criterios.some((c) => c.descripcion)) return null;
         return (
-            <table className="mt-2 w-full border-collapse text-[11px]">
+            <div className="relative mt-2 overflow-x-auto print:overflow-visible" data-carril-a-proposito>
+        <table className="w-full border-collapse text-[11px]">
                 <thead>
                     <tr className="bg-gray-100">
                         <th scope="col" className={`${CELDA} text-left`}>{def.tipo === 'COTEJO' ? 'Indicador' : 'Criterio'}</th>
@@ -42,11 +43,13 @@ function Referencia({ def }: { def: Instrumento }) {
                     ))}
                 </tbody>
             </table>
+            </div>
         );
     }
     const niveles = def.niveles ?? NIVELES_POR_DEFECTO;
     return (
-        <table className="mt-2 w-full border-collapse text-[11px]">
+        <div className="relative mt-2 overflow-x-auto print:overflow-visible" data-carril-a-proposito>
+        <table className="w-full border-collapse text-[11px]">
             <thead>
                 <tr className="bg-gray-100">
                     <th scope="col" className={`${CELDA} text-left`}>Criterio</th>
@@ -74,6 +77,7 @@ function Referencia({ def }: { def: Instrumento }) {
                 ))}
             </tbody>
         </table>
+        </div>
     );
 }
 
@@ -87,7 +91,8 @@ function marcaLegible(def: Instrumento, m: Marcas[string] | undefined) {
 function Planilla({ def, alumnos, detalle }: { def: Instrumento; alumnos: AlumnoDeLaLista[]; detalle?: Record<string, { marcas: Marcas; total: number | null }> }) {
     const cabeza = (c: Instrumento['criterios'][number]) => (def.tipo === 'COTEJO' || def.tipo === 'PUNTOS' ? `${c.texto} (${c.puntos} pts)` : c.texto);
     return (
-        <table className="mt-2 w-full border-collapse text-[11px]">
+        <div className="relative mt-2 overflow-x-auto print:overflow-visible" data-carril-a-proposito>
+        <table className="w-full border-collapse text-[11px]">
             <thead>
                 <tr className="bg-gray-100">
                     <th scope="col" className={`${CELDA} w-8`}>N.º</th>
@@ -128,6 +133,7 @@ function Planilla({ def, alumnos, detalle }: { def: Instrumento; alumnos: Alumno
                 })}
             </tbody>
         </table>
+        </div>
     );
 }
 

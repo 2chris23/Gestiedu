@@ -107,6 +107,21 @@ export async function getEvaluationPlanMetadata(
         autoPopulated.ministryLogo = c?.institute?.ministryLogo;
         autoPopulated.ministryText = c?.institute?.ministryText;
 
+        /**
+         * LAS SECCIONES DEL MISMO AÑO DONDE ESTE PROFESOR DA ESTA MATERIA
+         *
+         * El plan en papel dice «AÑO: 5TO · SECCIONES: A-B-C-D»: un profesor
+         * entrega un plan para todas sus secciones de ese año (lo copia con
+         * «Copiar a otra sección»).
+         */
+        if (t && c?.academicYearId) {
+          const hermanas = await db.classroomSubject.findMany({
+            where: { subjectId, teacherId: t.id, classroom: { academicYearId: c.academicYearId, grade: c.grade } },
+            select: { classroom: { select: { section: true } } },
+          });
+          autoPopulated.seccionesDelProfesor = [...new Set(hermanas.map((h: any) => h.classroom.section).filter(Boolean))].sort();
+        }
+
         // Academic Year + Periods
         if (c?.academicYearId) {
           const academicYear = await db.academicYear.findUnique({
