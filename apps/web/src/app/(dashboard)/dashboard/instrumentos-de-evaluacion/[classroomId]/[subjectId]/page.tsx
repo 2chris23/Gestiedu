@@ -133,8 +133,12 @@ function Planilla({ def, alumnos, detalle }: { def: Instrumento; alumnos: Alumno
 
 function Evaluacion({ e, i, alumnos, conNotas }: { e: EvaluacionConInstrumento; i: number; alumnos: AlumnoDeLaLista[]; conNotas: boolean }) {
     return (
-        <section className="mt-6 break-inside-avoid-page">
-            <h2 className="text-sm font-bold">
+        // Sin «no partir la sección»: una planilla de treinta alumnos no cabe
+        // debajo del membrete, y la regla la mandaba entera a la hoja siguiente
+        // y dejaba la primera en blanco. Se parte por las filas (cada fila,
+        // entera) y el título no se queda solo al pie de una hoja.
+        <section className="mt-6">
+            <h2 className="break-after-avoid text-sm font-bold">
                 Actividad {i + 1}: {e.actividad || 'Evaluación'} — semana {e.semana} ({e.puntos} pts.)
             </h2>
             <p className="text-xs text-gray-700">
