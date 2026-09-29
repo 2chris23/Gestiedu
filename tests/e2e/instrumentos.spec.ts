@@ -113,8 +113,18 @@ test('INSTR-UI-02: calificar en la tabla de la clase, arrastrando cada indicador
 test('INSTR-UI-03: los instrumentos con las notas y el acta de socialización, en papel limpio', async ({ page }, testInfo) => {
     try {
         await loginViaUI(page, c.profe, '123456');
-        await page.goto(`${WEB_BASE}/dashboard/instrumentos-de-evaluacion/${c.seccion}/${c.materia}?lapso=1&conNotas=1`);
-        await expect(page.getByRole('article', { name: 'Instrumentos de evaluación' }).getByText(TITULO)).toBeVisible({ timeout: 60000 });
+        // Con las notas, sin pedirlo: «Imprimir todos» del plan.
+        await page.goto(`${WEB_BASE}/dashboard/instrumentos-de-evaluacion/${c.seccion}/${c.materia}?lapso=1`);
+        const hoja = page.getByRole('article', { name: 'Instrumentos de evaluación' });
+        await expect(hoja.getByText(TITULO)).toBeVisible({ timeout: 60000 });
+        // Y uno solo: el de esa evaluación, con sus notas.
+        await page.goto(`${WEB_BASE}/dashboard/instrumentos-de-evaluacion/${c.seccion}/${c.materia}?lapso=1&evaluacion=${c.fila}`);
+        await expect(hoja.getByText(TITULO)).toBeVisible({ timeout: 60000 });
+        await expect(hoja.getByRole('heading', { level: 2 })).toHaveCount(1);
+        await page.getByRole('link', { name: 'Sacarla en blanco' }).click();
+        await expect(page).toHaveURL(/enBlanco=1/);
+        await expect(hoja.getByText(TITULO)).toHaveCount(0);
+        await page.goBack();
         await page.emulateMedia({ media: 'print' });
         await expect(page.getByRole('navigation', { name: 'Navegación principal' })).toHaveCount(0);
         await page.screenshot({ path: 'test-results/evidencia/instrumentos-impresos.png', fullPage: true });

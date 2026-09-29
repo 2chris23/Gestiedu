@@ -48,6 +48,9 @@ export function useQuitarInstrumento() {
         onSuccess: (_, rowId) => {
             void cola.invalidateQueries({ queryKey: ['instrumento', rowId] });
             void cola.invalidateQueries({ queryKey: ['instrumentos-del-plan'] });
+            // Sus actividades dejan de calificarse con él: la clase lo tiene que saber.
+            void cola.invalidateQueries({ queryKey: ['liveClassDetail'] });
+            void cola.invalidateQueries({ queryKey: ['classActivities'] });
         },
     });
 }

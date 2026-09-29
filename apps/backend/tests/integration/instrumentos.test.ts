@@ -31,6 +31,9 @@ import { notaDelInstrumento, plantillaDe, validarInstrumento, maximoDelInstrumen
  *   INSTR-06  cambiar el plan no cambia lo ya calificado (la copia)
  *   INSTR-07  alumno de otra sección → 400; dos tandas a la vez no se pisan
  *   INSTR-08  copiar el plan lleva el instrumento; borrar la fila lo manda a la papelera
+ *   INSTR-11  quitar el instrumento lo quita de sus actividades, también de las
+ *             calificadas (su nota se queda y se puede cambiar a mano)
+ *   INSTR-12  cada criterio puede llevar su descripción
  *   INSTR-09  guardar con una versión vieja → 409
  *   MICLASE-07 el alumno ve SU desglose y no el de los demás
  */
@@ -191,6 +194,36 @@ describe('Instrumentos: en el plan y en la clase (INSTR-03…09, MICLASE-07)', (
         await api().delete(`/api/evaluation-plan/rows/${fila.id}/instrumento`).set(cab(profe, UserRole.TEACHER)).expect(200);
         expect(await prisma.instrumentoDeEvaluacion.count({ where: { planRowId: fila.id } })).toBe(0);
         expect(await prisma.registroBorrado.count({ where: { tabla: 'instrumentoDeEvaluacion', registroId: { not: '' } } })).toBeGreaterThan(0);
+    });
+
+    it('INSTR-11: quitar el instrumento lo quita de sus actividades, también de las calificadas', async () => {
+        await ponerInstrumento(plantillaDe('COTEJO')).expect(200);
+        const calificada = await actividad();
+        const vacia = await actividad({ title: 'Sin notas' });
+        await marcar(calificada.id, { [ana.id]: { c1: 2, c2: 5 } }).expect(200);
+
+        await api().delete(`/api/evaluation-plan/rows/${fila.id}/instrumento`).set(cab(profe, UserRole.TEACHER)).expect(200);
+
+        const ya = await prisma.classActivity.findUnique({ where: { id: calificada.id } });
+        expect(ya!.instrumento).toBeNull();
+        expect(ya!.detalleDelInstrumento).toBeNull();
+        expect(ya!.scores).toEqual({ [ana.id]: 7 });
+        expect((await prisma.classActivity.findUnique({ where: { id: vacia.id } }))!.instrumento).toBeNull();
+        // Y se vuelve a poner nota a mano.
+        await api().post(`/api/sessions/activities/${calificada.id}/grades`).set(cab(profe, UserRole.TEACHER)).send({ scores: { [ana.id]: 15 } }).expect(200);
+    });
+
+    it('INSTR-12: cada criterio puede llevar su descripción', async () => {
+        const conDescripcion = {
+            ...plantillaDe('COTEJO'),
+            criterios: plantillaDe('COTEJO').criterios.map((c, i) => (i === 0 ? { ...c, descripcion: '  Nombre, fecha, título y logo del liceo  ' } : c)),
+        };
+        await ponerInstrumento(conDescripcion).expect(200);
+        const guardado = await prisma.instrumentoDeEvaluacion.findUnique({ where: { planRowId: fila.id } });
+        expect((guardado!.definicion as any).criterios[0].descripcion).toBe('Nombre, fecha, título y logo del liceo');
+        expect((guardado!.definicion as any).criterios[1].descripcion).toBeUndefined();
+        const larga = { ...conDescripcion, criterios: [{ id: 'a', texto: 'x', puntos: 1, descripcion: 'z'.repeat(1001) }] };
+        await ponerInstrumento(larga).expect(400);
     });
 
     it('INSTR-09: guardar con una versión vieja → 409', async () => {

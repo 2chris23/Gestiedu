@@ -12,14 +12,38 @@ import { NIVELES_POR_DEFECTO, notaDelInstrumento, type Instrumento, type Marcas 
  * LOS INSTRUMENTOS DE EVALUACIÓN DEL LAPSO, PARA IMPRIMIR
  *
  * Cada evaluación del plan con su técnica y su instrumento: la escala o la
- * rúbrica con sus niveles, y la planilla de la sección (N.º, nombre, un hueco
- * por criterio y la nota). En blanco, para llenarla a mano; con
- * `?conNotas=1`, con lo ya marcado en la clase. `?lapso=1|2|3`.
+ * rúbrica con sus niveles, cada indicador con su descripción, y la planilla de
+ * la sección (N.º, nombre, un hueco por criterio y la nota). Sale con las notas
+ * ya puestas en la clase; con `?enBlanco=1`, vacía para llenarla a mano.
+ * `?evaluacion=<fila>` saca una sola; sin él, todas. `?lapso=1|2|3`.
  */
 const CELDA = 'border border-gray-500 px-1.5 py-1';
 
 function Referencia({ def }: { def: Instrumento }) {
-    if (def.tipo === 'COTEJO' || def.tipo === 'PUNTOS') return null;
+    if (def.tipo === 'COTEJO' || def.tipo === 'PUNTOS') {
+        // Lo que se mira en cada indicador y lo que vale.
+        if (!def.criterios.some((c) => c.descripcion)) return null;
+        return (
+            <table className="mt-2 w-full border-collapse text-[11px]">
+                <thead>
+                    <tr className="bg-gray-100">
+                        <th scope="col" className={`${CELDA} text-left`}>{def.tipo === 'COTEJO' ? 'Indicador' : 'Criterio'}</th>
+                        <th scope="col" className={`${CELDA} text-left`}>Descripción</th>
+                        <th scope="col" className={`${CELDA} w-14`}>Puntos</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {def.criterios.map((c) => (
+                        <tr key={c.id} className="break-inside-avoid">
+                            <th scope="row" className={`${CELDA} text-left font-medium`}>{c.texto}</th>
+                            <td className={`${CELDA} align-top`}>{c.descripcion ?? ''}</td>
+                            <td className={`${CELDA} text-center`}>{c.puntos}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        );
+    }
     const niveles = def.niveles ?? NIVELES_POR_DEFECTO;
     return (
         <table className="mt-2 w-full border-collapse text-[11px]">
@@ -39,6 +63,7 @@ function Referencia({ def }: { def: Instrumento }) {
                         <th scope="row" className={`${CELDA} text-left font-medium`}>
                             {c.texto}
                             {(c.peso ?? 1) !== 1 ? ` (×${c.peso})` : ''}
+                            {c.descripcion && <span className="block font-normal text-gray-700">{c.descripcion}</span>}
                         </th>
                         {niveles.map((n) => (
                             <td key={n.id} className={`${CELDA} align-top`}>
@@ -120,10 +145,8 @@ function Evaluacion({ e, i, alumnos, conNotas }: { e: EvaluacionConInstrumento; 
             {e.instrumento ? (
                 <>
                     <Referencia def={e.instrumento} />
-                    {conNotas ? (
-                        e.calificadas.length === 0 ? (
-                            <p className="mt-2 text-xs text-gray-600">Todavía no se ha calificado con este instrumento.</p>
-                        ) : (
+                    {conNotas && e.calificadas.length > 0 ? (
+                        (
                             e.calificadas.map((c) => (
                                 <div key={c.id} className="mt-3">
                                     <p className="text-xs font-semibold">{c.titulo}</p>
@@ -146,27 +169,37 @@ export default function InstrumentosDeEvaluacionPage({ params }: { params: Promi
     const { classroomId, subjectId } = use(params);
     const q = useSearchParams();
     const lapso = q.get('lapso') || '1';
-    const conNotas = q.get('conNotas') === '1';
+    // Con las notas, salvo que se pida en blanco (antes era al revés, y el
+    // profesor imprimía la hoja vacía creyendo que salía con lo que puso).
+    const conNotas = q.get('enBlanco') !== '1';
+    const soloUna = q.get('evaluacion');
     const { data: d, isLoading, error } = useInstrumentosDelLapso(decodeURIComponent(classroomId), decodeURIComponent(subjectId), lapso, conNotas);
-    const otra = `/dashboard/instrumentos-de-evaluacion/${classroomId}/${subjectId}?lapso=${lapso}${conNotas ? '' : '&conNotas=1'}`;
+    const otra = `/dashboard/instrumentos-de-evaluacion/${classroomId}/${subjectId}?lapso=${lapso}${soloUna ? `&evaluacion=${encodeURIComponent(soloUna)}` : ''}${conNotas ? '&enBlanco=1' : ''}`;
+    const evaluaciones = d ? (soloUna ? d.evaluaciones.filter((e) => e.id === soloUna) : d.evaluaciones) : [];
+    const una = soloUna && evaluaciones[0];
 
     return (
         <HojaImprimible
             etiqueta="Instrumentos de evaluación"
-            titulo={d ? `Instrumentos de evaluación de ${d.area}` : 'Instrumentos de evaluación'}
+            titulo={d ? (una ? `Instrumento de evaluación de ${d.area}` : `Instrumentos de evaluación de ${d.area}`) : 'Instrumentos de evaluación'}
             subtitulo={d ? `${d.seccion} · ${d.lapso} · ${d.ciclo} · Docente: ${d.docente}` : undefined}
-            nombreDelArchivo={d ? `Instrumentos — ${d.area} ${d.seccion}` : undefined}
+            nombreDelArchivo={d ? (una ? `Instrumento semana ${una.semana} — ${d.area} ${d.seccion}` : `Instrumentos — ${d.area} ${d.seccion}`) : undefined}
             paginas
             cargando={isLoading}
             error={error}
             textoDeCarga="Preparando los instrumentos…"
             controles={
                 <Link href={otra} className="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-3 text-sm font-semibold text-gray-800 hover:bg-gray-50">
-                    {conNotas ? 'En blanco' : 'Con las notas'}
+                    {conNotas ? 'Sacarla en blanco' : 'Con las notas'}
                 </Link>
             }
         >
-            {d && (d.evaluaciones.length === 0 ? <p className="mt-6 text-sm text-gray-600">El plan de este lapso no tiene evaluaciones con puntos.</p> : d.evaluaciones.map((e, i) => <Evaluacion key={e.id} e={e} i={i} alumnos={d.alumnos} conNotas={conNotas} />))}
+            {d &&
+                (evaluaciones.length === 0 ? (
+                    <p className="mt-6 text-sm text-gray-600">{soloUna ? 'Esa evaluación ya no está en el plan.' : 'El plan de este lapso no tiene evaluaciones con puntos.'}</p>
+                ) : (
+                    evaluaciones.map((e) => <Evaluacion key={e.id} e={e} i={d.evaluaciones.indexOf(e)} alumnos={d.alumnos} conNotas={conNotas} />)
+                ))}
         </HojaImprimible>
     );
 }

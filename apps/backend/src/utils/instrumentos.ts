@@ -29,6 +29,8 @@ export const TIPOS_DE_INSTRUMENTO: TipoDeInstrumento[] = ['COTEJO', 'ESCALA', 'R
 export interface Criterio {
     id: string;
     texto: string;
+    /** Qué se mira en él («Portada: nombre, fecha, título y logo del liceo»). Opcional. */
+    descripcion?: string;
     /** COTEJO y PUNTOS: lo que vale. */
     puntos?: number;
     /** ESCALA y RUBRICA: por cuánto se multiplica el nivel (1 si no se dice). */
@@ -81,6 +83,9 @@ export function validarInstrumento(entrada: any): Instrumento {
         if (!texto) mal(`El criterio ${i + 1} no tiene texto`);
         if (texto.length > 500) mal(`El criterio ${i + 1} es demasiado largo`);
         const limpio: Criterio = { id, texto };
+        const descripcion = String(c?.descripcion ?? '').trim();
+        if (descripcion.length > 1000) mal(`«${texto}»: la descripción es demasiado larga`);
+        if (descripcion) limpio.descripcion = descripcion;
         if (tipo === 'COTEJO' || tipo === 'PUNTOS') {
             if (!numero(c?.puntos) || c.puntos <= 0 || c.puntos > 100) mal(`«${texto}»: los puntos van de más de 0 a 100`);
             limpio.puntos = redondear(c.puntos);

@@ -163,6 +163,18 @@ export default function EditorDeInstrumento({
                                                 <Trash2 className="h-4 w-4" aria-hidden />
                                             </button>
                                         </div>
+                                        {/* Qué se mira en este indicador: sale en la hoja impresa y al calificar. */}
+                                        <div className="pl-8">
+                                            <textarea
+                                                aria-label={`Descripción de ${c.texto || `el criterio ${i + 1}`}`}
+                                                placeholder="Descripción: qué se mira (opcional). Ej.: nombre, fecha, título y logo del liceo."
+                                                rows={2}
+                                                maxLength={1000}
+                                                value={c.descripcion ?? ''}
+                                                onChange={(e) => criterio(i, { descripcion: e.target.value })}
+                                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                                            />
+                                        </div>
                                         {def.tipo === 'RUBRICA' && (
                                             <div className="grid gap-2 pl-8 sm:grid-cols-2">
                                                 {(def.niveles ?? NIVELES_POR_DEFECTO).map((n) => (

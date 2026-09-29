@@ -39,7 +39,7 @@ export default function InstrumentosDelPlan({ classroomId, subjectId, lapso, can
                         href={`/dashboard/instrumentos-de-evaluacion/${base}`}
                         className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50"
                     >
-                        <Printer className="h-3.5 w-3.5" aria-hidden /> Imprimir instrumentos
+                        <Printer className="h-3.5 w-3.5" aria-hidden /> Imprimir todos
                     </Link>
                 </div>
             </div>
@@ -61,15 +61,27 @@ export default function InstrumentosDelPlan({ classroomId, subjectId, lapso, can
                                           : 'Sin instrumento: se califica a mano'}
                                 </p>
                             </div>
-                            {canEdit && (
-                                <button
-                                    type="button"
-                                    onClick={() => setEditando({ id: e.id, titulo: `Semana ${e.semana} · ${e.actividad || 'Evaluación'}` })}
-                                    className="inline-flex min-h-[44px] items-center rounded-lg bg-indigo-50 px-3 text-xs font-bold text-indigo-700 hover:bg-indigo-100"
-                                >
-                                    {e.instrumento ? 'Editar instrumento' : 'Armar instrumento'}
-                                </button>
-                            )}
+                            <div className="flex flex-wrap items-center gap-2">
+                                {/* Este solo, con las notas ya puestas. */}
+                                {e.instrumento && (
+                                    <Link
+                                        href={`/dashboard/instrumentos-de-evaluacion/${base}&evaluacion=${encodeURIComponent(e.id)}`}
+                                        aria-label={`Imprimir el instrumento de la semana ${e.semana}`}
+                                        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                                    >
+                                        <Printer className="h-3.5 w-3.5" aria-hidden /> Imprimir
+                                    </Link>
+                                )}
+                                {canEdit && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditando({ id: e.id, titulo: `Semana ${e.semana} · ${e.actividad || 'Evaluación'}` })}
+                                        className="inline-flex min-h-[44px] items-center rounded-lg bg-indigo-50 px-3 text-xs font-bold text-indigo-700 hover:bg-indigo-100"
+                                    >
+                                        {e.instrumento ? 'Editar instrumento' : 'Armar instrumento'}
+                                    </button>
+                                )}
+                            </div>
                         </li>
                     ))}
                 </ul>

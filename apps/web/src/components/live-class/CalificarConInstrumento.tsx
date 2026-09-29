@@ -182,7 +182,7 @@ export default function CalificarConInstrumento({
                                 Alumno
                             </th>
                             {instrumento.criterios.map((c) => (
-                                <th key={c.id} scope="col" title={c.texto} className="border-b border-gray-200 px-2 py-2 align-bottom normal-case">
+                                <th key={c.id} scope="col" title={c.descripcion ? `${c.texto}: ${c.descripcion}` : c.texto} className="border-b border-gray-200 px-2 py-2 align-bottom normal-case">
                                     {/* El nombre en una línea (entero al pasar el ratón) y lo que vale. */}
                                     <span className="block max-w-[8.5rem] truncate text-xs font-semibold text-gray-900">{c.texto}</span>
                                     <span className="block text-xs font-medium text-gray-600">

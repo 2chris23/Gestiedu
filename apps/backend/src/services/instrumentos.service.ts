@@ -89,11 +89,22 @@ export async function borrarInstrumento(prisma: any, user: any, rowId: string, q
     await laFila(prisma, user, rowId, 'planificar');
     const n = await borrarGuardandoCopia(prisma, 'instrumentoDeEvaluacion', { planRowId: rowId }, quien);
     if (!n) throw createError(404, 'Esa evaluación no tiene instrumento', 'NOT_FOUND');
-    // Las que no tenían notas vuelven a calificarse a mano; las que sí, se quedan su copia.
+    /**
+     * QUITAR EL INSTRUMENTO ES QUITARLO DE SUS ACTIVIDADES
+     *
+     * Antes las que ya tenían notas se quedaban su copia, y el profesor que lo
+     * había quitado seguía calificando con él al pulsar «Dar nota». Ahora todas
+     * vuelven a calificarse a mano; la nota puesta se queda (sobre su máximo) y
+     * se puede cambiar. El desglose por criterio sí se va: ya no hay criterios.
+     */
     const suyas = await prisma.classActivity.findMany({ where: { planRowId: rowId }, select: { id: true, scores: true } });
     const sinNotas = suyas.filter((a: any) => !tieneNotas(a.scores)).map((a: any) => a.id);
+    const conNotas = suyas.filter((a: any) => tieneNotas(a.scores)).map((a: any) => a.id);
     if (sinNotas.length) {
         await prisma.classActivity.updateMany({ where: { id: { in: sinNotas } }, data: { instrumento: null, detalleDelInstrumento: null, maxScore: 20 } });
+    }
+    if (conNotas.length) {
+        await prisma.classActivity.updateMany({ where: { id: { in: conNotas } }, data: { instrumento: null, detalleDelInstrumento: null } });
     }
     return { borrado: true };
 }
