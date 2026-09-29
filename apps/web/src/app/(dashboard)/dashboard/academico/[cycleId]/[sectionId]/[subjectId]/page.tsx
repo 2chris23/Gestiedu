@@ -657,7 +657,7 @@ export default function SectionSubjectDashboard() {
                             classroomId={classroomId}
                             subjectId={subject.id}
                             lapso={selectedLapso}
-                            canEdit={user?.role === 'ADMIN' || user?.role === 'TEACHER'}
+                            canEdit={yo?.role === 'ADMIN' || yo?.role === 'TEACHER'}
                         />
                     </div>
                 )}

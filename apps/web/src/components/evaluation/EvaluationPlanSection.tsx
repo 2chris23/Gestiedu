@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useConfirm } from '@/hooks/useConfirm';
 import { toast } from 'sonner';
 import {
   Save, Printer, ArrowLeft, Edit2,
@@ -194,6 +195,7 @@ export default function EvaluationPlanSection({
   const [columns, setColumns] = useState<ColDef[]>([...DEFAULT_PLAN_COLUMNS]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const preguntar = useConfirm();
   const [isImporting, setIsImporting] = useState(false);
 
   // ── Copiar el plan a otras secciones ─────────
@@ -245,43 +247,79 @@ export default function EvaluationPlanSection({
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await api.post('/api/evaluation-plan/parse-word', formData, {
+      // Sin «/api» delante: el cliente ya lo pone. Con él, la dirección era
+      // /api/api/… y la importación no funcionó nunca.
+      const response = await api.post('/evaluation-plan/parse-word', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      if (response.data?.success && response.data?.rows) {
-        const parsedRows: Record<string, string>[] = response.data.rows;
-        
-        const newWeeks = [...weeks];
-        parsedRows.forEach((r, i) => {
-          if (i < newWeeks.length) {
-            // Sincronizar puntos y ponderación si vienen del Word
-            if (r['ponderacion'] && !r['puntos']) {
-              const p = parseFloat(String(r['ponderacion']).replace('%', '').trim());
-              if (!isNaN(p)) {
-                const pt = Math.round((p / 100) * 20 * 100) / 100;
-                r['puntos'] = String(pt);
-                r['ponderacion'] = String(Math.round((pt / 20) * 100 * 100) / 100);
-              }
-            } else if (r['puntos']) {
-              const pt = parseFloat(String(r['puntos']).trim());
-              if (!isNaN(pt)) {
-                r['puntos'] = String(Math.round(pt * 100) / 100);
-                r['ponderacion'] = String(Math.round((pt / 20) * 100 * 100) / 100);
-              }
-            }
-            newWeeks[i].data = { ...newWeeks[i].data, ...r };
-            Object.keys(r).forEach(k => {
-              newWeeks[i].colSpan[k] = 1;
-            });
+      const filas: Array<{ semana: number | null; datos: Record<string, string> }> =
+        response.data?.filas ?? (response.data?.rows ?? []).map((datos: Record<string, string>) => ({ semana: null, datos }));
+      if (filas.length) {
+        /**
+         * EL WORD ES EL PLAN
+         *
+         * Importar es poner el plan del Word: si el lapso ya tiene algo, se
+         * pregunta y se vacía antes (si no, las semanas que el Word no trae
+         * se quedaban con lo de antes, mezclado). Nada se guarda hasta
+         * «Guardar»; y guardar sin una evaluación que ya tiene notas da 409.
+         */
+        const yaTieneAlgo = weeks.some((w) => Object.values(w.data).some((v) => v !== '' && v !== 0 && v !== undefined && v !== null));
+        if (yaTieneAlgo) {
+          const ok = await preguntar({
+            title: 'Reemplazar el plan con el del Word',
+            description: `Se pone el plan del Word (${filas.length} ${filas.length === 1 ? 'evaluación' : 'evaluaciones'}) y se vacía lo que había en este momento. No se guarda hasta que pulses «Guardar».`,
+            confirmLabel: 'Reemplazar',
+          });
+          if (!ok) return;
+        }
+        const newWeeks = weeks.map((w) => ({ ...w, data: {}, colSpan: {} }) as WeekRow);
+        let siguiente = 0;
+        let fuera = 0;
+        filas.forEach(({ semana, datos }) => {
+          const r = { ...datos };
+          // Cada evaluación a SU semana («Semana 3» → la fila 3); sin semana, en orden.
+          const i = semana && semana >= 1 ? semana - 1 : siguiente;
+          siguiente = i + 1;
+          if (i >= newWeeks.length) {
+            fuera++;
+            return;
           }
+          // Sincronizar puntos y ponderación si vienen del Word
+          if (r['ponderacion'] && !r['puntos']) {
+            const pc = parseFloat(String(r['ponderacion']).replace('%', '').trim());
+            if (!isNaN(pc)) {
+              const pt = Math.round((pc / 100) * 20 * 100) / 100;
+              r['puntos'] = String(pt);
+              r['ponderacion'] = String(Math.round((pt / 20) * 100 * 100) / 100);
+            }
+          } else if (r['puntos']) {
+            const pt = parseFloat(String(r['puntos']).trim());
+            if (!isNaN(pt)) {
+              r['puntos'] = String(Math.round(pt * 100) / 100);
+              r['ponderacion'] = String(Math.round((pt / 20) * 100 * 100) / 100);
+            }
+          }
+          newWeeks[i] = { ...newWeeks[i], data: { ...newWeeks[i].data, ...r }, colSpan: { ...newWeeks[i].colSpan } };
+          Object.keys(r).forEach((k) => {
+            newWeeks[i].colSpan[k] = 1;
+          });
         });
         setWeeks(newWeeks);
-        toast.success('Datos importados correctamente desde Word.');
+        // Los datos de la cabecera del Word (docente, referentes, P.E.I.C.…).
+        const metadatos = response.data?.metadatos ?? {};
+        if (Object.keys(metadatos).length) setLocalMeta((m) => ({ ...m, ...metadatos }));
+        const puestas = filas.length - fuera;
+        toast.success(
+          `Importadas ${puestas} ${puestas === 1 ? 'evaluación' : 'evaluaciones'} del Word` +
+            (fuera ? `; ${fuera} caen fuera de las ${newWeeks.length} semanas del lapso` : '') +
+            '. Revisa y guarda.'
+        );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error('Error al importar el documento. Asegúrate de que tenga una tabla válida.');
+      // El servidor dice qué no encontró; si no, lo de siempre.
+      toast.error(error?.response?.data?.message || error?.response?.data?.error || 'Error al importar el documento. Asegúrate de que tenga una tabla válida.');
     } finally {
       setIsImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

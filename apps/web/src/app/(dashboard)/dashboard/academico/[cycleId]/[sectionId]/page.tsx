@@ -883,7 +883,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                             classroomId={classroomId || ''}
                                             subjectId={subject.id}
                                             lapso={selectedLapso}
-                                            canEdit={user?.role === 'ADMIN' || user?.role === 'TEACHER'}
+                                            canEdit={yo?.role === 'ADMIN' || yo?.role === 'TEACHER'}
                                         />
                                     </div>
                                 ))}

@@ -4,7 +4,7 @@ import { logger } from '../utils/logger';
 import { AppErrors } from '../middleware/error.middleware';
 import { RequestUser } from '../types/fastify';
 import * as mammoth from 'mammoth';
-import * as cheerio from 'cheerio';
+import { leerPlanDeWord } from '../services/importar-plan-de-word';
 import { semanaDelPlanCon, NOMBRE_ANTES_DEL_PLAN } from '../services/semana-del-plan.service';
 import { assertClassroomScope, assertCanSeeClassroom } from '../services/authorization.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
@@ -1005,65 +1005,19 @@ export async function parseWordFile(request: FastifyRequest, reply: FastifyReply
     }
 
     const result = await mammoth.convertToHtml({ buffer });
-    const html = result.value;
-
-    const $ = cheerio.load(html);
-    const table = $('table').first();
-
-    if (!table.length) {
-      throw AppErrors.BadRequest('El documento no contiene ninguna tabla válida para procesar');
+    let leido;
+    try {
+      leido = leerPlanDeWord(result.value);
+    } catch (e: any) {
+      if (e?.message === 'DEMASIADAS_FILAS') throw AppErrors.BadRequest('El documento contiene demasiadas filas en la tabla (máximo 500)');
+      throw e;
     }
-
-    // SEGURIDAD: Limitar número máximo de filas para evitar bloqueo del bucle de eventos
-    const trElements = table.find('tr');
-    if (trElements.length > 500) {
-      throw AppErrors.BadRequest('El documento contiene demasiadas filas en la tabla (máximo 500)');
+    if (!leido.filas.length) {
+      throw AppErrors.BadRequest('No se encontró la tabla del plan: hace falta una fila de títulos (Tema generador, Actividad, Técnica, Instrumento, Criterios, Ponderación…)');
     }
-
-    const rows: Record<string, string>[] = [];
-    const headerMapping: Record<number, string> = {};
-
-    // Keys mapping heuristic
-    const mapHeaderToKey = (text: string) => {
-      text = text.toLowerCase();
-      if (text.includes('tema')) return 'title';
-      if (text.includes('tejido')) return 'label';
-      if (text.includes('referente') || text.includes('teórico') || text.includes('teorico')) return 'textContent';
-      if (text.includes('actividad')) return 'actividadEval';
-      if (text.includes('técnica') || text.includes('tecnica')) return 'tecnicas';
-      if (text.includes('instrumento')) return 'instrumentos';
-      if (text.includes('criterio')) return 'criterios';
-      if (text.includes('tipo')) return 'tipoEvaluacion';
-      if (text.includes('%') || text.includes('ponderación') || text.includes('ponderacion')) return 'ponderacion';
-      if (text.includes('punto') || text.includes('pts')) return 'puntos';
-      return null;
-    };
-
-    table.find('tr').each((rowIndex, tr) => {
-      const isHeader = rowIndex === 0;
-      const rowData: Record<string, string> = {};
-      let hasData = false;
-
-      $(tr).find('td, th').each((colIndex, cell) => {
-        const text = $(cell).text().trim();
-        if (isHeader) {
-          const key = mapHeaderToKey(text);
-          if (key) headerMapping[colIndex] = key;
-        } else {
-          const key = headerMapping[colIndex];
-          if (key) {
-            rowData[key] = text;
-            if (text.length > 0) hasData = true;
-          }
-        }
-      });
-
-      if (!isHeader && hasData) {
-        rows.push(rowData);
-      }
-    });
-
-    return reply.send({ success: true, rows });
+    // `rows` se queda por compatibilidad: las filas en orden, sin su semana.
+    const rows = leido.filas.map((f) => f.datos);
+    return reply.send({ success: true, rows, filas: leido.filas, metadatos: leido.metadatos });
   } catch (error: any) {
     logger.error('Error al parsear documento Word', { error: error.message });
     if (error && typeof error === 'object' && 'statusCode' in error) throw error;
