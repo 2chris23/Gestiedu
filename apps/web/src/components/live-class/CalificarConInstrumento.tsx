@@ -35,11 +35,12 @@ function puntosEnLaCasilla(m: Marcas[string] | undefined, vale: number): string 
 }
 
 /**
- * UNA CASILLA DE PUNTOS
+ * UNA CASILLA DE PUNTOS: UNA BARRA QUE SE ARRASTRA
  *
- * Lleva su propio texto mientras se escribe: con la casilla atada al número,
- * «1,» se borraba al instante y no había forma de poner 1,5. Coma o punto, da
- * igual; más de lo que vale se queda en lo que vale.
+ * En el teléfono no hay que escribir: se arrastra de 0 a lo que vale el
+ * indicador, de medio en medio punto, y el número sale al lado. Sin tocar
+ * todavía, la barra sale apagada y dice «—» (en «por puntos», eso es que
+ * falta; en la lista de cotejo, 0). Con el teclado, las flechas.
  */
 function CeldaDePuntos({
     valor,
@@ -54,37 +55,26 @@ function CeldaDePuntos({
     etiqueta: string;
     alCambiar: (n: number | null) => void;
 }) {
-    const deFuera = puntosEnLaCasilla(valor, vale);
-    const [texto, setTexto] = React.useState(deFuera);
-    const escribiendo = React.useRef(false);
-    React.useEffect(() => {
-        if (!escribiendo.current) setTexto(deFuera);
-    }, [deFuera]);
+    const texto = puntosEnLaCasilla(valor, vale);
+    const numero = texto === '' ? null : Number(texto);
     return (
-        <input
-            type="text"
-            inputMode="decimal"
-            disabled={disabled}
-            value={texto}
-            placeholder="—"
-            onFocus={() => (escribiendo.current = true)}
-            onBlur={() => {
-                escribiendo.current = false;
-                setTexto(deFuera);
-            }}
-            onChange={(e) => {
-                const t = e.target.value.replace(/[^\d.,]/g, '');
-                setTexto(t);
-                if (t === '') return alCambiar(null);
-                const n = Number(t.replace(',', '.'));
-                if (!Number.isFinite(n)) return;
-                const puesto = Math.min(Math.max(n, 0), vale);
-                if (puesto !== n) setTexto(String(puesto));
-                alCambiar(puesto);
-            }}
-            className="min-h-[44px] w-20 rounded-lg border border-gray-300 px-2 text-right tabular-nums focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-gray-50"
-            aria-label={etiqueta}
-        />
+        <div className="flex items-center gap-2">
+            <input
+                type="range"
+                min={0}
+                max={vale}
+                step={0.5}
+                disabled={disabled}
+                value={numero ?? 0}
+                onChange={(e) => alCambiar(Number(e.target.value))}
+                aria-label={etiqueta}
+                aria-valuetext={numero === null ? 'sin puntuar' : `${numero} de ${vale}`}
+                className={cn('h-11 w-24 cursor-pointer accent-indigo-600 disabled:cursor-default', numero === null && 'opacity-40')}
+            />
+            <span className={cn('w-8 text-right text-sm font-bold tabular-nums', numero === null ? 'text-gray-500' : 'text-gray-900')}>
+                {numero === null ? '—' : String(numero).replace('.', ',')}
+            </span>
+        </div>
     );
 }
 
@@ -169,7 +159,7 @@ export default function CalificarConInstrumento({
                 <span className="flex items-center gap-2">
                     <ClipboardList className="h-4 w-4" aria-hidden />
                     {NOMBRE_DEL_TIPO[instrumento.tipo]} · vale {maximo}
-                    {porPuntos && <span className="text-xs text-indigo-800">· cada indicador de 0 a lo que vale</span>}
+                    {porPuntos && <span className="text-xs text-indigo-800">· arrastra cada barra de 0 a lo que vale</span>}
                 </span>
                 <span className="text-xs" role="status">
                     {calificar.isPending ? (
@@ -192,10 +182,11 @@ export default function CalificarConInstrumento({
                                 Alumno
                             </th>
                             {instrumento.criterios.map((c) => (
-                                <th key={c.id} scope="col" className="min-w-[6.5rem] border-b border-gray-200 px-2 py-2 align-bottom normal-case">
-                                    <span className="block text-xs font-semibold leading-tight text-gray-900">{c.texto}</span>
+                                <th key={c.id} scope="col" title={c.texto} className="border-b border-gray-200 px-2 py-2 align-bottom normal-case">
+                                    {/* El nombre en una línea (entero al pasar el ratón) y lo que vale. */}
+                                    <span className="block max-w-[8.5rem] truncate text-xs font-semibold text-gray-900">{c.texto}</span>
                                     <span className="block text-xs font-medium text-gray-600">
-                                        {porPuntos ? `de 0 a ${c.puntos}` : (c.peso ?? 1) !== 1 ? `peso ${c.peso}` : 'nivel'}
+                                        {porPuntos ? `/ ${c.puntos}` : (c.peso ?? 1) !== 1 ? `peso ${c.peso}` : 'nivel'}
                                     </span>
                                 </th>
                             ))}

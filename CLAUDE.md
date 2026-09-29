@@ -428,8 +428,8 @@ certificación junta de 1.º a 5.º, con los años de otro plantel cargados a ma
   (`evaluacion-de-la-semana.service.ts`, SEMEVAL-*, `MAPA` §1a).
 - **Instrumentos de evaluación** (lista de cotejo, escala, rúbrica, por puntos):
   se arman en cada evaluación del plan; en la clase, «Dar nota» cambia la tabla
-  de alumnos a una columna por indicador (de 0 a lo que vale: la portada mal
-  hecha, 1 de 2; en la escala, el nivel) y la nota va a `scores`. La actividad guarda su copia; con instrumento no hay nota
+  de alumnos a una columna por indicador, con una barra que se arrastra de 0
+  a lo que vale (la portada mal hecha, 1 de 2; en la escala, el nivel) y la nota va a `scores`. La actividad guarda su copia; con instrumento no hay nota
   a mano salvo «otra forma». El alumno ve SU desglose. Una cuenta copiada en
   `utils/instrumentos.ts` y `lib/instrumentos.ts` (INSTR-*, `MAPA` §1a-bis).
 

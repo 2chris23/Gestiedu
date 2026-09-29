@@ -73,7 +73,7 @@ test('INSTR-UI-01: armar una lista de cotejo en el plan', async ({ page }, testI
     }
 });
 
-test('INSTR-UI-02: calificar en la tabla de la clase, cada indicador de 0 a lo que vale', async ({ page }, testInfo) => {
+test('INSTR-UI-02: calificar en la tabla de la clase, arrastrando cada indicador de 0 a lo que vale', async ({ page }, testInfo) => {
     try {
         // Una actividad de hoy de esa evaluación (la semana de hoy puede ser otra).
         await queryTenantDb(
@@ -91,11 +91,12 @@ test('INSTR-UI-02: calificar en la tabla de la clase, cada indicador de 0 a lo q
         const tabla = calificar.getByRole('table', { name: 'Notas con el instrumento' });
         const primero = tabla.locator('tbody tr').first();
         // La portada está pero mal hecha: 1,5 de 2. Y la pulcritud, completa.
-        await primero.getByRole('textbox', { name: /Portada \(de 0 a 2\)/ }).fill('1,5');
-        await primero.getByRole('textbox', { name: /Pulcritud.*\(de 0 a 3\)/ }).fill('3');
+        await primero.getByRole('slider', { name: /Portada \(de 0 a 2\)/ }).fill('1.5');
+        await primero.getByRole('slider', { name: /Pulcritud.*\(de 0 a 3\)/ }).fill('3');
         await expect(primero.getByText('4.5', { exact: true })).toBeVisible();
-        // Más de lo que vale no cabe: se queda en lo que vale.
-        await primero.getByRole('textbox', { name: /Portada \(de 0 a 2\)/ }).fill('9');
+        await expect(primero.getByText('1,5', { exact: true })).toBeVisible();
+        // Con el teclado también: «Fin» la lleva a lo que vale, y no más.
+        await primero.getByRole('slider', { name: /Portada \(de 0 a 2\)/ }).press('End');
         await expect(primero.getByText('5', { exact: true })).toBeVisible();
         // Y la tabla de siempre no está debajo.
         await expect(page.getByText('NOTA DE ACTIVIDAD', { exact: false })).toHaveCount(0);
