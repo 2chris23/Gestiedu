@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { ChevronDown, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ColumnaDelPlan } from './PlanPorBloques';
 
@@ -30,6 +30,8 @@ interface Props {
     alAnadir: () => void;
     alCambiarSiAbarca: (key: string, abarca: boolean) => void;
     alRestaurar: () => void;
+    /** Cambiar un campo de lugar (en la tabla del ordenador, se arrastra). */
+    alMover?: (desde: number, hasta: number) => void;
     className?: string;
 }
 
@@ -40,6 +42,7 @@ export function CamposDelPlan({
     alAnadir,
     alCambiarSiAbarca,
     alRestaurar,
+    alMover,
     className,
 }: Props) {
     const [abierto, setAbierto] = React.useState(false);
@@ -64,7 +67,7 @@ export function CamposDelPlan({
 
             {abierto && (
                 <div className="space-y-3 border-t border-gray-100 bg-gray-50 px-4 py-4">
-                    {columnas.map((col) => (
+                    {columnas.map((col, i) => (
                         <div key={col.key} className="rounded-lg border border-gray-200 bg-white p-3">
                             <div className="flex items-center gap-2">
                                 <input
@@ -73,6 +76,28 @@ export function CamposDelPlan({
                                     aria-label="Nombre del campo"
                                     className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                 />
+                                {alMover && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => alMover(i, i - 1)}
+                                            disabled={i === 0}
+                                            aria-label={`Subir ${col.label}`}
+                                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-700 transition-colors active:bg-gray-100 disabled:opacity-30"
+                                        >
+                                            <ArrowUp className="h-4 w-4" aria-hidden />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => alMover(i, i + 1)}
+                                            disabled={i === columnas.length - 1}
+                                            aria-label={`Bajar ${col.label}`}
+                                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-700 transition-colors active:bg-gray-100 disabled:opacity-30"
+                                        >
+                                            <ArrowDown className="h-4 w-4" aria-hidden />
+                                        </button>
+                                    </>
+                                )}
                                 <button
                                     type="button"
                                     onClick={() => alQuitar(col.key)}

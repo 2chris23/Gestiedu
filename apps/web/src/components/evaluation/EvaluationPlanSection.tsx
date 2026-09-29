@@ -146,6 +146,16 @@ function AutoResizeTextarea({
     resize();
   }, [value, minHeight, resize]);
 
+  // Y cuando cambia su ancho (una columna que se mueve, la ventana que se
+  // estrecha): si no, el título se quedaba cortado («TIPO DE» sin «EVAL.»).
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const vigia = new ResizeObserver(() => resize());
+    vigia.observe(el);
+    return () => vigia.disconnect();
+  }, [resize]);
+
   return (
     <textarea
       ref={ref}
@@ -387,6 +397,28 @@ export default function EvaluationPlanSection({
     setColumns(prev => prev.map(c => c.key === key ? { ...c, label } : c));
   };
 
+  /**
+   * ORDENAR LAS COLUMNAS
+   *
+   * Arrastrando la manija de la cabecera (ratón), con las flechas ← → sobre
+   * ella (teclado) o, en el teléfono, con «subir/bajar» en «Campos del plan».
+   * El orden se guarda con el plan (`customColumns`).
+   */
+  const moverColumna = (desde: number, hasta: number) =>
+    setColumns(prev => {
+      if (desde === hasta || desde < 0 || hasta < 0 || desde >= prev.length || hasta >= prev.length) return prev;
+      const nuevas = [...prev];
+      const [movida] = nuevas.splice(desde, 1);
+      nuevas.splice(hasta, 0, movida);
+      return nuevas;
+    });
+  const [agarrada, setAgarrada] = useState<number | null>(null);
+  const [encima, setEncima] = useState<number | null>(null);
+  const soltarColumna = () => {
+    setAgarrada(null);
+    setEncima(null);
+  };
+
   const resetColumns = () => {
     setColumns([...DEFAULT_PLAN_COLUMNS]);
   };
@@ -600,39 +632,44 @@ export default function EvaluationPlanSection({
           <MembreteOficial respaldo={{ nombre: autoPopulated.instituteName || 'Institución educativa' }} />
         </div>
 
-        <div className="grid grid-cols-4 gap-0 border-t border-gray-200 bg-gray-50 text-[10px]">
+        <div className="grid grid-cols-4 gap-0 border-t border-gray-200 bg-slate-50 text-xs">
           {[
             ['Docente', autoPopulated.teacherName || 'Sin asignar'],
             ['Área de Formación', autoPopulated.subjectName || '—'],
             ['Año / Sección', `${autoPopulated.classroomGrade ? autoPopulated.classroomGrade + '°' : ''} ${autoPopulated.classroomSection ? '"' + autoPopulated.classroomSection + '"' : '—'}`],
             ['Momento Pedagógico', `${LAPSOS.find(l => l.id === selectedLapso)?.name} — ${autoPopulated.academicYearName || ''}`],
           ].map(([label, val]) => (
-            <div key={label} className="p-2 border-r border-b border-gray-200 last:border-r-0">
-              <span className="text-gray-400 font-bold uppercase block mb-0.5">{label}</span>
-              <span className="font-semibold text-gray-800">{val}</span>
+            <div key={label} className="px-3 py-2 border-r border-b border-gray-200 last:border-r-0">
+              <span className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide block mb-0.5">{label}</span>
+              <span className="font-semibold text-gray-900">{val}</span>
             </div>
           ))}
         </div>
 
         {/* Separador elegante para que las divisiones de 4 columnas no choquen visualmente con las de 5 */}
-        <div className="bg-slate-100 px-3 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-600 border-b border-gray-200 flex items-center justify-between">
+        <div className="bg-white px-3 pt-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center justify-between">
           <span>Referentes Curriculares e Institucionales</span>
         </div>
 
-        <div className="grid grid-cols-5 gap-0 bg-white text-[10px]">
+        <div className="grid grid-cols-5 gap-3 bg-white px-3 pb-3 text-xs">
           {fields.map(field => (
-            <div key={field.key} className="p-2 border-r border-gray-200 last:border-r-0">
-              <span className="text-gray-400 font-bold uppercase block mb-1">{field.label}</span>
+            <div key={field.key}>
               {mode === 'edit' ? (
-                <textarea
-                  value={(localMeta as any)[field.key] || ''}
-                  onChange={e => handleMetaChange(field.key, e.target.value)}
-                  placeholder={`Escriba ${field.label.toLowerCase()}...`}
-                  rows={2}
-                  className="w-full bg-gray-50 border border-gray-200 rounded p-1.5 focus:ring-2 focus:ring-indigo-500 outline-none resize-none text-[10px]"
-                />
+                <label className="block">
+                  <span className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide block mb-1">{field.label}</span>
+                  <textarea
+                    value={(localMeta as any)[field.key] || ''}
+                    onChange={e => handleMetaChange(field.key, e.target.value)}
+                    placeholder={`Escriba ${field.label.toLowerCase()}…`}
+                    rows={3}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs leading-snug text-gray-900 placeholder:text-slate-400 hover:border-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none resize-none"
+                  />
+                </label>
               ) : (
-                <span className="text-gray-700 leading-snug font-medium block">{(localMeta as any)[field.key] || '—'}</span>
+                <>
+                  <span className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide block mb-1">{field.label}</span>
+                  <span className="text-gray-800 leading-snug font-medium block">{(localMeta as any)[field.key] || '—'}</span>
+                </>
               )}
             </div>
           ))}
@@ -803,43 +840,83 @@ export default function EvaluationPlanSection({
       <div className="flex flex-col h-full bg-white">
         {/* Tabla unificada editable con thead y tfoot sticky */}
         <div className="overflow-auto flex-1 min-h-0">
-          <table className="w-full text-[10px] text-left text-gray-700 border-collapse">
-            <thead className="text-white uppercase bg-slate-800 sticky top-0 z-20 shadow-sm">
+          <table className="w-full text-xs text-left text-gray-800 border-collapse">
+            <thead className="text-slate-800 bg-slate-100 sticky top-0 z-20 shadow-[0_1px_0_#cbd5e1]">
               <tr>
-                <th className="px-1 py-1.5 border border-slate-700 text-center w-18 min-w-[70px] bg-slate-800 sticky top-0 font-bold whitespace-nowrap">
-                  FECHA/SEM.
+                <th className="px-2 py-2 border border-slate-200 text-center w-20 min-w-[76px] bg-slate-100 sticky top-0 left-0 z-30 text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">
+                  Semana
                 </th>
-                {columns.map(col => (
+                {columns.map((col, i) => (
                   <th
                     key={col.key}
-                    className="px-1 py-1.5 border border-slate-700 bg-slate-800 sticky top-0"
+                    // Se arrastra solo desde la manija: el nombre se sigue pudiendo escribir.
+                    draggable={agarrada === i}
+                    onDragStart={e => {
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', col.key);
+                    }}
+                    onDragOver={e => {
+                      if (agarrada === null) return;
+                      e.preventDefault();
+                      if (encima !== i) setEncima(i);
+                    }}
+                    onDrop={e => {
+                      e.preventDefault();
+                      if (agarrada !== null) moverColumna(agarrada, i);
+                      soltarColumna();
+                    }}
+                    onDragEnd={soltarColumna}
+                    className={`px-1.5 py-1.5 border border-slate-200 bg-slate-100 sticky top-0 align-bottom transition-colors ${
+                      agarrada === i ? 'opacity-40' : ''
+                    } ${agarrada !== null && encima === i && agarrada !== i ? 'bg-indigo-100 shadow-[inset_0_0_0_2px_#818cf8]' : ''}`}
                     style={{
-                      width: col.numeric ? (col.key === 'puntos' ? '54px' : '64px') : undefined,
-                      minWidth: col.numeric ? (col.key === 'puntos' ? '50px' : '60px') : '70px',
+                      width: col.numeric ? '120px' : undefined,
+                      minWidth: col.numeric ? '120px' : '140px',
                     }}
                   >
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-start gap-0.5">
+                      <button
+                        type="button"
+                        onMouseDown={() => setAgarrada(i)}
+                        onMouseUp={() => agarrada === i && encima === null && setAgarrada(null)}
+                        onKeyDown={e => {
+                          if (e.key === 'ArrowLeft') { e.preventDefault(); moverColumna(i, i - 1); }
+                          if (e.key === 'ArrowRight') { e.preventDefault(); moverColumna(i, i + 1); }
+                        }}
+                        aria-label={`Mover la columna ${col.label} (flechas izquierda y derecha)`}
+                        title="Arrastra para cambiarla de lugar"
+                        className="mt-0.5 shrink-0 cursor-grab rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      >
+                        <GripVertical className="w-3.5 h-3.5" aria-hidden />
+                      </button>
                       <AutoResizeTextarea
                         value={col.label}
                         onChange={e => renameColumn(col.key, e.target.value)}
-                        className="bg-slate-700 border border-slate-600 rounded px-1 py-0.5 text-white w-full focus:outline-none focus:ring-1 focus:ring-indigo-400 text-[10px] min-w-0 text-center leading-tight font-bold"
+                        className="w-full min-w-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-[11px] font-bold uppercase leading-tight tracking-wide text-slate-800 hover:border-slate-300 hover:bg-white focus:border-indigo-400 focus:bg-white focus:outline-none"
                         minHeight={20}
                       />
                       {!DEFAULT_PLAN_COLUMNS.find(d => d.key === col.key) && (
                         <button
+                          type="button"
                           onClick={() => removeColumn(col.key)}
-                          className="text-red-300 hover:text-red-100 shrink-0 p-0.5 rounded hover:bg-slate-600"
+                          className="mt-0.5 shrink-0 rounded p-0.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
                           title="Eliminar columna"
+                          aria-label={`Eliminar la columna ${col.label}`}
                         >
-                          <X className="w-3 h-3" />
+                          <X className="w-3.5 h-3.5" aria-hidden />
                         </button>
                       )}
                     </div>
                   </th>
                 ))}
-                <th className="px-1 py-1.5 border border-slate-700 w-8 text-center bg-slate-800 sticky top-0">
-                  <button onClick={addColumn} title="Agregar columna" className="bg-indigo-500 hover:bg-indigo-400 text-white rounded p-0.5 transition-colors">
-                    <Plus className="w-3 h-3 mx-auto" />
+                <th className="px-1.5 py-1.5 border border-slate-200 w-24 text-center bg-slate-100 sticky top-0">
+                  <button
+                    type="button"
+                    onClick={addColumn}
+                    title="Agregar columna (luego arrástrala donde quieras)"
+                    className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-dashed border-indigo-300 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50"
+                  >
+                    <Plus className="w-3.5 h-3.5" aria-hidden /> Columna
                   </button>
                 </th>
               </tr>
@@ -847,11 +924,13 @@ export default function EvaluationPlanSection({
             <tbody className="bg-white">
               {weeks.map((w, idx) => {
                 return (
-                  <tr key={w.weekNumber} className="bg-white border-b border-gray-200 hover:bg-indigo-50/20 transition-colors">
-                    <td className="px-1 py-1 border border-gray-200 text-center align-middle w-20 bg-slate-50">
-                      <div className="font-bold text-gray-800 text-[10px] uppercase">S.{w.weekNumber}</div>
-                      <div className="text-[8px] text-gray-400 leading-tight">
-                        {getWeekDates(autoPopulated?.lapsoStartDate, w.weekNumber)?.start} - {getWeekDates(autoPopulated?.lapsoStartDate, w.weekNumber)?.end}
+                  <tr key={w.weekNumber} className="bg-white even:bg-slate-50/50 border-b border-gray-200 hover:bg-indigo-50/30 transition-colors">
+                    {/* La semana se queda a la vista al deslizar la tabla de lado. */}
+                    <td className="px-2 py-2 border border-gray-200 text-center align-top w-20 bg-slate-50 sticky left-0 z-10">
+                      <div className="font-bold text-slate-900 text-xs">Semana {w.weekNumber}</div>
+                      <div className="mt-0.5 text-[11px] text-slate-500 leading-tight">
+                        {getWeekDates(autoPopulated?.lapsoStartDate, w.weekNumber)?.start}
+                        <br />al {getWeekDates(autoPopulated?.lapsoStartDate, w.weekNumber)?.end}
                       </div>
                     </td>
 
@@ -862,7 +941,7 @@ export default function EvaluationPlanSection({
                       const canCollapse = span > 1;
 
                       return (
-                        <td key={col.key} rowSpan={span} className="px-0.5 py-0.5 border border-gray-200 align-top relative group">
+                        <td key={col.key} rowSpan={span} className={`px-1 py-1 border border-gray-200 align-top relative group ${span > 1 ? 'bg-indigo-50/40' : ''}`}>
                           {col.numeric ? (
                             col.key === 'ponderacion' ? (
                               <input
@@ -874,7 +953,7 @@ export default function EvaluationPlanSection({
                                   const pond = Math.round((pts / 20) * 100 * 100) / 100;
                                   return `${pond}%`;
                                 })()}
-                                className="w-full px-1 py-0.5 h-full min-h-[22px] border-none bg-gray-100 text-gray-600 text-[10px] cursor-not-allowed font-medium text-center"
+                                className="w-full px-1 py-1 h-full min-h-[28px] rounded border-none bg-slate-100 text-slate-700 text-xs cursor-not-allowed font-semibold text-center"
                                 title="La ponderación se deriva de los Puntos (puntos/20×100). Edita Puntos."
                                 placeholder="0%"
                               />
@@ -887,7 +966,8 @@ export default function EvaluationPlanSection({
                                   const val = e.target.value === '' ? '' : parseFloat(e.target.value);
                                   setCell(idx, col.key, isNaN(val as number) ? '' : (val as number));
                                 }}
-                                className="w-full px-1 py-0.5 h-full min-h-[22px] border-none focus:ring-1 focus:ring-indigo-500 outline-none bg-transparent text-[10px] text-center"
+                                aria-label={`${col.label}, semana ${w.weekNumber}`}
+                                className="w-full px-1 py-1 h-full min-h-[28px] rounded border border-slate-300 bg-white outline-none text-xs font-semibold text-center hover:border-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
                                 placeholder="0"
                               />
                             )
@@ -895,9 +975,9 @@ export default function EvaluationPlanSection({
                             <AutoResizeTextarea
                               value={String(w.data[col.key] ?? '')}
                               onChange={e => setCell(idx, col.key, e.target.value)}
-                              className="w-full px-1 py-0.5 h-full border-none focus:ring-1 focus:ring-indigo-500 outline-none bg-transparent text-[10px]"
-                              minHeight={Math.max(22, span * 28)}
-                              placeholder={`${col.label}...`}
+                              className="w-full px-1.5 py-1 h-full rounded border border-transparent bg-transparent text-xs leading-snug text-gray-900 placeholder:text-slate-300 outline-none hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                              minHeight={Math.max(28, span * 34)}
+                              placeholder="—"
                             />
                           )}
                           {!col.numeric && (
@@ -911,7 +991,7 @@ export default function EvaluationPlanSection({
                         </td>
                       );
                     })}
-                    <td className="px-0.5 py-0.5 border border-gray-200 bg-slate-50/50 w-8" />
+                    <td className="px-0.5 py-0.5 border border-gray-200 bg-slate-50/50 w-24" />
                   </tr>
                 );
               })}
@@ -920,7 +1000,7 @@ export default function EvaluationPlanSection({
               <tr>
                 <td
                   colSpan={nonNumericCols.length + 1}
-                  className="px-4 py-2 border border-gray-300 text-right uppercase text-[10px] tracking-wider text-gray-700 bg-slate-100 sticky bottom-0"
+                  className="px-4 py-2 border border-gray-300 text-right uppercase text-[11px] tracking-wider text-gray-700 bg-slate-100 sticky bottom-0"
                 >
                   Total Ponderación
                 </td>
@@ -939,16 +1019,16 @@ export default function EvaluationPlanSection({
         </div>
 
         {/* Footer: Observaciones editables */}
-        <div className="px-4 py-2 bg-white border-t border-gray-200 flex-shrink-0">
-          <span className="text-[10px] font-bold uppercase text-gray-500">Observaciones:</span>
+        <label className="block px-4 py-3 bg-white border-t border-gray-200 flex-shrink-0">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Observaciones</span>
           <textarea
             value={localMeta.observaciones || ''}
             onChange={e => handleMetaChange('observaciones', e.target.value)}
-            placeholder="Observaciones finales..."
-            rows={2}
-            className="w-full mt-1 text-xs border border-gray-200 bg-gray-50 rounded p-2 focus:ring-indigo-500 outline-none resize-none"
+            placeholder="Observaciones finales: criterios generales, recuperaciones, fechas…"
+            rows={3}
+            className="w-full mt-1 text-sm leading-snug border border-slate-300 bg-white rounded-lg px-3 py-2 text-gray-900 placeholder:text-slate-400 hover:border-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none resize-y"
           />
-        </div>
+        </label>
       </div>
     );
   };
@@ -971,17 +1051,17 @@ export default function EvaluationPlanSection({
     return (
       <div className="fixed inset-0 z-[100] bg-[#f3f4f6] flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="Editor Inmersivo — Plan de Evaluación">
         {/* TOP BAR */}
-        <div className="bg-white border-b border-gray-200 shadow-sm h-16 flex items-center justify-between px-6 shrink-0">
+        <div className="bg-white border-b border-gray-200 shadow-sm min-h-16 flex flex-wrap items-center justify-between gap-3 px-4 py-2 sm:px-6 shrink-0">
           <div className="flex items-center gap-4">
             <button onClick={salirDelEditor} aria-label="Salir del editor" className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-600">
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
               <h2 className="text-lg font-bold text-gray-900 leading-tight">Editor Inmersivo — Plan de Evaluación</h2>
-              <p className="text-xs text-indigo-600 font-medium">Modo Edición Avanzada · {LAPSOS.find(l => l.id === lapso)?.name} · {totalWeeks} semanas</p>
+              <p className="text-xs text-slate-600 font-medium">{autoPopulated.subjectName ? `${autoPopulated.subjectName} · ` : ''}{LAPSOS.find(l => l.id === lapso)?.name} · {totalWeeks} semanas</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <input
               type="file"
               accept=".docx"
@@ -993,28 +1073,28 @@ export default function EvaluationPlanSection({
               onClick={() => fileInputRef.current?.click()}
               disabled={isImporting}
               title="Importar un archivo Word (.docx) con una tabla de evaluación"
-              className="flex items-center px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-xs font-bold disabled:opacity-50"
+              className="flex min-h-10 items-center px-3 py-2 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-xs font-bold disabled:opacity-50"
             >
               <Upload className="w-4 h-4 mr-1.5" /> {isImporting ? 'Importando...' : 'Importar Word'}
             </button>
             <button
               onClick={distributeEqually}
               title="Distribuir ponderación y puntos equitativamente entre semanas con actividad"
-              className="flex items-center px-3 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors text-xs font-bold"
+              className="flex min-h-10 items-center px-3 py-2 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-xs font-bold"
             >
               <Zap className="w-4 h-4 mr-1.5" /> Distribuir Equitativamente
             </button>
             <button
               onClick={resetColumns}
               title="Restaurar columnas predeterminadas del Ministerio"
-              className="flex items-center px-3 py-2 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors text-xs font-bold"
+              className="flex min-h-10 items-center px-3 py-2 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-xs font-bold"
             >
               <RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Restaurar Columnas
             </button>
             <button
               onClick={handleSave}
               disabled={isSavingMeta || isSavingRows}
-              className="flex items-center px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-bold shadow-sm disabled:opacity-50"
+              className="flex min-h-10 items-center px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-bold shadow-sm disabled:opacity-50"
             >
               <Save className="w-4 h-4 mr-2" /> {isSavingRows ? 'Guardando...' : 'Guardar y Cerrar'}
             </button>
@@ -1035,17 +1115,18 @@ export default function EvaluationPlanSection({
         )}
 
         {/* HINT BAR */}
-        <div className="bg-indigo-50 border-b border-indigo-100 px-6 py-2 flex items-center gap-3 text-xs text-indigo-700 shrink-0">
-          <Sparkles className="w-4 h-4 shrink-0 text-indigo-400" />
+        <div className="bg-slate-50 border-b border-slate-200 px-4 sm:px-6 py-2 flex items-start gap-2.5 text-xs leading-relaxed text-slate-700 shrink-0">
+          <Sparkles className="mt-0.5 w-4 h-4 shrink-0 text-indigo-500" aria-hidden />
           <span>
-            <strong>Tip:</strong> Cada fila es una semana del lapso. Para que un tema abarque varias semanas,
-            escríbelo y usa el botón <strong>↓</strong> de la celda (en un teléfono, los botones <strong>+</strong> y
-            <strong>−</strong> de la cabecera del bloque). Añade o elimina columnas desde la cabecera de la tabla (➕ / ✕).
+            Cada fila es una semana. Para que un tema abarque varias, usa <strong>↓</strong> en su celda
+            (en el teléfono, <strong>+</strong> y <strong>−</strong> del bloque). Las columnas se cambian de lugar
+            arrastrando su manija <GripVertical className="inline w-3.5 h-3.5 align-text-bottom text-slate-500" aria-hidden />;
+            se añaden con <strong>+ Columna</strong>.
           </span>
         </div>
 
         {/* CANVAS */}
-        <div className="flex-1 overflow-auto p-4 sm:p-6">
+        <div className="flex-1 overflow-auto bg-slate-100 p-4 sm:p-6">
           <div className="max-w-[1600px] mx-auto space-y-4">
             <div className="space-y-3 min-[700px]:hidden">
               {/* Añadir, renombrar y quitar campos: en la tabla eso son dos
@@ -1058,6 +1139,7 @@ export default function EvaluationPlanSection({
                 alAnadir={addColumn}
                 alCambiarSiAbarca={cambiarSiAbarca}
                 alRestaurar={resetColumns}
+                alMover={moverColumna}
               />
 
               <PlanPorBloques
@@ -1071,7 +1153,7 @@ export default function EvaluationPlanSection({
               />
             </div>
 
-            <div className="rejilla-densa hidden rounded-xl overflow-hidden shadow-xl border border-gray-300 min-[700px]:block">
+            <div className="rejilla-densa hidden rounded-2xl overflow-hidden shadow-sm ring-1 ring-slate-200 bg-white min-[700px]:block">
               {renderMembrete('edit')}
               {renderEditTable()}
             </div>
