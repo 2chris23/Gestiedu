@@ -160,6 +160,8 @@ export async function proxy(request: NextRequest) {
         // navegador por su cuenta, sin sesión.
         pathname === '/sw.js' ||
         pathname === '/sin-conexion.html' ||
+        // Qué versión de la app hay (lo pide el ayudante para ponerse al día).
+        pathname === '/version-de-la-web' ||
         pathname === '/favicon.svg' ||
         // El icono de la pestaña del liceo: la pantalla de entrar también lo
         // lleva, sin sesión. Y los logos del liceo, en el formato que sea

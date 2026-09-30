@@ -1,13 +1,17 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/auth.store';
 import { olvidarCredencial } from '@/lib/credencial-en-memoria';
 import { olvidarLoDescargado } from '@/lib/lo-guardado-en-el-telefono';
+import { olvidarLasRespuestas } from '@/lib/respuestas-guardadas';
 import { laPuertaDelLiceo, elLiceoDeLaCookie } from '@/lib/la-puerta-del-liceo';
 import { laLlaveGuardada, olvidarLaLlave } from '@/lib/la-huella';
 import AvisoSinConexion from '@/components/common/AvisoSinConexion';
+import AvisoDePantallaSinGuardar from '@/components/common/AvisoDePantallaSinGuardar';
+import DescargaEnSegundoPlano from '@/providers/DescargaEnSegundoPlano';
 import ActualizarLaApp from '@/components/common/ActualizarLaApp';
 import { AsistenciaEnPantalla } from '@/components/asistencia/AsistenciaDelAlumno';
 import FondoQuieto from '@/components/layout/FondoQuieto';
@@ -64,6 +68,8 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
     // Mantener la sesión activa de forma transparente mientras la pestaña esté abierta
     useSessionKeepAlive();
 
+    const queryClient = useQueryClient();
+
     const handleLogout = async () => {
         /**
          * SALIR DEVUELVE AL PORTAL DEL LICEO, NO A UN 404
@@ -84,23 +90,37 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
         // la huella del dueño del móvil sin pasar por la contraseña.
         const llaveDelTelefono = liceo ? await laLlaveGuardada(liceo) : null;
 
-        // Y los avisos a este teléfono: con la sesión todavía abierta, que el
-        // servidor necesita saber de quién son. Un teléfono prestado no debe
-        // seguir recibiendo las citaciones del anterior.
-        await olvidarEsteTelefono();
+        /**
+         * SIN CONEXIÓN TAMBIÉN SE CIERRA
+         *
+         * Lo de hablar con el servidor puede fallar (sin señal, sin servidor):
+         * se intenta y ya. Antes un fallo aquí cortaba el resto, y lo
+         * descargado se quedaba en el teléfono con la sesión «cerrada».
+         */
+        try {
+            // Y los avisos a este teléfono: con la sesión todavía abierta, que el
+            // servidor necesita saber de quién son. Un teléfono prestado no debe
+            // seguir recibiendo las citaciones del anterior.
+            await olvidarEsteTelefono();
 
-        await fetch('/api/auth/logout', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ llaveDelTelefono: llaveDelTelefono ?? undefined }),
-        });
+            await fetch('/api/auth/logout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ llaveDelTelefono: llaveDelTelefono ?? undefined }),
+            });
+        } catch {
+            // Sin conexión: lo del servidor caduca solo; lo de aquí se borra igual.
+        }
         if (liceo) await olvidarLaLlave(liceo);
         // Y la llave que estaba en la memoria de la pestaña: si no, seguiría
         // sirviendo hasta que caduque aunque la sesión esté cerrada.
         olvidarCredencial();
         // Y lo descargado a este teléfono. Cerrar sesión es cerrar sesión: en
-        // un móvil que se presta, lo de antes no se enseña al siguiente.
+        // un móvil que se presta, lo de antes no se enseña al siguiente. Lo
+        // que hay en la memoria de la pestaña, también.
         await olvidarLoDescargado();
+        await olvidarLasRespuestas();
+        queryClient.clear();
         // Clear Zustand UI state
         zustandLogout();
         router.push(puerta);
@@ -151,6 +171,9 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
 
             {/* Sin señal se sigue viendo lo de antes, y hay que decirlo. */}
             <AvisoSinConexion />
+            <AvisoDePantallaSinGuardar />
+            {/* Como WhatsApp: con conexión, lo de cada uno se baja solo. */}
+            <DescargaEnSegundoPlano />
             {/* Si ya dio permiso, este teléfono recibe los avisos de quien entró. */}
             <ApuntarElTelefonoAlEntrar />
 

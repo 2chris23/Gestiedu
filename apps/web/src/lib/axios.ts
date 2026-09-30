@@ -4,6 +4,8 @@ import { conseguirCredencial, guardarCredencial, olvidarCredencial } from './cre
 import { laPuertaDelLiceo } from './la-puerta-del-liceo';
 import { API_URL } from '@/config/env';
 import { elServidorContesto, elServidorNoContesta, esQueNoContesta } from './estado-del-servidor';
+import { claveDeLaPeticion, guardarRespuesta, leerRespuesta } from './respuestas-guardadas';
+import { deQuienEs } from './lo-guardado-en-el-telefono';
 
 // Asegurar que la baseURL del cliente axios siempre tenga el prefijo /api
 // NEXT_PUBLIC_API_URL puede ser 'http://localhost:3001' o 'http://localhost:3001/api'
@@ -67,6 +69,42 @@ export class SinConexion extends Error {
 /** ¿Esta petición cambia algo? */
 function esEscritura(metodo?: string): boolean {
     return !SOLO_MIRAR.has((metodo || 'get').toLowerCase());
+}
+
+/** De quién es lo que se guarda ahora: el liceo y quien tiene la sesión. */
+function elDuenoDeAhora(): string | null {
+    if (typeof document === 'undefined') return null;
+    const liceo = document.cookie.split('; ').find((c) => c.startsWith('institute_slug='))?.split('=')[1] ?? null;
+    return deQuienEs(liceo, useAuthStore.getState().user?.id);
+}
+
+/** ¿Es una lectura que se guarda (JSON, no un archivo)? */
+function esLecturaQueSeGuarda(config: any): boolean {
+    const metodo = (config?.method || 'get').toLowerCase();
+    const tipo = config?.responseType;
+    return metodo === 'get' && (!tipo || tipo === 'json');
+}
+
+/**
+ * SIN SERVIDOR, LO ÚLTIMO QUE SE BAJÓ (ver `respuestas-guardadas.ts`)
+ *
+ * Una lectura que no llega se contesta con la última respuesta guardada de esa
+ * misma dirección, como si viniera del servidor, con la cabecera
+ * `x-desde-lo-guardado` (cuándo se bajó). Si no hay nada guardado, el error
+ * de siempre.
+ */
+async function deLoGuardado(config: any): Promise<any | null> {
+    if (!esLecturaQueSeGuarda(config)) return null;
+    const guardada = await leerRespuesta(elDuenoDeAhora(), claveDeLaPeticion(config.url || '', config.params));
+    if (!guardada) return null;
+    return {
+        data: guardada.datos,
+        status: 200,
+        statusText: 'OK',
+        headers: { 'x-desde-lo-guardado': String(guardada.cuando) },
+        config,
+        request: null,
+    };
 }
 
 // Request Interceptor: Inyectar Token y Slug del Instituto
@@ -136,6 +174,9 @@ function flushRefreshQueue(success: boolean, token?: string) {
 api.interceptors.response.use(
     (response) => {
         elServidorContesto();
+        if (response.status === 200 && esLecturaQueSeGuarda(response.config)) {
+            void guardarRespuesta(elDuenoDeAhora(), claveDeLaPeticion(response.config.url || '', response.config.params), response.data);
+        }
         return response;
     },
     async (error) => {
@@ -145,10 +186,9 @@ api.interceptors.response.use(
         if (esQueNoContesta(error)) {
             elServidorNoContesta();
             // Guardar sin servidor: el mismo aviso claro que sin internet. Leer
-            // sin servidor: se deja el error tal cual, y la pantalla sigue
-            // enseñando lo que tenía guardado.
+            // sin servidor: lo último que se bajó de esa dirección, si lo hay.
             if (esEscritura(originalRequest?.method)) return Promise.reject(new SinConexion());
-            return Promise.reject(error);
+            return (await deLoGuardado(originalRequest)) ?? Promise.reject(error);
         }
         if (error.response) elServidorContesto();
 
@@ -192,7 +232,8 @@ api.interceptors.response.use(
             if (!refreshResponse.ok && ![400, 401, 403].includes(refreshResponse.status)) {
                 elServidorNoContesta();
                 flushRefreshQueue(false);
-                return Promise.reject(esEscritura(originalRequest?.method) ? new SinConexion() : error);
+                if (esEscritura(originalRequest?.method)) return Promise.reject(new SinConexion());
+                return (await deLoGuardado(originalRequest)) ?? Promise.reject(error);
             }
 
             if (refreshResponse.ok) {
@@ -229,7 +270,8 @@ api.interceptors.response.use(
             // queda como estaba (ver arriba).
             elServidorNoContesta();
             flushRefreshQueue(false);
-            return Promise.reject(esEscritura(originalRequest?.method) ? new SinConexion() : refreshError);
+            if (esEscritura(originalRequest?.method)) return Promise.reject(new SinConexion());
+            return (await deLoGuardado(originalRequest)) ?? Promise.reject(refreshError);
         } finally {
             isRefreshing = false;
         }

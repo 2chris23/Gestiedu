@@ -111,6 +111,19 @@
 
     <script>
         (function () {
+            // Si la trajo el guardián del arranque (`?desde=`), la pantalla de
+            // la que viene no pudo arrancar: no se vuelve sola a otra guardada,
+            // que haría un vaivén. Se reintenta la de antes al volver la señal.
+            var desde = new URLSearchParams(location.search).get('desde');
+            if (desde) {
+                document.getElementById('reintentar').onclick = function () { location.replace(desde); };
+                setInterval(function () {
+                    fetch('/api/estoy', { cache: 'no-store' })
+                        .then(function (r) { if (r.ok) location.replace(desde); })
+                        .catch(function () {});
+                }, 15000);
+                return;
+            }
             // ¿Está guardado el panel? Entonces hay algo que enseñar.
             if (!('caches' in window)) return;
             caches.match('/dashboard').then(function (guardado) {

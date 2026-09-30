@@ -20,6 +20,11 @@ export function guardarEstasPaginas(direcciones: string[]): void {
     alAyudante({ tipo: 'guardar-pagina', direcciones });
 }
 
+/** Que mire si hay una versión nueva de la app y la baje en segundo plano. */
+export function mirarLaVersionDeLaApp(): void {
+    alAyudante({ tipo: 'mirar-version' });
+}
+
 /**
  * Al cerrar sesión: una pantalla guardada lleva el nombre de quien la abrió, y
  * lo que guarda el ayudante es del navegador, no de la persona. Se queda la

@@ -9,6 +9,7 @@ import {
     leerLoDescargado,
     olvidarLoDescargado,
 } from '@/lib/lo-guardado-en-el-telefono';
+import { olvidarLasRespuestas, olvidarLasRespuestasDeOtros } from '@/lib/respuestas-guardadas';
 
 /**
  * LA MEMORIA DEL TELÉFONO
@@ -72,8 +73,11 @@ export function MemoriaDelTelefono({ children }: { children: React.ReactNode }) 
         // Sin sesión no hay nada que devolver, y lo que hubiera es de otro.
         if (!dueno) {
             void olvidarLoDescargado();
+            void olvidarLasRespuestas();
             return;
         }
+        // Las respuestas guardadas de cualquier otro, fuera (teléfono prestado).
+        void olvidarLasRespuestasDeOtros(dueno);
 
         let cancelado = false;
         setDevuelto(false); // otro dueño: vuelve a esperar a lo suyo

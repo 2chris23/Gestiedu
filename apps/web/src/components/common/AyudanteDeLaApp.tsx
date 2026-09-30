@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
-import { guardarEstasPaginas } from '@/lib/paginas-guardadas';
+import { guardarEstasPaginas, mirarLaVersionDeLaApp } from '@/lib/paginas-guardadas';
 
 /**
  * REGISTRAR EL AYUDANTE (SERVICE WORKER)
@@ -36,7 +36,16 @@ export function AyudanteDeLaApp() {
         if (document.readyState === 'complete') registrar();
         else window.addEventListener('load', registrar, { once: true });
 
-        return () => window.removeEventListener('load', registrar);
+        // La app al día, sola: al abrir y cada media hora (ver `mirarLaVersion`
+        // en `sw.js`).
+        const primera = window.setTimeout(mirarLaVersionDeLaApp, 5000);
+        const cadaMediaHora = window.setInterval(mirarLaVersionDeLaApp, 30 * 60 * 1000);
+
+        return () => {
+            window.removeEventListener('load', registrar);
+            window.clearTimeout(primera);
+            window.clearInterval(cadaMediaHora);
+        };
     }, []);
 
     /**

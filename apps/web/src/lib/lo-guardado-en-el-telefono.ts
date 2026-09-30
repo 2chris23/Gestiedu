@@ -26,8 +26,8 @@
  * es una trampa.
  */
 
-const BASE = 'gestiedu';
-const ALMACEN = 'lo-descargado';
+import { CAJON_DESCARGADO, conElCajon } from './base-del-telefono';
+
 const LLAVE = 'react-query';
 
 /** Después de esto, lo guardado se tira: es más viejo que útil. */
@@ -42,44 +42,8 @@ export interface LoGuardado {
     estado: unknown;
 }
 
-function abrir(): Promise<IDBDatabase | null> {
-    if (typeof indexedDB === 'undefined') return Promise.resolve(null);
-    return new Promise((resolver) => {
-        let peticion: IDBOpenDBRequest;
-        try {
-            peticion = indexedDB.open(BASE, 1);
-        } catch {
-            // En una ventana privada, o con los datos del sitio bloqueados,
-            // abrir la base lanza. No es un fallo: es que aquí no se guarda.
-            return resolver(null);
-        }
-        peticion.onupgradeneeded = () => {
-            const bd = peticion.result;
-            if (!bd.objectStoreNames.contains(ALMACEN)) bd.createObjectStore(ALMACEN);
-        };
-        peticion.onsuccess = () => resolver(peticion.result);
-        peticion.onerror = () => resolver(null);
-        peticion.onblocked = () => resolver(null);
-    });
-}
-
-function conElAlmacen<T>(modo: IDBTransactionMode, trabajo: (almacen: IDBObjectStore) => IDBRequest): Promise<T | null> {
-    return abrir().then(
-        (bd) =>
-            new Promise<T | null>((resolver) => {
-                if (!bd) return resolver(null);
-                try {
-                    const transaccion = bd.transaction(ALMACEN, modo);
-                    const peticion = trabajo(transaccion.objectStore(ALMACEN));
-                    peticion.onsuccess = () => resolver((peticion.result as T) ?? null);
-                    peticion.onerror = () => resolver(null);
-                    transaccion.oncomplete = () => bd.close();
-                } catch {
-                    resolver(null);
-                }
-            })
-    );
-}
+const conElAlmacen = <T,>(modo: IDBTransactionMode, trabajo: (almacen: IDBObjectStore) => IDBRequest) =>
+    conElCajon<T>(CAJON_DESCARGADO, modo, trabajo);
 
 /** `<liceo>:<cédula>`. Si falta cualquiera de los dos, no se guarda nada. */
 export function deQuienEs(liceo: string | null | undefined, cedula: string | null | undefined): string | null {

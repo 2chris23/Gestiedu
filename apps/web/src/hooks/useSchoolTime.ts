@@ -45,10 +45,23 @@ export function useSchoolTime() {
  * El día de hoy en el liceo ("YYYY-MM-DD"). Mientras llega la respuesta del
  * servidor devuelve el día local, que en la inmensa mayoría de los casos es el
  * mismo.
+ *
+ * **Sin conexión, el día sigue corriendo.** La última respuesta del servidor
+ * queda guardada en el teléfono, y devolvía SU fecha: abierta la app al día
+ * siguiente sin señal, «hoy» era ayer, y la asistencia sin conexión habría
+ * caído en el día de ayer. Ahora se cuenta desde aquella respuesta con el
+ * desfase del aparato, como `useRelojDelLiceo`.
  */
 export function useSchoolToday(): string {
-    const { data } = useSchoolTime();
-    return data?.date ?? toLocalYMD();
+    const { data, dataUpdatedAt } = useSchoolTime();
+    return hoyDelLiceo(data, dataUpdatedAt, Date.now());
+}
+
+/** El día del liceo en `ahora`, contado desde la última respuesta del servidor. */
+export function hoyDelLiceo(data: SchoolTime | undefined, respondioEn: number, ahora: number): string {
+    if (!data?.now || !data?.timezone || !respondioEn) return data?.date ?? toLocalYMD(new Date(ahora));
+    const desfase = Date.parse(data.now) - respondioEn;
+    return relojDelLiceoEn(Math.max(ahora, respondioEn) + desfase, data.timezone).fecha;
 }
 
 /**

@@ -48,7 +48,7 @@ function loGuardado(page: Page) {
         return new Promise<{ dueno: string; cuando: number; claves: string[] } | null>((resolver) => {
             let peticion: IDBOpenDBRequest;
             try {
-                peticion = indexedDB.open(base, 1);
+                peticion = indexedDB.open(base); // la versión que tenga (desde el 30-09 es la 2)
             } catch {
                 return resolver(null);
             }

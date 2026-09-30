@@ -63,9 +63,12 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
                     // ya se está enseñando.
                     retry: (intentos, error) => !esQueNoContesta(error) && intentos < 1,
                     retryDelay: 1000, // 1 segundo entre reintentos
-                    // Sin conexión no se pide nada; lo que ya estaba guardado
-                    // se sigue viendo, que es justo lo que se busca.
-                    networkMode: 'online',
+                    // Sin conexión también se pide: `lib/axios.ts` contesta con
+                    // la última respuesta guardada de esa dirección
+                    // (`respuestas-guardadas.ts`). Con 'online', React Query ni
+                    // lo intentaba, y una pantalla que no estaba en memoria se
+                    // quedaba cargando aunque su dato estuviera en el teléfono.
+                    networkMode: 'always',
                 },
                 mutations: {
                     /**

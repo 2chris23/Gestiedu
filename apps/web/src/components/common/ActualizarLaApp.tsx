@@ -20,6 +20,12 @@ import { Button } from '@/components/ui';
  * última publicada; si es más nueva que esta, se ofrece aquí mismo: se baja
  * dentro de la app, con su barra, y Android pide confirmar la instalación.
  *
+ * **Como WhatsApp, se baja sola** (2026-09-30): con wifi, en segundo plano y
+ * sin preguntar; cuando está entera se avisa «Actualización lista» y basta
+ * con pulsar «Instalar». Con datos del teléfono se pregunta antes: en
+ * Venezuela los datos cuestan. Instalar sí pide ese toque: fuera de Google
+ * Play, Android no deja instalar a escondidas, y está bien.
+ *
  * Solo dentro de la APK. En un navegador no hay nada que instalar: la web ya
  * es siempre la última.
  *
@@ -53,6 +59,10 @@ interface PluginActualizar {
     puedeInstalar: () => Promise<{ puede: boolean }>;
     pedirPermiso: () => Promise<void>;
     descargarEInstalar: (o: { url: string; sha256: string }) => Promise<void>;
+    /** Solo en las APK desde la 1.6: bajar sin instalar, y luego instalar. */
+    descargar?: (o: { url: string; sha256: string }) => Promise<{ lista: boolean }>;
+    yaBajada?: (o: { sha256: string }) => Promise<{ lista: boolean }>;
+    instalar?: (o: { sha256: string }) => Promise<void>;
     addListener: (evento: 'progreso', alAvanzar: (p: { porcentaje: number }) => void) => Promise<Oyente> | Oyente;
 }
 
@@ -76,7 +86,18 @@ function laDescartada(): { versionCode: number; hasta: number } | null {
     }
 }
 
-type Fase = 'ofrecer' | 'permiso' | 'bajando' | 'instalando' | 'error';
+type Fase = 'ofrecer' | 'lista' | 'permiso' | 'bajando' | 'instalando' | 'error';
+
+/**
+ * ¿Se puede bajar sin preguntar? Con wifi y sin «ahorro de datos». Si el
+ * teléfono no dice qué red es, se pregunta: mejor eso que gastarle los datos.
+ */
+function sePuedeBajarSola(): boolean {
+    const conexion = (navigator as unknown as { connection?: { type?: string; saveData?: boolean } }).connection;
+    return Boolean(conexion && conexion.type === 'wifi' && !conexion.saveData);
+}
+
+const laUrl = (f: Ficha) => (f.url.startsWith('http') ? f.url : `${BACKEND_URL}${f.url}`);
 
 export function ActualizarLaApp() {
     const [ficha, setFicha] = React.useState<Ficha | null>(null);
@@ -103,14 +124,39 @@ export function ActualizarLaApp() {
         setPorcentaje(0);
         const oyente = await telefono.actualizar.addListener('progreso', (p) => setPorcentaje(Math.max(0, p.porcentaje)));
         try {
-            const url = esta.url.startsWith('http') ? esta.url : `${BACKEND_URL}${esta.url}`;
-            await telefono.actualizar.descargarEInstalar({ url, sha256: esta.sha256 });
+            const { descargar, instalar } = telefono.actualizar;
+            if (descargar && instalar) {
+                // Si ya se bajó sola, `descargar` no baja nada.
+                await descargar({ url: laUrl(esta), sha256: esta.sha256 });
+                await instalar({ sha256: esta.sha256 });
+            } else {
+                await telefono.actualizar.descargarEInstalar({ url: laUrl(esta), sha256: esta.sha256 });
+            }
             setFase('instalando');
         } catch (e: any) {
             setError(e?.message || 'No se pudo bajar la versión nueva.');
             setFase('error');
         } finally {
             await oyente.remove();
+        }
+    }, []);
+
+    /**
+     * BAJARLA SOLA, SIN ENSEÑAR NADA HASTA QUE ESTÉ
+     *
+     * Devuelve si quedó lista. Si algo falla (se fue la señal), no se dice
+     * nada: se intentará al volver a la app, y si no, se ofrece como antes.
+     */
+    const bajarSola = React.useCallback(async (esta: Ficha): Promise<boolean> => {
+        const telefono = losDelTelefono();
+        const { descargar, yaBajada } = telefono?.actualizar ?? {};
+        if (!telefono || !descargar || !yaBajada) return false;
+        try {
+            if ((await yaBajada({ sha256: esta.sha256 })).lista) return true;
+            if (!sePuedeBajarSola()) return false;
+            return (await descargar({ url: laUrl(esta), sha256: esta.sha256 })).lista;
+        } catch {
+            return false;
         }
     }, []);
 
@@ -131,16 +177,17 @@ export function ActualizarLaApp() {
             const laMia = Number(info.build) || 0;
             const { data } = await api.get<Ficha>(`/app-movil/${encodeURIComponent(info.id)}/version`, { timeout: 8000 });
             if (!data || !(data.versionCode > laMia)) return;
+            const lista = await bajarSola(data);
             const descartada = laDescartada();
             if (descartada?.versionCode === data.versionCode && Date.now() < descartada.hasta) return;
             setFicha(data);
             // Si se vuelve del instalador y esta sigue siendo la vieja, es que
             // se canceló (instalada, la app se habría reiniciado): se ofrece otra vez.
-            setFase((f) => (f === 'bajando' ? f : 'ofrecer'));
+            setFase((f) => (f === 'bajando' ? f : lista ? 'lista' : 'ofrecer'));
         } catch {
             // Sin conexión, o sin ninguna versión publicada (404): nada que ofrecer.
         }
-    }, [bajar]);
+    }, [bajar, bajarSola]);
 
     React.useEffect(() => {
         const telefono = losDelTelefono();
@@ -172,7 +219,7 @@ export function ActualizarLaApp() {
     if (!ficha) return null;
 
     const megas = (ficha.tamano / 1024 / 1024).toFixed(1).replace('.', ',');
-    const cerrable = fase === 'ofrecer' || fase === 'error' || fase === 'permiso' || fase === 'instalando';
+    const cerrable = fase === 'ofrecer' || fase === 'lista' || fase === 'error' || fase === 'permiso' || fase === 'instalando';
 
     return (
         <Dialog open onOpenChange={(abierto) => !abierto && cerrable && ahoraNo()}>
@@ -188,7 +235,9 @@ export function ActualizarLaApp() {
                             ? 'Falta un permiso de Android'
                             : fase === 'instalando'
                               ? 'Confirma la instalación'
-                              : 'Hay una versión nueva de la app'}
+                              : fase === 'lista'
+                                ? 'Actualización lista'
+                                : 'Hay una versión nueva de la app'}
                     </DialogTitle>
                     <DialogDescription className="text-center">
                         {fase === 'permiso' &&
@@ -197,11 +246,13 @@ export function ActualizarLaApp() {
                             'Android te pregunta si quieres instalar la actualización. Al aceptar, la app se cierra y se abre la nueva. No se pierde nada. Si Google Play Protect pide revisarla antes, acepta: tarda unos segundos.'}
                         {(fase === 'ofrecer' || fase === 'bajando') &&
                             `Versión ${ficha.versionName} · ${megas} MB. Se baja aquí mismo y Android te pedirá confirmar la instalación.`}
+                        {fase === 'lista' &&
+                            `La versión ${ficha.versionName} ya se bajó sola. Instálala cuando quieras: Android te pedirá confirmarlo y no se pierde nada.`}
                         {fase === 'error' && error}
                     </DialogDescription>
                 </DialogHeader>
 
-                {ficha.notas && fase === 'ofrecer' && (
+                {ficha.notas && (fase === 'ofrecer' || fase === 'lista') && (
                     <p className="rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-700">{ficha.notas}</p>
                 )}
 
@@ -222,12 +273,13 @@ export function ActualizarLaApp() {
                 )}
 
                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                    {(fase === 'ofrecer' || fase === 'error' || fase === 'permiso') && (
+                    {(fase === 'ofrecer' || fase === 'lista' || fase === 'error' || fase === 'permiso') && (
                         <Button variant="outline" onClick={ahoraNo}>
                             Ahora no
                         </Button>
                     )}
                     {fase === 'ofrecer' && <Button onClick={() => void bajar(ficha)}>Descargar e instalar</Button>}
+                    {fase === 'lista' && <Button onClick={() => void bajar(ficha)}>Instalar</Button>}
                     {fase === 'error' && <Button onClick={() => void bajar(ficha)}>Volver a intentarlo</Button>}
                     {fase === 'permiso' && (
                         <Button

@@ -10,6 +10,8 @@ import { DynamicTitle } from '@/components/common/DynamicTitle';
 import { DynamicColors } from '@/components/common/DynamicColors';
 import { FichaDeLaApp } from '@/components/common/FichaDeLaApp';
 import { AyudanteDeLaApp } from '@/components/common/AyudanteDeLaApp';
+import { MarcaDeArranque } from '@/components/common/MarcaDeArranque';
+import { GUARDIAN_DEL_ARRANQUE } from '@/lib/guardian-del-arranque';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -79,7 +81,12 @@ export default function RootLayout({
 }) {
     return (
         <html lang="es" suppressHydrationWarning={true}>
+            <head>
+                {/* Nunca en blanco: corre aunque no llegue ningún archivo de la app. */}
+                <script dangerouslySetInnerHTML={{ __html: GUARDIAN_DEL_ARRANQUE }} />
+            </head>
             <body className={inter.className} suppressHydrationWarning={true}>
+                <MarcaDeArranque />
                 <QueryProvider>
                     <ConfirmProvider>
                         <DynamicFavicon />

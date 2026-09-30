@@ -1,6 +1,7 @@
 import { User, CreateUserData } from '@/types/user';
 import { API_URL } from '@/config/env';
 import { conseguirCredencial } from '@/lib/credencial-en-memoria';
+import api from '@/lib/axios';
 
 /**
  * LA CREDENCIAL YA NO ESTÁ EN LAS COOKIES
@@ -51,25 +52,18 @@ interface Pagination {
 
 export const userService = {
     getUsers: async (params?: { page?: number; limit?: number; search?: string; role?: string; status?: string; faltan?: boolean }): Promise<{ users: User[]; pagination: Pagination }> => {
-        const queryParams = new URLSearchParams();
-        if (params?.page) queryParams.append('page', params.page.toString());
-        if (params?.limit) queryParams.append('limit', params.limit.toString());
-        if (params?.search) queryParams.append('search', params.search);
-        if (params?.role && params.role !== 'ALL') queryParams.append('role', params.role);
-        if (params?.status) queryParams.append('status', params.status);
+        // Por `api` (no `fetch` a mano): así la lista queda guardada en el
+        // teléfono y sin conexión se ve la última (`respuestas-guardadas.ts`).
+        const query: Record<string, string> = {};
+        if (params?.page) query.page = params.page.toString();
+        if (params?.limit) query.limit = params.limit.toString();
+        if (params?.search) query.search = params.search;
+        if (params?.role && params.role !== 'ALL') query.role = params.role;
+        if (params?.status) query.status = params.status;
         // Solo los alumnos a los que les falta un dato o un recaudo.
-        if (params?.faltan) queryParams.append('faltan', 'true');
+        if (params?.faltan) query.faltan = 'true';
 
-        const response = await fetch(`${API_URL}/users?${queryParams.toString()}`, {
-            method: 'GET',
-            headers: await getHeaders()
-        });
-
-        if (!response.ok) {
-            throw new Error('Error al obtener usuarios');
-        }
-
-        const data = await response.json();
+        const { data } = await api.get('/users', { params: query });
         return {
             users: data.users,
             pagination: data.pagination

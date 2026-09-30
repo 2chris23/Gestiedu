@@ -58,7 +58,7 @@ async function lleganDatosGuardados(page: Page) {
     return page.evaluate(
         () =>
             new Promise<boolean>((ok) => {
-                const p = indexedDB.open('gestiedu', 1);
+                const p = indexedDB.open('gestiedu'); // la versión que tenga (desde el 30-09 es la 2)
                 p.onerror = () => ok(false);
                 p.onsuccess = () => {
                     const bd = p.result;
@@ -155,7 +155,7 @@ test.describe('Con el servidor apagado', () => {
      * sin él; la que no se abrió nunca no está, y lo dice en vez de romper la
      * pantalla entera.
      */
-    test('APAGADO-03: una pestaña diferida abierta con servidor se ve sin él; una nunca abierta avisa', async ({ page, context }) => {
+    test('APAGADO-03: una pestaña diferida se ve sin servidor, también una que nunca se abrió (la app se bajó entera)', async ({ page, context }) => {
         test.setTimeout(180_000);
         const html = await (await fetch(`http://127.0.0.1:${DESTINO}/login`)).text().catch(() => '');
         test.skip(html.includes('hmr-client') || html.includes('webpack-hmr'), 'Necesita la web COMPILADA (WEB_DESTINO=3108)');
@@ -186,9 +186,11 @@ test.describe('Con el servidor apagado', () => {
             await page.getByRole('button', { name: /Apariencia/ }).click();
             await expect(page.getByText('Logos del Instituto')).toBeVisible({ timeout: 15_000 });
 
-            // «Seguridad» no se abrió nunca: no está guardada, y se dice.
+            // «Seguridad» no se abrió nunca, y abre igual: desde el 30-09 la
+            // app se baja entera en segundo plano (`sw.js`, `ponerseAlDia`).
+            // El aviso «no está guardada» queda para lo que de verdad falte.
             await page.getByRole('button', { name: /Seguridad/ }).click();
-            await expect(page.getByText(/no está guardada en el teléfono/)).toBeVisible({ timeout: 15_000 });
+            await expect(page.getByText('Sesión y Tiempo de Espera')).toBeVisible({ timeout: 15_000 });
             await expect(page.getByRole('button', { name: /Apariencia/ })).toBeVisible(); // la pantalla sigue viva
         } finally {
             await puerta.cerrar().catch(() => undefined);
