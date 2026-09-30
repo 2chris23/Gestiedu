@@ -82,11 +82,33 @@ export async function classSessionsRoutes(fastify: FastifyInstance) {
             '/activities/:activityId/instrumento',
             {
                 onRequest: [requireTeacher],
-                schema: { body: { type: 'object', required: ['marcas'], properties: { marcas: { type: 'object' } } } },
+                schema: {
+                    body: {
+                        type: 'object',
+                        required: ['marcas'],
+                        properties: {
+                            marcas: { type: 'object' },
+                            // Lo hecho sin conexión: con qué instrumento se marcó y qué había.
+                            instrumento: { type: 'object' },
+                            antes: { type: 'object' },
+                            decision: { type: 'string', enum: ['la-mia'] },
+                        },
+                    },
+                },
             },
             (async (r: any, reply: any) => {
                 try {
-                    const data = await calificarConInstrumento(r.tenantPrisma, r.user, r.params.activityId, r.body.marcas);
+                    const hechoEn = typeof r.headers['x-hecho-en'] === 'string' && !Number.isNaN(Date.parse(r.headers['x-hecho-en'])) ? new Date(r.headers['x-hecho-en']) : null;
+                    const data = await calificarConInstrumento(r.tenantPrisma, r.user, r.params.activityId, r.body.marcas, {
+                        instrumento: r.body.instrumento,
+                        antes: r.body.antes,
+                        decision: r.body.decision,
+                        hechoEn,
+                        io: r.server.io,
+                    });
+                    if ('enEspera' in data) {
+                        return reply.status(202).send({ code: 'EN_ESPERA', esperaId: data.esperaId, esperaA: data.esperaA, error: data.mensaje });
+                    }
                     const a = await r.tenantPrisma.classActivity.findUnique({ where: { id: r.params.activityId }, select: { classroomId: true } });
                     r.aQuienAfecta = { studentIds: Object.keys(r.body.marcas || {}), classroomId: a?.classroomId };
                     return reply.send({ success: true, data });

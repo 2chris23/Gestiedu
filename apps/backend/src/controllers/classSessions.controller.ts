@@ -1,4 +1,15 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
+import {
+    apuntarQuienPuso,
+    conNombres,
+    cuantasNotas,
+    dejarEnEspera,
+    nombreDe,
+    ponerNotasMirandoAntes,
+    quienLaBorro,
+    quienesPusieronNotas,
+} from '../services/cambios-sin-conexion.service';
+import { avisar } from '../services/avisos.service';
 import { crearReemplazo, esFecha } from '../services/class-replacements.service';
 import { avisarDelReemplazo } from './class-replacements.controller';
 import { parseDay } from '../services/school-events.service';
@@ -162,6 +173,16 @@ async function exigirClasePropia(
 }
 
 /** Igual, pero partiendo de la actividad: primero se mira de qué clase es. */
+/** Un id hecho en el teléfono: letras, números, guion y guion bajo (uuid o cuid). */
+const ID_DEL_TELEFONO = /^[A-Za-z0-9_-]{16,64}$/;
+
+/** La hora en que se hizo en el teléfono (`X-Hecho-En`), si se puede creer. */
+function parseHechoEn(valor: unknown): Date | null {
+    if (typeof valor !== 'string') return null;
+    const t = Date.parse(valor);
+    return Number.isNaN(t) || t > Date.now() + 5 * 60 * 1000 ? null : new Date(t);
+}
+
 async function exigirActividadPropia(
     request: FastifyRequest,
     activityId: string,
@@ -734,13 +755,19 @@ export async function saveLiveClassSession(
             involvedStudentIds?: string[];
             startTime?: string;
             endTime?: string;
-            attendances?: Array<{ studentId: string; status: string; comments?: string; soloSiNoHay?: boolean }>;
+            /**
+             * `antes`: lo que había cuando se marcó (lo hecho sin conexión). Si otro
+             * lo cambió mientras tanto, no se pisa: se pregunta (409).
+             */
+            attendances?: Array<{ studentId: string; status: string; comments?: string; soloSiNoHay?: boolean; antes?: string | null }>;
+            /** «la-mia»: ya se preguntó y se queda lo de quien envía. */
+            decision?: 'la-mia';
         };
     }>,
     reply: FastifyReply
 ) {
     try {
-        const { classroomId, subjectId, date, topic, observations, observationsTitle, involvedStudentIds, startTime, endTime, attendances = [] } = request.body;
+        const { classroomId, subjectId, date, topic, observations, observationsTitle, involvedStudentIds, startTime, endTime, attendances = [], decision } = request.body;
         const prisma = request.tenantPrisma;
         const user = request.user as RequestUser;
 
@@ -749,6 +776,17 @@ export async function saveLiveClassSession(
         }
 
         await exigirClasePropia(request, classroomId, subjectId, 'dar clase');
+
+        // Una clase de un día que no ha llegado no se guarda: con lo hecho sin
+        // conexión, la fecha la puso el reloj del teléfono (SINCON-09).
+        const zonaDelLiceo = await instituteTimezone(prisma);
+        if (!/^\d{4}-\d{2}-\d{2}/.test(String(date)) || isFutureDate(String(date).slice(0, 10), zonaDelLiceo)) {
+            return reply.status(400).send({
+                error: 'No se puede guardar una clase de una fecha futura',
+                code: 'FUTURE_DATE',
+                today: todayInTimezone(zonaDelLiceo),
+            });
+        }
 
         // La lista que se pasa es la de ESTA sección. Sin mirarlo, el profesor
         // de 1.º A ponía ausente a un alumno de 1.º B —y le pisaba lo que su
@@ -818,6 +856,37 @@ export async function saveLiveClassSession(
                     ).map((a: { studentId: string }) => a.studentId)
                 );
 
+                /**
+                 * LO QUE OTRO MARCÓ MIENTRAS TANTO (2026-09-30)
+                 *
+                 * Lo marcado sin conexión trae lo que había (`antes`). Si ahora
+                 * hay otra cosa —y no es lo mismo que se quiere poner—, no se
+                 * pisa: se pregunta a quien envía cuál queda.
+                 */
+                const conAntes = attendances.filter((a) => a.antes !== undefined && !a.soloSiNoHay);
+                if (conAntes.length && decision !== 'la-mia') {
+                    const hoyHay = await tx.dailyAttendance.findMany({
+                        where: { date: startOfDay, studentId: { in: conAntes.map((a) => a.studentId) } },
+                        select: { studentId: true, status: true, teacherId: true, modificadoPorId: true },
+                    });
+                    const porAlumno = new Map<string, any>(hoyHay.map((a: any) => [a.studentId, a]));
+                    const choques = conAntes
+                        .map((a) => {
+                            const hay = porAlumno.get(a.studentId);
+                            const ahora = hay?.status ?? null;
+                            if (ahora === (a.antes ?? null) || ahora === a.status) return null;
+                            return { studentId: a.studentId, antes: a.antes ?? null, ahora, tuya: a.status, quien: hay?.modificadoPorId ?? hay?.teacherId ?? null };
+                        })
+                        .filter(Boolean);
+                    if (choques.length) {
+                        throw Object.assign(new Error('Mientras tanto otra persona cambió esta asistencia: elige cuál queda'), {
+                            statusCode: 409,
+                            code: 'CAMBIO_MIENTRAS_TANTO',
+                            choques,
+                        });
+                    }
+                }
+
                 const nuevas = attendances.filter((a) => !yaTenian.has(a.studentId));
                 if (nuevas.length > 0) {
                     await tx.dailyAttendance.createMany({
@@ -858,6 +927,7 @@ export async function saveLiveClassSession(
                             status: status as any,
                             comments: comentario === '' ? null : comentario,
                             classSessionId: session.id,
+                            modificadoPorId: user?.userId ?? null,
                         },
                     });
                 }
@@ -896,6 +966,17 @@ export async function saveLiveClassSession(
 
         return reply.status(200).send({ success: true, session: result });
     } catch (error) {
+        if ((error as any)?.code === 'CAMBIO_MIENTRAS_TANTO') {
+            const choques = (error as any).choques as Array<{ quien: string | null }>;
+            const nombres = new Map<string, string>();
+            for (const c of choques) if (c.quien && !nombres.has(c.quien)) nombres.set(c.quien, await nombreDe(request.tenantPrisma, c.quien));
+            return reply.status(409).send({
+                code: 'CAMBIO_MIENTRAS_TANTO',
+                que: 'ASISTENCIA',
+                error: (error as Error).message,
+                choques: choques.map((c) => ({ ...c, quienNombre: c.quien ? nombres.get(c.quien) : null })),
+            });
+        }
         // Los errores con motivo propio (permisos, no encontrado…) se responden tal
         // cual: convertirlos en 500 esconde por qué se negó.
         if ((error as any)?.statusCode) {
@@ -981,12 +1062,19 @@ export async function createClassActivity(
             classSessionId?: string;
             /** El día de la clase que se ve («YYYY-MM-DD»). */
             date?: string;
+            /**
+             * El id lo pone el teléfono cuando se crea sin conexión: así las
+             * notas de esa actividad, hechas también sin conexión, ya saben a
+             * cuál van antes de que llegue.
+             */
+            id?: string;
         };
     }>,
     reply: FastifyReply
 ) {
     try {
         const {
+            id: idDelTelefono,
             classroomId,
             subjectId,
             title,
@@ -1007,6 +1095,14 @@ export async function createClassActivity(
         }
         if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
             return reply.status(400).send({ error: 'Fecha inválida', code: 'FECHA_INVALIDA' });
+        }
+        if (idDelTelefono !== undefined) {
+            if (typeof idDelTelefono !== 'string' || !ID_DEL_TELEFONO.test(idDelTelefono)) {
+                return reply.status(400).send({ error: 'El id de la actividad no es válido', code: 'ID_INVALIDO' });
+            }
+            if (await prisma.classActivity.findUnique({ where: { id: idDelTelefono }, select: { id: true } })) {
+                return reply.status(409).send({ error: 'Ya hay una actividad con ese id', code: 'ID_EN_USO' });
+            }
         }
 
         let targetSubjectId = subjectId;
@@ -1068,6 +1164,7 @@ export async function createClassActivity(
 
         const activity = await prisma.classActivity.create({
             data: {
+                ...(idDelTelefono ? { id: idDelTelefono } : {}),
                 classroomId,
                 subjectId: targetSubjectId,
                 title,
@@ -1182,6 +1279,7 @@ export async function updateClassActivity(
             }
             await arreglarNotasGuardadasComoTexto(prisma as any, activityId, actual?.scores);
             await sumarNotas(prisma as any, activityId, scores as Notas);
+            await apuntarQuienPuso(prisma, activityId, Object.keys(scores || {}), (request.user as RequestUser).id);
         }
 
         const activity = await prisma.classActivity.update({
@@ -1227,17 +1325,55 @@ export async function saveClassActivityGrades(
         Body: {
             scores: Record<string, number | null>;
             maxScore?: number;
+            /** Lo que había cuando se cambió (lo hecho sin conexión): si ya no es eso, se pregunta. */
+            antes?: Record<string, number | null>;
+            /** «la-mia»: ya se preguntó y se queda la de quien envía. */
+            decision?: 'la-mia';
         };
     }>,
     reply: FastifyReply
 ) {
     try {
         const { activityId } = request.params;
-        const { scores = {}, maxScore } = request.body;
+        const { scores = {}, maxScore, antes, decision } = request.body;
         const prisma = request.tenantPrisma;
+        const user = request.user as RequestUser;
 
         const activity = await prisma.classActivity.findUnique({ where: { id: activityId } });
         if (!activity) {
+            /**
+             * NOTAS PARA UNA ACTIVIDAD QUE OTRO BORRÓ MIENTRAS TANTO
+             *
+             * Lo hecho sin conexión llega tarde. Si la actividad ya se borró,
+             * las notas no se tiran: se le pregunta a quien la borró si la
+             * recupera con ellas (decidido con Cristian, 2026-09-30).
+             */
+            const borrada = request.headers['x-cambio'] || antes ? await quienLaBorro(prisma, 'classActivity', activityId) : null;
+            if (borrada?.contenido?.classroomId) {
+                await assertClassroomScope(prisma, user as any, borrada.contenido.classroomId, {
+                    subjectId: borrada.contenido.subjectId ?? undefined,
+                    accion: 'dar notas',
+                });
+                const titulo = String(borrada.contenido.title ?? 'la actividad');
+                const autor = await nombreDe(prisma, user.id);
+                const espera = await dejarEnEspera(prisma, request.server.io as any, user.instituteId, {
+                    autorId: user.id,
+                    decideId: borrada.borradoPor,
+                    tipo: 'NOTAS_A_ACTIVIDAD_BORRADA',
+                    objetivo: activityId,
+                    datos: { scores, maxScore, titulo, classroomId: borrada.contenido.classroomId },
+                    motivo: 'La actividad se borró mientras estas notas esperaban para enviarse',
+                    hechoEn: parseHechoEn(request.headers['x-hecho-en']),
+                    titulo: `Notas para «${titulo}», que borraste`,
+                    mensaje: `${autor} le había puesto nota a ${Object.keys(scores).length} alumno(s) en «${titulo}» sin conexión, y la borraste antes de que llegaran. ¿La recuperas con esas notas?`,
+                });
+                return reply.status(202).send({
+                    code: 'EN_ESPERA',
+                    esperaId: espera.id,
+                    esperaA: await nombreDe(prisma, borrada.borradoPor),
+                    error: `«${titulo}» se borró mientras tanto. Tus notas esperan a que quien la borró decida si la recupera.`,
+                });
+            }
             return reply.status(404).send({ error: 'Actividad no encontrada' });
         }
 
@@ -1259,9 +1395,25 @@ export async function saveClassActivityGrades(
             return reply.status(400).send({ error: problema, code: 'NOTA_NO_VALIDA' });
         }
 
-        // Se añaden a lo guardado en la misma escritura: ver `utils/notas-de-clase.ts`.
-        await arreglarNotasGuardadasComoTexto(prisma as any, activityId, activity.scores);
-        await sumarNotas(prisma as any, activityId, scores as Notas, maxScore);
+        // Se añaden a lo guardado en la misma escritura (`utils/notas-de-clase.ts`),
+        // y si venía lo que había (sin conexión) y otro lo cambió, se pregunta.
+        const { choques } = await ponerNotasMirandoAntes(
+            prisma,
+            activityId,
+            scores as Notas,
+            maxScore,
+            decision === 'la-mia' ? undefined : antes,
+            user.id
+        );
+        if (choques.length) {
+            return reply.status(409).send({
+                code: 'CAMBIO_MIENTRAS_TANTO',
+                que: 'NOTAS',
+                error: 'Mientras tanto otra persona cambió estas notas: elige cuál queda',
+                actividad: { id: activityId, title: activity.title },
+                choques: await conNombres(prisma, choques),
+            });
+        }
         const updated = await prisma.classActivity.findUnique({ where: { id: activityId } });
 
         // A quién le toca: a los alumnos que recibieron nota y al personal de la
@@ -1375,19 +1527,60 @@ export async function evaluarDeOtraForma(
  * Eliminar una actividad.
  */
 export async function deleteClassActivity(
-    request: FastifyRequest<{ Params: { activityId: string } }>,
+    request: FastifyRequest<{ Params: { activityId: string }; Querystring: { notasVistas?: string; decision?: string } }>,
     reply: FastifyReply
 ) {
     try {
         const { activityId } = request.params;
         const prisma = request.tenantPrisma;
+        const user = request.user as RequestUser;
 
         const propia = await exigirActividadPropia(request, activityId, 'borrar actividades');
         if (!propia) {
+            // Ya estaba borrada (lo hecho sin conexión llega dos veces, o la borró
+            // otro): lo que se quería ya es así.
+            if (request.headers['x-cambio'] && (await quienLaBorro(prisma, 'classActivity', activityId))) {
+                return reply.status(200).send({ success: true, yaEstabaBorrada: true });
+            }
             return reply.status(404).send({ error: 'Actividad no encontrada' });
         }
 
+        /**
+         * BORRAR SIN HABER VISTO LAS NOTAS QUE OTRO PUSO (2026-09-30)
+         *
+         * Lo que se borra sin conexión llega al final, y puede que mientras
+         * tanto el profesor le pusiera notas. Quien borra dice cuántas vio
+         * (`notasVistas`); si ahora hay más, no se borra: se le pregunta si aún
+         * quiere. Con `decision=borrar`, se borra (copia en la papelera) y se
+         * avisa a quien puso esas notas.
+         */
+        const actual = await prisma.classActivity.findUnique({ where: { id: activityId }, select: { title: true, scores: true, notasPuestasPor: true } });
+        const hay = cuantasNotas(actual?.scores);
+        const vistas = request.query?.notasVistas !== undefined ? Number(request.query.notasVistas) : null;
+        if (vistas !== null && Number.isFinite(vistas) && hay > vistas && request.query?.decision !== 'borrar') {
+            const quienes = quienesPusieronNotas(actual?.notasPuestasPor, user.id);
+            return reply.status(409).send({
+                code: 'CAMBIO_MIENTRAS_TANTO',
+                que: 'NOTAS_NUEVAS',
+                error: 'Mientras tanto le pusieron notas a esta actividad: ¿aún quieres borrarla?',
+                actividad: { id: activityId, title: actual?.title },
+                notas: hay,
+                notasVistas: vistas,
+                quienes: await Promise.all(quienes.map((q) => nombreDe(prisma, q))),
+            });
+        }
+
         await borrarGuardandoCopia(prisma, 'classActivity', { id: activityId }, quienBorra(request as any));
+
+        const avisados = quienesPusieronNotas(actual?.notasPuestasPor, user.id);
+        if (avisados.length && hay > 0 && user.instituteId) {
+            await avisar(prisma, user.instituteId, request.server.io as any, {
+                a: avisados,
+                titulo: `Se borró «${actual?.title ?? 'una actividad'}»`,
+                mensaje: `${await nombreDe(prisma, user.id)} borró «${actual?.title ?? 'la actividad'}» con las notas que tenía. Quedan en la papelera del liceo.`,
+                tipo: 'INFO',
+            });
+        }
 
         request.aQuienAfecta = { classroomId: propia.classroomId };
 

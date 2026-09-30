@@ -39,6 +39,7 @@ import { materiasPendientesRoutes } from './materias-pendientes.routes';
 import { laborSocialRoutes } from './labor-social.routes';
 import { documentosRoutes } from './documentos.routes';
 import { avisosRoutes } from './avisos.routes';
+import { cambiosEnEsperaRoutes } from './cambios-en-espera.routes';
 import { citacionesRoutes } from './citaciones.routes';
 import { trasladoRoutes } from './traslado.routes';
 import { matriculaRoutes } from './matricula.routes';
@@ -76,6 +77,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(laborSocialRoutes, { prefix: '/api/labor-social' });
   await fastify.register(documentosRoutes, { prefix: '/api' });
   await fastify.register(avisosRoutes, { prefix: '/api/avisos' });
+  // Lo hecho sin conexión que decide otra persona (services/cambios-sin-conexion.service.ts).
+  await fastify.register(cambiosEnEsperaRoutes, { prefix: '/api/cambios-en-espera' });
   await fastify.register(citacionesRoutes, { prefix: '/api' });
   await fastify.register(trasladoRoutes, { prefix: '/api' });
   await fastify.register(matriculaRoutes, { prefix: '/api' });

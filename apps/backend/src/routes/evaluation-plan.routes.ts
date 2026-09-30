@@ -85,7 +85,17 @@ const evaluationPlanRoutes: FastifyPluginAsync = async (fastify) => {
       preHandler: [requireTeacher],
       schema: {
         params: fila,
-        body: { type: 'object', required: ['definicion'], properties: { definicion: { type: 'object' }, version: { type: ['integer', 'null'] } } },
+        body: {
+          type: 'object',
+          required: ['definicion'],
+          properties: {
+            definicion: { type: 'object' },
+            version: { type: ['integer', 'null'] },
+            // Lo hecho sin conexión: cuántas notas se vieron y, si ya se preguntó, qué se decidió.
+            notasVistas: { type: ['integer', 'null'], minimum: 0 },
+            decision: { type: 'string', enum: ['cambiar', 'dejar'] },
+          },
+        },
       },
     },
     responder((r) => guardarInstrumento(r.tenantPrisma, r.user, r.params.rowId, r.body))

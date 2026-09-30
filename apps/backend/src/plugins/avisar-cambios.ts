@@ -123,7 +123,7 @@ async function avisarCambiosPlugin(server: FastifyInstance) {
 
         // Un doble clic ya se respondió con la respuesta del primero: no es un
         // cambio nuevo y no hay que avisar dos veces.
-        if (reply.getHeader('x-doble-envio')) return;
+        if (reply.getHeader('x-doble-envio') || reply.getHeader('x-cambio') === 'repetido') return;
 
         const recurso = recursoDeLaUrl(request.url);
         if (!recurso) return;

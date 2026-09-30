@@ -23,6 +23,7 @@ import { identifyTenant } from './middleware/tenant.middleware';
 import { conLiceo } from './config/ambito-del-liceo';
 import { smartCacheMiddleware, cacheOnSendHook } from './middleware/smart-cache.middleware';
 import { ponerLosGuardiasPrimero } from './middleware/guardias';
+import cambiosSinConexion from './plugins/cambios-sin-conexion';
 import antiDobleEnvio from './plugins/anti-doble-envio';
 import { CupoCompartido } from './plugins/cupo-compartido';
 import { leerArchivoDelLiceo } from './services/archivos-del-liceo.service';
@@ -53,8 +54,8 @@ export async function buildServer(): Promise<FastifyInstance> {
     origin: config.cors.origin,
     credentials: true,
     methods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Origin', 'Accept', 'X-Institute-ID', 'X-Institute-Slug'],
-    exposedHeaders: ['Content-Length', 'Content-Type', 'X-Cache-Status'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Origin', 'Accept', 'X-Institute-ID', 'X-Institute-Slug', 'X-Cambio', 'X-Hecho-En'],
+    exposedHeaders: ['Content-Length', 'Content-Type', 'X-Cache-Status', 'X-Cambio'],
   });
 
   // ✅ SECURITY: Registrar plugin de seguridad con Helmet (AFTER CORS)
@@ -307,6 +308,10 @@ export async function buildServer(): Promise<FastifyInstance> {
   await server.register(topeDeCarga);
 
   await server.register(antiDobleEnvio);
+
+  // Lo hecho sin conexión: el mismo cambio no se aplica dos veces aunque
+  // llegue días después. Ver `plugins/cambios-sin-conexion.ts`.
+  await server.register(cambiosSinConexion);
 
   // Middleware de resolución de tenant (multi-tenant)
   server.addHook('onRequest', identifyTenant);

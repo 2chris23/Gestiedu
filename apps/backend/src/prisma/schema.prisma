@@ -956,6 +956,8 @@ model DailyAttendance {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  /// Quién la cambió por última vez (la crea `teacherId`).
+  modificadoPorId String?
 
   @@unique([studentId, date])
   @@index([studentId, classroomId])
@@ -2022,6 +2024,9 @@ model ClassActivity {
   /// { "studentId": { "marcas": { criterioId: valor }, "total": n | null } }.
   /// La nota sigue yendo a `scores`.
   detalleDelInstrumento Json?
+  /// Quién puso la nota de cada alumno y cuándo: { "studentId": { usuarioId, en } }.
+  /// Sirve para decir «el admin le puso 15 mientras estabas sin conexión».
+  notasPuestasPor       Json?
   isDone                Boolean   @default(false)
   carriedOver           Boolean   @default(false) // true si fue movida por suspensión
 
@@ -2151,9 +2156,60 @@ model InstrumentoDeEvaluacion {
   tipo       String
   definicion Json
   version    Int    @default(1)
+  /// Quién lo cambió por última vez: a quien se le pregunta si llegan marcas del anterior.
+  cambiadoPor String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("instrumentos_de_evaluacion")
+}
+
+/// LO HECHO SIN CONEXIÓN QUE YA LLEGÓ (2026-09-30)
+///
+/// Cada cambio llega con su id del teléfono (`X-Cambio`): el mismo id no se
+/// aplica dos veces aunque se reenvíe días después (se devuelve la respuesta
+/// de la primera vez). Y queda el rastro: cuándo se hizo y cuándo llegó.
+/// `plugins/cambios-sin-conexion.ts`.
+model CambioRecibido {
+  id         String    @id
+  usuarioId  String
+  metodo     String
+  ruta       String
+  /// 0 = en curso; -1 = falló sin aplicarse (se puede reintentar); si no, el código HTTP.
+  estado     Int       @default(0)
+  respuesta  Json?
+  hechoEn    DateTime?
+  recibidoEn DateTime  @default(now())
+
+  @@index([recibidoEn])
+  @@map("cambios_recibidos")
+}
+
+/// LO QUE LLEGÓ SIN CONEXIÓN Y TIENE QUE DECIDIRLO OTRA PERSONA
+///
+/// Notas a una actividad que otro borró mientras tanto (decide quien la
+/// borró: ¿la recupera con esas notas?), o marcas de un instrumento que otro
+/// cambió (decide quien lo cambió: ¿sigue queriendo el nuevo?). Nada se pierde
+/// en silencio. `services/cambios-en-espera.service.ts`.
+model CambioEnEspera {
+  id          String    @id @default(cuid())
+  autorId     String
+  decideId    String?
+  /// NOTAS_A_ACTIVIDAD_BORRADA | MARCAS_CON_OTRO_INSTRUMENTO
+  tipo        String
+  /// El id de la actividad.
+  objetivo    String
+  datos       Json
+  motivo      String
+  hechoEn     DateTime?
+  creadoEn    DateTime  @default(now())
+  resuelto    Boolean   @default(false)
+  resolucion  String?
+  resueltoPor String?
+  resueltoEn  DateTime?
+
+  @@index([decideId, resuelto])
+  @@index([autorId, resuelto])
+  @@map("cambios_en_espera")
 }
