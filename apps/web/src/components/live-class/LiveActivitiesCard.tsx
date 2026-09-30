@@ -5,10 +5,11 @@ import Link from 'next/link';
 import {
     ListTodo, Plus, CheckCircle2, Circle, Trash2, Calendar,
     Tag, Award, Clock, Sparkles, X, Loader2, ArrowRight,
-    Edit3, Check, CheckSquare, ExternalLink
+    Edit3, Check, CheckSquare, ExternalLink, Clock3
 } from 'lucide-react';
 import { ClassActivity, useCreateClassActivity, useUpdateClassActivity, useDeleteClassActivity } from '@/hooks/useLiveClass';
 import { toast } from 'sonner';
+import { useConfirm } from '@/hooks/useConfirm';
 
 const DEFAULT_TAG_PRESETS = [
     { name: 'Examen', bg: 'bg-rose-50 text-rose-700 border-rose-200' },
@@ -69,6 +70,7 @@ export default function LiveActivitiesCard({
     const createActivity = useCreateClassActivity();
     const updateActivity = useUpdateClassActivity();
     const deleteActivity = useDeleteClassActivity();
+    const preguntar = useConfirm();
 
     // Modal state
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -180,8 +182,25 @@ export default function LiveActivitiesCard({
     };
 
     const handleDelete = async (id: string) => {
+        // Borrar una actividad con notas se lleva sus notas: se pregunta antes
+        // (quedan en la papelera del liceo). Antes se borraba sin decir nada.
+        const act = activities.find((a) => a.id === id);
+        const notas = Object.values((act?.scores as any) || {}).filter((v) => v !== null && v !== undefined && v !== '').length;
+        if (notas > 0) {
+            const ok = await preguntar({
+                title: `Borrar «${act?.title ?? 'la actividad'}»`,
+                description: `Tiene nota de ${notas} alumno(s). Se borran con ella (quedan en la papelera del liceo).`,
+                confirmLabel: 'Borrar',
+            });
+            if (!ok) return;
+        }
         try {
-            await deleteActivity.mutateAsync(id);
+            const r: any = await deleteActivity.mutateAsync(id);
+            if (r?.pendiente) {
+                if (activeGradingActivityId === id) onSelectGradingActivity(null);
+                toast('Sin conexión: se borrará al volver la conexión (⏱).', { id: 'pendiente' });
+                return;
+            }
             if (activeGradingActivityId === id) {
                 onSelectGradingActivity(null);
             }
@@ -335,6 +354,11 @@ export default function LiveActivitiesCard({
                                                             }`}
                                                         >
                                                             {act.title}
+                                                        {(act as any).pendiente && (
+                                                            <span className="ml-1 inline-flex items-center gap-0.5 text-xs font-semibold text-amber-700">
+                                                                <Clock3 className="h-3 w-3" aria-hidden /> pendiente
+                                                            </span>
+                                                        )}
                                                         </h4>
                                                         {act.description && (
                                                             <p className={`text-[11px] truncate mt-0.5 ${isGradingActive ? 'text-blue-100' : 'text-gray-500'}`}>
@@ -471,6 +495,11 @@ export default function LiveActivitiesCard({
                                                     </div>
                                                     <h4 className="text-xs font-bold text-gray-900 mt-1 truncate">
                                                         {act.title}
+                                                        {(act as any).pendiente && (
+                                                            <span className="ml-1 inline-flex items-center gap-0.5 text-xs font-semibold text-amber-700">
+                                                                <Clock3 className="h-3 w-3" aria-hidden /> pendiente
+                                                            </span>
+                                                        )}
                                                     </h4>
                                                     {act.description && (
                                                         <p className="text-[11px] text-gray-500 truncate mt-0.5">

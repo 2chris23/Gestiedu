@@ -8,8 +8,10 @@ import {
     ChevronLeft, Clock, User, Users, Save, Loader2, Calendar,
     Plus, Trash2, CheckCircle2, ListTodo, Ban, Search, X,
     ArrowUp, ShieldCheck, UserPlus, StickyNote, GraduationCap, CheckSquare, Square,
-    ArrowUpDown, ArrowUp as ArrowUpIcon, ArrowDown, Award, Check, ClipboardCheck, CloudUpload, QrCode, ScanLine
+    ArrowUpDown, ArrowUp as ArrowUpIcon, ArrowDown, Award, Check, ClipboardCheck, CloudUpload, QrCode, ScanLine, Clock3
 } from 'lucide-react';
+import { usePorEnviar } from '@/hooks/usePorEnviar';
+import { conLoPendiente } from '@/lib/lo-pendiente-de-la-clase';
 import { useConfigAsistenciaQr } from '@/lib/asistencia-qr';
 import {
     useLiveClassDetail,
@@ -65,7 +67,21 @@ function LiveClassPageInner() {
     const startTime = searchParams.get('start') || undefined;
     const endTime = searchParams.get('end') || undefined;
 
-    const { data, isLoading, refetch } = useLiveClassDetail(classroomId, subjectId, date);
+    const { data: delServidor, isLoading, refetch } = useLiveClassDetail(classroomId, subjectId, date);
+    /**
+     * SIN CONEXIÓN, LO HECHO QUEDA PENDIENTE (⏱) Y SE VE IGUAL
+     *
+     * Lo que espera para subir (`lib/por-enviar.ts`) se pinta encima de lo del
+     * servidor: la asistencia marcada, las notas, las actividades nuevas y sin
+     * las borradas. Un refresco no lo tapa; al llegar, deja de estar pendiente.
+     */
+    const cola = usePorEnviar();
+    const data = useMemo(() => conLoPendiente(delServidor, cola, classroomId, subjectId, date), [delServidor, cola, classroomId, subjectId, date]);
+    const claseEnCola = cola.some((c) => c.objeto === `clase|${classroomId}|${subjectId}|${date}` && c.estado === 'pendiente');
+    const nombresDeLaClase = useMemo(
+        () => Object.fromEntries((delServidor?.students ?? []).map((s) => [s.id, `${s.firstName} ${s.lastName}`])),
+        [delServidor]
+    );
     const saveMutation = useSaveLiveClass();
     const saveActivityGrades = useSaveActivityGrades();
 
@@ -160,6 +176,9 @@ function LiveClassPageInner() {
      * respeta al refrescar hasta que llega al servidor.
      */
     const asistenciaTocada = React.useRef<Map<string, AttendanceStatusType>>(new Map());
+    // Lo mismo con las notas escritas y aún sin guardar: un aviso de tiempo
+    // real refrescaba la clase y las borraba de la pantalla.
+    const notasTocadas = React.useRef<Map<string, Record<string, number | null>>>(new Map());
     const textoSinGuardar = React.useRef(false);
 
     // Initialize data
@@ -191,7 +210,7 @@ function LiveClassPageInner() {
                 if (act.scores) {
                     try {
                         const parsed = typeof act.scores === 'string' ? JSON.parse(act.scores) : act.scores;
-                        drafts[act.id] = parsed;
+                        drafts[act.id] = { ...parsed, ...(notasTocadas.current.get(act.id) ?? {}) };
                     } catch {
                         drafts[act.id] = {};
                     }
@@ -239,6 +258,7 @@ function LiveClassPageInner() {
     const handleGradeScoreChange = (studentId: string, newScore: number | null) => {
         if (!activeGradingActivity) return;
         const actId = activeGradingActivity.id;
+        notasTocadas.current.set(actId, { ...(notasTocadas.current.get(actId) ?? {}), [studentId]: newScore });
         setActivityGradesDraft((prev) => ({
             ...prev,
             [actId]: {
@@ -251,13 +271,36 @@ function LiveClassPageInner() {
     const handleSaveCurrentActivityGrades = async () => {
         if (!activeGradingActivity) return;
         const actId = activeGradingActivity.id;
-        const scores = activityGradesDraft[actId] || {};
+        const borrador = activityGradesDraft[actId] || {};
+        // Solo lo que cambió, con la nota que tenía (lo que se vio): mandar el
+        // mapa entero reescribía con lo viejo lo que otro hubiera puesto.
+        const delSrv = delServidor?.activities?.find((a) => a.id === actId);
+        const antesMapa: Record<string, number | null> =
+            typeof delSrv?.scores === 'string' ? JSON.parse(delSrv.scores || '{}') : ((delSrv?.scores as any) ?? {});
+        const scores: Record<string, number | null> = {};
+        const antes: Record<string, number | null> = {};
+        for (const [id, nota] of Object.entries(borrador)) {
+            const habia = antesMapa[id] ?? null;
+            if ((nota ?? null) === habia) continue;
+            scores[id] = nota;
+            antes[id] = habia;
+        }
+        if (!Object.keys(scores).length) {
+            toast('No hay notas nuevas que guardar.', { id: 'nada-nuevo' });
+            return;
+        }
         try {
             await saveActivityGrades.mutateAsync({
                 activityId: actId,
                 scores,
                 maxScore: activeGradingActivity.maxScore || 20,
+                paraLaCola: {
+                    resumen: `Notas de «${activeGradingActivity.title}» · ${Object.keys(scores).length} alumno(s)`,
+                    nombres: nombresDeLaClase,
+                    antes,
+                },
             });
+            notasTocadas.current.delete(actId);
         } catch {
             // error handled
         }
@@ -325,7 +368,7 @@ function LiveClassPageInner() {
         });
         textoSinGuardar.current = false;
         try {
-            await saveMutation.mutateAsync({
+            const r: any = await saveMutation.mutateAsync({
                 classroomId,
                 subjectId,
                 date,
@@ -335,7 +378,21 @@ function LiveClassPageInner() {
                 startTime,
                 endTime,
                 attendances,
+                paraLaCola: {
+                    resumen: `Clase de ${delServidor?.subject?.name ?? 'la materia'} del ${date.split('-').reverse().join('/')}`,
+                    nombres: nombresDeLaClase,
+                    // Lo que había al abrir la clase: si otro lo cambió, se pregunta.
+                    antes: Object.fromEntries((delServidor?.students ?? []).map((s) => [s.id, s.status ?? null])),
+                },
             });
+            if (r?.pendiente) {
+                // Quedó en la cola del teléfono: desde ahí se pinta (⏱).
+                enviadas.forEach((estado, id) => {
+                    if (asistenciaTocada.current.get(id) === estado) asistenciaTocada.current.delete(id);
+                });
+                setGuardadoALas(null);
+                return;
+            }
             // Ya está en el servidor: deja de ser «pendiente», salvo que se haya
             // vuelto a cambiar mientras se guardaba.
             enviadas.forEach((estado, id) => {
@@ -523,6 +580,10 @@ function LiveClassPageInner() {
                                     {saveMutation.isPending ? (
                                         <>
                                             <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" /> Guardando…
+                                        </>
+                                    ) : claseEnCola ? (
+                                        <>
+                                            <Clock3 className="w-3.5 h-3.5 text-amber-600" /> Pendiente de enviar
                                         </>
                                     ) : guardadoALas ? (
                                         <>
@@ -874,6 +935,9 @@ function LiveClassPageInner() {
                                                 <div className="min-w-0">
                                                     <p className="line-clamp-2 break-words text-sm font-medium leading-5 text-gray-900" title={`${student.firstName} ${student.lastName}`}>
                                                         {student.firstName} {student.lastName}
+                                                        {(student as any).pendiente && (
+                                                            <Clock3 className="ml-1 inline h-3.5 w-3.5 text-amber-600" aria-label="Pendiente de enviar" />
+                                                        )}
                                                     </p>
                                                     <p className="truncate font-mono text-xs text-gray-500">
                                                         {student.studentCode || student.id}
@@ -892,6 +956,9 @@ function LiveClassPageInner() {
                                                 <div className="min-w-0">
                                                     <p className="truncate text-sm font-bold text-gray-900">
                                                         {student.firstName} {student.lastName}
+                                                        {(student as any).pendiente && (
+                                                            <Clock3 className="ml-1 inline h-3.5 w-3.5 text-amber-600" aria-label="Pendiente de enviar" />
+                                                        )}
                                                     </p>
                                                     <p className="truncate font-mono text-xs text-gray-600 @2xl:hidden">
                                                         {student.studentCode || student.id}

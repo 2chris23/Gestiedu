@@ -2,7 +2,18 @@ import { useQueries, useQuery, useMutation, useQueryClient } from '@tanstack/rea
 import api from '@/lib/axios';
 import { toast } from 'sonner';
 import type { PlanColumnDef } from '@/components/evaluation/planColumns';
-import { recordarPendiente, olvidarPendiente } from '@/lib/guardado-optimista';
+import { dejarPendiente } from '@/lib/por-enviar';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
+
+/**
+ * SIN CONEXIÓN, LO DE LA CLASE QUEDA PENDIENTE (2026-09-30)
+ *
+ * Pasar lista, poner notas, crear o borrar una actividad: si no hay conexión,
+ * en vez de fallar se deja en la cola del teléfono (`lib/por-enviar.ts`) y se
+ * envía solo al volver. Con conexión, todo sigue igual que siempre.
+ */
+export const PENDIENTE = { pendiente: true } as const;
+const sinConexion = (e: unknown) => esQueNoContesta(e);
 
 export interface LiveClassStudent {
     id: string;
@@ -227,14 +238,44 @@ export function useClassActivities(classroomId?: string, subjectId?: string) {
     });
 }
 
+/** Lo que acompaña a la clase si hay que dejarla pendiente (no se envía). */
+export interface ParaLaCola {
+    resumen: string;
+    nombres?: Record<string, string>;
+    /** La asistencia de cada alumno cuando se abrió la clase: lo que se vio. */
+    antes?: Record<string, string | null>;
+}
+
 export function useSaveLiveClass() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (payload: SaveLiveClassPayload) => {
-            const { data } = await api.post('/sessions/live-save', payload);
-            return data;
+        mutationFn: async ({ paraLaCola, ...payload }: SaveLiveClassPayload & { paraLaCola?: ParaLaCola }) => {
+            try {
+                const { data } = await api.post('/sessions/live-save', payload);
+                return data;
+            } catch (e) {
+                if (!sinConexion(e) || !paraLaCola) throw e;
+                await dejarPendiente({
+                    tipo: 'asistencia',
+                    grupo: 3,
+                    metodo: 'post',
+                    url: '/sessions/live-save',
+                    objeto: `clase|${payload.classroomId}|${payload.subjectId}|${payload.date}`,
+                    resumen: paraLaCola.resumen,
+                    nombres: paraLaCola.nombres,
+                    datos: {
+                        ...payload,
+                        // Lo que se vio: si al llegar otro lo cambió, se pregunta.
+                        attendances: (payload.attendances ?? []).map((a) =>
+                            a.soloSiNoHay || !paraLaCola.antes ? a : { ...a, antes: paraLaCola.antes[a.studentId] ?? null }
+                        ),
+                    },
+                });
+                return PENDIENTE;
+            }
         },
-        onSuccess: (_, variables) => {
+        onSuccess: (datos: any, variables) => {
+            if (datos?.pendiente) return;
             queryClient.invalidateQueries({
                 queryKey: ['liveClassDetail', variables.classroomId, variables.subjectId, variables.date],
             });
@@ -265,10 +306,28 @@ export function useCreateClassActivity() {
             /** El día de la clase que se ve: ahí nace la actividad. */
             date?: string;
         }) => {
-            const { data } = await api.post('/sessions/activities', payload);
-            return data;
+            try {
+                const { data } = await api.post('/sessions/activities', payload);
+                return data;
+            } catch (e) {
+                if (!sinConexion(e)) throw e;
+                // El id lo pone el teléfono: así sus notas, también sin
+                // conexión, ya saben a qué actividad van.
+                const id = crypto.randomUUID();
+                await dejarPendiente({
+                    tipo: 'crear-actividad',
+                    grupo: 2,
+                    metodo: 'post',
+                    url: '/sessions/activities',
+                    objeto: `actividad|${id}`,
+                    resumen: `Nueva actividad «${payload.title}»`,
+                    datos: { ...payload, id },
+                });
+                return { ...PENDIENTE, activity: { ...payload, id, scores: {} }, dondeSale: payload.target === 'NEXT' ? 'PROXIMA' : 'HOY' };
+            }
         },
-        onSuccess: (_, variables) => {
+        onSuccess: (datos: any, variables) => {
+            if (datos?.pendiente) return;
             queryClient.invalidateQueries({
                 queryKey: ['liveClassDetail', variables.classroomId, variables.subjectId],
             });
@@ -361,14 +420,32 @@ export function useSaveActivityGrades() {
         mutationFn: async ({
             activityId,
             scores,
-            maxScore
+            maxScore,
+            paraLaCola,
         }: {
             activityId: string;
             scores: Record<string, number | null>;
             maxScore?: number;
+            /** Si hay que dejarlas pendientes: qué nota tenía cada uno (lo que se vio). */
+            paraLaCola?: { resumen: string; nombres?: Record<string, string>; antes: Record<string, number | null> };
         }) => {
-            const { data } = await api.post(`/sessions/activities/${activityId}/grades`, { scores, maxScore });
-            return data;
+            try {
+                const { data } = await api.post(`/sessions/activities/${activityId}/grades`, { scores, maxScore });
+                return data;
+            } catch (e) {
+                if (!sinConexion(e) || !paraLaCola) throw e;
+                await dejarPendiente({
+                    tipo: 'notas',
+                    grupo: 3,
+                    metodo: 'post',
+                    url: `/sessions/activities/${activityId}/grades`,
+                    objeto: `actividad|${activityId}`,
+                    resumen: paraLaCola.resumen,
+                    nombres: paraLaCola.nombres,
+                    datos: { scores, maxScore, antes: paraLaCola.antes },
+                });
+                return PENDIENTE;
+            }
         },
 
         onMutate: async ({ activityId, scores }) => {
@@ -410,25 +487,16 @@ export function useSaveActivityGrades() {
                 return;
             }
 
-            // 2. Las notas NO se pierden.
-            recordarPendiente({
-                id: `notas:${variables.activityId}`,
-                que: 'Calificaciones de una actividad',
-                ruta: `/sessions/activities/${variables.activityId}/grades`,
-                carga: { scores: variables.scores, maxScore: variables.maxScore },
-                cuando: Date.now(),
-                motivo: error?.response?.data?.message || error?.message,
-            });
-
-            // 3. Se avisa, y el aviso no se va solo.
-            toast.error(
-                'No se pudieron guardar las calificaciones. Quedaron apuntadas en este dispositivo: no hace falta volver a escribirlas.',
-                { duration: Infinity }
-            );
+            // 2. Se dice por qué, y el aviso no se va solo: lo escrito sigue en
+            // la pantalla (y sin conexión no llega aquí: queda pendiente).
+            toast.error(error?.response?.data?.error || 'No se pudieron guardar las calificaciones.', { duration: Infinity });
         },
 
-        onSuccess: (_datos, variables) => {
-            olvidarPendiente(`notas:${variables.activityId}`);
+        onSuccess: (datos: any) => {
+            if (datos?.pendiente) {
+                toast('Sin conexión: las notas quedaron pendientes ⏱ y se envían solas al volver.', { id: 'pendiente' });
+                return;
+            }
             toast.success('Calificaciones guardadas');
         },
 
@@ -444,10 +512,34 @@ export function useDeleteClassActivity() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async (activityId: string) => {
-            const { data } = await api.delete(`/sessions/activities/${activityId}`);
-            return data;
+            try {
+                const { data } = await api.delete(`/sessions/activities/${activityId}`);
+                return data;
+            } catch (e) {
+                if (!sinConexion(e)) throw e;
+                // Cuántas notas se vieron: si al llegar tiene más, se pregunta.
+                let vistas = 0;
+                let titulo = 'una actividad';
+                for (const [, d] of queryClient.getQueriesData<any>({ queryKey: ['liveClassDetail'] })) {
+                    const a = d?.activities?.find((x: any) => x.id === activityId);
+                    if (!a) continue;
+                    titulo = `«${a.title}»`;
+                    vistas = Object.values(a.scores || {}).filter((v) => v !== null && v !== undefined && v !== '').length;
+                }
+                await dejarPendiente({
+                    tipo: 'borrar-actividad',
+                    grupo: 4,
+                    metodo: 'delete',
+                    url: `/sessions/activities/${activityId}`,
+                    params: { notasVistas: String(vistas) },
+                    objeto: `actividad|${activityId}`,
+                    resumen: `Borrar ${titulo}`,
+                });
+                return PENDIENTE;
+            }
         },
-        onSuccess: () => {
+        onSuccess: (datos: any) => {
+            if (datos?.pendiente) return;
             queryClient.invalidateQueries({ queryKey: ['liveClassDetail'] });
         },
         onError: (error: Error) => {

@@ -52,7 +52,7 @@ export function AvisoSinConexion() {
     const desde = cuandoFue(ultimaRespuesta);
     const titulo = motivo === 'sin-internet' ? 'Sin internet.' : 'Sin conexión con el liceo.';
     const explicacion = hayAlgoGuardado
-        ? `Estás viendo lo último que se descargó${desde ? ` (${desde})` : ''}. Para guardar o cambiar algo hace falta conexión.`
+        ? `Estás viendo lo último que se descargó${desde ? ` (${desde})` : ''}. Lo que hagas en la clase, el plan o las observaciones queda pendiente (⏱) y se envía solo al volver la conexión.`
         : 'En este dispositivo no hay nada guardado todavía: se verá en cuanto vuelva la conexión.';
 
     return (

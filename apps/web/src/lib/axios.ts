@@ -5,7 +5,7 @@ import { laPuertaDelLiceo } from './la-puerta-del-liceo';
 import { API_URL } from '@/config/env';
 import { elServidorContesto, elServidorNoContesta, esQueNoContesta } from './estado-del-servidor';
 import { claveDeLaPeticion, guardarRespuesta, leerRespuesta } from './respuestas-guardadas';
-import { deQuienEs } from './lo-guardado-en-el-telefono';
+import { elDuenoDeAhora } from './el-dueno';
 
 // Asegurar que la baseURL del cliente axios siempre tenga el prefijo /api
 // NEXT_PUBLIC_API_URL puede ser 'http://localhost:3001' o 'http://localhost:3001/api'
@@ -71,12 +71,6 @@ function esEscritura(metodo?: string): boolean {
     return !SOLO_MIRAR.has((metodo || 'get').toLowerCase());
 }
 
-/** De quién es lo que se guarda ahora: el liceo y quien tiene la sesión. */
-function elDuenoDeAhora(): string | null {
-    if (typeof document === 'undefined') return null;
-    const liceo = document.cookie.split('; ').find((c) => c.startsWith('institute_slug='))?.split('=')[1] ?? null;
-    return deQuienEs(liceo, useAuthStore.getState().user?.id);
-}
 
 /** ¿Es una lectura que se guarda (JSON, no un archivo)? */
 function esLecturaQueSeGuarda(config: any): boolean {

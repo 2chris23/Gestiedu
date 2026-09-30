@@ -2,7 +2,10 @@
 
 import * as React from 'react';
 import { toast } from 'sonner';
-import { ClipboardList, Loader2, X } from 'lucide-react';
+import { ClipboardList, Clock3, Loader2, X } from 'lucide-react';
+import { usePendientesDe } from '@/hooks/usePorEnviar';
+import { dejarPendiente } from '@/lib/por-enviar';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 import { useCalificarConInstrumento } from '@/hooks/useInstrumentos';
 import { NIVELES_POR_DEFECTO, maximoDelInstrumento, notaDelInstrumento, type Instrumento, type Marcas } from '@/lib/instrumentos';
 import { NOMBRE_DEL_TIPO } from '@/components/evaluation/nombres-de-instrumentos';
@@ -92,9 +95,15 @@ export default function CalificarConInstrumento({
     puedeEditar: boolean;
 }) {
     const calificar = useCalificarConInstrumento();
-    const [marcas, setMarcas] = React.useState<Record<string, Marcas>>(() =>
-        Object.fromEntries(Object.entries(detalle ?? {}).map(([id, d]) => [id, d.marcas ?? {}]))
-    );
+    // Lo que quedó pendiente sin conexión se vuelve a ver al abrir (⏱).
+    const enCola = usePendientesDe(`actividad|${activityId}`).find((c) => c.tipo === 'marcas' && c.estado === 'pendiente');
+    const [marcas, setMarcas] = React.useState<Record<string, Marcas>>(() => ({
+        ...Object.fromEntries(Object.entries(detalle ?? {}).map(([id, d]) => [id, d.marcas ?? {}])),
+        ...Object.fromEntries(Object.entries((enCola?.datos?.marcas ?? {}) as Record<string, Marcas | null>).filter(([, m]) => m) as [string, Marcas][]),
+    }));
+    const [sinEnviar, setSinEnviar] = React.useState(Boolean(enCola));
+    // Lo que se vio de cada alumno al abrir: si al llegar otro lo cambió, se pregunta.
+    const vistas = React.useRef<Record<string, number | null>>(Object.fromEntries(Object.entries(detalle ?? {}).map(([id, d]) => [id, d.total ?? null])));
     const [guardadoA, setGuardadoA] = React.useState<string | null>(null);
     const pendientes = React.useRef<Record<string, Marcas | null>>({});
     const reloj = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,6 +117,12 @@ export default function CalificarConInstrumento({
     React.useEffect(() => {
         mutar.current = calificar.mutate;
     });
+    const instrumentoRef = React.useRef(instrumento);
+    const nombresRef = React.useRef<Record<string, string>>({});
+    React.useEffect(() => {
+        instrumentoRef.current = instrumento;
+        nombresRef.current = Object.fromEntries(alumnos.map((a: any) => [a.id, `${a.firstName ?? ''} ${a.lastName ?? ''}`.trim()]));
+    });
     const enviar = React.useCallback(() => {
         const tanda = pendientes.current;
         pendientes.current = {};
@@ -115,8 +130,34 @@ export default function CalificarConInstrumento({
         mutar.current(
             { activityId, marcas: tanda },
             {
-                onSuccess: () => setGuardadoA(new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })),
-                onError: (e) => toast.error(getApiErrorMessage(e, 'No se pudieron guardar las notas')),
+                onSuccess: () => {
+                    setSinEnviar(false);
+                    setGuardadoA(new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }));
+                },
+                onError: (e) => {
+                    if (!esQueNoContesta(e)) {
+                        toast.error(getApiErrorMessage(e, 'No se pudieron guardar las notas'));
+                        return;
+                    }
+                    // Sin conexión: la tanda queda en el teléfono, con el
+                    // instrumento con que se marcó (si mientras tanto lo
+                    // cambian, decide quien lo cambió), y sube sola al volver.
+                    setSinEnviar(true);
+                    void dejarPendiente({
+                        tipo: 'marcas',
+                        grupo: 3,
+                        metodo: 'post',
+                        url: `/sessions/activities/${activityId}/instrumento`,
+                        objeto: `actividad|${activityId}`,
+                        resumen: `Notas con ${NOMBRE_DEL_TIPO[instrumentoRef.current.tipo].toLowerCase()} · ${Object.keys(tanda).length} alumno(s)`,
+                        nombres: nombresRef.current,
+                        datos: {
+                            marcas: tanda,
+                            instrumento: instrumentoRef.current,
+                            antes: Object.fromEntries(Object.keys(tanda).map((id) => [id, vistas.current[id] ?? null])),
+                        },
+                    });
+                },
             }
         );
     }, [activityId]);
@@ -162,7 +203,11 @@ export default function CalificarConInstrumento({
                     {porPuntos && <span className="text-xs text-indigo-800">· arrastra cada barra de 0 a lo que vale</span>}
                 </span>
                 <span className="text-xs" role="status">
-                    {calificar.isPending ? (
+                    {sinEnviar && !calificar.isPending ? (
+                        <span className="inline-flex items-center gap-1 font-semibold text-amber-800">
+                            <Clock3 className="h-3 w-3" aria-hidden /> Pendiente de enviar
+                        </span>
+                    ) : calificar.isPending ? (
                         <span className="inline-flex items-center gap-1">
                             <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Guardando…
                         </span>

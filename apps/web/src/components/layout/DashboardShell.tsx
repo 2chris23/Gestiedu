@@ -12,6 +12,11 @@ import { laLlaveGuardada, olvidarLaLlave } from '@/lib/la-huella';
 import AvisoSinConexion from '@/components/common/AvisoSinConexion';
 import AvisoDePantallaSinGuardar from '@/components/common/AvisoDePantallaSinGuardar';
 import DescargaEnSegundoPlano from '@/providers/DescargaEnSegundoPlano';
+import EnviarLoPendiente from '@/providers/EnviarLoPendiente';
+import CambiosSinEnviar from '@/components/common/CambiosSinEnviar';
+import { laCola, tirarLosDe, EVENTO_ENCOLADO } from '@/lib/por-enviar';
+import { elDuenoDeAhora } from '@/lib/el-dueno';
+import { useConfirm } from '@/hooks/useConfirm';
 import ActualizarLaApp from '@/components/common/ActualizarLaApp';
 import { AsistenciaEnPantalla } from '@/components/asistencia/AsistenciaDelAlumno';
 import FondoQuieto from '@/components/layout/FondoQuieto';
@@ -69,6 +74,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
     useSessionKeepAlive();
 
     const queryClient = useQueryClient();
+    const preguntar = useConfirm();
 
     const handleLogout = async () => {
         /**
@@ -81,6 +87,32 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
          * su liceo. Se apunta el liceo ANTES de borrar las credenciales, que se
          * lo llevan por delante.
          */
+        /**
+         * CERRAR SESIÓN CON COSAS SIN ENVIAR (2026-09-30)
+         *
+         * Con conexión, primero se envían. Si aún quedan (sin conexión, o algo
+         * por decidir), se pregunta: cerrar sesión las pierde, y en un teléfono
+         * que se presta no se pueden quedar a la vista del siguiente.
+         */
+        const dueno = elDuenoDeAhora();
+        if (dueno) {
+            if ((await laCola(dueno)).length) {
+                document.dispatchEvent(new Event(EVENTO_ENCOLADO));
+                await new Promise((r) => setTimeout(r, 2500));
+            }
+            const quedan = await laCola(dueno);
+            if (quedan.length) {
+                const ok = await preguntar({
+                    title: `Tienes ${quedan.length} cambio(s) sin enviar`,
+                    description:
+                        'Lo que hiciste sin conexión todavía no llegó al liceo. Si cierras sesión ahora, se pierde. Espera a tener conexión (se envía solo) o ciérrala igual.',
+                    confirmLabel: 'Cerrar y perderlos',
+                    cancelLabel: 'No cerrar',
+                });
+                if (!ok) return;
+                await tirarLosDe(dueno);
+            }
+        }
         const liceo = elLiceoDeLaCookie();
         const puerta = laPuertaDelLiceo();
 
@@ -174,6 +206,9 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
             <AvisoDePantallaSinGuardar />
             {/* Como WhatsApp: con conexión, lo de cada uno se baja solo. */}
             <DescargaEnSegundoPlano />
+            {/* Lo hecho sin conexión: sube solo al volver, y aquí se ve (⏱). */}
+            <EnviarLoPendiente />
+            <CambiosSinEnviar />
             {/* Si ya dio permiso, este teléfono recibe los avisos de quien entró. */}
             <ApuntarElTelefonoAlEntrar />
 
