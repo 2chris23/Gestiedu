@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { hacerODejarPendiente, esPendiente } from '@/lib/por-enviar';
 import api from '@/lib/axios';
 
 // ============================================================
@@ -123,8 +124,17 @@ export function useUpsertEvaluationPlanMetadata() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async (data: Partial<EvaluationPlanMetadata> & { classroomId: string; subjectId: string; lapso: string }) => {
-            const res = await api.post('/evaluation-plan/metadata', data);
-            return res.data as { metadata?: EvaluationPlanMetadata };
+            // Sin conexión queda pendiente (⏱) y sube sola al volver (`lib/por-enviar.ts`).
+            const r = await hacerODejarPendiente(async () => (await api.post('/evaluation-plan/metadata', data)).data, {
+                tipo: 'plan',
+                grupo: 1,
+                metodo: 'post',
+                url: '/evaluation-plan/metadata',
+                objeto: `plan-datos|${data.classroomId}|${data.subjectId}|${data.lapso}`,
+                resumen: `Datos del plan (lapso ${data.lapso})`,
+                datos: data,
+            });
+            return (esPendiente(r) ? { metadata: data, pendiente: true } : r) as { metadata?: EvaluationPlanMetadata; pendiente?: boolean };
         },
         onSuccess: (respuesta, variables) => {
             const clave = ['evaluationPlanMetadata', { classroomId: variables.classroomId, subjectId: variables.subjectId, lapso: variables.lapso }];
@@ -170,8 +180,18 @@ export function useBatchUpsertRows() {
             rows: Partial<EvaluationPlanRow>[];
             version?: string;
         }) => {
-            const res = await api.post('/evaluation-plan/rows/batch', data);
-            return res.data as { success: boolean; rows: EvaluationPlanRow[]; version?: string };
+            const r = await hacerODejarPendiente(async () => (await api.post('/evaluation-plan/rows/batch', data)).data, {
+                tipo: 'plan',
+                grupo: 1,
+                metodo: 'post',
+                url: '/evaluation-plan/rows/batch',
+                objeto: `plan|${data.classroomId}|${data.subjectId}|${data.lapso}`,
+                resumen: `Plan de evaluación (lapso ${data.lapso})`,
+                datos: data,
+            });
+            // Pendiente: lo editado se sigue viendo tal cual hasta que suba.
+            if (esPendiente(r)) return { success: true, rows: data.rows as EvaluationPlanRow[], version: data.version, pendiente: true };
+            return r as { success: boolean; rows: EvaluationPlanRow[]; version?: string; pendiente?: boolean };
         },
         onSuccess: (respuesta, variables) => {
             // Lo guardado pasa a ser lo que se ve, ya: sin esto, al cerrar el

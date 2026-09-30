@@ -59,6 +59,12 @@ async function mandar(c: CambioPendiente): Promise<Resultado> {
         const data = e?.response?.data;
         if (status === 401) return 'sin-sesion';
         if (status === 409 && data?.code === 'CAMBIO_EN_CURSO') return 'sin-red';
+        // El plan o el instrumento se guardaron desde otro sitio mientras
+        // tanto: se pregunta si queda lo de uno (pisando) o lo del otro.
+        if (status === 409 && (data?.code === 'PLAN_CAMBIADO_EN_OTRO_SITIO' || data?.code === 'INSTRUMENTO_CAMBIADO')) {
+            await actualizarCambio(c.id, { estado: 'hay-que-decidir', motivo: data?.error, choque: { ...data, que: 'VERSION' } });
+            return 'ok';
+        }
         if (status === 409 && data?.code === 'CAMBIO_MIENTRAS_TANTO') {
             await actualizarCambio(c.id, { estado: 'hay-que-decidir', motivo: data?.error, choque: data });
             return 'ok';

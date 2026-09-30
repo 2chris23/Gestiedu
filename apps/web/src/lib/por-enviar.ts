@@ -37,6 +37,8 @@ export type Tipo =
     | 'instrumento'
     | 'observacion'
     | 'citacion'
+    | 'config'
+    | 'evento'
     | 'otro';
 
 export type Estado = 'pendiente' | 'hay-que-decidir' | 'en-espera' | 'rechazado';
@@ -125,10 +127,35 @@ export function juntar(cola: CambioPendiente[], nuevo: CambioPendiente): CambioP
             porAlumno.set(a.studentId, antes && 'antes' in antes ? { ...a, antes: antes.antes } : a);
         }
         datos = { ...previo.datos, ...nuevo.datos, attendances: [...porAlumno.values()] };
+    } else if (nuevo.tipo === 'config') {
+        datos = juntarConfig(previo.datos, nuevo.datos);
     }
     // Lo demás (editar, el plan, una observación): vale lo último.
     const unido: CambioPendiente = { ...previo, datos, resumen: nuevo.resumen, hechoEn: nuevo.hechoEn };
     return cola.map((c) => (c === previo ? unido : c));
+}
+
+/**
+ * Dos cambios de la configuración sin conexión: se suman, campo a campo, y de
+ * cada campo se queda lo PRIMERO que se vio (`__visto`) con lo último puesto.
+ */
+function juntarConfig(viejo: any, nuevo: any) {
+    const cfg = (a: any, b: any) => {
+        if (!a && !b) return undefined;
+        const junto = { ...(a ?? {}), ...(b ?? {}) };
+        if (a?.documentos || b?.documentos) junto.documentos = { ...(a?.documentos ?? {}), ...(b?.documentos ?? {}) };
+        return junto;
+    };
+    const visto = new Map<string, { campo: string; antes: unknown; nuevo: unknown }>();
+    for (const v of viejo?.__visto ?? []) visto.set(v.campo, v);
+    for (const v of nuevo?.__visto ?? []) {
+        const antes = visto.get(v.campo);
+        visto.set(v.campo, antes ? { ...v, antes: antes.antes } : v);
+    }
+    const junto = { ...(viejo ?? {}), ...(nuevo ?? {}), __visto: [...visto.values()] };
+    const configuration = cfg(viejo?.configuration, nuevo?.configuration);
+    if (configuration) junto.configuration = configuration;
+    return junto;
 }
 
 /** «hace un rato»: cuánto esperar tras `intentos` fallos de red (hasta 5 min). */
@@ -252,3 +279,20 @@ export async function dejarPendiente(cambio: NuevoCambio): Promise<string | null
     if (typeof document !== 'undefined') document.dispatchEvent(new Event(EVENTO_ENCOLADO));
     return id;
 }
+
+/**
+ * Intenta hacerlo ya; si no hay conexión, lo deja pendiente y devuelve
+ * `{ pendiente: true }`. Cualquier otro error sigue siendo un error.
+ */
+export async function hacerODejarPendiente<T>(hacer: () => Promise<T>, cambio: NuevoCambio): Promise<T | { pendiente: true }> {
+    try {
+        return await hacer();
+    } catch (e) {
+        const { esQueNoContesta } = await import('./estado-del-servidor');
+        if (!esQueNoContesta(e)) throw e;
+        await dejarPendiente(cambio);
+        return { pendiente: true };
+    }
+}
+
+export const esPendiente = (r: unknown): r is { pendiente: true } => Boolean(r && typeof r === 'object' && (r as any).pendiente === true);

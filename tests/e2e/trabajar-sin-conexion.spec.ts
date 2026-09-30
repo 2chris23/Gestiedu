@@ -83,6 +83,11 @@ test('SINCON-UI-01: sin servidor se pasa lista; queda ⏱, sobrevive a recargar 
             [clase.seccion, nombre]
         );
         await queryTenantDb(`DELETE FROM daily_attendance WHERE "studentId" = $1 AND date = $2::date`, [alumno.id, hoy]);
+        // Se vuelve a abrir: lo que se VE es lo que viaja como «antes». Con la
+        // de la tanda anterior a la vista, el servidor (bien) preguntaría.
+        await page.reload();
+        await page.getByRole('button', { name: /Pasar asistencia|Corregir asistencia/ }).click({ timeout: 60_000 });
+        await expect(grupo).toBeVisible({ timeout: 30_000 });
         await page.waitForTimeout(3000); // que lo abierto quede guardado en el teléfono
 
         // ── Sin servidor: se pasa lista ──────────────────────────────────
@@ -113,6 +118,41 @@ test('SINCON-UI-01: sin servidor se pasa lista; queda ⏱, sobrevive a recargar 
         expect(Number(recibido.n)).toBeGreaterThan(0);
     } catch (e) {
         await captureEvidence(testInfo, page, 'SINCON-UI-01', 'Lo hecho sin conexión no quedó pendiente o no subió al volver', e);
+        throw e;
+    } finally {
+        await puerta.cerrar().catch(() => undefined);
+        await context.unroute(`${API}/**`).catch(() => undefined);
+    }
+});
+
+test('SINCON-UI-06: una observación hecha sin servidor queda pendiente y llega sola, una sola vez', async ({ page, context }, testInfo) => {
+    test.setTimeout(240_000);
+    test.skip(!(await compilada()), 'Necesita la web COMPILADA (WEB_DESTINO)');
+    const titulo = `Sin conexión ${Date.now()}`;
+    let puerta = await abrirPuerta(PUERTO, DESTINO);
+    try {
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await entrar(page, 'profesor18@testing.edu.ve');
+        await page.goto(`${WEB}/dashboard/observaciones`);
+        await page.getByRole('button', { name: /Nueva observación/ }).click({ timeout: 60_000 });
+        await page.locator('#obs-buscar').fill('a');
+        await page.getByRole('list', { name: 'Alumnos encontrados' }).getByRole('button').first().click({ timeout: 30_000 });
+
+        // Se va el servidor con la ventana a medio llenar.
+        await puerta.cerrar();
+        await apagarLaApi(context);
+        await page.locator('#obs-titulo').fill(titulo);
+        await page.getByRole('button', { name: 'Guardar observación' }).click();
+        await expect(page.getByText(/la observación quedó pendiente/)).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByRole('button', { name: /sin enviar: tocar para ver/ })).toBeVisible();
+
+        puerta = await abrirPuerta(PUERTO, DESTINO);
+        await context.unroute(`${API}/**`);
+        await expect(page.getByRole('button', { name: /sin enviar: tocar para ver/ })).toHaveCount(0, { timeout: 60_000 });
+        const filas = await queryTenantDb<{ n: string }>(`SELECT count(*) AS n FROM observations WHERE title = $1`, [titulo]);
+        expect(Number(filas[0].n)).toBe(1);
+    } catch (e) {
+        await captureEvidence(testInfo, page, 'SINCON-UI-06', 'La observación sin conexión no quedó pendiente o no llegó', e);
         throw e;
     } finally {
         await puerta.cerrar().catch(() => undefined);

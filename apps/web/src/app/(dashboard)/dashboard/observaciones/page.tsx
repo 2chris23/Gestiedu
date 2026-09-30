@@ -3,6 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { hacerODejarPendiente, esPendiente } from '@/lib/por-enviar';
 import { toast } from 'sonner';
 import { CalendarClock, FileText, Loader2, MessageSquarePlus, Search, X } from 'lucide-react';
 import api from '@/lib/axios';
@@ -220,16 +221,29 @@ function NuevaObservacion({ alCerrar }: { alCerrar: () => void }) {
     const [descripcion, setDescripcion] = React.useState('');
     const resultados = useSearchStudents(busqueda);
     const guardar = useMutation({
-        mutationFn: async () =>
-            (
-                await api.post('/observations', {
-                    title: titulo.trim(),
-                    description: descripcion.trim() || undefined,
-                    studentIds: [alumno!.id],
-                    classroomId: alumno!.classroomId ?? undefined,
-                })
-            ).data,
-        onSuccess: () => {
+        mutationFn: async () => {
+            const cuerpo = {
+                title: titulo.trim(),
+                description: descripcion.trim() || undefined,
+                studentIds: [alumno!.id],
+                classroomId: alumno!.classroomId ?? undefined,
+            };
+            return hacerODejarPendiente(async () => (await api.post('/observations', cuerpo)).data, {
+                tipo: 'observacion',
+                grupo: 2,
+                metodo: 'post',
+                url: '/observations',
+                objeto: `observacion|${crypto.randomUUID()}`,
+                resumen: `Observación de ${alumno!.nombre}: «${cuerpo.title}»`,
+                datos: cuerpo,
+            });
+        },
+        onSuccess: (r) => {
+            if (esPendiente(r)) {
+                toast('Sin conexión: la observación quedó pendiente ⏱ y se envía sola al volver.', { id: 'pendiente' });
+                alCerrar();
+                return;
+            }
             toast.success('Observación guardada');
             void cola.invalidateQueries({ queryKey: ['observaciones-panel'] });
             alCerrar();
@@ -320,8 +334,24 @@ function Citar({ observacion, alCerrar }: { observacion: Observacion; alCerrar: 
     const [lugar, setLugar] = React.useState('la dirección del plantel');
     const [motivo, setMotivo] = React.useState(observacion.titulo);
     const citar = useMutation({
-        mutationFn: async () => (await api.post(`/observations/${observacion.id}/citaciones`, { fecha, hora, lugar: lugar.trim(), motivo: motivo.trim() })).data.data,
-        onSuccess: (c: { avisados: number }) => {
+        mutationFn: async () => {
+            const cuerpo = { fecha, hora, lugar: lugar.trim(), motivo: motivo.trim() };
+            return hacerODejarPendiente(async () => (await api.post(`/observations/${observacion.id}/citaciones`, cuerpo)).data.data, {
+                tipo: 'citacion',
+                grupo: 2,
+                metodo: 'post',
+                url: `/observations/${observacion.id}/citaciones`,
+                objeto: `citacion|${observacion.id}`,
+                resumen: `Citar al representante de ${observacion.alumno.nombre}`,
+                datos: cuerpo,
+            });
+        },
+        onSuccess: (c: any) => {
+            if (esPendiente(c)) {
+                toast('Sin conexión: la citación quedó pendiente ⏱; al volver se envía y se avisa al representante.', { id: 'pendiente' });
+                alCerrar();
+                return;
+            }
             toast.success(c.avisados > 0 ? `Citación hecha: se avisó a ${c.avisados === 1 ? 'su representante' : `sus ${c.avisados} representantes`}` : 'Citación hecha (el alumno no tiene representante en el sistema: imprímela)');
             void cola.invalidateQueries({ queryKey: ['observaciones-panel'] });
             alCerrar();

@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { hacerODejarPendiente, esPendiente } from '@/lib/por-enviar';
 import api from '@/lib/axios';
 import { toast } from 'sonner';
 
@@ -153,14 +154,25 @@ export function useCreateObservation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (payload: CreateObservationPayload) => {
-      const { data } = await api.post<{ success: boolean; message: string; groupId?: string; observations: any[] }>(
-        '/observations',
-        payload
-      );
-      return data;
-    },
-    onSuccess: (_, variables) => {
+    mutationFn: async (payload: CreateObservationPayload) =>
+      hacerODejarPendiente(
+        async () =>
+          (await api.post<{ success: boolean; message: string; groupId?: string; observations: any[] }>('/observations', payload)).data,
+        {
+          tipo: 'observacion',
+          grupo: 2,
+          metodo: 'post',
+          url: '/observations',
+          objeto: `observacion|${crypto.randomUUID()}`,
+          resumen: `Observación «${(payload as any).title ?? ''}»`,
+          datos: payload,
+        }
+      ),
+    onSuccess: (r) => {
+      if (esPendiente(r)) {
+        toast('Sin conexión: la observación quedó pendiente ⏱ y se envía sola al volver.', { id: 'pendiente' });
+        return;
+      }
       toast.success('Observación registrada exitosamente');
       queryClient.invalidateQueries({ queryKey: ['observations'] });
       queryClient.invalidateQueries({ queryKey: ['live-class-detail'] });
@@ -180,11 +192,20 @@ export function useDeleteObservation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
-      const { data } = await api.delete(`/observations/${id}`);
-      return data;
-    },
-    onSuccess: () => {
+    mutationFn: async (id: string) =>
+      hacerODejarPendiente(async () => (await api.delete(`/observations/${id}`)).data, {
+        tipo: 'otro',
+        grupo: 4,
+        metodo: 'delete',
+        url: `/observations/${id}`,
+        objeto: `observacion|${id}`,
+        resumen: 'Borrar una observación',
+      }),
+    onSuccess: (r) => {
+      if (esPendiente(r)) {
+        toast('Sin conexión: se borrará al volver la conexión (⏱).', { id: 'pendiente' });
+        return;
+      }
       toast.success('Observación eliminada');
       queryClient.invalidateQueries({ queryKey: ['observations'] });
       queryClient.invalidateQueries({ queryKey: ['live-class-detail'] });

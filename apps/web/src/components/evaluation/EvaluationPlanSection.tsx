@@ -591,7 +591,11 @@ export default function EvaluationPlanSection({
       });
       setChoque(null);
       setIsEditing(false);
-      toast.success('Plan de evaluación guardado');
+      if ((guardado as any)?.pendiente) {
+        toast('Sin conexión: el plan quedó pendiente ⏱ y se envía solo al volver.', { id: 'pendiente' });
+      } else {
+        toast.success('Plan de evaluación guardado');
+      }
     } catch (error: any) {
       const datos = error?.response?.data;
       // Una evaluación con notas puestas no se quita ni se deja sin puntos:

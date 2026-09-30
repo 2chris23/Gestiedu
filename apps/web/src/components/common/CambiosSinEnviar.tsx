@@ -121,6 +121,28 @@ function Decidir({ c }: { c: CambioPendiente }) {
         );
     }
 
+    if (que === 'VERSION') {
+        return (
+            <div className="space-y-2">
+                <p className="text-sm text-gray-700">Mientras estabas sin conexión, otra persona guardó esto mismo. ¿Qué queda?</p>
+                <div className="flex gap-2">
+                    <Button variant="contorno" className="flex-1" onClick={() => void quitarCambio(c.id)}>
+                        Lo del otro
+                    </Button>
+                    <Button
+                        className="flex-1"
+                        onClick={async () => {
+                            await actualizarCambio(c.id, { datos: { ...c.datos, version: undefined }, estado: 'pendiente', choque: undefined, motivo: undefined });
+                            reintentar();
+                        }}
+                    >
+                        Lo mío
+                    </Button>
+                </div>
+            </div>
+        );
+    }
+
     if (que === 'NOTAS_CON_EL_INSTRUMENTO') {
         return (
             <div className="space-y-2">

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { hacerODejarPendiente, esPendiente } from '@/lib/por-enviar';
 import api from '@/lib/axios';
 import type { Instrumento, Marcas } from '@/lib/instrumentos';
 
@@ -31,8 +32,29 @@ export function useInstrumentoDeLaFila(rowId: string | null) {
 export function useGuardarInstrumento() {
     const cola = useQueryClient();
     return useMutation({
-        mutationFn: async ({ rowId, definicion, version }: { rowId: string; definicion: Instrumento; version?: number | null }) =>
-            (await api.put(`/evaluation-plan/rows/${rowId}/instrumento`, { definicion, version: version ?? null })).data.data as InstrumentoGuardado,
+        mutationFn: async ({ rowId, definicion, version }: { rowId: string; definicion: Instrumento; version?: number | null }) => {
+            // Sin conexión queda pendiente, con cuántas notas se vieron de esa
+            // evaluación: si al llegar hay más, se pregunta (y «sí» las borra).
+            let notasVistas = 0;
+            for (const [, d] of cola.getQueriesData<any>({ queryKey: ['liveClassDetail'] })) {
+                for (const a of d?.activities ?? []) {
+                    if (a.planRowId === rowId) notasVistas += Object.values(a.scores || {}).filter((v) => v !== null && v !== undefined && v !== '').length;
+                }
+            }
+            const r = await hacerODejarPendiente(
+                async () => (await api.put(`/evaluation-plan/rows/${rowId}/instrumento`, { definicion, version: version ?? null })).data.data as InstrumentoGuardado,
+                {
+                    tipo: 'instrumento',
+                    grupo: 1,
+                    metodo: 'put',
+                    url: `/evaluation-plan/rows/${rowId}/instrumento`,
+                    objeto: `instrumento|${rowId}`,
+                    resumen: 'Instrumento de una evaluación del plan',
+                    datos: { definicion, version: version ?? null, notasVistas },
+                }
+            );
+            return (esPendiente(r) ? { definicion, version: version ?? 1, pendiente: true } : r) as InstrumentoGuardado & { pendiente?: boolean };
+        },
         onSuccess: (_, v) => {
             void cola.invalidateQueries({ queryKey: ['instrumento', v.rowId] });
             void cola.invalidateQueries({ queryKey: ['instrumentos-del-plan'] });
