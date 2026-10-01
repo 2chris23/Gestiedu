@@ -23,8 +23,8 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
 ```bash
 cd apps/backend && npm run dev      # API en :3001
 cd apps/web && npm run dev          # web en :3000
-cd apps/backend && npx jest         # 1158 pruebas en 147 archivos (integración + cálculo)
-npm run test:e2e                    # 289 pruebas de navegador (Playwright), con los dos servidores arriba
+cd apps/backend && npx jest         # 1184 pruebas en 149 archivos (integración + cálculo)
+npm run test:e2e                    # 303 pruebas de navegador (Playwright), con los dos servidores arriba
 cd apps/backend && npm run typecheck
 cd apps/backend && npm run migrate:plataforma        # la base de la plataforma
 cd apps/backend && npm run migrate:tenants[:status]   # migra todos los liceos
