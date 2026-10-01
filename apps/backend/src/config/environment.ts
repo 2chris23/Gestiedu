@@ -19,6 +19,10 @@ import { resolve } from 'path';
   // errores de más. Todo lo demás sigue igual que antes.
   const entornoReal = process.env.NODE_ENV;
 
+  // El `PORT` heredado se quita ANTES de leer los archivos (ver «EL PUERTO»,
+  // abajo). Sin esto la regla solo se cumplía si el `.env` traía su `PORT`:
+  // sin archivo (el CI, un servidor nuevo) ganaba el que hubiera suelto.
+  delete process.env.PORT;
 
   const candidates = [
     `.env`,

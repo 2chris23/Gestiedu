@@ -16,7 +16,7 @@ import {
     buildDbUrl,
     ensureDatabase,
     runPrismaMigrate,
-    runPrismaDbPush,
+    dropDatabaseIfExists,
 } from './helpers/tenant-db';
 
 /**
@@ -47,11 +47,13 @@ describe('Tenant mismatch — claim instituteId del JWT', () => {
         const tenantUrl = resolveTenantUrl();
         const bUrl = buildDbUrl(tenantUrl, TENANT_DB_B);
 
-        // 1. Crear la tenant DB de B y aplicarle el esquema VIGENTE
-        // (db push: la migración init fue editada después de aplicarse una vez
-        // y migrate deploy no re-aplica por checksum)
+        // 1. La base de B, de cero y migrada como la plantilla
+        // (`jest.globalSetup.js`). Con `db push` sobre una base nueva faltaba
+        // la extensión pg_trgm, que crea una migración y no el esquema: en
+        // local no se veía porque la base de B quedaba de otras tandas.
+        await dropDatabaseIfExists(tenantUrl, TENANT_DB_B);
         await ensureDatabase(tenantUrl, TENANT_DB_B);
-        runPrismaDbPush(bUrl);
+        runPrismaMigrate(bUrl);
         prismaB = new PrismaClient({ datasources: { db: { url: bUrl } } });
 
         // 2. Sembrar Instituto B en la Platform DB (con su propia DB)
