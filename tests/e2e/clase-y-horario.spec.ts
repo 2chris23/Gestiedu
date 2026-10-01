@@ -333,12 +333,18 @@ test.describe('El carril del horario en vivo', () => {
                 await page.waitForTimeout(900);
             };
 
-            // Al principio del carril, para tener hacia dónde ir.
+            // «Hoy» lleva el carril a la clase en curso: según la hora queda al
+            // principio o al final, y hacia un lado no hay nada que mover (a las
+            // 10 de la mañana esto salía en rojo). Se arrastra hacia donde quepa.
+            const seMueve = async () => {
+                const antes = await desplazamiento();
+                await arrastrar(-400);
+                if (Math.abs((await desplazamiento()) - antes) > 50) return true;
+                await arrastrar(400);
+                return Math.abs((await desplazamiento()) - antes) > 50;
+            };
             await page.getByRole('button', { name: 'Hoy' }).click();
-            const antes = await desplazamiento();
-            await arrastrar(-400);
-            const despues = await desplazamiento();
-            expect(despues).toBeLessThan(antes - 50);
+            expect(await seMueve()).toBe(true);
             // Arrastrar no es tocar: seguimos en el perfil.
             await expect(page).toHaveURL(/\/dashboard\/usuarios\//);
 
@@ -346,9 +352,7 @@ test.describe('El carril del horario en vivo', () => {
             await page.getByRole('button', { name: 'Semana' }).click();
             await page.getByRole('button', { name: 'Hoy' }).click();
             await expect(carril).toBeVisible();
-            const otraVez = await desplazamiento();
-            await arrastrar(400);
-            expect(await desplazamiento()).not.toBe(otraVez);
+            expect(await seMueve()).toBe(true);
         } catch (error) {
             await captureEvidence(testInfo, page, 'CARRIL-01', 'El carril del horario en vivo se arrastra', error);
             throw error;

@@ -3615,3 +3615,48 @@ Motorola). La descarga con la app cerrada del todo espera a Firebase.
 navegador, 302 de 303 en la tanda completa y la que falló en verde tras el
 arreglo (37 de 37 en su tramo); `npm run movil -- --exigir`: 51 pantallas, 0
 con algo que arreglar. Deriva del esquema: solo la vieja.
+
+## 63. Las finanzas del liceo y una app que dice qué hace cada cosa (1 de octubre de 2026)
+
+Lo pidió el dueño mirando Pagos: ver los ciclos pasados, un diseño «más como un
+calendario», y usar Pagos para TODAS las finanzas del liceo (fondos, lo que
+deben los estudiantes, la nómina de profesores y del otro personal, con
+vacaciones, y los gastos sueltos). Y un escaneo a fondo de la pantalla con la
+skill `ui-ux-pro-max` para «que sepa qué hace cada cosa». De las ideas
+propuestas eligió tres: recordar y reportar pagos, becas/descuentos/mora, y
+facturas con reporte mensual.
+
+Lo hecho, en siete partes (d44f24b, fc3b103, a7c75df, 0c27b1d, 27fdce6, a881f25):
+
+- **Escaneo UI/UX** (`docs/UI-UX-ESCANEO.md`): cada pantalla dice para qué
+  sirve, «¿Cómo funciona?» en las complejas, lo del admin ya no se le enseña al
+  profesor, configuración en tarjetas con su pista. Nueva regla `--claridad` en
+  `npm run movil`.
+- **Cada ciclo con su configuración de pagos.** Fallo de fondo encontrado: una
+  sola configuración para todo; subir la cuota recalculaba los ciclos pasados y
+  salían «debiendo». Ciclo cerrado: se ve, no se toca (409).
+- **Pagos como calendario**: los 12 meses, el mes en días, las cuotas del
+  alumno en baldosas que se tocan para cobrar.
+- **Finanzas**: fondos disponibles, gastos con foto de la factura, nómina
+  (mensual, quincenal, único; vacaciones y bono por persona o del liceo;
+  «guardar para los próximos ciclos»), y «Mis pagos» para el profesor, que no
+  ve nada más.
+- **Becas, hermanos y mora**: el mayor descuento, no la suma; la mora una vez
+  por cuota y nunca al exonerado.
+- **El representante reporta su pago** con la captura; el admin confirma (se
+  cobra con la misma cuenta, y dos confirmaciones a la vez cobran una sola) o
+  rechaza con motivo. Aviso N días antes del vencimiento, uno por cuota.
+- **Reporte del mes** para imprimir, con membrete y firmas.
+
+**Encontrado de paso:** un saldo negativo se escribía «$-110,00» y la prueba lo
+leía como positivo; tres pruebas de navegador dependían del día o de la hora
+(EVENTO-UI-01 contaba con estar en septiembre; QRE-01 y CARRIL-01 con dónde
+deja el carril la clase en curso).
+
+**Medido al cerrar:** servidor, 1217 de 1217 (154 archivos, con
+`REDIS_PRUEBAS_URL`); web, 106 de 106; navegador, 306 de 309 en la tanda
+completa y las 3 en verde tras el arreglo; `npm run movil -- --exigir`: 55
+pantallas, 0 con algo que arreglar. Deriva del esquema: solo la vieja.
+
+**Sin conexión** en finanzas solo se anotan fondos y gastos (sin la foto de la
+factura): pagar al personal y confirmar pagos piden servidor.

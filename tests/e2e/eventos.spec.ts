@@ -9,9 +9,15 @@ import { API_BASE, WEB_BASE, TENANT_SLUG, loginApi, injectSessionCookies, captur
  * clases del día entero —de todo el liceo, de un año o de una sección—; y el
  * panel del día enseñaba solo las horas de la mañana.
  *
- * Un lunes de octubre, lejos de las pruebas que usan «hoy».
+ * Un lunes de dentro de dos o tres semanas, lejos de las pruebas que usan
+ * «hoy». Era un lunes fijo de octubre y la prueba pulsaba «Mes siguiente»
+ * contando con estar en septiembre: el 1 de octubre se iba a noviembre.
  */
-const DIA = '2026-10-05';
+const DIA = (() => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + 14 + ((8 - d.getUTCDay()) % 7));
+    return d.toISOString().slice(0, 10);
+})();
 const TITULO = 'Sin clases e2e';
 
 async function borrarLosDeLaPrueba() {
@@ -29,7 +35,9 @@ test('EVENTO-UI-01: doble clic en un día suspende las clases del día entero, d
     try {
         await injectSessionCookies(page, await loginApi('admin@testing.edu.ve', '123456'));
         await page.goto(`${WEB_BASE}/dashboard/eventos`);
-        await page.getByRole('button', { name: 'Mes siguiente' }).click({ timeout: 60000 });
+        // El mes que lo tiene: este, o el siguiente.
+        await expect(page.locator('[data-dia]').first()).toBeVisible({ timeout: 60000 });
+        if (!(await page.locator(`[data-dia="${DIA}"]`).count())) await page.getByRole('button', { name: 'Mes siguiente' }).click();
         await page.locator(`[data-dia="${DIA}"]`).dblclick();
 
         const ventana = page.getByRole('dialog', { name: 'Día sin clases' });

@@ -206,6 +206,8 @@ Todo el dinero se cuenta en **céntimos enteros**. Implementación: `apps/backen
 | Becas y descuento por hermanos (2026-10-01) | Cada cuota × (100 − d) / 100, redondeado al céntimo, con d = el **mayor** entre la beca del alumno (`descuentoPct`, con motivo) y el de hermanos del ciclo (desde el 2.º hijo del mismo representante, ordenados por cédula). No se suman. | BECA-01, BECA-05. |
 | Recargo por mora (2026-10-01) | Una vez por cuota: si hoy > vencimiento + gracia + `moraDiasDespues` y la cuota no estaba completa a esa fecha (último pago después, o falta algo). FIJA: el monto; PORCENTAJE: cuota × valor / 10000 (`moraValor` en centésimas de punto). Se suma a lo que vale la cuota. Al exonerado, nunca. | BECA-02…04. Se calcula, no se guarda. |
 | El ciclo mes a mes (calendario) | Cada cuota cuenta en el mes de su **vencimiento**: esperado = suma de sus montos (sin exonerados); cobrado = lo repartido a ellas; «deben» = estudiantes con alguna cuota de ese mes `VENCIDA`. El día: cuotas que vencen ese día y pagos con `paidAt` ese día (no anulados). | `GET /api/payments/overview` (`months`) y `GET /api/payments/month`. |
+| Recordatorio de cuota (2026-10-01) | Se avisa al representante de cada cuota no exonerada con algo pendiente que vence **después de hoy y hasta hoy + `recordatorioDiasAntes`** (3 por defecto; 0 = no se avisa). Una sola vez por alumno, ciclo y cuota (`recordatorios_de_cuota`, único). | La tarea corre al arrancar y cada 6 h; un día perdido no deja cuotas sin aviso. RECORDAR-01/02. |
+| Pago reportado (2026-10-01) | No cuenta para nada hasta que el admin lo confirma; al confirmar se cobra con las mismas reglas que «Registrar pago» (lo de arriba). Rechazar exige motivo. | Dos confirmaciones a la vez: una cobra, la otra 404/409 (REPORTAR-03). |
 
 ---
 
@@ -223,6 +225,7 @@ Implementación: `apps/backend/src/services/finanzas.service.ts` (cuentas puras)
 | Pagar | Se reparte de lo más viejo a lo más nuevo; lo que no completa el último queda como abono. Rechaza: pagado ya, monto de más, sin acuerdo, fecha futura, ciclo cerrado. Candado por persona (`pg_advisory_xact_lock`). | Cambiar la frecuencia con pagos hechos en el ciclo: 409. |
 | Ciclo nuevo | Al abrir su nómina sin acuerdos, se copian los del ciclo anterior de quien tiene «guardar para los próximos ciclos» (menos los pagos únicos y las fechas de bono). Sin duplicar. | Los profesores con cuenta aparecen solos, sin sueldo. |
 | Mes a mes | Entra = cuotas cobradas (por `paidAt`) + fondos (por fecha); sale = pagos al personal + gastos (por fecha). | |
+| Reporte del mes (2026-10-01) | Saldo al empezar = fondos disponibles contando solo lo fechado **antes** del día 1; final = inicial + entró − salió. «Deben» = la deuda de los estudiantes del ciclo al último día del mes (o a hoy, si el mes no acabó). | El final del mes en curso = fondos disponibles de hoy; el final de un mes = el inicial del siguiente (REPORTE-01). |
 
 ---
 

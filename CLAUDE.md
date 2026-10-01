@@ -23,8 +23,8 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
 ```bash
 cd apps/backend && npm run dev      # API en :3001
 cd apps/web && npm run dev          # web en :3000
-cd apps/backend && npx jest         # 1184 pruebas en 149 archivos (integración + cálculo)
-npm run test:e2e                    # 303 pruebas de navegador (Playwright), con los dos servidores arriba
+cd apps/backend && npx jest         # 1217 pruebas en 154 archivos (integración + cálculo)
+npm run test:e2e                    # 309 pruebas de navegador (Playwright), con los dos servidores arriba
 cd apps/backend && npm run typecheck
 cd apps/backend && npm run migrate:plataforma        # la base de la plataforma
 cd apps/backend && npm run migrate:tenants[:status]   # migra todos los liceos
@@ -199,6 +199,36 @@ Módulo que cada liceo activa en Configuración → Pagos (tablas `payment_setti
 responden 403. Dinero **en céntimos enteros**; reglas en `MAPA_DE_CALCULOS.md` §8b.
 Un pago **no se borra**: se anula con motivo. Solo el admin cobra; el representante
 ve lo de sus representados. Cambiar la frecuencia con pagos en el ciclo: 409.
+
+**Cada ciclo tiene SU configuración** (`ajustes_de_pagos_del_ciclo`): se copia
+la del liceo al primer pago. Antes había una sola, y subir la cuota recalculaba
+los ciclos pasados, que salían «debiendo». Un ciclo cerrado se ve, no se toca
+(409 `CICLO_CERRADO`). La pantalla elige el ciclo (`?ciclo=`) y lo enseña como
+calendario: los 12 meses arriba y, al tocar uno, sus días.
+
+## Finanzas (octubre 2026)
+
+«Pagos» es ahora **Finanzas** (`/dashboard/pagos`, pestañas Resumen ·
+Estudiantes · Personal · Gastos). Va con el módulo de pagos: apagado, también
+responde 403. Reglas en `MAPA` §8b y §8g.
+
+- **Fondos disponibles** = todo lo que entró (cuotas y fondos) menos todo lo que
+  salió (personal y gastos), desde siempre y sin lo anulado. El dinero con el
+  que el liceo empieza va como fondo `SALDO_INICIAL`.
+- **Nómina** (`finanzas.service.ts`): profesores con cuenta y otro personal sin
+  ella; mensual, quincenal o pago único; vacaciones y bono, de cada persona o
+  del liceo. «Guardar para los próximos ciclos» trae a esa persona sola al ciclo
+  nuevo. El profesor ve **solo lo suyo** en «Mis pagos».
+- **Gastos** con la foto de la factura (WebP, como las fotos de perfil).
+- **Becas, hermanos y mora**: se calculan, no se guardan. El descuento es el
+  MAYOR entre la beca y el de hermanos, nunca la suma.
+- **El representante reporta un pago** con la captura; no cuenta hasta que el
+  admin lo confirma (y entonces se cobra con la cuenta de «Registrar pago»).
+  Un aviso le recuerda la cuota N días antes (`jobs/recordatorio-de-cuotas.job.ts`),
+  una sola vez por cuota aunque haya varios procesos.
+- **Reporte del mes** para imprimir: `/dashboard/pagos/reporte?mes=`.
+- Sin conexión solo se anotan fondos y gastos (sin la foto); pagar al personal
+  y confirmar pagos piden servidor: es dinero y llevan recibo correlativo.
 
 ## Asistencia por QR
 
@@ -535,7 +565,7 @@ sobre el contenido (visto en un Motorola; MOVIL-02 lo mide).
 ## En el teléfono, lo que se comprueba cada vez
 
 ```bash
-npm run movil            # 51 pantallas, los 4 roles, con foto de cada una
+npm run movil            # 55 pantallas, los 4 roles, con foto de cada una
 npm run movil -- --exigir   # y acaba en rojo si algo incumple
 ```
 
