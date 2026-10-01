@@ -162,7 +162,7 @@ export function GeneralSettings() {
                         onChange={handleChange}
                         required
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder="Ej: Instituto Educativo Demo"
+                        placeholder="Ej: U.E. Liceo Bolívar"
                     />
                 </div>
 
@@ -199,7 +199,7 @@ export function GeneralSettings() {
                         onChange={handleChange}
                         required
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder="contacto@instituto.edu"
+                        placeholder="contacto@liceo.edu.ve"
                     />
                 </div>
 

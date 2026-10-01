@@ -58,7 +58,9 @@ const COLOR_DEL_ROL: Record<string, string> = {
 
 /** Los botones de una fila. Cada uno, 44 px: es lo que mide un dedo. */
 const botonDeAccion =
-    'inline-flex h-11 min-w-[44px] items-center justify-center gap-1 rounded-md border px-2.5 text-xs font-medium transition-colors';
+    // `relative`: dentro va un `sr-only` (absolute) que, sin él, se escapaba a la cabecera
+    // de la tabla y se leía «Editar» encima de la columna de nombres (visto en el teléfono).
+    'relative inline-flex h-11 min-w-[44px] items-center justify-center gap-1 rounded-md border px-2.5 text-xs font-medium transition-colors';
 
 export function UsersTable({
     users,

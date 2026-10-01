@@ -429,11 +429,17 @@ export default function SubjectScheduleSection({
                                 {/* Footer: Actividades y Aula (solo si está asignada) */}
                                 <div className="flex items-center justify-between border-t border-gray-100/80 pt-2 text-[10px] text-gray-500">
                                     <div className="flex items-center gap-1.5 font-bold">
-                                        <span className="text-indigo-600 bg-indigo-50 px-1 py-0.2 rounded">
-                                            Hoy: {isToday || isCurrent ? todayActCount : 0}
+                                        <span
+                                            className="text-indigo-600 bg-indigo-50 px-1 py-0.2 rounded"
+                                            title="Actividades que tocan en esta clase"
+                                        >
+                                            {isToday || isCurrent ? todayActCount : 0} hoy
                                         </span>
-                                        <span className="text-gray-500 bg-gray-100 px-1 py-0.2 rounded">
-                                            Próx: {nextActCount}
+                                        <span
+                                            className="text-gray-500 bg-gray-100 px-1 py-0.2 rounded"
+                                            title="Actividades que se dejaron en esta clase para otro día"
+                                        >
+                                            {nextActCount} después
                                         </span>
                                     </div>
                                     {hasClassroom && (

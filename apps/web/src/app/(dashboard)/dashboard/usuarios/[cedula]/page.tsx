@@ -563,7 +563,7 @@ export default function UserProfilePage({ params }: PageProps) {
                                         onValueChange={setSelectedAcademicYear}
                                     >
                                         <SelectTrigger className="min-w-[170px] bg-gray-50 border-gray-200">
-                                            <SelectValue placeholder="Año académico" />
+                                            <SelectValue placeholder="Ciclo escolar" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             {teacherData.academicYears.map((year) => (

@@ -62,7 +62,7 @@ export function DescargarHorario({
                     aria-label="Descargar horario"
                     title="Descargar horario"
                     disabled={!!haciendo}
-                    className="inline-flex h-9 w-9 items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
+                    className="inline-flex h-11 w-11 items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
                 >
                     {haciendo ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                 </button>

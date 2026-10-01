@@ -7,6 +7,7 @@ import { AcademicYear } from '@/services/academic-year.service';
 import { useRouter } from 'next/navigation';
 import SecureDeleteModal from './SecureDeleteModal';
 import { useState } from 'react';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
 
 interface AcademicTimelineProps {
     years: AcademicYear[];
@@ -15,6 +16,10 @@ interface AcademicTimelineProps {
 }
 
 export default function AcademicTimeline({ years, loading, onRefresh }: AcademicTimelineProps) {
+    // Borrar un ciclo es del admin (el servidor lo exige). Al profesor la
+    // papelera solo le daba un error: ni se le enseña.
+    const { yo } = useQuienSoy();
+    const esAdmin = yo?.role === 'ADMIN';
     const router = useRouter();
     const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; yearId: string | null; yearName: string }>({
         isOpen: false,
@@ -57,7 +62,7 @@ export default function AcademicTimeline({ years, loading, onRefresh }: Academic
                         Crea tu primer ciclo escolar para comenzar a organizar aulas, secciones y materias.
                     </p>
                     <p className="text-sm text-gray-400">
-                        Haz clic en <span className="font-medium text-indigo-600">«Nuevo Ciclo»</span> arriba para empezar.
+                        Haz clic en <span className="font-medium text-indigo-600">«Nuevo ciclo»</span> arriba para empezar.
                     </p>
                 </div>
             </div>
@@ -162,6 +167,7 @@ export default function AcademicTimeline({ years, loading, onRefresh }: Academic
                                     </div>
 
                                     <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+                                        {esAdmin && (
                                         <div
                                             onClick={(e) => openDeleteModal(e, year)}
                                             role="button"
@@ -173,6 +179,7 @@ export default function AcademicTimeline({ years, loading, onRefresh }: Academic
                                         >
                                             <Trash2 className="w-5 h-5" />
                                         </div>
+                                        )}
 
                                         <div className={`p-2 rounded-full transition-colors ${showActive ? 'bg-primary-50 text-primary-600' : 'bg-gray-100 text-gray-400 group-hover:bg-primary-50 group-hover:text-primary-600'}`}>
                                             <ArrowRight className="w-5 h-5" />

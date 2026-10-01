@@ -423,7 +423,9 @@ export default function SectionSubjectDashboard() {
                         role={user?.role === 'TEACHER' || user?.role === 'ADMIN' ? 'teacher' : 'student'}
                         showActions={true}
                         classroomId={classroomId}
-                        editUrl={`/dashboard/horario/${cycleId}/${sectionId}`}
+                        // El horario lo arma el admin (el servidor lo exige): al profesor el lápiz
+                    // le abría un editor que no podía guardar.
+                    editUrl={yo?.role === 'ADMIN' ? `/dashboard/horario/${cycleId}/${sectionId}` : undefined}
                         subtitulo={sectionName}
                     />
                 </div>

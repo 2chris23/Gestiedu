@@ -341,10 +341,16 @@ export default function AcademicYearDashboard() {
             <div>
                 <div className="space-y-6">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                            <Layers className="w-5 h-5 text-indigo-600" />
-                            Gestión por Niveles
-                        </h2>
+                        <div>
+                            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                <Layers className="w-5 h-5 text-indigo-600" aria-hidden />
+                                Secciones por año
+                            </h2>
+                            {/* Qué hay dentro, antes de tocar (escaneo UI/UX, 2026-10-01). */}
+                            <p className="mt-1 text-sm text-gray-600">
+                                Toca un año para ver sus secciones. Dentro de cada sección: sus estudiantes, sus materias y sus notas.
+                            </p>
+                        </div>
 
                         {turnosQueHay.length > 1 && (
                             <div className="flex items-center gap-1.5">

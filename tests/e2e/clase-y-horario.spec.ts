@@ -37,7 +37,19 @@ test.describe('El horario del alumno', () => {
 
             // Un bloque con materia: lleva a SU clase (plan, sus notas, sus
             // observaciones), no a una ventanita con el tema del día.
-            const bloque = page.locator('h4', { hasText: /\S/ }).first();
+            await expect(page.locator('h4', { hasText: /\S/ }).first()).toBeVisible({ timeout: 30000 });
+            // El carril se desliza solo hasta la clase en curso: según la hora,
+            // la primera queda a la izquierda, debajo de la barra lateral, y el
+            // clic lo recibía la barra. Se toca la primera que se ve entera.
+            const indice = await page.locator('h4').evaluateAll((hs) => {
+                const barra = [...document.querySelectorAll('aside')].find((a) => getComputedStyle(a).display !== 'none');
+                const borde = barra ? barra.getBoundingClientRect().right : 0;
+                return hs.findIndex((h) => {
+                    const r = h.getBoundingClientRect();
+                    return !!h.textContent?.trim() && r.width > 0 && r.left >= borde && r.right <= window.innerWidth;
+                });
+            });
+            const bloque = page.locator('h4').nth(Math.max(0, indice));
             await expect(bloque).toBeVisible({ timeout: 30000 });
             const materia = (await bloque.textContent())?.trim() ?? '';
             await bloque.click();

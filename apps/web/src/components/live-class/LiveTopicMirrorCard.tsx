@@ -226,7 +226,9 @@ export default function LiveTopicMirrorCard({
                             title="Añadir bloque adicional"
                         >
                             <Plus className="w-3.5 h-3.5 text-gray-500" />
-                            <span className="hidden sm:inline">Añadir Bloque</span>
+                            {/* Con texto también en el teléfono: un «+» solo, junto a «Editar», no
+                                decía qué añadía (escaneo UI/UX, 2026-10-01). */}
+                            <span>Añadir bloque</span>
                         </button>
                         <button
                             type="button"

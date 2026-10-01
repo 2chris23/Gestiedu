@@ -210,9 +210,13 @@ function Acta({ classroomId, periodId }: { classroomId: string; periodId: string
                                 )}
                             </div>
                             <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                {/* Etiqueta a la vista: el texto de muestra se borra al escribir
+                                    y luego no se sabía qué casilla era cuál. */}
+                                <label className="block space-y-1">
+                                <span className="text-xs font-semibold text-gray-700">Lo tratado</span>
                                 <textarea
                                     aria-label={`Lo tratado de ${x.nombre}`}
-                                    placeholder="Lo tratado"
+                                    placeholder="Qué se habló de este caso"
                                     value={x.loTratado}
                                     onChange={(e) => poner(x.id, 'loTratado', e.target.value)}
                                     disabled={!puede}
@@ -220,9 +224,14 @@ function Acta({ classroomId, periodId }: { classroomId: string; periodId: string
                                     maxLength={2000}
                                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                                 />
+                                </label>
+                                {/* Etiqueta a la vista: el texto de muestra se borra al escribir
+                                    y luego no se sabía qué casilla era cuál. */}
+                                <label className="block space-y-1">
+                                <span className="text-xs font-semibold text-gray-700">Acuerdo</span>
                                 <textarea
                                     aria-label={`Acuerdo de ${x.nombre}`}
-                                    placeholder="Acuerdo"
+                                    placeholder="Qué se decidió hacer"
                                     value={x.acuerdo}
                                     onChange={(e) => poner(x.id, 'acuerdo', e.target.value)}
                                     disabled={!puede}
@@ -230,6 +239,7 @@ function Acta({ classroomId, periodId }: { classroomId: string; periodId: string
                                     maxLength={2000}
                                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                                 />
+                                </label>
                             </div>
                         </li>
                     ))}

@@ -108,7 +108,7 @@ export function AppearanceSettings() {
             <div>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                     <div>
-                        <h3 className="text-lg font-semibold text-gray-900">Logos del Instituto</h3>
+                        <h3 className="text-lg font-semibold text-gray-900">Logos del liceo</h3>
                         <p className="text-sm text-gray-600 mt-0.5">
                             Personaliza el escudo escolar y el favicon visible en las pestañas del navegador
                         </p>
@@ -140,7 +140,7 @@ export function AppearanceSettings() {
 
                     {/* Logo Principal */}
                     <ImageUpload
-                        label="Escudo del Instituto (200×200 mínimo)"
+                        label="Escudo del liceo (200×200 mínimo)"
                         description="Insignia oficial mostrada en la barra lateral, boletines y reportes"
                         currentImage={config?.logo}
                         selectedFile={pendingLogo}

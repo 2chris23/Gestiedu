@@ -169,7 +169,7 @@ function Evaluacion({ e, i, alumnos, conNotas }: { e: EvaluacionConInstrumento; 
                     )}
                 </>
             ) : (
-                <p className="mt-1 text-xs text-gray-600">Sin instrumento armado en el sistema.</p>
+                <p className="mt-1 text-xs text-gray-600">Sin instrumento todavía: se arma en el plan de evaluación, en esta evaluación.</p>
             )}
         </section>
     );

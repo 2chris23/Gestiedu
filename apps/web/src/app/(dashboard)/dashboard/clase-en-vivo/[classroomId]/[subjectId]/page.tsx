@@ -2,6 +2,7 @@
 
 import { OtraFormaDeEvaluarBoton } from '@/components/live-class/OtraFormaDeEvaluar';
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import { AyudaDeLaPantalla } from '@/components/common/AyudaDeLaPantalla';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -539,7 +540,31 @@ function LiveClassPageInner() {
                     </div>
 
                     {/* Acciones derecha */}
-                    <div className="flex items-center gap-2.5 flex-shrink-0">
+                    {/* Sin `flex-shrink-0`: con la ayuda, en el teléfono no cabía en una fila
+                        y, sin poder encogerse, ensanchaba la pantalla (481 px en 390). */}
+                    <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+                        <AyudaDeLaPantalla
+                            titulo="Cómo funciona la clase en vivo"
+                            pasos={[
+                                {
+                                    titulo: 'Pasa la asistencia',
+                                    texto: '«Pasar asistencia» pregunta cómo: a mano (cuatro botones por alumno), con el QR en la mesa o escaneando el QR de cada alumno.',
+                                },
+                                {
+                                    titulo: 'Mira qué toca hoy',
+                                    texto: 'Arriba está el tema y la evaluación del plan para esta semana. «Editar» cambia el tema; «Añadir bloque» agrega una parte más.',
+                                },
+                                {
+                                    titulo: 'Crea actividades y pon notas',
+                                    texto: '«Nueva Actividad» la crea en esta clase. «Dar nota» cambia la tabla de alumnos para calificar; si la evaluación tiene instrumento, se califica por indicador.',
+                                },
+                                {
+                                    titulo: 'No hay botón de guardar',
+                                    texto: 'Todo se guarda solo («Guardado 07:45» arriba). Sin conexión queda pendiente con un relojito y sube cuando vuelve.',
+                                },
+                            ]}
+                            nota="«Observación» anota algo de la clase entera o de unos alumnos; la ven su representante y el profesor guía."
+                        />
                         {isSuspended && (
                             <span className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold px-3 py-2 rounded-xl shadow-2xs">
                                 <Ban className="w-4 h-4" /> Suspendida

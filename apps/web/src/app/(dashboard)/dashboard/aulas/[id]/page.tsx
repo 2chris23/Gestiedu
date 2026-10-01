@@ -16,6 +16,7 @@ import { Toaster, toast } from 'sonner';
 import { classroomService, Classroom } from '@/services/classroom.service';
 import { studentsService } from '@/services/students.service';
 import { Card } from '@/components/ui';
+import { Button } from '@/components/ui/button';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
@@ -115,36 +116,35 @@ export default function ClassroomDetailPage() {
 
             {/* Header */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
+                {/* El título no se aprieta contra los botones: en el teléfono
+                    «1er Año A» salía en tres líneas, una palabra por línea. */}
+                <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+                    <div className="flex min-w-0 flex-[1_1_16rem] items-center gap-3">
                         <button
+                            type="button"
                             onClick={() => router.push('/dashboard/aulas')}
-                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            aria-label="Volver a Aulas y secciones"
+                            title="Volver a Aulas y secciones"
+                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-gray-100"
                         >
-                            <ArrowLeft size={20} />
+                            <ArrowLeft size={20} aria-hidden />
                         </button>
-                        <div>
+                        <div className="min-w-0">
                             <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">{classroom.name}</h1>
-                            <p className="text-sm text-gray-500 mt-1">
-                                {classroom.academicYear?.name || 'Año académico no asignado'}
+                            <p className="mt-1 text-sm text-gray-600">
+                                {classroom.academicYear?.name ? `Ciclo ${classroom.academicYear.name}` : 'Sin ciclo escolar'} · su profesor guía y sus estudiantes
                             </p>
                         </div>
                     </div>
-                    <div className="flex w-full flex-wrap gap-3 sm:w-auto">
-                        <button
-                            onClick={() => setIsAssignTeacherModalOpen(true)}
-                            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-                        >
-                            <UserCog className="mr-2 h-4 w-4" />
-                            {classroom.teacher ? 'Cambiar Profesor' : 'Asignar Profesor'}
-                        </button>
-                        <button
-                            onClick={() => setIsAddStudentModalOpen(true)}
-                            className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-                        >
-                            <UserPlus className="mr-2 h-4 w-4" />
-                            Agregar Estudiante
-                        </button>
+                    <div className="flex flex-wrap gap-2">
+                        <Button variant="contorno" onClick={() => setIsAssignTeacherModalOpen(true)}>
+                            <UserCog aria-hidden />
+                            {classroom.teacher ? 'Cambiar profesor guía' : 'Asignar profesor guía'}
+                        </Button>
+                        <Button onClick={() => setIsAddStudentModalOpen(true)}>
+                            <UserPlus aria-hidden />
+                            Agregar estudiante
+                        </Button>
                     </div>
                 </div>
 

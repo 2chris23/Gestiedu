@@ -718,7 +718,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                                         }`}
                                                         title={`${todayActivitiesCount} actividad(es) para esta clase`}
                                                     >
-                                                        Hoy: {todayActivitiesCount}
+                                                        {todayActivitiesCount} hoy
                                                     </span>
                                                     <span
                                                         className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
@@ -726,7 +726,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                                         }`}
                                                         title={`En esta clase se dejaron ${nextActivitiesCount} actividad(es) para la próxima`}
                                                     >
-                                                        Próx: {nextActivitiesCount}
+                                                        {nextActivitiesCount} después
                                                     </span>
                                                 </div>
                                                 {classItem.location && (

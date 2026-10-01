@@ -174,7 +174,7 @@ test.describe('Con el servidor apagado', () => {
             // Con servidor: Configuración y su pestaña «Apariencia».
             await page.goto(`${WEB}/dashboard/configuracion`);
             await page.getByRole('button', { name: /Apariencia/ }).click();
-            await expect(page.getByText('Logos del Instituto')).toBeVisible({ timeout: 30_000 });
+            await expect(page.getByText('Logos del liceo')).toBeVisible({ timeout: 30_000 });
             await expect.poll(() => lleganDatosGuardados(page), { timeout: 20_000 }).toBe(true);
 
             // Sin servidor: se vuelve a abrir la pantalla.
@@ -184,7 +184,7 @@ test.describe('Con el servidor apagado', () => {
             await expect(page.getByText('Sin conexión con el liceo').first()).toBeVisible({ timeout: 20_000 });
 
             await page.getByRole('button', { name: /Apariencia/ }).click();
-            await expect(page.getByText('Logos del Instituto')).toBeVisible({ timeout: 15_000 });
+            await expect(page.getByText('Logos del liceo')).toBeVisible({ timeout: 15_000 });
 
             // «Seguridad» no se abrió nunca, y abre igual: desde el 30-09 la
             // app se baja entera en segundo plano (`sw.js`, `ponerseAlDia`).

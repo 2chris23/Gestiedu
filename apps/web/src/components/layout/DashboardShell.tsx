@@ -236,7 +236,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                                     src={instituteConfig.logo.startsWith('/uploads')
                                         ? `${BACKEND_URL}${instituteConfig.logo}`
                                         : instituteConfig.logo}
-                                    alt="Logo del Instituto"
+                                    alt="Logo del liceo"
                                     width={120}
                                     height={120}
                                     className="object-contain max-h-20 w-auto"

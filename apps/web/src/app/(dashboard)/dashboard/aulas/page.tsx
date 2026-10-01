@@ -76,10 +76,18 @@ export default function ClassroomsPage() {
     const handleDelete = async (e: React.MouseEvent, id: string, hasStudents: boolean) => {
         e.stopPropagation(); // Prevent card click
         if (hasStudents) {
-            toast.error('No se puede eliminar un aula con estudiantes');
+            // Qué hacer, no solo que no se puede (escaneo UI/UX, 2026-10-01).
+            toast.error('Esta sección tiene estudiantes: muévelos a otra sección antes de eliminarla.');
             return;
         }
-        if (!(await confirmDialog({ title: '¿Eliminar aula?' }))) return;
+        if (
+            !(await confirmDialog({
+                title: '¿Eliminar esta sección?',
+                description: 'Desaparece de la lista y de los horarios. Queda una copia en la papelera del liceo.',
+                confirmLabel: 'Eliminar',
+            }))
+        )
+            return;
         try {
             await classroomService.deleteClassroom(id);
             toast.success('Aula eliminada');
@@ -99,7 +107,7 @@ export default function ClassroomsPage() {
 
             <EncabezadoDePantalla
                 titulo="Aulas y Secciones"
-                descripcion="Administra los espacios académicos por año escolar"
+                descripcion="Las secciones de cada ciclo escolar: su profesor guía, su turno y cuántos estudiantes caben."
                 acciones={
                     <>
                         <Select value={selectedYearId || undefined} onValueChange={setSelectedYearId}>
@@ -171,17 +179,19 @@ export default function ClassroomsPage() {
                             <div className="flex gap-2 justify-end">
                                 <button
                                     onClick={(e) => handleEdit(e, classroom)}
-                                    className="px-2 py-1 text-gray-600 hover:text-blue-600 transition-colors"
+                                    className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-blue-50 hover:text-blue-600"
                                     title="Editar aula"
+                                    aria-label={`Editar ${classroom.name}`}
                                 >
-                                    <Edit className="w-4 h-4" />
+                                    <Edit className="w-4 h-4" aria-hidden />
                                 </button>
                                 <button
                                     onClick={(e) => handleDelete(e, classroom.id, !!classroom._count?.students)}
-                                    className={`px-2 py-1 text-gray-600 hover:text-red-600 transition-colors ${classroom._count?.students ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                    title={classroom._count?.students ? 'No se puede eliminar con estudiantes' : 'Eliminar aula'}
+                                    className={`inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600 ${classroom._count?.students ? 'opacity-50' : ''}`}
+                                    title={classroom._count?.students ? 'No se puede eliminar: tiene estudiantes' : 'Eliminar aula'}
+                                    aria-label={classroom._count?.students ? `${classroom.name}: no se puede eliminar, tiene estudiantes` : `Eliminar ${classroom.name}`}
                                 >
-                                    <Trash2 className="w-4 h-4" />
+                                    <Trash2 className="w-4 h-4" aria-hidden />
                                 </button>
                             </div>
                         </div>

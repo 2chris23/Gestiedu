@@ -64,6 +64,7 @@ import {
     ZONAS_DE_UN_TELEFONO,
     QUE_SIGNIFICA,
 } from './reglas-del-telefono.mjs';
+import { MEDIR_CLARIDAD, QUE_SIGNIFICA_CLARIDAD } from './reglas-de-claridad.mjs';
 import { mkdir, writeFile, rm } from 'fs/promises';
 import { existsSync } from 'fs';
 import { dirname, join } from 'path';
@@ -76,6 +77,8 @@ const WEB = process.argv.find((a) => a.startsWith('--web='))?.slice(6) || 'http:
 const LICEO = process.argv.find((a) => a.startsWith('--liceo='))?.slice(8) || 'instituto-testing';
 const SOLO = process.argv.find((a) => a.startsWith('--rol='))?.slice(6) || null;
 const CLAVE = '123456';
+// `--claridad`: además, ¿se entiende? (`reglas-de-claridad.mjs`). No cuenta para `--exigir`.
+const CLARIDAD = process.argv.includes('--claridad');
 
 const BD =
     process.env.TEST_DB_URL ||
@@ -412,6 +415,13 @@ async function main() {
                     letra: LETRA,
                 });
 
+                // Arriba otra vez para lo de claridad: se mide la pantalla tal cual se abre.
+                let claridad = [];
+                if (CLARIDAD) {
+                    await page.evaluate(() => window.scrollTo(0, 0));
+                    claridad = await page.evaluate(MEDIR_CLARIDAD).catch(() => []);
+                }
+
                 const todas = [...faltas];
                 for (const f of alBajar) {
                     if (!todas.some((x) => x.regla === f.regla)) todas.push({ ...f, alBajar: true });
@@ -423,7 +433,7 @@ async function main() {
                     });
                 }
 
-                fichas.push({ rol: recorrido.rol, titulo, ruta, archivo, faltas: todas });
+                fichas.push({ rol: recorrido.rol, titulo, ruta, archivo, faltas: todas, claridad });
                 const sello = todas.length ? `✗ ${todas.map((f) => f.regla).join(' ')}` : '✓';
                 console.log(`  ${sello.padEnd(34)} ${recorrido.rol} · ${titulo}`);
             } catch (e) {
@@ -445,6 +455,20 @@ async function main() {
     console.log(`\n${fichas.length} pantallas · ${conFallo} con algo que arreglar`);
     for (const [regla, n] of Object.entries(porRegla).sort((a, b) => b[1] - a[1])) {
         console.log(`   ${String(n).padStart(3)}  ${regla}`);
+    }
+    if (CLARIDAD) {
+        await writeFile(
+            join(CARPETA, 'claridad.json'),
+            JSON.stringify(fichas.map(({ rol, titulo, ruta, archivo, claridad }) => ({ rol, titulo, ruta, archivo, claridad })), null, 2),
+            'utf-8'
+        );
+        const porRegla = {};
+        fichas.forEach((f) => new Set(f.claridad.map((x) => x.regla)).forEach((r) => (porRegla[r] = (porRegla[r] || 0) + 1)));
+        console.log('\n¿Se entiende? (pantallas con cada falta):');
+        for (const [regla, n] of Object.entries(porRegla).sort((a, b) => b[1] - a[1])) {
+            console.log(`   ${String(n).padStart(3)}  ${regla.padEnd(17)} ${QUE_SIGNIFICA_CLARIDAD[regla] ?? ''}`);
+        }
+        console.log('   (detalle en docs/capturas-movil/claridad.json)');
     }
     console.log(`\nAbre  docs/capturas-movil/index.html`);
 

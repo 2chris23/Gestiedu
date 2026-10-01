@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { AyudaDeLaPantalla } from '@/components/common/AyudaDeLaPantalla';
 import { useConfirm } from '@/hooks/useConfirm';
 import { toast } from 'sonner';
 import {
@@ -1175,7 +1176,7 @@ export default function EvaluationPlanSection({
     <>
     <div className="flex flex-col" style={{ height: 'calc(100vh - 240px)', minHeight: 400 }}>
       {/* Top bar */}
-      <div className="flex items-center justify-between bg-white px-4 py-3 rounded-xl shadow-sm border border-gray-100 print:hidden mb-3 shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-white px-4 py-3 rounded-xl shadow-sm border border-gray-100 print:hidden mb-3 shrink-0">
         <div>
           <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
             <BookOpen className="w-4 h-4 text-indigo-600" /> Plan de Evaluación
@@ -1190,7 +1191,29 @@ export default function EvaluationPlanSection({
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <AyudaDeLaPantalla
+            titulo="Cómo funciona el plan de evaluación"
+            pasos={[
+              {
+                titulo: 'Una fila por semana',
+                texto: 'Cada fila es una semana del lapso. Las columnas las pone el profesor (tema, contenido, actividad…). Una celda puede abarcar varias semanas.',
+              },
+              {
+                titulo: 'Las evaluaciones y sus puntos',
+                texto: 'Marca qué semanas son de evaluación y cuánto valen. Las actividades que se crean en clase esa semana suman a esa evaluación.',
+              },
+              {
+                titulo: 'El instrumento (si lo quieres)',
+                texto: 'Lista de cotejo, escala, rúbrica o por puntos: se arma en la evaluación y en la clase se califica indicador por indicador.',
+              },
+              {
+                titulo: 'Atajos',
+                texto: '«Editar Plan» abre el editor (y desde ahí «Importar Word» lo lee de un archivo). «Copiar a otra sección» lo reutiliza; «Imprimir» saca la hoja del MPPE.',
+              },
+            ]}
+            nota="Lo guardado se ve en la clase en vivo de cada semana; quitar una evaluación con notas pide confirmarlo."
+          />
           {/* El plan en papel tiene su propia hoja (`plan-de-evaluacion/...`):
               imprimir esta pantalla sacaba la sección entera, cortada a una hoja. */}
           <Link

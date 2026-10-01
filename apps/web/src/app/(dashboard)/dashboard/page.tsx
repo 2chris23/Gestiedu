@@ -236,7 +236,7 @@ export default function DashboardPage() {
                     valor: adminData.stats.studentsAtRisk,
                     icono: AlertTriangle,
                     color: 'coral',
-                    pie: 'Materias < 10',
+                    pie: 'Con materias reprobadas',
                 },
                 {
                     titulo: 'Profesores',

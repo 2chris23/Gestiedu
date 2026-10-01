@@ -40,6 +40,8 @@ export default function LapsoSelector({ periods, value, onChange, compact = fals
                 }`}
             >
                 <CalendarRange className={`h-4 w-4 shrink-0 text-indigo-600 ${compact ? 'hidden sm:block' : ''}`} aria-hidden />
+                {/* «Todo el ciclo» suelto no decía qué cambiaba: son las cifras de abajo. */}
+                <span className={`font-medium text-gray-500 ${compact ? 'hidden sm:inline' : ''}`}>Ver:</span>
                 <SelectValue />
             </SelectTrigger>
             <SelectContent position="popper" align="end" className="min-w-[11rem] rounded-xl border-gray-200 bg-white p-1 shadow-lg">
