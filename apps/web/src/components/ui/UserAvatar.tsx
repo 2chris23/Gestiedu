@@ -1,4 +1,7 @@
+'use client';
+
 import React from 'react';
+import { esFotoDelSistema, useFotoDePerfil } from '@/hooks/useFotoDePerfil';
 
 interface UserAvatarProps {
     name: string;
@@ -44,15 +47,42 @@ function hashCode(str: string): number {
  */
 export default function UserAvatar({ name, src, className = '', initialsClassName = '', sizes }: UserAvatarProps) {
     const color = COLORS[hashCode(name) % COLORS.length];
+    // Las fotos subidas al sistema piden sesión: se traen con la credencial y
+    // mientras llegan se ven las iniciales, nunca un cuadro roto.
+    // Y solo cuando el avatar está a punto de verse (200 px antes).
+    const caja = React.useRef<HTMLDivElement>(null);
+    const [visto, setVisto] = React.useState(false);
+    React.useEffect(() => {
+        if (visto || !esFotoDelSistema(src)) return;
+        const el = caja.current;
+        if (!el || typeof IntersectionObserver === 'undefined') {
+            setVisto(true);
+            return;
+        }
+        const observador = new IntersectionObserver(
+            (entradas) => {
+                if (entradas.some((e) => e.isIntersecting)) {
+                    setVisto(true);
+                    observador.disconnect();
+                }
+            },
+            { rootMargin: '200px' }
+        );
+        observador.observe(el);
+        return () => observador.disconnect();
+    }, [src, visto]);
+    const { data: fotoEnMemoria } = useFotoDePerfil(src, visto);
+    const imagen = esFotoDelSistema(src) ? fotoEnMemoria : src;
 
     return (
         <div
+            ref={caja}
             className={`relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full ${color} ${className}`}
         >
-            {src ? (
+            {imagen ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                    src={src}
+                    src={imagen}
                     alt={name}
                     sizes={sizes}
                     className="h-full w-full object-cover"

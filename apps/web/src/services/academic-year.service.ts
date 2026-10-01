@@ -1,6 +1,7 @@
 import api from '@/lib/axios';
 import { getApiErrorMessage } from '@/lib/utils';
 import { AxiosError } from 'axios';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export interface Period {
     id?: string;
@@ -8,6 +9,10 @@ export interface Period {
     startDate: string;
     endDate: string;
     isActive?: boolean;
+    /** Cuándo empieza el contenido del plan de evaluación (vacío = con el lapso). */
+    inicioDelPlan?: string | null;
+    /** Cómo se llaman las semanas de antes («Diagnóstico» si no dice nada). */
+    nombreAntesDelPlan?: string | null;
 }
 
 export interface AcademicYear {
@@ -100,12 +105,22 @@ export const academicYearService = {
             });
             return statsMap;
         } catch (error) {
+            // Sin conexión NO se devuelve «vacío»: eso contaría como una
+            // respuesta buena y taparía las cifras guardadas en el teléfono
+            // con ceros. Se deja fallar y la pantalla sigue con las de antes.
+            if (esQueNoContesta(error)) throw error;
             console.error(error);
             return {}; // Return empty stats on error to avoid breaking UI
         }
     },
 
     // Fase 3.5-C — cierre de ciclo escolar + prosecución
+    /** La nota de revisión de una materia reprobada (antes del cierre). */
+    guardarRevision: async (yearId: string, datos: { studentId: string; subjectId: string; score: number }): Promise<any> => {
+        const response = await api.put(`/academic-years/${yearId}/revisiones`, datos);
+        return response.data.data;
+    },
+
     prepareClose: async (yearId: string): Promise<any> => {
         const response = await api.post(`/academic-years/${yearId}/close/prepare`);
         return response.data;

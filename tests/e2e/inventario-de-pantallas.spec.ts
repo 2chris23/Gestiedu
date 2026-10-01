@@ -208,7 +208,6 @@ test('INVENTARIO: cuánto tarda cada pantalla en abrir, volver y guardar', async
         { nombre: 'Estudiantes', ruta: '/dashboard/estudiantes' },
         { nombre: 'Usuarios', ruta: '/dashboard/usuarios' },
         { nombre: 'Horarios', ruta: '/dashboard/horarios' },
-        { nombre: 'Calendario', ruta: '/dashboard/calendario' },
         {
             nombre: 'Eventos',
             ruta: '/dashboard/eventos',

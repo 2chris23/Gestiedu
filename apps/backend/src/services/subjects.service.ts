@@ -5,6 +5,7 @@ import * as closeCycleService from './promotion/close-cycle.service';
 import { findTeacherAssignmentConflicts, ScheduleConflictError } from './schedule-conflicts.service';
 import { borrarGuardandoCopia, QuienBorra } from '../utils/papelera';
 import { NotFoundError } from '../utils/errors';
+import { olvidarMateriasCualitativas } from './apreciaciones.service';
 
 export class SubjectsService {
     async getAllSubjects(filters: any = {}, prisma: any) {
@@ -480,19 +481,24 @@ export class SubjectsService {
     async createSubject(data: CreateSubjectInput, prisma: any) {
         const { generateSlug } = await import('../utils/slug');
 
-        return prisma.subject.create({
+        const materia = await prisma.subject.create({
             data: {
                 ...data,
                 slug: generateSlug(data.name)
             }
         });
+        if (data.evaluacion === 'CUALITATIVA') await olvidarMateriasCualitativas();
+        return materia;
     }
 
     async updateSubject(id: string, data: UpdateSubjectInput, prisma: any) {
-        return prisma.subject.update({
+        const materia = await prisma.subject.update({
             where: { id },
             data
         });
+        // Pasar a apreciación (o volver a nota) cambia todos los promedios.
+        if (data.evaluacion) await olvidarMateriasCualitativas();
+        return materia;
     }
 
     /**
@@ -662,7 +668,7 @@ export class SubjectsService {
         return results;
     }
 
-    async removeSubjectFromGrade(grade: number, subjectId: string, prisma: any, academicYearId?: string) {
+    async removeSubjectFromGrade(grade: number, subjectId: string, prisma: any, academicYearId?: string, quien: QuienBorra = {}) {
         let yearId = academicYearId;
 
         if (!yearId) {
@@ -673,40 +679,58 @@ export class SubjectsService {
             yearId = activeYear.id;
         }
 
-        return prisma.classroomSubject.deleteMany({
-            where: {
-                subjectId: subjectId,
-                classroom: {
-                    grade: grade,
-                    academicYearId: yearId
-                }
-            }
-        });
+        // Con copia en la papelera: quitar la materia de un año se lleva la
+        // asignación de cada sección con su profesor y su historial. Esto era
+        // un `deleteMany` a pelo, uno de los dos borrados que se saltaban la regla.
+        const count = await borrarGuardandoCopia(
+            prisma,
+            'classroomSubject',
+            { subjectId, classroom: { grade, academicYearId: yearId } },
+            quien
+        );
+        return { count };
     }
 
-    async getSubjectStudents(subjectId: string, prisma: any) {
-        // Estudiantes inscritos en aulas que tienen esta materia
-        // User -> StudentClassroom -> Classroom -> ClassroomSubject (subjectId)
-        // Es un poco complejo, simplificamos:
-        // Buscamos ClassroomSubjects con este subjectId, obtenemos las aulas, y de ahí los alumnos.
-
+    /**
+     * Los alumnos de las secciones donde se da esta materia.
+     *
+     * Solo los datos de una lista, nunca la fila entera: con `student: true`
+     * salía el resumen de la contraseña de cada alumno a cualquier profesor
+     * (`nada-de-mas-en-el-json.test.ts`). Y el profesor, solo de las secciones
+     * donde da la materia o es el guía (`soloDelProfesor`).
+     */
+    async getSubjectStudents(subjectId: string, prisma: any, soloDelProfesor?: string) {
         const classroomSubjects = await prisma.classroomSubject.findMany({
-            where: { subjectId },
-            include: {
+            where: {
+                subjectId,
+                ...(soloDelProfesor
+                    ? { OR: [{ teacherId: soloDelProfesor }, { classroom: { teacherId: soloDelProfesor } }] }
+                    : {}),
+            },
+            select: {
                 classroom: {
-                    include: {
+                    select: {
                         studentClassrooms: {
                             where: { isActive: true },
-                            include: {
-                                student: true
-                            }
-                        }
-                    }
-                }
-            }
+                            select: {
+                                student: {
+                                    select: {
+                                        id: true,
+                                        firstName: true,
+                                        lastName: true,
+                                        email: true,
+                                        studentCode: true,
+                                        avatar: true,
+                                        isActive: true,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
         });
 
-        // Aplanar resultados
         const students = classroomSubjects.flatMap((cs: any) =>
             cs.classroom.studentClassrooms.map((sc: any) => sc.student)
         );

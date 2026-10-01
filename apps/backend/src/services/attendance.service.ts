@@ -463,42 +463,6 @@ export class AttendanceService {
     return attendance;
   }
 
-  // Eliminar registro de asistencia
-  async delete(prisma: PrismaClient, id: string, userId: string): Promise<{ message: string }> {
-    const attendance = await prisma.dailyAttendance.findUnique({
-      where: { id },
-      include: {
-        classroom: {
-          select: { instituteId: true }
-        },
-        student: {
-          select: { firstName: true, lastName: true }
-        }
-      }
-    });
-
-    if (!attendance) {
-      throw new NotFoundError('Registro de asistencia', id);
-    }
-
-    // Verificar permisos (solo admin y coordinator pueden eliminar)
-
-    await prisma.dailyAttendance.delete({
-      where: { id }
-    });
-
-    // Limpiar caches
-    await this.clearAttendanceCaches(
-      attendance.classroom.instituteId!,
-      attendance.classroomId,
-      attendance.studentId
-    );
-
-    return {
-      message: `Registro de asistencia de ${attendance.student.firstName} ${attendance.student.lastName} eliminado correctamente`
-    };
-  }
-
   // Obtener asistencia por aula y fecha
   async getByClassroomAndDate(prisma: PrismaClient, classroomId: string, date: Date, userId: string) {
     // Verificar que el aula existe

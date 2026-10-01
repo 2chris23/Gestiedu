@@ -112,7 +112,6 @@ const PANTALLAS_DE_ADMIN = [
     '/dashboard',
     '/dashboard/academico',
     '/dashboard/aulas',
-    '/dashboard/calendario',
     '/dashboard/configuracion',
     '/dashboard/eventos',
     '/dashboard/horarios',
@@ -123,12 +122,11 @@ const PANTALLAS_DE_ADMIN = [
 const PANTALLAS_DE_PROFESOR = [
     '/dashboard',
     '/dashboard/academico',
-    '/dashboard/calendario',
     '/dashboard/horarios',
 ];
 
-const PANTALLAS_DE_ESTUDIANTE = ['/dashboard', '/dashboard/calendario'];
-const PANTALLAS_DE_TUTOR = ['/dashboard', '/dashboard/calendario'];
+const PANTALLAS_DE_ESTUDIANTE = ['/dashboard', '/dashboard/boleta/mia'];
+const PANTALLAS_DE_TUTOR = ['/dashboard'];
 
 test.describe('Todas las pantallas', () => {
     test.describe.configure({ mode: 'serial' });

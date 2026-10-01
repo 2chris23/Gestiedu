@@ -10,12 +10,40 @@ const validDateSchema = z.union([
 ]).transform((val) => new Date(val));
 
 // Esquema de validación para Periodo (Lapso)
-const periodSchema = z.object({
-  id: z.string().optional(),
-  name: z.string(),
-  startDate: validDateSchema,
-  endDate: validDateSchema,
-  isActive: z.boolean().optional().default(false),
+const periodSchema = z
+  .object({
+    id: z.string().optional(),
+    name: z.string(),
+    startDate: validDateSchema,
+    endDate: validDateSchema,
+    isActive: z.boolean().optional().default(false),
+    /**
+     * Cuándo empieza el contenido del plan de evaluación en este lapso (las
+     * semanas de antes son de diagnóstico, con contenido del profesor). Libre:
+     * cada liceo lo pone donde le toque, siempre dentro del lapso. `null` o
+     * vacío = empieza con el lapso.
+     */
+    inicioDelPlan: z
+      .union([validDateSchema, z.literal('').transform(() => null), z.null()])
+      .optional(),
+    nombreAntesDelPlan: z
+      .string()
+      .trim()
+      .max(40, 'El nombre de las semanas de antes del plan es muy largo (máximo 40 letras)')
+      .nullable()
+      .optional()
+      // Sin el campo, no se toca; vacío, se borra.
+      .transform((v) => (v === undefined ? undefined : v ? v : null)),
+  })
+  .refine(
+    (p) => !p.inicioDelPlan || (p.inicioDelPlan >= p.startDate && p.inicioDelPlan <= p.endDate),
+    { message: 'El plan de un lapso tiene que empezar dentro del lapso', path: ['inicioDelPlan'] }
+  );
+
+/** Lo del plan que se guarda con el lapso (solo si vino en la petición). */
+const delPlan = (p: z.infer<typeof periodSchema>) => ({
+  ...(p.inicioDelPlan !== undefined ? { inicioDelPlan: p.inicioDelPlan } : {}),
+  ...(p.nombreAntesDelPlan !== undefined ? { nombreAntesDelPlan: p.nombreAntesDelPlan } : {}),
 });
 
 // Esquema de validación para crear/actualizar Año Escolar
@@ -93,6 +121,7 @@ export const createAcademicYear = async (request: FastifyRequest, reply: Fastify
             startDate: p.startDate,
             endDate: p.endDate,
             isActive: p.isActive,
+            ...delPlan(p),
           }))
         : lapsosPorDefecto();
 
@@ -288,6 +317,7 @@ export const updateAcademicYear = async (request: FastifyRequest, reply: Fastify
               startDate: p.startDate,
               endDate: p.endDate,
               isActive: p.isActive,
+              ...delPlan(p),
             },
           });
         } else {
@@ -300,6 +330,7 @@ export const updateAcademicYear = async (request: FastifyRequest, reply: Fastify
                 startDate: p.startDate,
                 endDate: p.endDate,
                 isActive: p.isActive,
+                ...delPlan(p),
               },
             });
           } else {
@@ -310,6 +341,7 @@ export const updateAcademicYear = async (request: FastifyRequest, reply: Fastify
                 startDate: p.startDate,
                 endDate: p.endDate,
                 isActive: p.isActive,
+                ...delPlan(p),
                 academicYearId: id,
               },
             });
@@ -341,6 +373,7 @@ export const updateAcademicYear = async (request: FastifyRequest, reply: Fastify
 
 import { comparePassword } from '../utils/bcrypt';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
+import { NOTAS_QUE_CUENTAN } from '../services/apreciaciones.service';
 
 export const deleteAcademicYear = async (request: FastifyRequest, reply: FastifyReply) => {
   try {
@@ -517,7 +550,8 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
       by: ['studentId', 'subjectId'],
       where: {
         period: { academicYearId: id },
-        score: { not: null }
+        score: { not: null },
+        ...NOTAS_QUE_CUENTAN,
       },
       _avg: { score: true }
     });
@@ -700,10 +734,11 @@ export const confirmAcademicYearClose = async (request: FastifyRequest, reply: F
         decisions: body.decisions || [],
         strategyKey: body.strategyKey,
         strategyMode: body.strategyMode,
-        autoCreateNextYear: body.autoCreateNextYear ?? true,
         nextYearName: body.nextYearName || body.suggestedNextYearName,
+        quienCierra: (request.user as any)?.userId ?? (request.user as any)?.id,
       },
-      getRequestInstituteId(request)
+      getRequestInstituteId(request),
+      quienBorra(request as any)
     );
     await invalidateDashboardCache(request);
     return reply.status(200).send(result);
@@ -711,6 +746,10 @@ export const confirmAcademicYearClose = async (request: FastifyRequest, reply: F
     request.log.error(error);
     if (error?.code === 'CLOSE_ALREADY_EXECUTED') {
       return reply.status(409).send({ error: 'El ciclo ya fue cerrado', code: 'CLOSE_ALREADY_EXECUTED' });
+    }
+    // Sin año siguiente, un motivo que falta…: se dice cuál y por qué.
+    if (error?.statusCode && error.statusCode >= 400 && error.statusCode < 500) {
+      return reply.status(error.statusCode).send({ error: error.message, code: error.code, alumnos: error.alumnos });
     }
     return reply.status(500).send({ error: 'Error al confirmar el cierre del ciclo' });
   }

@@ -5,10 +5,10 @@ import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { conseguirCredencial } from '@/lib/credencial-en-memoria';
 import {
-    ChevronLeft, MoreVertical, Calendar, Clock,
+    ChevronLeft, Calendar, Clock,
     BookOpen, Users, GraduationCap, Bell, Search,
     Filter, UserPlus, Trash2,
-    ArrowUpDown, ArrowUp, ArrowDown, X, CheckCircle2
+    CheckCircle2, FileText
 } from 'lucide-react';
 import Link from 'next/link';
 import { useStudents, useAvailableStudents, useAssignStudent } from '@/hooks/useStudents';
@@ -18,22 +18,27 @@ import { useClassroomSubjects, useClassroomSubjectsStats } from '@/hooks/useClas
 import { SectionStudent } from '@/services/students.service';
 import { API_URL } from '@/config/env';
 import { useClassroomSchedule, transformScheduleData } from '@/hooks/useSchedules';
-import ClassroomScheduleEditor from '@/components/schedule/ClassroomScheduleEditor';
 import { Pagination } from '@/components/ui';
 import { toast } from 'sonner';
-import RemoveStudentSecureModal from '@/components/academic/RemoveStudentSecureModal';
-import AssignTeacherModal from '@/components/academic/AssignTeacherModal';
-import { AssignSubjectModal } from '@/components/academic/AssignSubjectModal';
 import { SubjectCard } from '@/components/academic/SubjectCard';
 import { useAuthStore } from '@/store/auth.store';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
 import StudentScheduleSection from '@/components/schedule/StudentScheduleSection';
-import EvaluationPlanSection from '@/components/evaluation/EvaluationPlanSection';
 import LapsoSelector from '@/components/academic/LapsoSelector'; // Fase 3.5 — filtro por lapso
 import { useAcademicConfig } from '@/hooks/useAcademicConfig';
 import { getAcademicRisk } from '@/utils/academicRisk';
-import SectionObservationsTab from '@/components/classroom/SectionObservationsTab';
-import StudentObservationsModal from '@/components/observations/StudentObservationsModal';
 import { useRouter } from 'next/navigation';
+import UserAvatar from '@/components/ui/UserAvatar';
+import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
+import { diferido } from '@/components/common/Diferido';
+
+// Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
+const RemoveStudentSecureModal = diferido(() => import('@/components/academic/RemoveStudentSecureModal'), { sinEsqueleto: true });
+const AssignTeacherModal = diferido(() => import('@/components/academic/AssignTeacherModal'), { sinEsqueleto: true });
+const AssignSubjectModal = diferido(() => import('@/components/academic/AssignSubjectModal').then((m) => ({ default: m.AssignSubjectModal })), { sinEsqueleto: true });
+const EvaluationPlanSection = diferido(() => import('@/components/evaluation/EvaluationPlanSection'), { alto: 400 });
+const SectionObservationsTab = diferido(() => import('@/components/classroom/SectionObservationsTab'), { alto: 300 });
+const StudentObservationsModal = diferido(() => import('@/components/observations/StudentObservationsModal'), { sinEsqueleto: true });
 
 // Params refactored: year -> cycleId, slug -> sectionId
 export default function SectionPage({ params }: { params: Promise<{ cycleId: string, sectionId: string }> }) {
@@ -69,11 +74,8 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     const [searchTerm, setSearchTerm] = useState('');
     const [sortColumn, setSortColumn] = useState<string | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
     const [removeModalOpen, setRemoveModalOpen] = useState(false);
     const [studentToRemove, setStudentToRemove] = useState<{ id: string; name: string } | null>(null);
-    const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
-    const buttonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
 
     // Subject assignment state
     const [isAssignSubjectModalOpen, setIsAssignSubjectModalOpen] = useState(false);
@@ -95,6 +97,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     const { data: scheduleData } = useClassroomSchedule(classroomId || '');
     const scheduleBlocks = transformScheduleData(scheduleData);
     const { user } = useAuthStore();
+    const { yo } = useQuienSoy();
 
     const filteredStudents = students.filter((student: SectionStudent) => {
         if (!searchTerm) return true;
@@ -191,24 +194,6 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
         }
     };
 
-    const SortIcon = ({ column }: { column: string }) => {
-        if (sortColumn !== column) return <ArrowUpDown className="h-4 w-4 text-gray-400" />;
-        return sortDirection === 'asc' ? <ArrowUp className="h-4 w-4 text-indigo-600" /> : <ArrowDown className="h-4 w-4 text-indigo-600" />;
-    };
-
-    useEffect(() => {
-        if (openMenuId && buttonRefs.current[openMenuId]) {
-            const button = buttonRefs.current[openMenuId];
-            const rect = button!.getBoundingClientRect();
-            setMenuPosition({
-                top: rect.bottom + window.scrollY + 8,
-                left: rect.right + window.scrollX - 224
-            });
-        } else {
-            setMenuPosition(null);
-        }
-    }, [openMenuId]);
-
     // Load subject statistics when Materias tab is active
     // Load subjects when switching to materias tab
     useEffect(() => {
@@ -221,18 +206,6 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
         refetchSubjects();
         toast.success('Materias asignadas exitosamente');
     };
-
-    useEffect(() => {
-        const handleClickOutside = () => {
-            if (openMenuId) setOpenMenuId(null);
-        };
-        if (openMenuId) {
-            document.addEventListener('click', handleClickOutside);
-        }
-        return () => {
-            document.removeEventListener('click', handleClickOutside);
-        };
-    }, [openMenuId]);
 
     const handleOpenAddModal = () => {
         setIsAddStudentModalOpen(true);
@@ -329,7 +302,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     // Show loading state while classroom data is being fetched
     if (!classroom) {
         return (
-            <div className="min-h-screen bg-[#F3F4F6] p-6 flex items-center justify-center">
+            <div className="flex min-h-[60vh] items-center justify-center">
                 <div className="text-center">
                     <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
                     <p className="mt-4 text-gray-600">Cargando sección...</p>
@@ -339,9 +312,17 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     }
 
     return (
-        <div className="min-h-screen bg-[#F3F4F6] p-6 space-y-6 text-slate-800">
+        /*
+            SIN CAJA GRIS PROPIA
+
+            La página iba metida en una caja de otro gris (#F3F4F6) con 24 px
+            de margen, dentro del fondo del panel, que es otro: en el teléfono
+            se veía un rectángulo de otro color con un marco claro alrededor.
+            Ahora usa el fondo y el margen del panel, como las demás.
+        */
+        <div className="space-y-5 text-slate-800">
             <header className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 text-sm text-gray-500">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
                     <Link href={`/dashboard/academico/${cycleId}`} className="hover:text-indigo-600 flex items-center gap-1">
                         <ChevronLeft className="w-4 h-4" /> Volver
                     </Link>
@@ -351,15 +332,41 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                     <span className="font-semibold text-gray-700">{classroom?.name || 'Sección...'}</span>
                 </div>
 
-                <div className="flex items-start justify-between gap-6">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0">
+                        <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">
                             {classroom ? `${classroom.name}` : 'Cargando...'}
                         </h1>
-                        <div className="text-gray-500 mt-1 flex items-center gap-2">
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-gray-500">
                             <span className="flex items-center gap-1 text-sm">
                                 <Users className="w-4 h-4" /> {students.length} Estudiantes
                             </span>
+                            {/* El resumen final: el admin y el guía de la sección (lo decide el servidor). */}
+                            {classroomId && (yo?.role === 'ADMIN' || (yo?.role === 'TEACHER' && ((classroom as any)?.teacherId ?? (classroom?.teacher as any)?.id) === yo?.id)) && (
+                                <Link
+                                    href={`/dashboard/resumen-final/${encodeURIComponent(classroomId)}`}
+                                    className="inline-flex min-h-[44px] items-center gap-1 rounded-lg px-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                >
+                                    <FileText className="w-4 h-4" /> Resumen final
+                                </Link>
+                            )}
+                            {/* El consejo de sección: lo escriben el admin y el guía; lo leen los profesores de la sección. */}
+                            {classroomId && (yo?.role === 'ADMIN' || yo?.role === 'TEACHER') && (
+                                <Link
+                                    href={`/dashboard/consejo/${encodeURIComponent(classroomId)}`}
+                                    className="inline-flex min-h-[44px] items-center gap-1 rounded-lg px-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                >
+                                    <FileText className="w-4 h-4" /> Consejo de sección
+                                </Link>
+                            )}
+                            {classroomId && yo?.role === 'ADMIN' && (
+                                <Link
+                                    href={`/dashboard/carnets?seccion=${encodeURIComponent(classroomId)}`}
+                                    className="inline-flex min-h-[44px] items-center gap-1 rounded-lg px-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                                >
+                                    <FileText className="w-4 h-4" /> Carnets de la sección
+                                </Link>
+                            )}
                             <span className="ml-2">
                                 <LapsoSelector
                                     periods={((classroom as any)?.academicYear?.periods || []).map((p: any) => ({ id: p.id, name: p.name }))}
@@ -371,33 +378,29 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                         </div>
                     </div>
 
-                    {/* Tarjeta del Profesor Guía - Inline */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 min-w-[400px]">
+                    {/* Tarjeta del Profesor Guía - Inline.
+                        `min-w-[400px]` en una pantalla de 390 px hace exactamente
+                        lo que dice: sacar la pantalla de ancho. Solo se exige
+                        cuando hay sitio. */}
+                    <div className="w-full rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:w-auto sm:min-w-[400px]">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 {classroom?.teacher ? (
                                     <>
                                         {/* Avatar del profesor */}
                                         <div className="relative">
-                                            <div className="relative w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
-                                                {(classroom.teacher as any).avatar ? (
-                                                    <Image
-                                                        src={(classroom.teacher as any).avatar}
-                                                        alt={`${classroom.teacher.firstName} ${classroom.teacher.lastName}`}
-                                                        fill
-                                                        sizes="48px"
-                                                        className="rounded-full object-cover"
-                                                    />
-                                                ) : (
-                                                    `${classroom.teacher.firstName[0]}${classroom.teacher.lastName[0]}`
-                                                )}
-                                            </div>
+                                            <UserAvatar
+                                                name={`${classroom.teacher.firstName} ${classroom.teacher.lastName}`}
+                                                src={(classroom.teacher as any).avatar}
+                                                className="h-12 w-12 shadow-md"
+                                                initialsClassName="text-sm"
+                                            />
                                             <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></div>
                                         </div>
 
                                         {/* Información del profesor */}
                                         <div>
-                                            <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">Profesor Guía</p>
+                                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Profesor Guía</p>
                                             <h3 className="text-sm font-bold text-gray-900">
                                                 {classroom.teacher.firstName} {classroom.teacher.lastName}
                                             </h3>
@@ -410,7 +413,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                             <GraduationCap className="w-6 h-6 text-gray-400" />
                                         </div>
                                         <div>
-                                            <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">Profesor Guía</p>
+                                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Profesor Guía</p>
                                             <h3 className="text-sm font-semibold text-gray-700">Sin profesor asignado</h3>
                                             <p className="text-xs text-gray-500">Asigna un profesor guía</p>
                                         </div>
@@ -418,7 +421,8 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                 )}
                             </div>
 
-                            {/* Botón de acción */}
+                            {/* Botón de acción: el guía lo pone el administrador (el servidor lo exige) */}
+                            {user?.role === 'ADMIN' && (
                             <button
                                 className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
                                 onClick={() => setIsAssignTeacherModalOpen(true)}
@@ -426,12 +430,13 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                 <UserPlus className="w-3.5 h-3.5" />
                                 {classroom?.teacher ? 'Cambiar' : 'Asignar'}
                             </button>
+                            )}
                         </div>
                     </div>
                 </div>
 
                 {/* Estadísticas Académicas de la Sección */}
-                <div className="mt-6 pt-6 border-t border-gray-100">
+                <div>
                     <AcademicStats stats={classroomStats} averageTitle="Promedio Sección" />
                 </div>
             </header>
@@ -443,13 +448,16 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                     role={user?.role === 'TEACHER' || user?.role === 'ADMIN' ? 'teacher' : 'student'}
                     showActions={true}
                     classroomId={classroomId}
-                    editUrl={`/dashboard/horario/${cycleId}/${sectionId}`}
+                    // El horario lo arma el admin (el servidor lo exige): al profesor el lápiz
+                    // le abría un editor que no podía guardar.
+                    editUrl={yo?.role === 'ADMIN' ? `/dashboard/horario/${cycleId}/${sectionId}` : undefined}
+                    titulo={classroom?.name ? `Horario · ${classroom.name}` : 'Horario de la sección'}
                 />
             </div>
 
-            <main>
+            <div>
                 <div className="border-b border-gray-200 mb-6">
-                    <nav className="-mb-px flex space-x-8 overflow-x-auto">
+                    <nav className="-mb-px flex flex-wrap gap-x-6">
                         {[
                             { id: 'estudiantes', label: 'Estudiantes', icon: Users },
                             { id: 'materias', label: 'Materias', icon: BookOpen },
@@ -487,6 +495,8 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                     placeholder="Buscar alumno por nombre o cédula..."
                                 />
                             </div>
+                            {/* Inscribir es del administrador (control de estudios): el servidor lo exige */}
+                            {user?.role === 'ADMIN' && (
                             <div className="flex items-center gap-3">
                                 <button
                                     onClick={handleOpenAddModal}
@@ -496,170 +506,272 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                     Nuevo Estudiante
                                 </button>
                             </div>
+                            )}
                         </div>
 
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-gray-50">
-                                    <tr>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('nombre')}>
-                                            <div className="flex items-center gap-2">Perfil <SortIcon column="nombre" /></div>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('cedula')}>
-                                            <div className="flex items-center gap-2">ID / Cédula <SortIcon column="cedula" /></div>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('riesgo')}>
-                                            <div className="flex items-center gap-2">Riesgo Académico <SortIcon column="riesgo" /></div>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('promedio')}>
-                                            <div className="flex items-center gap-2">Promedio <SortIcon column="promedio" /></div>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('asistencia')}>
-                                            <div className="flex items-center gap-2">Asistencia <SortIcon column="asistencia" /></div>
-                                        </th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('observaciones')}>
-                                            <div className="flex items-center gap-2">Observaciones <SortIcon column="observaciones" /></div>
-                                        </th>
-                                        <th scope="col" className="relative px-6 py-3"><span className="sr-only">Acciones</span></th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
-                                    {isLoading ? (
-                                        <tr><td colSpan={7} className="px-6 py-4 text-center text-gray-500">Cargando estudiantes...</td></tr>
-                                    ) : sortedStudents.length === 0 ? (
-                                        <tr><td colSpan={7} className="px-6 py-4 text-center text-gray-500">{searchTerm ? 'No se encontraron estudiantes.' : 'No hay estudiantes inscritos.'}</td></tr>
-                                    ) : (
-                                        sortedStudents.map((student: SectionStudent) => (
-                                            <tr
-                                                key={student.id}
-                                                onClick={() => router.push(`/dashboard/usuarios/${student.id}`)}
-                                                className="hover:bg-indigo-50/40 cursor-pointer transition-colors group"
+                        {/*
+                            LA LISTA DE ALUMNOS, SIN ARRASTRAR
+
+                            Eran siete columnas con `whitespace-nowrap` dentro
+                            de un `overflow-x-auto`: 785 px de tabla en una
+                            pantalla de 390. El profesor tenía que arrastrar de
+                            lado, y al llegar a la nota ya no sabía de qué
+                            alumno era. Ordenar tampoco se podía: se ordenaba
+                            pulsando la cabecera, y en el teléfono la cabecera
+                            estaba fuera de la pantalla.
+
+                            Luego cada alumno fue una tarjeta con todo lo suyo:
+                            330 px de alto, dos alumnos por pantalla. Ahora es
+                            UNA FILA por alumno (`compacta`): nombre y cédula, y
+                            al lado riesgo (solo el número de materias),
+                            promedio y asistencia, con su cabecera para
+                            ordenar. Lo demás está en su ficha, a un toque. En
+                            pantalla ancha sigue siendo la tabla de siempre.
+                        */}
+                        <div className="p-3 sm:p-5">
+                            <TablaAdaptable<SectionStudent>
+                                compacta
+                                datos={sortedStudents}
+                                cargando={isLoading}
+                                clave={(a) => a.id}
+                                alPulsar={(a) => router.push(`/dashboard/usuarios/${a.id}`)}
+                                orden={sortColumn ? { por: sortColumn, hacia: sortDirection } : null}
+                                alOrdenar={handleSort}
+                                vacio={
+                                    <p className="text-cuerpo text-tinta-suave">
+                                        {searchTerm ? 'No se encontraron estudiantes.' : 'No hay estudiantes inscritos.'}
+                                    </p>
+                                }
+                                columnas={[
+                                    {
+                                        id: 'nombre',
+                                        titulo: 'Perfil',
+                                        tituloCorto: 'Nombre',
+                                        principal: true,
+                                        ordenable: true,
+                                        celdaCompacta: (a) => {
+                                            const obs = (a as any).observationsCount || 0;
+                                            return (
+                                                <div className="flex min-w-0 items-center gap-2">
+                                                    <UserAvatar
+                                                        name={`${a.firstName} ${a.lastName}`}
+                                                        src={(a as any).avatar}
+                                                        className="h-8 w-8 shrink-0"
+                                                        initialsClassName="text-xs"
+                                                    />
+                                                    <div className="min-w-0">
+                                                        {/* En dos líneas, no cortado: «Kleiver Josu…» y
+                                                            «Jesús Albert…» no dejaban saber a quién
+                                                            se le ponía la nota. */}
+                                                        <p className="line-clamp-2 break-words text-sm font-medium leading-5 text-gray-900" title={`${a.firstName} ${a.lastName}`}>
+                                                            {a.firstName} {a.lastName}
+                                                        </p>
+                                                        <p className="truncate text-xs text-gray-500">
+                                                            <span className="font-mono">{a.studentCode || a.id}</span>
+                                                            {obs > 0 && <span className="font-semibold text-amber-700"> · {obs} obs</span>}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        },
+                                        celda: (a) => (
+                                            <div className="flex items-center gap-3">
+                                                <UserAvatar
+                                                    name={`${a.firstName} ${a.lastName}`}
+                                                    src={(a as any).avatar}
+                                                    className="h-10 w-10 shrink-0"
+                                                    initialsClassName="text-sm"
+                                                />
+                                                <div className="min-w-0">
+                                                    <p className="line-clamp-2 break-words font-medium text-gray-900" title={`${a.firstName} ${a.lastName}`}>
+                                                        {a.firstName} {a.lastName}
+                                                    </p>
+                                                    {/* La cédula, debajo del nombre: en la tarjeta
+                                                        ahorra una línea entera. En la tabla ancha
+                                                        tiene su propia columna. */}
+                                                    <p className="truncate font-mono text-xs text-gray-500 @2xl:hidden">
+                                                        {a.studentCode || a.id}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ),
+                                    },
+                                    {
+                                        id: 'cedula',
+                                        titulo: 'ID / Cédula',
+                                        ordenable: true,
+                                        soloAncha: true,
+                                        celda: (a) => (
+                                            <span className="font-mono text-sm text-gray-500">{a.studentCode || a.id}</span>
+                                        ),
+                                    },
+                                    {
+                                        id: 'riesgo',
+                                        titulo: 'Riesgo',
+                                        ordenable: true,
+                                        // Solo el número de materias por debajo de la
+                                        // nota mínima: «Riesgo alto (2 < 10)» no cabía.
+                                        compacta: {
+                                            ancho: 'w-12',
+                                            celda: (a) => {
+                                                const n = (a as any).failedSubjectsCount || 0;
+                                                return n > 0 ? (
+                                                    <span
+                                                        className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-rose-50 px-1.5 text-xs font-bold text-rose-700 ring-1 ring-rose-200"
+                                                        title={`${n} ${n === 1 ? 'materia' : 'materias'} por debajo de ${passingGrade}`}
+                                                    >
+                                                        {n}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs font-semibold text-emerald-700" title="Ninguna materia en riesgo">
+                                                        0
+                                                    </span>
+                                                );
+                                            },
+                                        },
+                                        celda: (a) => {
+                                            const failedCount = (a as any).failedSubjectsCount || 0;
+                                            if (failedCount > 0) {
+                                                return (
+                                                    <span
+                                                        className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700"
+                                                        title={`${failedCount} ${failedCount === 1 ? 'materia con calificación menor a' : 'materias con calificación menor a'} ${passingGrade} pts`}
+                                                    >
+                                                        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                                                        Riesgo Alto ({failedCount} &lt; {passingGrade})
+                                                    </span>
+                                                );
+                                            }
+                                            const risk = getAcademicRisk(a.average, passingGrade);
+                                            return (
+                                                <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${risk.className}`}>
+                                                    {risk.label}
+                                                </span>
+                                            );
+                                        },
+                                    },
+                                    {
+                                        id: 'promedio',
+                                        titulo: 'Promedio',
+                                        ordenable: true,
+                                        alinear: 'derecha',
+                                        compacta: {
+                                            ancho: 'w-12',
+                                            titulo: 'Prom.',
+                                            celda: (a) =>
+                                                a.average || a.hasGrades ? (
+                                                    <span
+                                                        className={`text-sm font-bold tabular-nums ${(a.average ?? 0) < passingGrade ? 'text-red-600' : 'text-indigo-700'}`}
+                                                    >
+                                                        {(a.average ?? 0).toFixed(1)}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs text-gray-500">—</span>
+                                                ),
+                                        },
+                                        // Un 0 es una nota: con `hasGrades` se enseña el 0, no
+                                        // «Sin calificar» (CERO-06).
+                                        celda: (a) =>
+                                            a.average || a.hasGrades ? (
+                                                <span className="inline-flex rounded bg-indigo-50 px-2 py-0.5 text-sm font-semibold text-indigo-700">
+                                                    {(a.average ?? 0).toFixed(1)}
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex rounded bg-gray-100 px-2 py-0.5 text-sm font-medium text-gray-500">
+                                                    Sin calificar
+                                                </span>
+                                            ),
+                                    },
+                                    {
+                                        id: 'asistencia',
+                                        titulo: 'Asistencia',
+                                        ordenable: true,
+                                        alinear: 'derecha',
+                                        compacta: {
+                                            ancho: 'w-14',
+                                            titulo: 'Asist.',
+                                            celda: (a) => {
+                                                const pct = a.attendancePercentage ?? 0;
+                                                const minima = academicConfig?.asistenciaMinima ?? 80;
+                                                return (
+                                                    <span className="flex w-full flex-col items-center gap-1">
+                                                        <span className="text-xs font-semibold tabular-nums text-gray-900">{pct}%</span>
+                                                        <span className="h-1 w-10 rounded-full bg-gray-200">
+                                                            <span
+                                                                className={`block h-1 rounded-full ${pct >= minima ? 'bg-green-500' : pct >= minima - 10 ? 'bg-amber-500' : 'bg-red-500'}`}
+                                                                style={{ width: `${Math.min(pct, 100)}%` }}
+                                                            />
+                                                        </span>
+                                                    </span>
+                                                );
+                                            },
+                                        },
+                                        celda: (a) => (
+                                            <span className="inline-flex items-center gap-2">
+                                                <span className="text-sm text-gray-900">
+                                                    {a.attendancePercentage != null ? `${a.attendancePercentage}%` : '0%'}
+                                                </span>
+                                                <span className="h-1.5 w-16 rounded-full bg-gray-200">
+                                                    <span
+                                                        className={`block h-1.5 rounded-full ${(a.attendancePercentage || 0) >= 80 ? 'bg-green-500' : (a.attendancePercentage || 0) >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                                                        style={{ width: `${Math.min(a.attendancePercentage || 0, 100)}%` }}
+                                                    />
+                                                </span>
+                                            </span>
+                                        ),
+                                    },
+                                    {
+                                        id: 'observaciones',
+                                        titulo: 'Observaciones',
+                                        tituloCorto: 'Obs.',
+                                        ordenable: true,
+                                        celda: (a) => (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSelectedStudentForObs(a);
+                                                }}
+                                                className={
+                                                    ((a as any).observationsCount || 0) > 0
+                                                        ? 'inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-800'
+                                                        : 'inline-flex min-h-[44px] items-center px-1 text-xs italic text-gray-500'
+                                                }
                                             >
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="flex items-center">
-                                                        <div className="flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center font-bold text-sm bg-indigo-100 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                                                            {student.firstName?.[0]}{student.lastName?.[0]}
-                                                        </div>
-                                                        <div className="ml-4">
-                                                            <div className="text-sm font-medium text-gray-900 group-hover:text-indigo-600 transition-colors flex items-center gap-1.5">
-                                                                {student.firstName} {student.lastName}
-                                                                <span className="text-[11px] text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity font-normal">↗</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{student.studentCode || student.id}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    {(() => {
-                                                        const failedCount = (student as any).failedSubjectsCount || 0;
-                                                        if (failedCount > 0) {
-                                                            return (
-                                                                <span
-                                                                    className="px-2.5 py-0.5 inline-flex items-center gap-1.5 text-xs leading-5 font-semibold rounded-full bg-rose-50 text-rose-700 border border-rose-200"
-                                                                    title={`${failedCount} ${failedCount === 1 ? 'materia con calificación menor a' : 'materias con calificación menor a'} ${passingGrade} pts`}
-                                                                >
-                                                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                                                                    <span>Riesgo Alto</span>
-                                                                    <span className="text-[11px] font-medium text-rose-600">
-                                                                        ({failedCount} {failedCount === 1 ? 'materia < 10' : 'materias < 10'})
-                                                                    </span>
-                                                                </span>
-                                                            );
-                                                        }
-                                                        const risk = getAcademicRisk(student.average, passingGrade);
-                                                        return (
-                                                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${risk.className}`}>
-                                                                {risk.label}
-                                                            </span>
-                                                        );
-                                                    })()}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    {student.average ? (
-                                                        <span className="px-2 py-0.5 inline-flex text-sm font-semibold rounded bg-indigo-50 text-indigo-700">{student.average.toFixed(1)}</span>
-                                                    ) : (
-                                                        <span className="px-2 py-0.5 inline-flex text-sm font-medium rounded bg-gray-100 text-gray-500">Sin calificar</span>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="flex items-center">
-                                                        <span className="text-sm text-gray-900 mr-2">{student.attendancePercentage != null ? `${student.attendancePercentage}%` : '0%'}</span>
-                                                        <div className="w-16 h-1.5 bg-gray-200 rounded-full">
-                                                            <div className={`h-1.5 rounded-full ${(student.attendancePercentage || 0) >= 80 ? 'bg-green-500' : (student.attendancePercentage || 0) >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${Math.min(student.attendancePercentage || 0, 100)}%` }}></div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm" onClick={(e) => e.stopPropagation()}>
-                                                    {((student as any).observationsCount || 0) > 0 ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setSelectedStudentForObs(student);
-                                                            }}
-                                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 transition-colors shadow-2xs cursor-pointer"
-                                                        >
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                                            {(student as any).observationsCount} {(student as any).observationsCount === 1 ? 'obs' : 'obs'}
-                                                        </button>
-                                                    ) : (
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setSelectedStudentForObs(student);
-                                                            }}
-                                                            className="text-gray-400 hover:text-indigo-600 transition-colors italic text-xs cursor-pointer"
-                                                        >
-                                                            Sin observaciones
-                                                        </button>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        {openMenuId === student.id ? (
-                                                            <>
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setStudentToRemove({ id: student.id, name: `${student.firstName} ${student.lastName}` });
-                                                                        setRemoveModalOpen(true);
-                                                                        setOpenMenuId(null);
-                                                                    }}
-                                                                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 animate-in fade-in zoom-in-95"
-                                                                    title="Eliminar estudiante"
-                                                                >
-                                                                    <Trash2 className="w-4 h-4" />
-                                                                </button>
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setOpenMenuId(null);
-                                                                    }}
-                                                                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200 animate-in fade-in zoom-in-95"
-                                                                    title="Cancelar"
-                                                                >
-                                                                    <X className="w-4 h-4" />
-                                                                </button>
-                                                            </>
-                                                        ) : (
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setOpenMenuId(student.id);
-                                                                }}
-                                                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200"
-                                                            >
-                                                                <MoreVertical className="w-5 h-5" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
+                                                {((a as any).observationsCount || 0) > 0 ? (
+                                                    <>
+                                                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                                        {(a as any).observationsCount} obs
+                                                    </>
+                                                ) : (
+                                                    'Sin observaciones'
+                                                )}
+                                            </button>
+                                        ),
+                                    },
+                                    {
+                                        id: 'acciones',
+                                        titulo: 'Acciones',
+                                        acciones: true,
+                                        alinear: 'derecha',
+                                        celda: (a) => user?.role !== 'ADMIN' ? null : (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setStudentToRemove({ id: a.id, name: `${a.firstName} ${a.lastName}` });
+                                                    setRemoveModalOpen(true);
+                                                }}
+                                                title="Sacar de la sección"
+                                                className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-red-600 transition-colors hover:bg-red-50"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                                <span className="sr-only">Sacar de la sección</span>
+                                            </button>
+                                        ),
+                                    },
+                                ]}
+                            />
                         </div>
 
 
@@ -773,7 +885,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                             classroomId={classroomId || ''}
                                             subjectId={subject.id}
                                             lapso={selectedLapso}
-                                            canEdit={user?.role === 'ADMIN' || user?.role === 'TEACHER'}
+                                            canEdit={yo?.role === 'ADMIN' || yo?.role === 'TEACHER'}
                                         />
                                     </div>
                                 ))}
@@ -794,19 +906,18 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                 {activeTab === 'observaciones' && (
                     <SectionObservationsTab classroomId={classroomId || ''} />
                 )}
-            </main>
+            </div>
 
             {isAddStudentModalOpen && (
-                <div className="fixed inset-0 z-50 overflow-y-auto">
-                    <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                        <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={() => setIsAddStudentModalOpen(false)} role="button" tabIndex={0} onKeyDown={(e) => {
+                <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Inscribir estudiantes en la sección">
+                    <div className="flex items-center justify-center min-h-full p-4 text-center">
+                        <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={() => setIsAddStudentModalOpen(false)} aria-hidden="true" onKeyDown={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
                                 setIsAddStudentModalOpen(false);
                             }
                         }}></div>
-                        <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
-                        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                        <div className="relative w-full max-w-lg bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all">
                             <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                                 <div className="sm:flex sm:items-start">
                                     <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100 sm:mx-0 sm:h-10 sm:w-10">
@@ -860,9 +971,12 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                                                         <div className="mr-3">
                                                                             {isSelected ? <CheckCircle2 className="h-5 w-5 text-indigo-600" /> : <div className="h-5 w-5 rounded-full border-2 border-gray-300" />}
                                                                         </div>
-                                                                        <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600 mr-3">
-                                                                            {s.firstName[0]}{s.lastName[0]}
-                                                                        </div>
+                                                                        <UserAvatar
+                                                                            name={`${s.firstName} ${s.lastName}`}
+                                                                            src={(s as any).avatar}
+                                                                            className="h-8 w-8 mr-3"
+                                                                            initialsClassName="text-xs"
+                                                                        />
                                                                         <div>
                                                                             <div className="text-sm font-medium text-gray-900">{s.firstName} {s.lastName}</div>
                                                                             <div className="text-xs text-gray-500">{s.studentCode || s.email}</div>
@@ -900,8 +1014,9 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                 </div>
             )}
 
+            {removeModalOpen && (
             <RemoveStudentSecureModal
-                isOpen={removeModalOpen}
+                isOpen
                 onClose={() => {
                     setRemoveModalOpen(false);
                     setStudentToRemove(null);
@@ -910,27 +1025,34 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                 studentName={studentToRemove?.name || ''}
                 onConfirm={handleRemoveStudent}
             />
+            )}
 
+            {isAssignTeacherModalOpen && (
             <AssignTeacherModal
-                isOpen={isAssignTeacherModalOpen}
+                isOpen
                 onClose={() => setIsAssignTeacherModalOpen(false)}
                 classroomId={classroomId || ''}
                 classroomName={classroom?.name || ''}
                 currentTeacher={classroom?.teacher}
             />
+            )}
 
+            {isAssignSubjectModalOpen && (
             <AssignSubjectModal
-                isOpen={isAssignSubjectModalOpen}
+                isOpen
                 onClose={() => setIsAssignSubjectModalOpen(false)}
                 classroomId={classroomId || ''}
                 onSuccess={handleSubjectAssignSuccess}
             />
+            )}
 
-            <StudentObservationsModal
-                isOpen={Boolean(selectedStudentForObs)}
-                onClose={() => setSelectedStudentForObs(null)}
-                student={selectedStudentForObs}
-            />
+            {selectedStudentForObs && (
+                <StudentObservationsModal
+                    isOpen
+                    onClose={() => setSelectedStudentForObs(null)}
+                    student={selectedStudentForObs}
+                />
+            )}
         </div>
     );
 }

@@ -13,11 +13,18 @@ import {
     UserCog
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
-import { AddStudentModal } from '@/components/modals';
-import AssignTeacherModal from '@/components/academic/AssignTeacherModal';
 import { classroomService, Classroom } from '@/services/classroom.service';
 import { studentsService } from '@/services/students.service';
 import { Card } from '@/components/ui';
+import { Button } from '@/components/ui/button';
+import UserAvatar from '@/components/ui/UserAvatar';
+import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
+import { diferido } from '@/components/common/Diferido';
+
+// Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
+const AddStudentModal = diferido(() => import('@/components/modals/AddStudentModal').then((m) => ({ default: m.AddStudentModal })), { sinEsqueleto: true });
+const AssignTeacherModal = diferido(() => import('@/components/academic/AssignTeacherModal'), { sinEsqueleto: true });
 
 interface Student {
     id: string;
@@ -52,7 +59,7 @@ export default function ClassroomDetailPage() {
             setStudents(Array.isArray(studentsData) ? studentsData : studentsData.students || []);
         } catch (error) {
             console.error('Error fetching classroom:', error);
-            toast.error('Error al cargar los datos de la sección');
+            if (!esQueNoContesta(error)) toast.error('Error al cargar los datos de la sección');
         } finally {
             setLoading(false);
         }
@@ -109,36 +116,35 @@ export default function ClassroomDetailPage() {
 
             {/* Header */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
+                {/* El título no se aprieta contra los botones: en el teléfono
+                    «1er Año A» salía en tres líneas, una palabra por línea. */}
+                <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+                    <div className="flex min-w-0 flex-[1_1_16rem] items-center gap-3">
                         <button
+                            type="button"
                             onClick={() => router.push('/dashboard/aulas')}
-                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            aria-label="Volver a Aulas y secciones"
+                            title="Volver a Aulas y secciones"
+                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-gray-100"
                         >
-                            <ArrowLeft size={20} />
+                            <ArrowLeft size={20} aria-hidden />
                         </button>
-                        <div>
-                            <h1 className="text-2xl font-bold text-gray-900">{classroom.name}</h1>
-                            <p className="text-sm text-gray-500 mt-1">
-                                {classroom.academicYear?.name || 'Año académico no asignado'}
+                        <div className="min-w-0">
+                            <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">{classroom.name}</h1>
+                            <p className="mt-1 text-sm text-gray-600">
+                                {classroom.academicYear?.name ? `Ciclo ${classroom.academicYear.name}` : 'Sin ciclo escolar'} · su profesor guía y sus estudiantes
                             </p>
                         </div>
                     </div>
-                    <div className="flex gap-3">
-                        <button
-                            onClick={() => setIsAssignTeacherModalOpen(true)}
-                            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-                        >
-                            <UserCog className="mr-2 h-4 w-4" />
-                            {classroom.teacher ? 'Cambiar Profesor' : 'Asignar Profesor'}
-                        </button>
-                        <button
-                            onClick={() => setIsAddStudentModalOpen(true)}
-                            className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-                        >
-                            <UserPlus className="mr-2 h-4 w-4" />
-                            Agregar Estudiante
-                        </button>
+                    <div className="flex flex-wrap gap-2">
+                        <Button variant="contorno" onClick={() => setIsAssignTeacherModalOpen(true)}>
+                            <UserCog aria-hidden />
+                            {classroom.teacher ? 'Cambiar profesor guía' : 'Asignar profesor guía'}
+                        </Button>
+                        <Button onClick={() => setIsAddStudentModalOpen(true)}>
+                            <UserPlus aria-hidden />
+                            Agregar estudiante
+                        </Button>
                     </div>
                 </div>
 
@@ -224,86 +230,107 @@ export default function ClassroomDetailPage() {
                         </button>
                     </div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Estudiante
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Código
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Promedio
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Asistencia
-                                    </th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Acciones
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                                {students.map((student) => (
-                                    <tr key={student.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex items-center">
-                                                <div className="flex-shrink-0 h-10 w-10">
-                                                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                                                        <span className="text-white font-semibold text-sm">
-                                                            {student.firstName[0]}{student.lastName[0]}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div className="ml-4">
-                                                    <div className="text-sm font-medium text-gray-900">
-                                                        {student.firstName} {student.lastName}
-                                                    </div>
-                                                    <div className="text-sm text-gray-500">{student.email}</div>
-                                                </div>
+                    <div className="p-4 sm:p-5">
+                        <TablaAdaptable<(typeof students)[number]>
+                            datos={students}
+                            clave={(a) => a.id}
+                            vacio={<p className="text-cuerpo text-tinta-suave">No hay estudiantes en esta aula.</p>}
+                            columnas={[
+                                {
+                                    id: 'estudiante',
+                                    titulo: 'Estudiante',
+                                    principal: true,
+                                    celda: (a) => (
+                                        <div className="flex items-center gap-3">
+                                            <UserAvatar
+                                                name={`${a.firstName} ${a.lastName}`}
+                                                src={(a as any).avatar}
+                                                className="h-10 w-10 shrink-0"
+                                                initialsClassName="text-sm"
+                                            />
+                                            <div className="min-w-0">
+                                                <p className="truncate font-medium text-gray-900">
+                                                    {a.firstName} {a.lastName}
+                                                </p>
+                                                <p className="truncate text-sm text-gray-500">{a.email}</p>
+                                                <p className="truncate font-mono text-xs text-gray-500 @2xl:hidden">
+                                                    {a.studentCode || a.id}
+                                                </p>
                                             </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className="text-sm text-gray-900">{student.studentCode || student.id}</span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`text-sm font-semibold ${(student.average || 0) >= 14 ? 'text-green-600' :
-                                                (student.average || 0) >= 10 ? 'text-yellow-600' :
-                                                    'text-red-600'
-                                                }`}>
-                                                {student.average?.toFixed(1) || 'N/A'}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`text-sm font-semibold ${(student.attendancePercentage || 0) >= 90 ? 'text-green-600' :
-                                                (student.attendancePercentage || 0) >= 70 ? 'text-yellow-600' :
-                                                    'text-red-600'
-                                                }`}>
-                                                {student.attendancePercentage?.toFixed(0) || '0'}%
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                            <button
-                                                onClick={() => handleRemoveStudent(student.id)}
-                                                className="text-red-600 hover:text-red-900 transition-colors"
-                                                title="Remover estudiante"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                        </div>
+                                    ),
+                                },
+                                {
+                                    id: 'codigo',
+                                    titulo: 'Código',
+                                    soloAncha: true,
+                                    celda: (a) => (
+                                        <span className="font-mono text-sm text-gray-900">{a.studentCode || a.id}</span>
+                                    ),
+                                },
+                                {
+                                    id: 'promedio',
+                                    titulo: 'Promedio',
+                                    alinear: 'derecha',
+                                    celda: (a) => (
+                                        <span
+                                            className={`text-sm font-semibold ${
+                                                (a.average || 0) >= 14
+                                                    ? 'text-green-600'
+                                                    : (a.average || 0) >= 10
+                                                      ? 'text-yellow-600'
+                                                      : 'text-red-600'
+                                            }`}
+                                        >
+                                            {a.average?.toFixed(1) || 'N/A'}
+                                        </span>
+                                    ),
+                                },
+                                {
+                                    id: 'asistencia',
+                                    titulo: 'Asistencia',
+                                    alinear: 'derecha',
+                                    celda: (a) => (
+                                        <span
+                                            className={`text-sm font-semibold ${
+                                                (a.attendancePercentage || 0) >= 90
+                                                    ? 'text-green-600'
+                                                    : (a.attendancePercentage || 0) >= 70
+                                                      ? 'text-yellow-600'
+                                                      : 'text-red-600'
+                                            }`}
+                                        >
+                                            {a.attendancePercentage?.toFixed(0) || '0'}%
+                                        </span>
+                                    ),
+                                },
+                                {
+                                    id: 'acciones',
+                                    titulo: 'Acciones',
+                                    acciones: true,
+                                    alinear: 'derecha',
+                                    celda: (a) => (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveStudent(a.id)}
+                                            title="Remover estudiante"
+                                            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-red-600 transition-colors hover:bg-red-50"
+                                        >
+                                            <Trash2 size={16} />
+                                            <span className="sr-only">Remover estudiante</span>
+                                        </button>
+                                    ),
+                                },
+                            ]}
+                        />
                     </div>
                 )}
             </Card>
 
             {/* Modals */}
+            {isAddStudentModalOpen && (
             <AddStudentModal
-                isOpen={isAddStudentModalOpen}
+                isOpen
                 onClose={() => setIsAddStudentModalOpen(false)}
                 classroomId={classroomId}
                 academicYearId={classroom.academicYearId || ''}
@@ -312,9 +339,11 @@ export default function ClassroomDetailPage() {
                     toast.success('Estudiante agregado exitosamente');
                 }}
             />
+            )}
 
+            {isAssignTeacherModalOpen && (
             <AssignTeacherModal
-                isOpen={isAssignTeacherModalOpen}
+                isOpen
                 onClose={() => setIsAssignTeacherModalOpen(false)}
                 classroomId={classroomId}
                 classroomName={classroom.name}
@@ -324,6 +353,7 @@ export default function ClassroomDetailPage() {
                     toast.success('Profesor asignado exitosamente');
                 }}
             />
+            )}
         </div>
     );
 }

@@ -1,0 +1,70 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "apps/backend",
+        "run",
+        "dev"
+      ],
+      "port": 3001
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "apps/web",
+        "run",
+        "dev"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "telefono",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "telefono"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "telefono-usb",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "telefono:usb"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "emulador-usb",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "telefono:usb",
+        "--",
+        "--puente-a-mano"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "web-produccion",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "--prefix",
+        "apps/web",
+        "next",
+        "start",
+        "apps/web",
+        "-p",
+        "3108"
+      ],
+      "port": 3108
+    }
+  ]
+}

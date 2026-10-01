@@ -108,7 +108,7 @@ export function AppearanceSettings() {
             <div>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                     <div>
-                        <h3 className="text-lg font-semibold text-gray-900">Logos del Instituto</h3>
+                        <h3 className="text-lg font-semibold text-gray-900">Logos del liceo</h3>
                         <p className="text-sm text-gray-600 mt-0.5">
                             Personaliza el escudo escolar y el favicon visible en las pestañas del navegador
                         </p>
@@ -140,7 +140,7 @@ export function AppearanceSettings() {
 
                     {/* Logo Principal */}
                     <ImageUpload
-                        label="Escudo del Instituto (200×200 mínimo)"
+                        label="Escudo del liceo (200×200 mínimo)"
                         description="Insignia oficial mostrada en la barra lateral, boletines y reportes"
                         currentImage={config?.logo}
                         selectedFile={pendingLogo}
@@ -268,17 +268,16 @@ export function AppearanceSettings() {
 
             {/* Modal de Edición de Color */}
             {editingColorIndex !== null && (
-                <div className="fixed inset-0 z-50 overflow-y-auto">
-                    <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+                <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Editar color">
+                    <div className="flex items-center justify-center min-h-full p-4 text-center">
                         <div
                             className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
                             onClick={() => setEditingColorIndex(null)}
-                            role="button"
-                            tabIndex={0}
+                            aria-hidden="true"
                             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditingColorIndex(null); } }}
                         />
 
-                        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                        <div className="relative w-full max-w-lg bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all">
                             <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                                 <h3 className="text-lg font-medium text-gray-900 mb-4">Editar Color</h3>
 

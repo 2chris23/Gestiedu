@@ -7,6 +7,7 @@ import { AcademicYear } from '@/services/academic-year.service';
 import { useRouter } from 'next/navigation';
 import SecureDeleteModal from './SecureDeleteModal';
 import { useState } from 'react';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
 
 interface AcademicTimelineProps {
     years: AcademicYear[];
@@ -15,6 +16,10 @@ interface AcademicTimelineProps {
 }
 
 export default function AcademicTimeline({ years, loading, onRefresh }: AcademicTimelineProps) {
+    // Borrar un ciclo es del admin (el servidor lo exige). Al profesor la
+    // papelera solo le daba un error: ni se le enseña.
+    const { yo } = useQuienSoy();
+    const esAdmin = yo?.role === 'ADMIN';
     const router = useRouter();
     const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; yearId: string | null; yearName: string }>({
         isOpen: false,
@@ -57,7 +62,7 @@ export default function AcademicTimeline({ years, loading, onRefresh }: Academic
                         Crea tu primer ciclo escolar para comenzar a organizar aulas, secciones y materias.
                     </p>
                     <p className="text-sm text-gray-400">
-                        Haz clic en <span className="font-medium text-indigo-600">«Nuevo Ciclo»</span> arriba para empezar.
+                        Haz clic en <span className="font-medium text-indigo-600">«Nuevo ciclo»</span> arriba para empezar.
                     </p>
                 </div>
             </div>
@@ -67,7 +72,11 @@ export default function AcademicTimeline({ years, loading, onRefresh }: Academic
     return (
         <div className="relative max-w-2xl mx-auto py-8 px-4">
             {/* Vertical Line */}
-            <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gray-200" aria-hidden="true"></div>
+            {/* La línea pasa por el CENTRO de los círculos: 16 px de margen del
+                contenedor más el radio del círculo, menos la mitad de su grosor.
+                Antes iba a 32 px fijos y los círculos (centro a 48) quedaban
+                ensartados por un lado. */}
+            <div className="absolute left-[39px] top-0 bottom-0 w-0.5 bg-gray-200 sm:left-[47px]" aria-hidden="true"></div>
 
             <div className="space-y-8">
                 {sortedYears.map((year) => {
@@ -90,17 +99,20 @@ export default function AcademicTimeline({ years, loading, onRefresh }: Academic
                     return (
                         <div
                             key={year.id}
-                            className={`relative pl-16 transition-all duration-300 ${showActive ? 'scale-105' : 'hover:scale-[1.02]'
+                            // Ampliar la tarjeta en curso solo donde hay sitio: en el
+                            // teléfono el 5 % de más la sacaba de la pantalla y la
+                            // flecha de entrar quedaba cortada por el borde.
+                            className={`relative pl-14 transition-all duration-300 sm:pl-16 ${showActive ? 'sm:scale-105' : 'sm:hover:scale-[1.02]'
                                 }`}
                         >
                             {/* Icon Indicator */}
                             <div className={`
-                                absolute left-0 top-1/2 -translate-y-1/2 w-16 h-16 flex items-center justify-center rounded-full border-4 z-10 bg-white
+                                absolute left-0 top-1/2 -translate-y-1/2 w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center rounded-full border-4 z-10 bg-white
                                 ${showActive ? 'border-primary-500 text-primary-600 shadow-lg scale-110' : ''}
                                 ${showPast ? 'border-gray-200 text-gray-400' : ''}
                                 ${showFuture ? 'border-blue-100 text-blue-300' : ''}
                             `}>
-                                {showActive && <Calendar className="w-8 h-8" />}
+                                {showActive && <Calendar className="w-6 h-6 sm:w-8 sm:h-8" />}
                                 {showPast && <Folder className="w-6 h-6" />}
                                 {showFuture && <Clock className="w-6 h-6" />}
                             </div>
@@ -112,7 +124,7 @@ export default function AcademicTimeline({ years, loading, onRefresh }: Academic
                                 tabIndex={0}
                                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/dashboard/academico/${year.name}`); } }}
                                 className={`
-                                    rounded-xl p-6 border transition-all cursor-pointer group
+                                    rounded-xl p-4 sm:p-6 border transition-all cursor-pointer group
                                     ${showActive
                                         ? 'bg-white border-primary-500 shadow-xl ring-1 ring-primary-100 border-l-8'
                                         : ''
@@ -127,14 +139,14 @@ export default function AcademicTimeline({ years, loading, onRefresh }: Academic
                                     }
                                 `}
                             >
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <h3 className={`text-xl font-bold ${showActive ? 'text-gray-900' : 'text-gray-700'}`}>
+                                <div className="flex justify-between items-start gap-2">
+                                    <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
+                                            <h3 className={`text-lg sm:text-xl font-bold ${showActive ? 'text-gray-900' : 'text-gray-700'}`}>
                                                 Ciclo Escolar {year.name}
                                             </h3>
                                             {showActive && (
-                                                <span className="px-2 py-0.5 rounded-full bg-primary-100 text-primary-700 text-xs font-bold animate-pulse">
+                                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-claro text-indigo-hondo text-xs font-bold"><span className="h-1.5 w-1.5 rounded-full bg-indigo animate-pulse" aria-hidden="true" />
                                                     EN CURSO
                                                 </span>
                                             )}
@@ -154,7 +166,8 @@ export default function AcademicTimeline({ years, loading, onRefresh }: Academic
                                         </p>
                                     </div>
 
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+                                        {esAdmin && (
                                         <div
                                             onClick={(e) => openDeleteModal(e, year)}
                                             role="button"
@@ -162,9 +175,11 @@ export default function AcademicTimeline({ years, loading, onRefresh }: Academic
                                             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDeleteModal(e as unknown as React.MouseEvent, year); } }}
                                             className="p-2 rounded-full text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors z-20"
                                             title="Eliminar ciclo escolar"
+                                            aria-label={`Eliminar el ciclo ${year.name}`}
                                         >
                                             <Trash2 className="w-5 h-5" />
                                         </div>
+                                        )}
 
                                         <div className={`p-2 rounded-full transition-colors ${showActive ? 'bg-primary-50 text-primary-600' : 'bg-gray-100 text-gray-400 group-hover:bg-primary-50 group-hover:text-primary-600'}`}>
                                             <ArrowRight className="w-5 h-5" />

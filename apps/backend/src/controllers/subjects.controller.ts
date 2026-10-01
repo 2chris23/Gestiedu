@@ -300,7 +300,7 @@ export async function removeSubjectFromGrade(request: FastifyRequest, reply: Fas
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
-    await subjectsService.removeSubjectFromGrade(parseInt(grade), subjectId, prisma, academicYearId);
+    await subjectsService.removeSubjectFromGrade(parseInt(grade), subjectId, prisma, academicYearId, quienBorra(request as any));
 
     await auditLog({
       userId,
@@ -328,7 +328,11 @@ export async function getSubjectStudents(request: FastifyRequest, reply: Fastify
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
-    const students = await subjectsService.getSubjectStudents(id, prisma);
+    const students = await subjectsService.getSubjectStudents(
+      id,
+      prisma,
+      request.user?.role === 'TEACHER' ? userId : undefined
+    );
 
     await auditLog({
       userId,

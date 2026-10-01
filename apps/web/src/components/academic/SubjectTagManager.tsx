@@ -282,7 +282,7 @@ export default function SubjectTagManager({ gradeId, academicYearId }: SubjectTa
                                     )}
                                 </div>
 
-                                <button
+                                <button aria-label={`Quitar ${subject.name}`}
                                     onClick={(e) => handleRemoveSubject(subject.id, e)}
                                     className="ml-2 -mr-1 p-1 hover:bg-red-50 hover:text-red-500 text-gray-300 rounded-full opacity-0 group-hover:opacity-100 transition-all"
                                 >
@@ -305,7 +305,7 @@ export default function SubjectTagManager({ gradeId, academicYearId }: SubjectTa
             {/* Modal for Subject Config (New and Edit) */}
             {
                 selectedSubject && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-4">
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-label={`Asignar ${selectedSubject.name}`}>
                         <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm animate-in zoom-in-95" onClick={(e) => e.stopPropagation()} role="presentation">
                             <h4 className="font-bold text-gray-900 mb-1 flex items-center gap-2">
                                 {assignedSubjects.find(s => s.id === selectedSubject.id) ? 'Editar' : 'Asignar'} {selectedSubject.name}

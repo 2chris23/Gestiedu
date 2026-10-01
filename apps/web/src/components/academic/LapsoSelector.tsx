@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { CalendarRange, ChevronDown } from 'lucide-react';
+import { CalendarRange } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export interface PeriodOption {
     id: string;
@@ -20,25 +21,39 @@ interface Props {
  * Se usa en: dashboard del Ciclo Escolar, dashboard de un Año, pestaña Materias
  * y Estudiantes de una Sección, y el dashboard del estudiante.
  */
+const TODO = '__todo';
+
+/**
+ * Una lista de la app, no la del sistema: en Android el `<select>` nativo abre
+ * una ventana negra a pantalla con letra enorme, que no se parece a nada del
+ * resto (lo pidió cambiar el dueño). Esta se abre pegada al botón, con los
+ * colores de la app y cada opción de un dedo de alto.
+ */
 export default function LapsoSelector({ periods, value, onChange, compact = false }: Props) {
     const options = periods || [];
     return (
-        <div className={compact ? 'inline-flex items-center gap-1.5' : 'relative'}>
-            <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-2xs">
-                <CalendarRange className="w-4 h-4 text-indigo-600" />
-                <select
-                    aria-label="Selector de lapso / momento"
-                    className="bg-transparent text-xs font-bold text-gray-700 outline-none cursor-pointer appearance-none pr-5"
-                    value={value || ''}
-                    onChange={(e) => onChange(e.target.value || undefined)}
-                >
-                    <option value="">Todo el ciclo</option>
-                    {options.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-gray-400 pointer-events-none -ml-4" />
-            </div>
-        </div>
+        <Select value={value || TODO} onValueChange={(v) => onChange(v === TODO ? undefined : v)}>
+            <SelectTrigger
+                aria-label="Selector de lapso / momento"
+                className={`h-auto min-h-11 w-auto gap-1.5 rounded-xl border-gray-200 bg-white text-xs font-bold text-gray-700 shadow-2xs focus:ring-2 focus:ring-indigo-500 ${
+                    compact ? 'px-2.5 sm:px-3' : 'px-3'
+                }`}
+            >
+                <CalendarRange className={`h-4 w-4 shrink-0 text-indigo-600 ${compact ? 'hidden sm:block' : ''}`} aria-hidden />
+                {/* «Todo el ciclo» suelto no decía qué cambiaba: son las cifras de abajo. */}
+                <span className={`font-medium text-gray-500 ${compact ? 'hidden sm:inline' : ''}`}>Ver:</span>
+                <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper" align="end" className="min-w-[11rem] rounded-xl border-gray-200 bg-white p-1 shadow-lg">
+                <SelectItem value={TODO} className="min-h-[44px] rounded-lg text-sm font-semibold text-gray-800 focus:bg-indigo-50 focus:text-indigo-800">
+                    Todo el ciclo
+                </SelectItem>
+                {options.map((p) => (
+                    <SelectItem key={p.id} value={p.id} className="min-h-[44px] rounded-lg text-sm font-semibold text-gray-800 focus:bg-indigo-50 focus:text-indigo-800">
+                        {p.name}
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
     );
 }

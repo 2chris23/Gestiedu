@@ -5,10 +5,11 @@ import Link from 'next/link';
 import {
     ListTodo, Plus, CheckCircle2, Circle, Trash2, Calendar,
     Tag, Award, Clock, Sparkles, X, Loader2, ArrowRight,
-    Edit3, Check, CheckSquare, ExternalLink
+    Edit3, Check, CheckSquare, ExternalLink, Clock3
 } from 'lucide-react';
 import { ClassActivity, useCreateClassActivity, useUpdateClassActivity, useDeleteClassActivity } from '@/hooks/useLiveClass';
 import { toast } from 'sonner';
+import { useConfirm } from '@/hooks/useConfirm';
 
 const DEFAULT_TAG_PRESETS = [
     { name: 'Examen', bg: 'bg-rose-50 text-rose-700 border-rose-200' },
@@ -42,6 +43,14 @@ interface Props {
     canEdit: boolean;
     planRowId?: string | null;
     classSessionId?: string | null;
+    /** El día de la clase que se ve («YYYY-MM-DD»): la actividad nace en esa clase. */
+    date: string;
+    /** Un día que no ha llegado: ahí no se crean actividades. */
+    esFuturo?: boolean;
+    /** Las evaluaciones del plan que cubren este día (a una de ellas suma la actividad). */
+    evaluaciones?: Array<{ id: string; actividad: string; puntos: number }>;
+    /** ¿El plan del lapso tiene puntos? Si sí y no hay evaluación esta semana, no suma. */
+    planConPuntos?: boolean;
 }
 
 export default function LiveActivitiesCard({
@@ -53,10 +62,15 @@ export default function LiveActivitiesCard({
     canEdit,
     planRowId,
     classSessionId,
+    date,
+    esFuturo = false,
+    evaluaciones = [],
+    planConPuntos = false,
 }: Props) {
     const createActivity = useCreateClassActivity();
     const updateActivity = useUpdateClassActivity();
     const deleteActivity = useDeleteClassActivity();
+    const preguntar = useConfirm();
 
     // Modal state
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -68,6 +82,9 @@ export default function LiveActivitiesCard({
     const [customTags, setCustomTags] = useState<string[]>([]);
     const [dueDate, setDueDate] = useState('');
     const [maxScore, setMaxScore] = useState('20');
+    const [evaluacion, setEvaluacion] = useState<string>('');
+    // Sin evaluación esta semana en un plan con puntos: se guarda, pero no suma.
+    const noSuma = planConPuntos && evaluaciones.length === 0;
 
     // ============================================================
     // CORRECCIÓN (reporte usuario): las actividades se clasifican
@@ -92,6 +109,10 @@ export default function LiveActivitiesCard({
     };
 
     const handleOpenAdd = (target: 'CURRENT' | 'NEXT') => {
+        if (esFuturo) {
+            toast.error('Esta clase todavía no ha llegado: crea la actividad hoy y ponle fecha de entrega');
+            return;
+        }
         setModalTarget(target);
         setTitle('');
         setDescription('');
@@ -99,6 +120,7 @@ export default function LiveActivitiesCard({
         setCustomTagInput('');
         setDueDate('');
         setMaxScore('20');
+        setEvaluacion(evaluaciones.length === 1 ? evaluaciones[0].id : '');
         setIsAddModalOpen(true);
     };
 
@@ -117,8 +139,12 @@ export default function LiveActivitiesCard({
             toast.error('Escribe un título para la actividad');
             return;
         }
+        if (evaluaciones.length > 1 && !evaluacion) {
+            toast.error('Elige a qué evaluación del plan suma esta actividad');
+            return;
+        }
         try {
-            await createActivity.mutateAsync({
+            const r = await createActivity.mutateAsync({
                 classroomId,
                 subjectId,
                 title: title.trim(),
@@ -128,11 +154,17 @@ export default function LiveActivitiesCard({
                 tag: selectedTag,
                 dueDate: dueDate || undefined,
                 maxScore: maxScore ? parseFloat(maxScore) : 20,
-                planRowId: planRowId || undefined,
-                classSessionId: modalTarget === 'CURRENT' ? (classSessionId || undefined) : undefined,
+                planRowId: evaluacion || planRowId || undefined,
+                // Nace en la clase que se ve (sea de hoy o de otro día): así sale
+                // en su lista. Antes, sin asistencia guardada, no salía en ninguna.
+                classSessionId: classSessionId || undefined,
+                date,
             });
             setIsAddModalOpen(false);
-            toast.success(modalTarget === 'CURRENT' ? 'Actividad añadida a la clase de hoy' : 'Actividad programada para la próxima clase');
+            // Lo que dice el servidor, no lo que se supone.
+            if (r?.dondeSale === 'HOY') toast.success('Actividad añadida a esta clase');
+            else if (r?.dondeSale === 'PROXIMA') toast.success('Actividad programada para la próxima clase');
+            else toast.success(`Actividad creada: sale en la clase del ${formatDayDate(`${dueDate || date}T12:00:00Z`)}`);
         } catch {
             // error handled
         }
@@ -150,8 +182,25 @@ export default function LiveActivitiesCard({
     };
 
     const handleDelete = async (id: string) => {
+        // Borrar una actividad con notas se lleva sus notas: se pregunta antes
+        // (quedan en la papelera del liceo). Antes se borraba sin decir nada.
+        const act = activities.find((a) => a.id === id);
+        const notas = Object.values((act?.scores as any) || {}).filter((v) => v !== null && v !== undefined && v !== '').length;
+        if (notas > 0) {
+            const ok = await preguntar({
+                title: `Borrar «${act?.title ?? 'la actividad'}»`,
+                description: `Tiene nota de ${notas} alumno(s). Se borran con ella (quedan en la papelera del liceo).`,
+                confirmLabel: 'Borrar',
+            });
+            if (!ok) return;
+        }
         try {
-            await deleteActivity.mutateAsync(id);
+            const r: any = await deleteActivity.mutateAsync(id);
+            if (r?.pendiente) {
+                if (activeGradingActivityId === id) onSelectGradingActivity(null);
+                toast('Sin conexión: se borrará al volver la conexión (⏱).', { id: 'pendiente' });
+                return;
+            }
             if (activeGradingActivityId === id) {
                 onSelectGradingActivity(null);
             }
@@ -170,8 +219,11 @@ export default function LiveActivitiesCard({
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
             {/* Header */}
-            <div className="p-4 sm:p-5 border-b border-gray-100 bg-gradient-to-r from-blue-500/5 via-indigo-500/5 to-transparent flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
+            <div className="p-4 sm:p-5 border-b border-gray-100 bg-gradient-to-r from-blue-500/5 via-indigo-500/5 to-transparent flex flex-wrap items-center justify-between gap-3">
+                {/* `flex-wrap` y el botón sin partir: en el teléfono el título
+                    quedaba cortado («Actividades de Cl…») y «Nueva Actividad» en
+                    dos líneas, las dos cosas aplastadas en la misma fila. */}
+                <div className="flex min-w-0 items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shadow-xs">
                         <ListTodo className="w-5 h-5" />
                     </div>
@@ -191,13 +243,21 @@ export default function LiveActivitiesCard({
                     <button
                         type="button"
                         onClick={() => handleOpenAdd('CURRENT')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
+                        disabled={esFuturo}
+                        title={esFuturo ? 'Esta clase todavía no ha llegado: crea la actividad hoy y ponle fecha de entrega' : undefined}
+                        className="disabled:opacity-50 inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap px-4 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
                     >
-                        <Plus className="w-3.5 h-3.5" />
+                        <Plus className="w-4 h-4" aria-hidden />
                         <span>Nueva Actividad</span>
                     </button>
                 )}
             </div>
+
+            {canEdit && esFuturo && (
+                <p className="mx-4 mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:mx-5" role="note">
+                    Esta clase todavía no ha llegado: crea la actividad en la clase de hoy y ponle fecha de entrega.
+                </p>
+            )}
 
             {/* Contenido dividido en 2 Sub-Tarjetas */}
             <div className="p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1">
@@ -294,6 +354,11 @@ export default function LiveActivitiesCard({
                                                             }`}
                                                         >
                                                             {act.title}
+                                                        {(act as any).pendiente && (
+                                                            <span className="ml-1 inline-flex items-center gap-0.5 text-xs font-semibold text-amber-700">
+                                                                <Clock3 className="h-3 w-3" aria-hidden /> pendiente
+                                                            </span>
+                                                        )}
                                                         </h4>
                                                         {act.description && (
                                                             <p className={`text-[11px] truncate mt-0.5 ${isGradingActive ? 'text-blue-100' : 'text-gray-500'}`}>
@@ -370,7 +435,7 @@ export default function LiveActivitiesCard({
                     </div>
                 </div>
 
-                {/* 🚀 TARJETA 2: PRÓXIMA CLASE */}
+                {/* TARJETA 2: PRÓXIMA CLASE */}
                 <div className="bg-indigo-50/30 rounded-xl border border-indigo-100 p-3.5 flex flex-col justify-between">
                     <div>
                         <div className="flex items-center justify-between pb-2 mb-2 border-b border-indigo-100/80">
@@ -430,6 +495,11 @@ export default function LiveActivitiesCard({
                                                     </div>
                                                     <h4 className="text-xs font-bold text-gray-900 mt-1 truncate">
                                                         {act.title}
+                                                        {(act as any).pendiente && (
+                                                            <span className="ml-1 inline-flex items-center gap-0.5 text-xs font-semibold text-amber-700">
+                                                                <Clock3 className="h-3 w-3" aria-hidden /> pendiente
+                                                            </span>
+                                                        )}
                                                     </h4>
                                                     {act.description && (
                                                         <p className="text-[11px] text-gray-500 truncate mt-0.5">
@@ -478,7 +548,7 @@ export default function LiveActivitiesCard({
 
             {/* ===== MODAL DE CREACIÓN DE ACTIVIDAD ===== */}
             {isAddModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-label={modalTarget === 'CURRENT' ? 'Nueva actividad para la clase de hoy' : 'Nueva actividad para la próxima clase'}>
                     <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                         {/* Header */}
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
@@ -488,7 +558,7 @@ export default function LiveActivitiesCard({
                                     Nueva Actividad ({modalTarget === 'CURRENT' ? 'Clase de Hoy' : 'Próxima Clase'})
                                 </h3>
                             </div>
-                            <button
+                            <button aria-label="Cerrar"
                                 onClick={() => setIsAddModalOpen(false)}
                                 className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-200 transition-colors"
                             >
@@ -524,10 +594,42 @@ export default function LiveActivitiesCard({
                                                 : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
                                         }`}
                                     >
-                                        🚀 Próxima Clase
+                                        Próxima Clase
                                     </button>
                                 </div>
                             </div>
+
+                            {/* A qué evaluación del plan suma */}
+                            {evaluaciones.length > 1 && (
+                                <div>
+                                    <label htmlFor="evaluacion-del-plan" className="block text-xs font-bold uppercase text-gray-600 mb-1.5">
+                                        ¿A qué evaluación del plan suma? *
+                                    </label>
+                                    <select
+                                        id="evaluacion-del-plan"
+                                        value={evaluacion}
+                                        onChange={(e) => setEvaluacion(e.target.value)}
+                                        className="w-full min-h-11 px-3 border border-gray-200 rounded-xl text-sm"
+                                    >
+                                        <option value="">Elige una</option>
+                                        {evaluaciones.map((e) => (
+                                            <option key={e.id} value={e.id}>
+                                                {(e.actividad || 'Evaluación') + ` · ${e.puntos} pts`}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                            {evaluaciones.length === 1 && (
+                                <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                                    Suma a la evaluación del plan: <strong>{evaluaciones[0].actividad || 'la de esta semana'}</strong> ({evaluaciones[0].puntos} pts).
+                                </p>
+                            )}
+                            {noSuma && (
+                                <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900" role="note">
+                                    Esta semana no tiene evaluación en el plan: la actividad se guarda y se califica, pero su nota <strong>no suma</strong> a la nota del lapso.
+                                </p>
+                            )}
 
                             {/* Título */}
                             <div>

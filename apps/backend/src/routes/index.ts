@@ -16,6 +16,9 @@ import { schedulesRoutes } from './schedules.routes';
 import { studentsRoutes } from './students.routes';
 import { teachersRoutes } from './teachers.routes';
 import { attendanceRoutes } from './attendance.routes';
+import { classReplacementsRoutes } from './class-replacements.routes';
+import { pagosRoutes } from './pagos.routes';
+import { finanzasRoutes } from './finanzas.routes';
 import { cycleStatisticsRoutes } from './cycle-statistics.routes';
 import { classroomSubjectsRoutes } from './classroomSubjects.routes';
 import { scheduleBlocksRoutes } from './scheduleBlocks.routes';
@@ -29,6 +32,21 @@ import { cacheMetricsRoutes } from '../controllers/cache-metrics.controller';
 import { monitoringRoutes } from './monitoring.routes';
 import { schoolEventsRoutes } from './school-events.routes';
 import { schoolTimeRoutes } from './school-time.routes';
+import { appMovilRoutes } from './app-movil.routes';
+import { asistenciaQrRoutes } from './asistencia-qr.routes';
+import { apreciacionesRoutes } from './apreciaciones.routes';
+import { revisionRoutes } from './revision.routes';
+import { materiasPendientesRoutes } from './materias-pendientes.routes';
+import { laborSocialRoutes } from './labor-social.routes';
+import { documentosRoutes } from './documentos.routes';
+import { avisosRoutes } from './avisos.routes';
+import { cambiosEnEsperaRoutes } from './cambios-en-espera.routes';
+import { citacionesRoutes } from './citaciones.routes';
+import { trasladoRoutes } from './traslado.routes';
+import { matriculaRoutes } from './matricula.routes';
+import { consejoRoutes } from './consejo.routes';
+import { personalRoutes } from './personal.routes';
+import { paeRoutes } from './pae.routes';
 
 // Función para registrar todas las rutas
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
@@ -50,9 +68,31 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(attendanceRoutes, { prefix: '/api/attendance' });
   // La hora oficial del liceo (el reloj del dispositivo no es de fiar)
   await fastify.register(schoolTimeRoutes, { prefix: '/api/time' });
+  // La versión nueva de la app del teléfono (ver `app-movil.routes.ts`).
+  await fastify.register(appMovilRoutes, { prefix: '/api/app-movil' });
+  // Pasar lista con QR (ver services/asistencia-qr.service.ts).
+  await fastify.register(asistenciaQrRoutes, { prefix: '/api/asistencia-qr' });
+  await fastify.register(apreciacionesRoutes, { prefix: '/api/apreciaciones' });
+  await fastify.register(revisionRoutes, { prefix: '/api/revision' });
+  await fastify.register(materiasPendientesRoutes, { prefix: '/api/materias-pendientes' });
+  await fastify.register(laborSocialRoutes, { prefix: '/api/labor-social' });
+  await fastify.register(documentosRoutes, { prefix: '/api' });
+  await fastify.register(avisosRoutes, { prefix: '/api/avisos' });
+  // Lo hecho sin conexión que decide otra persona (services/cambios-sin-conexion.service.ts).
+  await fastify.register(cambiosEnEsperaRoutes, { prefix: '/api/cambios-en-espera' });
+  await fastify.register(citacionesRoutes, { prefix: '/api' });
+  await fastify.register(trasladoRoutes, { prefix: '/api' });
+  await fastify.register(matriculaRoutes, { prefix: '/api' });
+  await fastify.register(consejoRoutes, { prefix: '/api' });
+  await fastify.register(personalRoutes, { prefix: '/api' });
+  await fastify.register(paeRoutes, { prefix: '/api/pae' });
   await fastify.register(schedulesRoutes, { prefix: '/api/schedules' });
   await fastify.register(scheduleBlocksRoutes, { prefix: '/api' });
   await fastify.register(classSessionsRoutes, { prefix: '/api/sessions' });
+  await fastify.register(classReplacementsRoutes, { prefix: '/api/class-replacements' });
+  await fastify.register(pagosRoutes, { prefix: '/api/payments' });
+  // Las finanzas del liceo (fondos, gastos, nómina): van con el módulo de pagos.
+  await fastify.register(finanzasRoutes, { prefix: '/api/finanzas' });
   await fastify.register(observationsRoutes, { prefix: '/api/observations' });
 
   // Rutas por roles específicos

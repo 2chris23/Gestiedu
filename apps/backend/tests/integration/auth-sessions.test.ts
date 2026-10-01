@@ -109,20 +109,31 @@ describe('Flujo — Sesiones persistentes (Recordar sesión)', () => {
             const initialExpiry = rec0!.expiresAt.getTime();
             const initialLast = rec0!.lastUsedAt.getTime();
 
+            /**
+             * Ojo: la llave se CAMBIA en cada renovación (ver auth.service), así
+             * que aquí se sigue la llave nueva, que es lo que hace el navegador.
+             * Lo que se comprueba es que la sesión "recordada" se corre desde el
+             * último uso, no desde que se entró.
+             */
             // Primera renovación a +3d (dentro de la ventana JWT de 7d)
             setFrozenTime(baseTime + 3 * 24 * 60 * 60 * 1000);
             const res = await refresh(refreshToken).expect(200);
             expect(res.body.accessToken).toBeTruthy();
+            expect(res.body.refreshToken).toBeTruthy();
 
-            const rec1 = await prisma.refreshToken.findFirst({ where: { userId: user.id } });
+            const rec1 = await prisma.refreshToken.findFirst({
+                where: { userId: user.id, replacedAt: null },
+            });
             expect(rec1!.expiresAt.getTime()).toBeGreaterThan(initialExpiry); // se corrió
             expect(rec1!.lastUsedAt.getTime()).toBeGreaterThan(initialLast);
 
             // Segunda renovación a +5d: la expiración vuelve a correrse desde el último uso
             const fakeNow2 = baseTime + 5 * 24 * 60 * 60 * 1000;
             setFrozenTime(fakeNow2);
-            await refresh(refreshToken).expect(200);
-            const rec2 = await prisma.refreshToken.findFirst({ where: { userId: user.id } });
+            await refresh(res.body.refreshToken).expect(200);
+            const rec2 = await prisma.refreshToken.findFirst({
+                where: { userId: user.id, replacedAt: null },
+            });
             expect(rec2!.expiresAt.getTime()).toBeGreaterThan(rec1!.expiresAt.getTime());
             expect(rec2!.expiresAt.getTime()).toBe(fakeNow2 + SLIDING_DAYS_MS); // +60d desde el último uso
             expect(rec2!.lastUsedAt.getTime()).toBe(fakeNow2);
@@ -229,7 +240,9 @@ describe('Flujo — Sesiones persistentes (Recordar sesión)', () => {
 
         // La otra sigue viva
         await refresh(s2.body.tokens.refreshToken).expect(200);
-        expect(await prisma.refreshToken.count({ where: { userId: user.id } })).toBe(1);
+        // Solo las vivas: la llave se cambia en cada renovación y la anterior
+        // se queda unos segundos marcada como cambiada (ver auth.service).
+        expect(await prisma.refreshToken.count({ where: { userId: user.id, replacedAt: null } })).toBe(1);
 
         // Intentar borrar una sesión de OTRO usuario → 404 y no la revoca
         const other = await createTestUserWithPassword(prisma, UserRole.STUDENT, PASSWORD);

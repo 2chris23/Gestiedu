@@ -1,4 +1,4 @@
-import { Mail, Phone } from 'lucide-react';
+import { Mail, Phone, Clock } from 'lucide-react';
 import UserAvatar from '@/components/ui/UserAvatar';
 
 interface Teacher {
@@ -56,7 +56,7 @@ export function TeachersSidebar({ teachers }: TeachersSidebarProps) {
                                     </div>
                                     <div className="mt-2 flex items-center gap-2">
                                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md border border-indigo-100/60">
-                                            ⏱️ {hours.toFixed(1)}h / sem
+                                            <Clock size={12} className="shrink-0" /> {hours.toFixed(1)}h / sem
                                         </span>
                                         <span className="text-[11px] text-gray-400">
                                             ({blocks} bloques)

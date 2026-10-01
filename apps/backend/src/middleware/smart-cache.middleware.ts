@@ -142,7 +142,16 @@ function isCacheable(request: FastifyRequest, role: string): boolean {
     const url = request.url;
     if (url.includes('/api/superadmin')) return false;
     if (url.includes('/api/auth')) return false;
+    // Recién publicada una versión de la app, se tiene que ver ya, no a los cinco minutos.
+    if (url.startsWith('/api/app-movil')) return false;
+    // El QR del alumno cambia cada 10 s: uno guardado es un código caducado.
+    if (url.startsWith('/api/asistencia-qr')) return false;
     if (url.includes('/api/notifications/realtime')) return false;
+    // Los avisos los escribe OTRO (el admin cita al representante): guardados,
+    // la campana del representante seguía en cero hasta que caducaran.
+    if (url.startsWith('/api/avisos')) return false;
+    // Igual las citaciones: las pone el personal, las mira el representante.
+    if (url.startsWith('/api/citaciones')) return false;
     return true;
 }
 

@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { gradesService } from './grades.service';
+import { fechaDeLaActividad, lapsoDeLaFecha, LapsoConFechas } from '../utils/lapso-de-la-actividad';
+import { esCualitativa } from './apreciaciones.service';
 
 /**
  * =====================================================================
@@ -52,6 +54,9 @@ export async function studentsWithNoteInSubject(
     subjectId: string,
     periodId?: string
 ): Promise<Set<string>> {
+    // Una materia con apreciación no tiene notas que promediar (CUALI-02).
+    if (await esCualitativa(prisma, subjectId)) return new Set<string>();
+
     const enrollments = await prisma.studentClassroom.findMany({
         where: { classroomId, isActive: true },
         select: { studentId: true },
@@ -68,22 +73,37 @@ export async function studentsWithNoteInSubject(
         prisma.grade.findMany({ where: gradesWhere, select: { studentId: true, score: true } }),
         prisma.classActivity.findMany({
             where: { classroomId, subjectId, scores: { not: undefined } },
-            select: { scores: true, planRowId: true, dueDate: true },
+            select: { scores: true, planRowId: true, dueDate: true, createdAt: true, classSession: { select: { date: true } } },
         }),
     ]);
     grades.forEach(g => { if (g.score !== null) withData.add(g.studentId); });
 
     if (periodId) {
         // Filas del plan de ese lapso (para vincular actividades por planRow).
-        const period = await prisma.period.findUnique({ where: { id: periodId }, select: { name: true } });
+        const period = await prisma.period.findUnique({ where: { id: periodId }, select: { name: true, academicYearId: true } });
         const lapso = period ? segmentLapso(period.name) : '1';
-        const rows = await prisma.evaluationPlanRow.findMany({
-            where: { subjectId, lapso },
-            select: { id: true },
-        });
+        const [rows, lapsosDelCiclo] = await Promise.all([
+            prisma.evaluationPlanRow.findMany({
+                where: { subjectId, lapso },
+                select: { id: true },
+            }),
+            period
+                ? prisma.period.findMany({ where: { academicYearId: period.academicYearId }, select: { id: true, startDate: true, endDate: true } })
+                : Promise.resolve([] as LapsoConFechas[]),
+        ]);
         const rowIds = new Set(rows.map(r => r.id));
         classActivities.forEach(ca => {
-            if (ca.planRowId && rowIds.has(ca.planRowId)) pushStudentScores(ca, studentIds, withData);
+            if (ca.planRowId) {
+                if (rowIds.has(ca.planRowId)) pushStudentScores(ca, studentIds, withData);
+                return;
+            }
+            // Las sueltas cuentan en el lapso de su fecha, igual que en el
+            // promedio del alumno (LAP-01…03). Antes solo en el global.
+            const suLapso = lapsoDeLaFecha(
+                fechaDeLaActividad({ fechaDeLaClase: ca.classSession?.date, dueDate: ca.dueDate, createdAt: ca.createdAt }),
+                lapsosDelCiclo
+            );
+            if (suLapso === null || suLapso === periodId) pushStudentScores(ca, studentIds, withData);
         });
     } else {
         classActivities.forEach(ca => pushStudentScores(ca, studentIds, withData));

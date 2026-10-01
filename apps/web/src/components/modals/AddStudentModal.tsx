@@ -7,6 +7,7 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { Card } from '@/components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 interface AddStudentModalProps {
     isOpen: boolean;
@@ -106,7 +107,7 @@ export function AddStudentModal({
 
     return (
         <AnimatePresence>
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Agregar Estudiantes">
                 <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
                     {/* Header */}
                     <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-blue-50 to-white">
@@ -118,7 +119,7 @@ export function AddStudentModal({
                                 Selecciona uno o varios estudiantes para agregarlos a esta sección.
                             </p>
                         </div>
-                        <button
+                        <button aria-label="Cerrar"
                             onClick={handleClose}
                             className="text-gray-400 hover:text-gray-600 transition-colors"
                         >
@@ -155,7 +156,7 @@ export function AddStudentModal({
                                         <p className="text-sm font-semibold text-red-800">Error al inscribir</p>
                                         <p className="text-sm text-red-700 mt-1">{error}</p>
                                     </div>
-                                    <button
+                                    <button aria-label="Cerrar el aviso"
                                         onClick={() => setError(null)}
                                         className="text-red-400 hover:text-red-600"
                                     >
@@ -197,11 +198,12 @@ export function AddStudentModal({
                                                     </div>
 
                                                     {/* Avatar */}
-                                                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0">
-                                                        <span className="text-white font-bold text-lg">
-                                                            {student.firstName[0]}{student.lastName[0]}
-                                                        </span>
-                                                    </div>
+                                                    <UserAvatar
+                                                        name={`${student.firstName} ${student.lastName}`}
+                                                        src={(student as any).avatar}
+                                                        className="h-12 w-12"
+                                                        initialsClassName="text-lg"
+                                                    />
 
                                                     {/* Info */}
                                                     <div className="flex-1 min-w-0">

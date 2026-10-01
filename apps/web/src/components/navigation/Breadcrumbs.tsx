@@ -39,7 +39,7 @@ export function Breadcrumbs() {
     if (breadcrumbs.length <= 1) return null;
 
     return (
-        <nav aria-label="Breadcrumb" className="mb-4 flex items-center text-sm text-gray-500 overflow-x-auto whitespace-nowrap pb-2">
+        <nav aria-label="Breadcrumb" className="mb-4 flex flex-wrap items-center gap-y-1 text-sm text-gray-500 pb-2">
             <Link href="/dashboard" className="flex items-center hover:text-indigo-600 transition-colors">
                 <Home className="w-4 h-4" />
             </Link>

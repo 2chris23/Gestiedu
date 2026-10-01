@@ -1,20 +1,25 @@
 'use client';
 
-import React, { useMemo, useRef } from 'react';
-import { toast } from 'sonner';
+import React, { useMemo } from 'react';
 import {
-    Calendar, Clock, Coffee, Printer, Edit, Search, MapPin, User,
+    Calendar, Clock, Coffee, Edit, MapPin, User,
     ChevronLeft, ChevronRight, ListTodo, BookOpen, CalendarDays
 } from 'lucide-react';
 import { ScheduleBlock } from '@/components/schedule/UniversalScheduleViewer';
-import ScheduleCalendarModal from '@/components/modals/ScheduleCalendarModal';
+import { DescargarHorario } from '@/components/schedule/DescargarHorario';
+import { useClassReplacements } from '@/hooks/useClassReplacements';
 import ScheduleHistoryModal from '@/components/schedule/ScheduleHistoryModal';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSchedulePeriods } from '@/hooks/useSchedulePeriods';
-import { useLiveOverview } from '@/hooks/useLiveClass';
+import { useLiveOverviews, LiveOverviewSubject } from '@/hooks/useLiveClass';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
+import { Carril } from '@/components/ui/carril';
+import type { EmblaCarouselType } from 'embla-carousel';
+import TurnoBadge from '@/components/common/TurnoBadge';
+import { turnoDeLaHora } from '@/lib/turnos';
 import { toLocalYMD } from '@/utils/date.utils';
-import { useSchoolToday } from '@/hooks/useSchoolTime';
+import { useRelojDelLiceo } from '@/hooks/useSchoolTime';
 
 interface Props {
     schedule: ScheduleBlock[];
@@ -22,9 +27,21 @@ interface Props {
     showActions?: boolean;
     classroomId?: string;
     editUrl?: string;
+    /** Lo que encabeza el horario descargado: la sección, o el nombre de la persona. */
+    titulo?: string;
+    subtitulo?: string;
+    /** Horario de un profesor: para enseñar las clases que cubre como reemplazo. */
+    teacherId?: string;
+    /**
+     * El alumno de este horario. Al tocar una clase, su representante va a
+     * «Mi clase» de ESE alumno (`/dashboard/mi-clase/<materia>?alumno=`).
+     */
+    alumnoId?: string;
 }
 
 // Días de la semana laborables
+import HorarioPorDias from '@/components/schedule/HorarioPorDias';
+
 const WORKING_DAYS = [
     { key: 'Lun', label: 'Lunes', fullLabel: 'lunes' },
     { key: 'Mar', label: 'Martes', fullLabel: 'martes' },
@@ -86,21 +103,33 @@ const MODERN_SUBJECT_STYLES = [
     },
 ];
 
-export default function StudentScheduleSection({ schedule, role, showActions = false, classroomId, editUrl }: Props) {
+export default function StudentScheduleSection({ schedule, role, showActions = false, classroomId, editUrl, titulo = 'Horario semanal', subtitulo, teacherId, alumnoId }: Props) {
     const [viewMode, setViewMode] = React.useState<'day' | 'week'>('day');
-    const [isCalendarModalOpen, setIsCalendarModalOpen] = React.useState(false);
-    const { periods: dynamicPeriods, isLoading } = useSchedulePeriods();
+    /**
+     * EL TURNO MANDA EN LAS HORAS
+     *
+     * Una sección de la tarde empieza a la una, no a las siete. Si se pintan
+     * las horas de la mañana, el horario sale vacío: las clases caen fuera de
+     * todos los bloques. El turno sale de la propia sección; si no se sabe
+     * todavía, de la hora del primer bloque que tenga.
+     */
+    const turnoDeLosBloques = React.useMemo(
+        () => (schedule.length ? turnoDeLaHora([...schedule].sort((a, b) => a.startTime.localeCompare(b.startTime))[0].startTime) : 'MANANA'),
+        [schedule]
+    );
     const router = useRouter();
 
-    // Ref para el carrusel de 5 bloques
-    const carouselRef = useRef<HTMLDivElement>(null);
+    // El carril de las horas (Embla, `components/ui/carril.tsx`): sigue al dedo
+    // y al ratón, con inercia al soltar. Las flechas de arriba lo mueven.
+    const [carril, setCarril] = React.useState<EmblaCarouselType | null>(null);
 
-    // Get current day and time
-    const now = new Date();
-    const currentDayIndex = now.getDay();
-    const currentTime = now.toTimeString().slice(0, 5);
-    // 'Hoy' según el liceo, no según el reloj del dispositivo
-    const todayDateStr = useSchoolToday();
+    // El día y la hora del LICEO, no los del aparato: con el reloj del
+    // teléfono adelantado o en otra zona, «Hoy» enseñaba las clases de otro
+    // día y la clase «en curso» era otra (RELOJ-01).
+    const reloj = useRelojDelLiceo();
+    const currentDayIndex = reloj.diaDeLaSemana;
+    const currentTime = reloj.hora;
+    const todayDateStr = reloj.fecha;
 
     // ============================================================
     // FASE 3.5 PARTE B — HISTORIAL: la vista "Hoy" queda PARAMETRIZADA por
@@ -113,6 +142,12 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
         : WORKING_DAYS[currentDayIndex - 1]?.key || 'Lun';
     const [dayViewKey, setDayViewKey] = React.useState<string>(initialDayKey);
     const [histDate, setHistDate] = React.useState<string | null>(null);
+    // Hasta que contesta el servidor, el día es el del aparato. Cuando llega el
+    // del liceo, el horario se pone en él (si nadie ha elegido otro día).
+    const [diaElegido, setDiaElegido] = React.useState(false);
+    React.useEffect(() => {
+        if (reloj.delServidor && !diaElegido && !histDate) setDayViewKey(initialDayKey);
+    }, [reloj.delServidor, initialDayKey, diaElegido, histDate]);
     const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
 
     // ============================================================
@@ -127,38 +162,57 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
     const getDateForDayKey = (dayKey: string): string => {
         const dayIndex = WORKING_DAYS.findIndex(d => d.key === dayKey);
         if (dayIndex < 0) return todayDateStr;
-        // Lunes de la semana actual a mediodía local (evita drift UTC/DST)
-        const monday = new Date(now);
-        monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-        monday.setHours(12, 0, 0, 0);
-        const target = new Date(monday);
-        target.setDate(monday.getDate() + dayIndex);
-        return target.toISOString().split('T')[0];
+        // Lunes de la semana del LICEO, contado en UTC a mediodía: ni el reloj
+        // ni la zona del aparato mueven la fecha de un bloque (RELOJ-01).
+        const hoy = new Date(`${todayDateStr}T12:00:00Z`);
+        const lunes = hoy.getTime() - ((hoy.getUTCDay() + 6) % 7) * 864e5;
+        return new Date(lunes + dayIndex * 864e5).toISOString().slice(0, 10);
     };
 
-    // Tema generador y actividades por materia para el horario en vivo
+    // Tema generador y actividades por materia para el horario en vivo.
+    // Lo pide también el alumno: es SU sección (lo comprueba el servidor).
+    //
+    // Se pide POR SECCIÓN, y el horario de un profesor cruza varias: con solo
+    // la del perfil (ninguna, en un profesor) salía «—» y «Hoy: 0 · Próx: 0».
     const activeOverviewDate = histDate || todayDateStr;
-    const { data: liveOverview } = useLiveOverview(classroomId || '', activeOverviewDate);
+    const seccionDe = (c: { classroomIdDeLaClase?: string; classroomId?: string } | null | undefined) =>
+        c?.classroomIdDeLaClase ?? c?.classroomId ?? classroomId;
 
-    const handleClassClick = (classItem: ScheduleBlock | null) => {
-        if (role !== 'teacher' || !classItem || !classItem.subjectId || !classroomId) return;
+    /**
+     * ENTRAR A UNA CLASE
+     *
+     * Según QUIÉN mira, no de quién es el horario: el admin que abre el perfil
+     * de un alumno también trabaja la clase. El personal va a la Clase en
+     * Vivo; el alumno y su representante, a «Mi clase»: el plan, sus
+     * actividades con su nota y sus observaciones (solo mirar). Antes al alumno
+     * se le abría una ventanita con el tema del día y nada más.
+     */
+    const { yo } = useQuienSoy();
+    const esFamilia = yo ? yo.role === 'STUDENT' || yo.role === 'TUTOR' : role === 'student';
+
+    const handleClassClick = (
+        classItem: (ScheduleBlock & { reemplazaA?: string; classroomIdDeLaClase?: string }) | null
+    ) => {
+        if (!classItem?.subjectId) return;
+
+        if (esFamilia) {
+            const deQuien = yo?.role === 'TUTOR' && alumnoId ? `?alumno=${encodeURIComponent(alumnoId)}` : '';
+            router.push(`/dashboard/mi-clase/${encodeURIComponent(classItem.subjectId)}${deQuien}`);
+            return;
+        }
+
+        const seccion = seccionDe(classItem);
+        if (!seccion) return;
         const blockDate = (viewMode === 'day' && histDate) ? histDate : getDateForDayKey(classItem.day || '');
         router.push(
-            `/dashboard/clase-en-vivo/${classroomId}/${classItem.subjectId}?date=${blockDate}&start=${encodeURIComponent(classItem.startTime)}&end=${encodeURIComponent(classItem.endTime)}`
+            `/dashboard/clase-en-vivo/${seccion}/${classItem.subjectId}?date=${blockDate}&start=${encodeURIComponent(classItem.startTime)}&end=${encodeURIComponent(classItem.endTime)}`
         );
     };
 
-    // Scroll por bloque completo en el carrusel
+    // Una hora más o una menos, desde las flechas de arriba.
     const scrollByBlock = (direction: 'prev' | 'next') => {
-        if (!carouselRef.current) return;
-        const container = carouselRef.current;
-        // Ancho de un bloque más el gap
-        const firstChild = container.firstElementChild as HTMLElement;
-        const blockWidth = firstChild ? firstChild.offsetWidth + 12 : 220;
-        container.scrollBy({
-            left: direction === 'next' ? blockWidth : -blockWidth,
-            behavior: 'smooth',
-        });
+        if (direction === 'next') carril?.scrollNext();
+        else carril?.scrollPrev();
     };
 
     // Determinar el día a mostrar
@@ -181,6 +235,36 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
     // Horario de hoy para la vista diaria
     const todaySchedule = schedule.filter((s) => s.day === displayDayKey);
 
+    /**
+     * REEMPLAZOS DE ESE DÍA
+     *
+     * Si el admin suspendió una clase y puso otra materia en su lugar, el
+     * carril enseña la que SE DA, no la del horario semanal, con una marca de a
+     * quién reemplaza. En el horario de un profesor aparecen además las clases
+     * que cubre en otras secciones.
+     */
+    const fechaDelDia = histDate || getDateForDayKey(displayDayKey);
+    const { data: reemplazos = [] } = useClassReplacements({
+        classroomId: teacherId ? undefined : classroomId,
+        teacherId,
+        fecha: viewMode === 'day' ? fechaDelDia : undefined,
+    });
+
+    const resumenes = useLiveOverviews(
+        [
+            classroomId ?? '',
+            ...todaySchedule.map((c) => seccionDe(c) ?? ''),
+            ...reemplazos.map((r) => r.classroom.id),
+        ],
+        activeOverviewDate
+    );
+    const infoDe = (c: (ScheduleBlock & { classroomIdDeLaClase?: string }) | null | undefined): LiveOverviewSubject | null => {
+        const seccion = seccionDe(c);
+        return c?.subjectId && seccion ? resumenes[seccion]?.overview?.[c.subjectId] ?? null : null;
+    };
+    const turno = (classroomId ? resumenes[classroomId]?.shift : undefined) ?? turnoDeLosBloques;
+    const { periods: dynamicPeriods, isLoading } = useSchedulePeriods(turno === 'INTEGRAL' ? 'MANANA' : turno);
+
     // Timeline para vista diaria ("Hoy")
     const timeline = dynamicPeriods.map((period) => {
         if (period.type === 'break') {
@@ -197,10 +281,28 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                 (c.startTime >= period.startTime && c.startTime < period.endTime)
         );
 
+        const reemplazo = reemplazos.find(
+            (r) => r.startTime >= period.startTime && r.startTime < period.endTime
+        );
+        const clase = reemplazo
+            ? {
+                  day: displayDayKey,
+                  startTime: reemplazo.startTime,
+                  endTime: reemplazo.endTime,
+                  subject: reemplazo.subject.name,
+                  subjectId: reemplazo.subject.id,
+                  color: reemplazo.subject.color || classItem?.color,
+                  location: reemplazo.classroom.name,
+                  detail: `Prof. ${reemplazo.teacher.firstName} ${reemplazo.teacher.lastName}`,
+                  reemplazaA: reemplazo.suspendedSubject.name,
+                  classroomIdDeLaClase: reemplazo.classroom.id,
+              }
+            : classItem;
+
         return {
             ...period,
             isBreak: false,
-            class: classItem || null,
+            class: (clase || null) as (ScheduleBlock & { reemplazaA?: string; classroomIdDeLaClase?: string }) | null,
         };
     });
 
@@ -214,6 +316,10 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
         if (currentTime >= endTime) return 'past';
         return 'upcoming';
     };
+
+    // El carril arranca en la hora que va (o la siguiente), no en la primera
+    // de la mañana: a las diez nadie viene a ver la clase de las siete.
+    const primeraQueQueda = timeline.findIndex((p) => getPeriodStatus(p.startTime, p.endTime) !== 'past');
 
     // Mapeo consistente de estilo moderno por materia
     const subjectStyleMap = useMemo(() => {
@@ -335,18 +441,26 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             <Calendar size={18} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-gray-900 text-sm sm:text-base leading-tight">Horario en Vivo</h3>
-                            <p className="text-[11px] text-gray-500 font-medium">
+                            <div className="flex items-center gap-2">
+                                <h3 className="font-bold text-gray-900 text-sm sm:text-base leading-tight">Horario en Vivo</h3>
+                                <TurnoBadge turno={turno} />
+                            </div>
+                            <p className="text-[11px] text-gray-600 font-medium">
                                 {histLabel}
                             </p>
                         </div>
                     </div>
 
-                    {/* Acciones y Toggle */}
-                    <div className="flex items-center gap-2">
-                        {/* Controles de avance por bloque (solo en vista Hoy si hay más de 5 bloques) */}
+                    {/* Acciones y Toggle — se parten en vez de empujar la
+                        pantalla: con los botones a 44 px, «Hoy · Semana ·
+                        Historial» más las acciones ya no caben en una línea de
+                        390 px. */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/* Controles de avance por bloque (solo en vista Hoy si hay más de 5 bloques).
+                            De pie no se pintan: ahí las horas van una debajo de
+                            otra y no hay carril que mover. */}
                         {viewMode === 'day' && timeline.length > 5 && (
-                            <div className="flex items-center gap-1 bg-gray-50 p-0.5 rounded-lg border border-gray-200/60">
+                            <div className="hidden items-center gap-1 rounded-lg border border-gray-200/60 bg-gray-50 p-0.5 min-[700px]:flex">
                                 <button
                                     type="button"
                                     onClick={() => scrollByBlock('prev')}
@@ -366,31 +480,16 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             </div>
                         )}
 
+                        <DescargarHorario bloques={schedule} titulo={titulo} subtitulo={subtitulo} />
+
                         {showActions && (
                             <div className="flex items-center gap-1 mr-1 pr-1 border-r border-gray-200">
-                                {classroomId && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsCalendarModalOpen(true)}
-                                        className="p-1.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors shadow-2xs"
-                                        title="Historial de Clases"
-                                    >
-                                        <Search size={15} />
-                                    </button>
-                                )}
-                                <button
-                                    type="button"
-                                    onClick={() => toast.info('Impresión disponible desde el menú superior')}
-                                    className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                    title="Imprimir horario"
-                                >
-                                    <Printer size={15} />
-                                </button>
                                 {editUrl && (
                                     <Link
                                         href={editUrl}
-                                        className="p-1.5 text-indigo-600 hover:bg-indigo-100 bg-indigo-50 rounded-lg transition-colors shadow-2xs"
+                                        className="inline-flex h-9 w-9 items-center justify-center text-indigo-600 hover:bg-indigo-100 bg-indigo-50 rounded-lg transition-colors shadow-2xs"
                                         title="Editar horario"
+                                        aria-label="Editar horario"
                                     >
                                         <Edit size={15} />
                                     </Link>
@@ -403,7 +502,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             <button
                                 type="button"
                                 onClick={() => { setViewMode('day'); setHistDate(null); setDayViewKey(getDisplayDay()); }}
-                                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                                className={`inline-flex items-center justify-center px-3 py-1 text-xs font-bold rounded-lg transition-all ${
                                     viewMode === 'day' && !histDate
                                         ? 'bg-indigo-600 text-white shadow-xs'
                                         : 'text-gray-600 hover:text-gray-900'
@@ -414,7 +513,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             <button
                                 type="button"
                                 onClick={() => { setViewMode('week'); setHistDate(null); }}
-                                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                                className={`inline-flex items-center justify-center px-3 py-1 text-xs font-bold rounded-lg transition-all ${
                                     viewMode === 'week'
                                         ? 'bg-indigo-600 text-white shadow-xs'
                                         : 'text-gray-600 hover:text-gray-900'
@@ -425,7 +524,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             <button
                                 type="button"
                                 onClick={() => setIsHistoryOpen(true)}
-                                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all inline-flex items-center gap-1 ${
+                                className={`inline-flex items-center justify-center gap-1 px-3 py-1 text-xs font-bold rounded-lg transition-all ${
                                     histDate
                                         ? 'bg-indigo-600 text-white shadow-xs'
                                         : 'text-gray-600 hover:text-gray-900'
@@ -443,20 +542,39 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                 {/* 1. VISTA DE HOY (5 BLOQUES EXACTOS + SNAP SCROLL POR BLOQUE) */}
                 {/* ───────────────────────────────────────────────────────────── */}
                 {viewMode === 'day' && (
-                    <div
-                        ref={carouselRef}
-                        className="flex w-full gap-3 overflow-x-auto pb-2 pt-0.5 snap-x snap-mandatory scroll-smooth no-scrollbar"
-                        style={{
-                            scrollbarWidth: 'none',
-                            msOverflowStyle: 'none',
-                        }}
+                    /*
+                        EL DÍA, EN UN CARRIL DE LADO (TAMBIÉN EN EL TELÉFONO)
+
+                        Estuvo una temporada en vertical —una hora debajo de
+                        otra, 140 px cada una— y el dueño lo quiso de vuelta
+                        de lado, como antes: el día cabe en un vistazo y se
+                        pasa con el dedo. Pero más apretado: en el teléfono
+                        cada ficha mide menos de la mitad del ancho, así que
+                        se ven dos y se asoma la tercera (eso dice «hay
+                        más»), y el carril arranca en la hora que va.
+
+                        Lo mueve Embla (`Carril`), no el desplazamiento del
+                        navegador con un arrastre programado a mano: aquel
+                        enganchaba cada ficha MIENTRAS se arrastraba (las dos
+                        fuerzas peleaban: «no se mueve con suavidad»), no tenía
+                        inercia, y tras pasar a Semana y volver a Hoy el ratón
+                        ya no lo movía.
+                    */
+                    isLoading ? (
+                        <div className="w-full py-6 text-center text-xs font-medium text-gray-400">
+                            Cargando horario en vivo...
+                        </div>
+                    ) : (
+                    <Carril
+                        etiqueta={`Horas de ${displayDay.fullLabel}`}
+                        conFlechas={false}
+                        anchoDeCada="w-[44%] min-w-[148px] min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[170px]"
+                        hueco="gap-2.5 min-[700px]:gap-3"
+                        inicio={Math.max(0, primeraQueQueda)}
+                        alListo={setCarril}
+                        className="pb-1"
                     >
-                        {isLoading ? (
-                            <div className="w-full text-center py-6 text-gray-400 text-xs font-medium">
-                                Cargando horario en vivo...
-                            </div>
-                        ) : (
-                            timeline.map((period, index) => {
+                        {timeline.map((period, index) => {
                                 const status = getPeriodStatus(period.startTime, period.endTime);
 
                                 // ☕ Bloque de Descanso / Recreo
@@ -464,7 +582,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                     return (
                                         <div
                                             key={index}
-                                            className={`snap-start flex-shrink-0 w-[calc((100%-48px)/5)] min-w-[170px] min-h-[145px] p-3 rounded-2xl border transition-all flex flex-col justify-center items-center text-center ${
+                                            className={`h-full w-full min-h-[104px] p-2.5 min-[700px]:min-h-[145px] min-[700px]:p-3 rounded-2xl border transition-all flex flex-col justify-center items-center text-center ${
                                                 status === 'current'
                                                     ? 'bg-amber-50 border-amber-300 shadow-xs ring-2 ring-amber-200'
                                                     : status === 'past'
@@ -491,13 +609,18 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                 }
 
                                 const classItem = period.class;
-                                const isClickable = role === 'teacher' && classItem?.subjectId && classroomId;
+                                const isClickable = Boolean(
+                                    classItem?.subjectId && (esFamilia || seccionDe(classItem))
+                                );
 
                                 // Datos enriquecidos desde el Plan de Evaluación y Actividades
-                                const subjectInfo = classItem?.subjectId ? liveOverview?.overview?.[classItem.subjectId] : null;
-                                const temaGenerador = subjectInfo?.temaGenerador || null;
+                                const subjectInfo = infoDe(classItem);
+                                // Antes de que empiece el plan del lapso, el nombre de esas
+                                // semanas («Diagnóstico»): no hay tema del plan todavía.
+                                const temaGenerador = subjectInfo?.antesDelPlan
+                                    ? subjectInfo.nombreAntesDelPlan || 'Diagnóstico'
+                                    : subjectInfo?.temaGenerador || null;
                                 const firstColLabel = subjectInfo?.firstColumnLabel || 'Tema Generador';
-                                const activitiesCount = subjectInfo?.activitiesCount ?? 0;
                                 const todayActivitiesCount = subjectInfo?.todayActivitiesCount ?? 0;
                                 const nextActivitiesCount = subjectInfo?.nextActivitiesCount ?? 0;
 
@@ -513,7 +636,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                                   }
                                                 : undefined
                                         }
-                                        className={`snap-start flex-shrink-0 w-[calc((100%-48px)/5)] min-w-[170px] min-h-[145px] p-3 rounded-2xl border-2 transition-all flex flex-col justify-between ${
+                                        className={`h-full w-full min-h-[104px] p-2.5 min-[700px]:min-h-[145px] min-[700px]:p-3 rounded-2xl border-2 transition-all flex flex-col justify-between ${
                                             isClickable ? 'cursor-pointer hover:ring-2 hover:ring-indigo-400 hover:shadow-xs' : ''
                                         } ${
                                             !classItem?.color
@@ -529,8 +652,10 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                     >
                                         {/* Header del Bloque: Hora + Badge En Curso */}
                                         <div>
-                                            <div className="flex items-center justify-between mb-0.5">
-                                                <span className="text-[10px] font-black text-gray-500 uppercase tracking-wider truncate">
+                                            {/* Sin «…»: con «EN CURSO» al lado, «1RA HORA» se cortaba
+                                                en el teléfono (DISENO-07, solo en días de clase). */}
+                                            <div className="flex flex-wrap items-center justify-between gap-1 mb-0.5">
+                                                <span className="min-w-0 text-[10px] font-black text-gray-500 uppercase tracking-wider">
                                                     {period.label}
                                                 </span>
                                                 {status === 'current' && (
@@ -554,13 +679,21 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                                     >
                                                         {classItem.subject}
                                                     </h4>
+                                                    {classItem.reemplazaA && (
+                                                        <span className="inline-block rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+                                                            Reemplaza a {classItem.reemplazaA}
+                                                        </span>
+                                                    )}
 
                                                     {/* Tema Generador / Primera Columna del Plan */}
-                                                    <div className="bg-white/80 p-1.5 rounded-lg border border-gray-100/80 shadow-2xs">
-                                                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tight block truncate">
+                                                    <div className="bg-white/80 px-1.5 py-1 rounded-lg border border-gray-100/80 shadow-2xs min-[700px]:p-1.5">
+                                                        {/* De pie, sin el rótulo: la ficha baja una línea
+                                                            y el día cabe en menos alto. */}
+                                                        <span className="hidden text-[9px] font-bold text-gray-400 uppercase tracking-tight truncate min-[700px]:block">
                                                             {firstColLabel}:
                                                         </span>
                                                         <p className="text-[11px] font-bold text-gray-800 line-clamp-1 leading-tight">
+                                                            <span className="sr-only min-[700px]:hidden">{firstColLabel}: </span>
                                                             {temaGenerador || '—'}
                                                         </p>
                                                     </div>
@@ -572,52 +705,90 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                             )}
                                         </div>
 
-                                        {/* Footer del Bloque: Contador de Actividades (Hoy y Próx) + Docente/Aula */}
+                                        {/* Hoy y Próx., siempre a la vista (el dueño los quiere aunque
+                                            estén en 0: así se sabe de un vistazo que no hay nada). «Hoy» es
+                                            lo que toca en esta clase; «Próx.» lo que se DEJÓ en ella para
+                                            otro día (ver CLAUDE.md, «La clase en vivo»). */}
                                         {classItem && (
                                             <div className="pt-2 border-t border-gray-100/80 flex items-center justify-between gap-1 mt-auto flex-wrap">
                                                 <div className="flex items-center gap-1">
-                                                    {/* Hoy */}
-                                                    <div
-                                                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${
-                                                            todayActivitiesCount > 0
-                                                                ? 'bg-blue-100 text-blue-800'
-                                                                : 'bg-gray-100 text-gray-500'
+                                                    <span
+                                                        className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                                                            todayActivitiesCount > 0 ? 'bg-blue-100 text-blue-900' : 'bg-gray-100 text-gray-600'
                                                         }`}
-                                                        title={`${todayActivitiesCount} actividad(es) para hoy`}
+                                                        title={`${todayActivitiesCount} actividad(es) para esta clase`}
                                                     >
-                                                        <span>Hoy: {todayActivitiesCount}</span>
-                                                    </div>
-
-                                                    {/* Próx */}
-                                                    <div
-                                                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${
-                                                            nextActivitiesCount > 0
-                                                                ? 'bg-purple-100 text-purple-800'
-                                                                : 'bg-gray-100 text-gray-500'
+                                                        {todayActivitiesCount} hoy
+                                                    </span>
+                                                    <span
+                                                        className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                                                            nextActivitiesCount > 0 ? 'bg-purple-100 text-purple-900' : 'bg-gray-100 text-gray-600'
                                                         }`}
-                                                        title={`${nextActivitiesCount} actividad(es) para la próxima clase`}
+                                                        title={`En esta clase se dejaron ${nextActivitiesCount} actividad(es) para la próxima`}
                                                     >
-                                                        <span>Próx: {nextActivitiesCount}</span>
-                                                    </div>
+                                                        {nextActivitiesCount} después
+                                                    </span>
                                                 </div>
-
-                                                <span className="text-[10px] text-gray-400 truncate max-w-[65px]">
-                                                    {classItem.location || 'Sin aula'}
-                                                </span>
+                                                {classItem.location && (
+                                                    <span className="text-[10px] text-gray-600 truncate max-w-[70px]">
+                                                        {classItem.location}
+                                                    </span>
+                                                )}
                                             </div>
                                         )}
                                     </div>
                                 );
-                            })
-                        )}
-                    </div>
+                            })}
+                    </Carril>
+                    )
                 )}
 
                 {/* ───────────────────────────────────────────────────────────── */}
                 {/* 2. VISTA DE SEMANA (TABLA MATRIZ COMPACTA, ELEGANTE Y PRO)    */}
                 {/* ───────────────────────────────────────────────────────────── */}
                 {viewMode === 'week' && (
-                    <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-2xs">
+                    <>
+                        {/*
+                            LA SEMANA, DE PIE
+
+                            La rejilla de la semana son cinco días por siete
+                            horas: 700 px largos. De pie había que arrastrarla, y
+                            al llegar al viernes ya no se sabía qué hora se
+                            miraba. Aquí va un día cada vez, en vertical, con las
+                            fichas de los días arriba; la rejilla entera sale en
+                            cuanto hay ancho, y eso incluye el teléfono tumbado.
+                        */}
+                        <div className="min-[700px]:hidden">
+                            <HorarioPorDias
+                                dias={WORKING_DAYS.map((d) => ({ id: d.key, label: d.label }))}
+                                periodos={dynamicPeriods.map((p) => ({
+                                    id: `${p.startTime}-${p.endTime}`,
+                                    label: p.label,
+                                    startTime: p.startTime,
+                                    endTime: p.endTime,
+                                    type: p.type,
+                                }))}
+                                cargando={isLoading}
+                                motivoDelGiro="Para ver la semana entera"
+                                loDeLaHora={(dia, periodo) => {
+                                    const clase = schedule.find(
+                                        (c) =>
+                                            c.day === dia.id &&
+                                            (c.startTime === periodo.startTime ||
+                                                (c.startTime <= periodo.startTime && c.endTime > periodo.startTime))
+                                    );
+                                    if (!clase) return null;
+                                    return {
+                                        titulo: clase.subject,
+                                        subtitulo: clase.detail
+                                            ? clase.detail.replace(/^Prof\.\s*/i, '').trim()
+                                            : undefined,
+                                    };
+                                }}
+                            />
+                        </div>
+
+                        <div className="rejilla-densa hidden overflow-x-auto rounded-xl border border-gray-200 shadow-2xs min-[700px]:block">
                         <table className="w-full border-collapse text-center text-xs">
                             {/* Cabecera Estilizada */}
                             <thead>
@@ -704,7 +875,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                                 const classItem = cell.classItem!;
                                                 const subjectKey = (classItem.subject || '').trim().toLowerCase();
                                                 const style = subjectStyleMap[subjectKey] || MODERN_SUBJECT_STYLES[0];
-                                                const isClickable = role === 'teacher' && classItem.subjectId && classroomId;
+                                                const isClickable = Boolean(classItem.subjectId && (esFamilia || seccionDe(classItem)));
 
                                                 const teacherName = classItem.detail
                                                     ? classItem.detail.replace(/^Prof\.\s*/i, '').trim()
@@ -750,17 +921,11 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                             </tbody>
                         </table>
                     </div>
+                    </>
                 )}
             </div>
 
             {/* Modal de Calendario e Historial */}
-            {classroomId && (
-                <ScheduleCalendarModal
-                    isOpen={isCalendarModalOpen}
-                    onClose={() => setIsCalendarModalOpen(false)}
-                    classroomId={classroomId}
-                />
-            )}
 
             {/* Fase 3.5 Parte B — Historial por fecha (misma vista "Hoy", fecha parametrizada) */}
             {isHistoryOpen && (
@@ -770,6 +935,7 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                     onSelectDay={(dateStr, key) => {
                         setHistDate(dateStr);
                         setDayViewKey(key);
+                        setDiaElegido(true);
                         setViewMode('day');
                         setIsHistoryOpen(false);
                     }}

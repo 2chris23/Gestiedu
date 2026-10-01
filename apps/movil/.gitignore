@@ -1,0 +1,15 @@
+# La llave de firma es la identidad del liceo en Google Play: quien la tenga
+# puede publicar actualizaciones en su nombre. Nunca al repositorio.
+*.keystore
+*.jks
+keystore.properties
+android/key.properties
+
+# Lo que sale de compilar, que se regenera solo.
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/app/src/main/assets/public/
+*.apk
+*.aab

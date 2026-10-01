@@ -11,12 +11,15 @@ import {
     createClassActivity,
     updateClassActivity,
     deleteClassActivity,
+    evaluarDeOtraForma,
     saveClassActivityGrades,
     suspendClassSession,
     getLiveOverview,
     searchStudentsForSession,
     savePlanWeekRow,
 } from '../controllers/classSessions.controller';
+import { calificarConInstrumento } from '../services/instrumentos.service';
+import { responderErrorClaro } from '../utils/error-claro';
 
 export async function classSessionsRoutes(fastify: FastifyInstance) {
     // Rutas protegidas - requieren autenticación
@@ -30,12 +33,15 @@ export async function classSessionsRoutes(fastify: FastifyInstance) {
             getLiveClassDetail as any
         );
 
-        // Resumen en vivo (tema generador por materia) para el horario en vivo
-        authenticatedRoutes.get(
-            '/live-overview',
-            { onRequest: [requireTeacher] },
-            getLiveOverview as any
-        );
+        /**
+         * Resumen en vivo (tema de la semana y actividades) de una seccion.
+         *
+         * Sin `requireTeacher` A PROPOSITO: el alumno tiene que ver el contenido
+         * de SU horario y el representante el de su representado. Quien puede
+         * mirar esa seccion lo decide `assertCanSeeClassroom` dentro del
+         * controlador, que es donde se sabe de que seccion se habla.
+         */
+        authenticatedRoutes.get('/live-overview', getLiveOverview as any);
 
         // Guardar sesión + asistencia de una clase en vivo
         authenticatedRoutes.post(
@@ -70,11 +76,67 @@ export async function classSessionsRoutes(fastify: FastifyInstance) {
             { onRequest: [requireTeacher] },
             deleteClassActivity as any
         );
+        // Calificar marcando el instrumento de su evaluación del plan: la nota
+        // sale sola (`services/instrumentos.service.ts`).
+        authenticatedRoutes.post(
+            '/activities/:activityId/instrumento',
+            {
+                onRequest: [requireTeacher],
+                schema: {
+                    body: {
+                        type: 'object',
+                        required: ['marcas'],
+                        properties: {
+                            marcas: { type: 'object' },
+                            // Lo hecho sin conexión: con qué instrumento se marcó y qué había.
+                            instrumento: { type: 'object' },
+                            antes: { type: 'object' },
+                            decision: { type: 'string', enum: ['la-mia'] },
+                        },
+                    },
+                },
+            },
+            (async (r: any, reply: any) => {
+                try {
+                    const hechoEn = typeof r.headers['x-hecho-en'] === 'string' && !Number.isNaN(Date.parse(r.headers['x-hecho-en'])) ? new Date(r.headers['x-hecho-en']) : null;
+                    const data = await calificarConInstrumento(r.tenantPrisma, r.user, r.params.activityId, r.body.marcas, {
+                        instrumento: r.body.instrumento,
+                        antes: r.body.antes,
+                        decision: r.body.decision,
+                        hechoEn,
+                        io: r.server.io,
+                    });
+                    if ('enEspera' in data) {
+                        return reply.status(202).send({ code: 'EN_ESPERA', esperaId: data.esperaId, esperaA: data.esperaA, error: data.mensaje });
+                    }
+                    const a = await r.tenantPrisma.classActivity.findUnique({ where: { id: r.params.activityId }, select: { classroomId: true } });
+                    r.aQuienAfecta = { studentIds: Object.keys(r.body.marcas || {}), classroomId: a?.classroomId };
+                    return reply.send({ success: true, data });
+                } catch (e) {
+                    return responderErrorClaro(reply, e);
+                }
+            }) as any
+        );
+        // Evaluar a un alumno de otra forma en una actividad (p. ej. con el
+        // cuaderno quien no puede hacer deporte). Su nota cuenta igual.
+        authenticatedRoutes.put(
+            '/activities/:activityId/otra-forma/:studentId',
+            { onRequest: [requireTeacher] },
+            evaluarDeOtraForma as any
+        );
+        authenticatedRoutes.delete(
+            '/activities/:activityId/otra-forma/:studentId',
+            { onRequest: [requireTeacher] },
+            evaluarDeOtraForma as any
+        );
 
-        // Suspender una clase (rota actividades a la próxima clase)
+        // Suspender una clase (rota actividades a la próxima clase). SOLO el
+        // admin: suspender deja a una sección sin su hora y mueve el plan de
+        // evaluación de la materia. Antes bastaba ser profesor — de cualquier
+        // sección, sin mirar si la clase era suya.
         authenticatedRoutes.post(
             '/suspend',
-            { onRequest: [requireTeacher] },
+            { onRequest: [requireAdmin] },
             suspendClassSession as any
         );
 

@@ -8,6 +8,26 @@ import bcrypt from 'bcrypt';
 import { RequestUser } from '../types/fastify';
 import { invalidateUserSession } from '../middleware/auth.middleware';
 import { fueModificadoPorOtro, versionVista, AVISO_MODIFICADO_POR_OTRO } from '../utils/concurrencia';
+import { esCedulaEscolar } from '../utils/cedula-escolar';
+import { cambiarLaCedula } from '../services/cambiar-cedula.service';
+import { NOTAS_QUE_CUENTAN } from '../services/apreciaciones.service';
+
+/**
+ * Lo que piden los documentos del Ministerio (nacionalidad, lugar y entidad de
+ * nacimiento, tipo de cédula). Un campo que viene vacío se borra; uno que no
+ * viene, no se toca. Si no dice el tipo de cédula y la cédula tiene la forma
+ * de una escolar, se anota como escolar.
+ */
+function datosParaElMinisterio(entrada: Record<string, unknown>, cedula?: string) {
+  const datos: Record<string, string | null> = {};
+  for (const campo of ['nacionalidad', 'lugarDeNacimiento', 'entidadDeNacimiento', 'tipoDeCedula'] as const) {
+    if (!(campo in entrada)) continue;
+    const v = typeof entrada[campo] === 'string' ? (entrada[campo] as string).trim() : '';
+    datos[campo] = v || null;
+  }
+  if (!('tipoDeCedula' in entrada) && cedula && esCedulaEscolar(cedula)) datos.tipoDeCedula = 'ESCOLAR';
+  return datos;
+}
 
 /**
  * Cuánto cuesta cifrar una contraseña.
@@ -98,6 +118,20 @@ export async function createUser(
       });
     }
 
+    // LA CÉDULA ES LA LLAVE DE LA CUENTA
+    //
+    // `User.id` es la cédula y no tiene valor por defecto: sin ella la base
+    // rechaza la fila y salía un 500. Crear pide lo mínimo (nombre, apellido,
+    // correo, cédula, contraseña, rol y sexo); esto sí hace falta.
+    if (!userData.id || !String(userData.id).trim()) {
+      return reply.status(400).send({
+        error: 'Hace falta la cédula',
+        message: 'La cédula es la llave de la cuenta: escríbela (o arma la cédula escolar).',
+        code: 'CEDULA_REQUERIDA',
+        field: ['id'],
+      });
+    }
+
     // Verificar si ya existe un usuario con la misma cédula / ID
     if (userData.id) {
       const existingUserById = await request.tenantPrisma.user.findUnique({
@@ -151,8 +185,7 @@ export async function createUser(
     // Crear el usuario con TODOS los campos necesarios
     const user = await request.tenantPrisma.user.create({
       data: {
-        // Si no viene ID, dejamos que Prisma genere uno (undefined activa el @default(cuid()))
-        id: userData.id || undefined as any,
+        id: String(userData.id).trim(),
         email: userData.email.toLowerCase(),
         password: hashedPassword,
         firstName: userData.firstName,
@@ -163,6 +196,7 @@ export async function createUser(
         phone: userData.phone,
         address: userData.address,
         birthDate: userData.birthDate ? new Date(userData.birthDate) : undefined,
+        ...datosParaElMinisterio(userData as any, userData.id),
         isActive: true,
       },
       select: {
@@ -294,6 +328,14 @@ export async function getUsers(
     } else if (isActive === undefined) {
       // Por defecto listar sólo usuarios activos
       where.status = 'ACTIVE';
+    }
+
+    // «Les falta algo»: alumnos sin algún dato para el Ministerio o sin algún
+    // recaudo de la inscripción (`services/inscripcion.service.ts`).
+    if ((request.query as any).faltan === true) {
+      const { condicionDeLesFalta } = await import('../services/inscripcion.service');
+      const instituteId = String((request.user as any)?.instituteId ?? (request as any).institute?.id ?? '');
+      where.AND = [...(where.AND ?? []), await condicionDeLesFalta(instituteId)];
     }
 
     // Obtener usuarios y total
@@ -442,6 +484,11 @@ export async function getUser(
         birthDate: true,
         gender: true,
         avatar: true,
+        nacionalidad: true,
+        lugarDeNacimiento: true,
+        entidadDeNacimiento: true,
+        tipoDeCedula: true,
+        cedulaEscolar: true,
         // Datos específicos de estudiante
         studentCode: true,
         studentClassrooms: {
@@ -645,7 +692,8 @@ export async function getUser(
         by: ['subjectId'],
         where: {
           teacherId: user.id,
-          score: { not: null }
+          score: { not: null },
+          ...NOTAS_QUE_CUENTAN,
         },
         _avg: { score: true }
       });
@@ -820,6 +868,7 @@ export async function getUserProfile(
             const gradeAggregate = await request.tenantPrisma.grade.aggregate({
               where: {
                 studentId: userId,
+                ...NOTAS_QUE_CUENTAN,
                 period: {
                   academicYearId: enrollment.academicYearId,
                 },
@@ -1050,6 +1099,7 @@ export async function updateUser(
     if (dataToUpdate.birthDate && typeof dataToUpdate.birthDate === 'string') {
       dataToUpdate.birthDate = new Date(dataToUpdate.birthDate);
     }
+    Object.assign(dataToUpdate, datosParaElMinisterio(updateData as any));
 
     // 3. Mapear Rol si existe
     if (dataToUpdate.role) {
@@ -1077,6 +1127,10 @@ export async function updateUser(
           phone: true,
           address: true,
           birthDate: true,
+          nacionalidad: true,
+          lugarDeNacimiento: true,
+          entidadDeNacimiento: true,
+          tipoDeCedula: true,
           specialization: true,
           isActive: true,
           updatedAt: true,
@@ -1196,6 +1250,20 @@ export async function archiveUser(
       },
     });
 
+    // UN ALUMNO ARCHIVADO ES UN ALUMNO RETIRADO: deja su sección.
+    //
+    // Archivar apagaba solo la cuenta y la inscripción seguía activa: el alumno
+    // que ya no viene contaba en el total de la sección, ocupaba cupo, y al
+    // cerrar el ciclo se le proponía para el año siguiente (RET-01…03). La
+    // inscripción NO se borra: queda inactiva, con sus notas y su historial,
+    // y vuelve si se le desarchiva (RET-04). Los ciclos ya cerrados no se tocan.
+    if (existingUser.role === 'STUDENT') {
+      await request.tenantPrisma.studentClassroom.updateMany({
+        where: { studentId: id, isActive: true, academicYear: { status: { not: 'COMPLETED' } } },
+        data: { isActive: false },
+      });
+    }
+
     // Revocar tokens de refresco y sesiones
     await request.tenantPrisma.refreshToken.deleteMany({
       where: { userId: id },
@@ -1286,6 +1354,28 @@ export async function unarchiveUser(
 
     await invalidateUserSession(instituteId, id);
 
+    // Vuelve a la sección que dejó al archivarlo, si sigue habiendo sitio.
+    // Si está llena, se queda fuera y se dice: el admin lo inscribe donde toque.
+    let volvioASuSeccion: boolean | null = null;
+    if (existingUser.role === 'STUDENT') {
+      const dejadas = await request.tenantPrisma.studentClassroom.findMany({
+        where: { studentId: id, isActive: false, academicYear: { status: { not: 'COMPLETED' } } },
+        include: {
+          classroom: {
+            select: { capacity: true, isActive: true, _count: { select: { studentClassrooms: { where: { isActive: true } } } } },
+          },
+        },
+      });
+      for (const insc of dejadas) {
+        const c = insc.classroom as any;
+        const hayCupo = c?.isActive !== false && (!c?.capacity || (c._count?.studentClassrooms ?? 0) < c.capacity);
+        if (hayCupo) {
+          await request.tenantPrisma.studentClassroom.update({ where: { id: insc.id }, data: { isActive: true } });
+        }
+        volvioASuSeccion = (volvioASuSeccion ?? true) && hayCupo;
+      }
+    }
+
     try {
       await request.tenantPrisma.auditLog.create({
         data: {
@@ -1310,8 +1400,11 @@ export async function unarchiveUser(
     logger.info('Usuario desarchivado / restaurado exitosamente', { userId: id });
 
     return reply.status(200).send({
-      message: 'Usuario restaurado correctamente',
+      message: volvioASuSeccion === false
+        ? 'Usuario restaurado. Su sección está llena: inscríbalo desde la sección que corresponda.'
+        : 'Usuario restaurado correctamente',
       user: updatedUser,
+      volvioASuSeccion,
     });
   } catch (error) {
     logger.error('Error al desarchivar usuario', {
@@ -1411,61 +1504,47 @@ export async function deleteUser(
         // 3. Actividades creadas por el docente:
         // Reasignar creador al fallback y conservar el nombre completo del profesor en la descripción
         if (fallbackUserId) {
-          const teacherActivities = await tx.activity.findMany({
-            where: { createdBy: id },
-            select: { id: true, description: true },
-          });
-          for (const act of teacherActivities) {
-            const desc = act.description || '';
-            const tag = `[Profesor histórico: ${teacherFullName}]`;
-            const newDesc = desc.includes(tag) ? desc : (desc ? `${desc} ${tag}` : tag);
-            await tx.activity.update({
-              where: { id: act.id },
-              data: {
-                createdBy: fallbackUserId,
-                description: newDesc,
-              },
-            });
-          }
+          // TODO EN TRES ESCRITURAS, NO UNA POR FILA
+          // Esto iba nota a nota y asistencia a asistencia dentro de la
+          // transacción. Un profesor con tres años en el liceo son decenas de
+          // miles de filas: la transacción se pasaba de sus 30 s, se deshacía,
+          // y el profesor no se podía dar de baja. Ahora lo hace PostgreSQL de
+          // una vez, con el mismo resultado fila por fila.
+          const tagActividad = `[Profesor histórico: ${teacherFullName}]`;
+          await tx.$executeRaw`
+            UPDATE activities
+               SET "createdBy" = ${fallbackUserId},
+                   description = CASE
+                     WHEN COALESCE(description, '') = '' THEN ${tagActividad}
+                     WHEN strpos(description, ${tagActividad}) > 0 THEN description
+                     ELSE description || ' ' || ${tagActividad}
+                   END,
+                   "updatedAt" = NOW()
+             WHERE "createdBy" = ${id}`;
 
-          // 4. Calificaciones dadas por el docente:
-          // Reasignar teacherId al fallback y almacenar en metadata el nombre del profesor histórico
-          const teacherGrades = await tx.grade.findMany({
-            where: { teacherId: id },
-            select: { id: true, metadata: true },
-          });
-          for (const g of teacherGrades) {
-            const meta = (typeof g.metadata === 'object' && g.metadata !== null) ? g.metadata : {};
-            await tx.grade.update({
-              where: { id: g.id },
-              data: {
-                teacherId: fallbackUserId,
-                metadata: {
-                  ...meta,
-                  historicalTeacherName: teacherFullName,
-                  historicalTeacherId: id,
-                },
-              },
-            });
-          }
+          // 4. Calificaciones dadas por el docente: pasan al de reemplazo, y
+          // en su metadata queda quién las puso.
+          await tx.$executeRaw`
+            UPDATE grades
+               SET "teacherId" = ${fallbackUserId},
+                   metadata = (CASE WHEN jsonb_typeof(metadata) = 'object' THEN metadata ELSE '{}'::jsonb END)
+                              || jsonb_build_object('historicalTeacherName', ${teacherFullName}::text,
+                                                    'historicalTeacherId', ${id}::text),
+                   "updatedAt" = NOW()
+             WHERE "teacherId" = ${id}`;
 
           // 5. Asistencias tomadas por el docente:
-          const attendances = await tx.dailyAttendance.findMany({
-            where: { teacherId: id },
-            select: { id: true, comments: true },
-          });
-          for (const att of attendances) {
-            const comm = att.comments || '';
-            const tag = `[Tomada por: ${teacherFullName}]`;
-            const newComments = comm.includes(tag) ? comm : (comm ? `${comm} ${tag}` : tag);
-            await tx.dailyAttendance.update({
-              where: { id: att.id },
-              data: {
-                teacherId: fallbackUserId,
-                comments: newComments,
-              },
-            });
-          }
+          const tagAsistencia = `[Tomada por: ${teacherFullName}]`;
+          await tx.$executeRaw`
+            UPDATE daily_attendance
+               SET "teacherId" = ${fallbackUserId},
+                   comments = CASE
+                     WHEN COALESCE(comments, '') = '' THEN ${tagAsistencia}
+                     WHEN strpos(comments, ${tagAsistencia}) > 0 THEN comments
+                     ELSE comments || ' ' || ${tagAsistencia}
+                   END,
+                   "updatedAt" = NOW()
+             WHERE "teacherId" = ${id}`;
 
           // 6. Horarios asignados al docente
           await borrarGuardandoCopia(tx, 'schedule', { teacherId: id }, quien);
@@ -1798,5 +1877,29 @@ export async function assignStudentToClassroom(
       error: 'Error en el servidor',
       code: 'INTERNAL_SERVER_ERROR',
     });
+  }
+}
+
+/**
+ * PUT /users/:id/cedula — cambia la cédula de una persona (la escolar por la de
+ * identidad, o una mal escrita). Se escribe dos veces, como se hace con lo que
+ * no tiene vuelta atrás fácil.
+ */
+export async function cambiarCedula(
+  request: FastifyRequest<{ Params: { id: string }; Body: { nueva: string; confirmacion: string; tipo?: 'IDENTIDAD' | 'ESCOLAR' } }>,
+  reply: FastifyReply
+) {
+  const { nueva, confirmacion, tipo } = request.body;
+  if (String(nueva).trim().toUpperCase() !== String(confirmacion).trim().toUpperCase()) {
+    return reply.status(400).send({ error: 'La cédula nueva y su confirmación no son iguales.', code: 'CONFIRMACION_DISTINTA' });
+  }
+  const instituteId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
+  const quien = (request.user as any)?.userId ?? (request.user as any)?.id;
+  try {
+    const hecho = await cambiarLaCedula(request.tenantPrisma, instituteId, { vieja: request.params.id, nueva, tipo, quien });
+    return reply.send({ success: true, data: hecho });
+  } catch (error: any) {
+    if (error?.statusCode) return reply.status(error.statusCode).send({ error: error.message, code: error.code });
+    throw error;
   }
 }

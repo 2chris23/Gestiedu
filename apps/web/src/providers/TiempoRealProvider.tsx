@@ -2,9 +2,11 @@
 
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { io, Socket } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 import { API_URL } from '@/config/env';
 import { conseguirCredencial } from '@/lib/credencial-en-memoria';
+import { elServidorContesto } from '@/lib/estado-del-servidor';
+import { preguntarAlServidor } from '@/hooks/useConexion';
 
 /**
  * LO QUE CAMBIA, APARECE SOLO
@@ -65,7 +67,7 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
          * eso, se abriría un socket que ya no tiene quien lo escuche.
          */
         let cancelado = false;
-        let socket: ReturnType<typeof io> | null = null;
+        let socket: Socket | null = null;
 
         const pedirDeNuevoLoQueSeVe = () => {
             ultimoRefresco.current = Date.now();
@@ -103,6 +105,18 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
             }, VENTANA_DE_AGRUPACION - desdeElUltimo);
         };
 
+        const avisarDelPase = (aviso: unknown) => {
+            window.dispatchEvent(new CustomEvent('gestiedu:asistencia-qr', { detail: aviso }));
+        };
+
+        // Un aviso para esta persona (una citación…): la campana se pone al
+        // día al instante y se dice arriba (`Campana`).
+        const llegoUnAviso = (aviso: { titulo?: string } | undefined) => {
+            void queryClient.invalidateQueries({ queryKey: ['avisos'] });
+            void queryClient.invalidateQueries({ queryKey: ['citaciones'] });
+            window.dispatchEvent(new CustomEvent('gestiedu:aviso', { detail: aviso }));
+        };
+
         const alVolverALaPestaña = () => {
             if (document.visibilityState === 'visible' && huboCambios.current) {
                 pedirDeNuevoLoQueSeVe();
@@ -136,6 +150,19 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
 
             if (!token || cancelado) return; // sin sesión no hay nada que escuchar
 
+            // El cliente del tiempo real (≈40 KB) se baja solo con sesión: la
+            // portada y el login no lo necesitan. Si no se puede bajar es que
+            // el servidor ya no contesta: se pregunta, como cuando el canal se
+            // corta, para que salga el aviso de «estás viendo lo de antes».
+            let io: typeof import('socket.io-client').io;
+            try {
+                ({ io } = await import('socket.io-client'));
+            } catch {
+                if (!cancelado) void preguntarAlServidor();
+                return;
+            }
+            if (cancelado) return;
+
             const base = API_URL.replace(/\/api\/?$/, '');
             socket = io(base, {
                 auth: { token },
@@ -147,6 +174,10 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
             socketRef.current = socket;
 
             socket.on('datos:cambiaron', refrescarLoQueSeVe);
+            // El pase de lista por QR del profesor: alguien escaneó. Tampoco trae
+            // datos; la pantalla del QR lo vuelve a pedir (`PaseDeListaQr`).
+            socket.on('asistencia-qr:cambio', avisarDelPase);
+            socket.on('aviso:nuevo', llegoUnAviso);
 
             /**
              * AL CONECTAR TAMBIÉN, NO SOLO AL RECONECTAR
@@ -166,6 +197,15 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
 
             // Al volver la conexión, lo que se ve puede estar viejo
             socket.on('reconnect', refrescarLoQueSeVe);
+
+            // Si el servidor se va (apagado, reiniciándose), el canal se corta
+            // al momento: es la primera noticia de que no hay servidor, antes
+            // de que nadie pulse nada. Se comprueba, y si no contesta sale el
+            // aviso de «estás viendo lo de antes» (`useConexion`).
+            socket.on('disconnect', (motivo) => {
+                if (motivo !== 'io client disconnect') void preguntarAlServidor();
+            });
+            socket.on('connect', () => elServidorContesto());
         })();
 
         return () => {
@@ -173,6 +213,8 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
             if (pendiente.current) clearTimeout(pendiente.current);
             document.removeEventListener('visibilitychange', alVolverALaPestaña);
             socket?.off('datos:cambiaron', refrescarLoQueSeVe);
+            socket?.off('asistencia-qr:cambio', avisarDelPase);
+            socket?.off('aviso:nuevo', llegoUnAviso);
             socket?.disconnect();
             socketRef.current = null;
         };

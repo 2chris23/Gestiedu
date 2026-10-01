@@ -12,6 +12,10 @@ import { getStudentCompleteHistory } from '../controllers/student-history.contro
 import { getStudentGrades } from '../controllers/grades.controller';
 import { getStudentAttendance } from '../controllers/attendance.controller';
 import { getStudentDashboard } from '../controllers/dashboard.controller';
+import { actividadesDelAlumno } from '../controllers/actividades-del-alumno.controller';
+import { miClase, misMaterias } from '../controllers/mi-clase.controller';
+import { obtenerBoleta } from '../controllers/boleta.controller';
+import { obtenerConstancia } from '../controllers/constancias.controller';
 import { authenticate, requireAdmin, requireTeacher, requireStudent, requireSelfOrAdmin } from '../middleware/auth.middleware';
 import { validateParams, validateCUID } from '../middleware/validation.middleware';
 import { FastifyRequest, FastifyReply } from 'fastify';
@@ -249,6 +253,48 @@ const studentsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/my-dashboard', {
     preHandler: [authenticate, requireStudent]
   }, getStudentDashboard);
+
+  /**
+   * Qué le falta y qué ya le evaluaron a un alumno.
+   *
+   * Sin guardián de rol a propósito: lo ven el propio alumno, su representante,
+   * su profesor y el admin. Quién es cada cual lo decide `assertCanSeeStudent`
+   * dentro, que es donde se sabe de qué alumno se habla. Solo lectura.
+   */
+  fastify.get('/:id/actividades', {
+    preHandler: [authenticate]
+  }, actividadesDelAlumno as any);
+
+  /**
+   * Una materia vista por el alumno o su representante: plan, SUS actividades
+   * con SU nota y SUS observaciones. Quién puede lo decide `assertCanSeeStudent`
+   * dentro. Solo lectura (`mi-clase.controller.ts`).
+   */
+  fastify.get('/:id/materias/:subjectId/clase', {
+    preHandler: [authenticate]
+  }, miClase as any);
+
+  fastify.get('/:id/materias', {
+    preHandler: [authenticate]
+  }, misMaterias as any);
+
+  /**
+   * La boleta: notas por lapso, definitiva e inasistencias. Sin guardián de
+   * rol a propósito: la ven el admin, el alumno, su representante y su
+   * profesor guía, y eso lo decide `puedeVerLaBoleta` dentro. Solo lectura.
+   */
+  fastify.get('/:id/boleta', {
+    preHandler: [authenticate]
+  }, obtenerBoleta as any);
+
+  /**
+   * Constancia de estudio o de buena conducta. Sin guardián de rol a
+   * propósito: la de estudio la sacan el admin, el alumno y su representante;
+   * la de conducta, solo el admin. Lo decide `puedeSacarLaConstancia`.
+   */
+  fastify.get('/:id/constancia', {
+    preHandler: [authenticate]
+  }, obtenerConstancia as any);
 };
 
 export default studentsRoutes;

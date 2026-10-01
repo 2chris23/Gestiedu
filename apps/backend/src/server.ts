@@ -19,14 +19,19 @@ import helmetPlugin from './plugins/helmet'; // ✅ SECURITY: Comprehensive secu
 import { registerRoutes } from './routes/index';
 import { redis, redisPub, redisSub, connectRedis, disconnectRedis } from './config/redis';
 import { setupAcademicYearCronJob } from './jobs/academic-year-sync.job';
+import { setupRecordatorioDeCuotasJob } from './jobs/recordatorio-de-cuotas.job';
 import { identifyTenant } from './middleware/tenant.middleware';
 import { conLiceo } from './config/ambito-del-liceo';
 import { smartCacheMiddleware, cacheOnSendHook } from './middleware/smart-cache.middleware';
 import { ponerLosGuardiasPrimero } from './middleware/guardias';
+import cambiosSinConexion from './plugins/cambios-sin-conexion';
 import antiDobleEnvio from './plugins/anti-doble-envio';
+import { CupoCompartido } from './plugins/cupo-compartido';
+import { leerArchivoDelLiceo } from './services/archivos-del-liceo.service';
 import { createHash } from 'crypto';
 import { deQuienNosFiamos, comoSeExplicaLaConfianza } from './config/de-quien-nos-fiamos';
 import avisarCambios from './plugins/avisar-cambios';
+import { apuntarFallo } from './utils/fallos-del-servidor';
 
 export async function buildServer(): Promise<FastifyInstance> {
   /**
@@ -50,8 +55,8 @@ export async function buildServer(): Promise<FastifyInstance> {
     origin: config.cors.origin,
     credentials: true,
     methods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Origin', 'Accept', 'X-Institute-ID', 'X-Institute-Slug'],
-    exposedHeaders: ['Content-Length', 'Content-Type', 'X-Cache-Status'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Origin', 'Accept', 'X-Institute-ID', 'X-Institute-Slug', 'X-Cambio', 'X-Hecho-En'],
+    exposedHeaders: ['Content-Length', 'Content-Type', 'X-Cache-Status', 'X-Cambio'],
   });
 
   // ✅ SECURITY: Registrar plugin de seguridad con Helmet (AFTER CORS)
@@ -89,8 +94,23 @@ export async function buildServer(): Promise<FastifyInstance> {
     // se trabaja.
     if (config.isDevelopment) return `dev:${request.id}`;
 
+    // SEGURIDAD: Rutas públicas y de autenticación se limitan estrictamente por IP del cliente
+    // para evitar que atacantes eludan el rate limit enviando cabeceras de autorización arbitrarias
+    // (ratelimit-bypass-unauthenticated-header).
+    const ruta = request.url.split('?')[0];
+    const esRutaPublica =
+      ruta === '/health' ||
+      ruta.startsWith('/health/') ||
+      ruta === '/api/auth/login' ||
+      ruta === '/api/superadmin/auth/login' ||
+      ruta.startsWith('/api/instituto/');
+
+    if (esRutaPublica) {
+      return `ip:${request.ip}`;
+    }
+
     const credencial = request.headers.authorization;
-    if (credencial) {
+    if (credencial && credencial.startsWith('Bearer ') && credencial.length > 20) {
       return `s:${createHash('sha256').update(credencial).digest('hex').slice(0, 32)}`;
     }
 
@@ -101,6 +121,9 @@ export async function buildServer(): Promise<FastifyInstance> {
     max: config.isDevelopment ? 10000 : config.rateLimit.max,
     timeWindow: config.rateLimit.timeWindow,
     keyGenerator: cupoDeLaPeticion,
+    // La cuenta en Redis, compartida por todos los procesos; si Redis no
+    // contesta, en la memoria de este. Ver `plugins/cupo-compartido.ts`.
+    store: CupoCompartido as any,
   });
 
   // Multipart para subida de archivos
@@ -129,6 +152,28 @@ export async function buildServer(): Promise<FastifyInstance> {
       reply.header('Cross-Origin-Resource-Policy', 'cross-origin');
     }
   });
+
+  /**
+   * Los archivos de los liceos que viven en la base (logo, icono de la
+   * pestaña), no en el disco: ver `services/archivos-del-liceo.service.ts`.
+   * El nombre lleva la huella del contenido, así que se guardan en caché
+   * «para siempre»: cada navegador lo pide una vez.
+   */
+  server.get<{ Params: { instituteId: string; nombre: string } }>(
+    '/uploads/liceo/:instituteId/:nombre',
+    async (request, reply) => {
+      const archivo = await leerArchivoDelLiceo(request.params.instituteId, request.params.nombre);
+      if (!archivo) return reply.status(404).send({ error: 'No existe ese archivo', code: 'NOT_FOUND' });
+      return reply
+        .header('Content-Type', archivo.tipo)
+        .header('Cache-Control', 'public, max-age=31536000, immutable')
+        .header('Access-Control-Allow-Origin', '*')
+        .header('Access-Control-Allow-Methods', 'GET')
+        .header('Cross-Origin-Resource-Policy', 'cross-origin')
+        .header('X-Content-Type-Options', 'nosniff')
+        .send(archivo.datos);
+    }
+  );
 
   // Swagger documentation (OpenAPI 3)
   await server.register(swagger, {
@@ -191,6 +236,14 @@ export async function buildServer(): Promise<FastifyInstance> {
   });
 
   // Configurar Redis adapter para Socket.io (multi-server support)
+  //
+  // Solo si Redis respondió al arrancar: montado sobre un Redis caído, sus
+  // suscripciones fallan al montarse (medido: salen como promesas rechazadas). En producción
+  // Redis arranca antes que el backend (depends_on healthy). Si aun así no
+  // estaba, se dice ALTO: con más de un proceso, cada uno vería solo a su gente.
+  if (!redisConnected && process.env.NODE_ENV !== 'test') {
+    logger.warn('Redis no respondió al arrancar: el tiempo real queda dentro de este proceso. Con más de un proceso, reinícialo cuando Redis esté arriba.');
+  }
   if (redisConnected) {
     try {
       /**
@@ -229,6 +282,16 @@ export async function buildServer(): Promise<FastifyInstance> {
   // Middleware global para manejo de errores
   server.setErrorHandler(errorHandler);
 
+  // Todo 500, venga de donde venga (del manejador central o de un controlador
+  // que responde el suyo), se apunta para el panel del superadmin: ver
+  // `utils/fallos-del-servidor.ts`.
+  server.addHook('onResponse', async (request, reply) => {
+    if (reply.statusCode >= 500) {
+      const liceo = (request as any).user?.instituteId ?? (request as any).instituteId ?? null;
+      apuntarFallo(liceo, request.method, request.routeOptions?.url || request.url.split('?')[0]);
+    }
+  });
+
   // Peticiones sin cuerpo: un DELETE o un POST vacío llegan con `body`
   // indefinido, y cualquier controlador que lo desestructure revienta con un 500
   // en vez de responder qué falta. Se normaliza a un objeto vacío una sola vez
@@ -246,6 +309,10 @@ export async function buildServer(): Promise<FastifyInstance> {
   await server.register(topeDeCarga);
 
   await server.register(antiDobleEnvio);
+
+  // Lo hecho sin conexión: el mismo cambio no se aplica dos veces aunque
+  // llegue días después. Ver `plugins/cambios-sin-conexion.ts`.
+  await server.register(cambiosSinConexion);
 
   // Middleware de resolución de tenant (multi-tenant)
   server.addHook('onRequest', identifyTenant);
@@ -288,9 +355,17 @@ export async function buildServer(): Promise<FastifyInstance> {
   // Configurar job de sincronización automática de años académicos
   await setupAcademicYearCronJob(server);
   logger.info('Academic year auto-sync job configured');
+  await setupRecordatorioDeCuotasJob(server);
 
-  // Ruta de salud extendida
-  server.get('/health', async () => {
+  // Caché de comprobación profunda de salud para evitar agotar el pool de conexiones (dos-health-check-db-pool-exhaustion)
+  let estadoSaludCache: { db: boolean; redis: boolean; timestamp: number } | null = null;
+
+  const verificarSaludInfraestructura = async () => {
+    const ahora = Date.now();
+    if (estadoSaludCache && ahora - estadoSaludCache.timestamp < 15000) {
+      return estadoSaludCache;
+    }
+
     let dbHealthy = false;
     try {
       await server.prisma.$queryRaw`SELECT 1`;
@@ -306,14 +381,27 @@ export async function buildServer(): Promise<FastifyInstance> {
         return false;
       }
     })();
+
+    estadoSaludCache = { db: dbHealthy, redis: redisHealthy, timestamp: ahora };
+    return estadoSaludCache;
+  };
+
+  // Ruta de salud extendida (con estado de infraestructura protegido por caché)
+  server.get('/health', async () => {
+    const infra = await verificarSaludInfraestructura();
     return {
       status: 'ok',
       timestamp: new Date().toISOString(),
       environment: config.nodeEnv,
       version: process.env.npm_package_version || '1.0.0',
-      database: dbHealthy ? 'connected' : 'disconnected',
-      redis: redisHealthy ? 'connected' : 'disconnected',
+      database: infra.db ? 'connected' : 'disconnected',
+      redis: infra.redis ? 'connected' : 'disconnected',
     };
+  });
+
+  // Sonda de salud liveness en memoria (sin consultar BD ni Redis)
+  server.get('/health/live', async () => {
+    return { status: 'ok', timestamp: new Date().toISOString() };
   });
 
   // Ruta raíz informativa

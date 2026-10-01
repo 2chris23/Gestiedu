@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { hacerODejarPendiente, esPendiente } from '@/lib/por-enviar';
 import api from '@/lib/axios';
 
 // ============================================================
@@ -44,9 +45,15 @@ export interface AutoPopulatedData {
     ministryLogo?: string;
     ministryText?: string;
     academicYearName?: string;
+    /** Desde cuándo cuentan las semanas: el inicio del PLAN (puede ser después del lapso). */
     lapsoStartDate?: string;
+    /** El inicio del lapso de verdad (antes del plan: semanas de diagnóstico). */
+    inicioDelLapso?: string;
+    nombreAntesDelPlan?: string;
     lapsoEndDate?: string;
     lapsoWeeks?: number;
+    /** Las secciones del mismo año donde este profesor da esta materia («A-B-C-D»). */
+    seccionesDelProfesor?: string[];
 }
 
 export interface EvaluationPlanRow {
@@ -117,10 +124,24 @@ export function useUpsertEvaluationPlanMetadata() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async (data: Partial<EvaluationPlanMetadata> & { classroomId: string; subjectId: string; lapso: string }) => {
-            const res = await api.post('/evaluation-plan/metadata', data);
-            return res.data;
+            // Sin conexión queda pendiente (⏱) y sube sola al volver (`lib/por-enviar.ts`).
+            const r = await hacerODejarPendiente(async () => (await api.post('/evaluation-plan/metadata', data)).data, {
+                tipo: 'plan',
+                grupo: 1,
+                metodo: 'post',
+                url: '/evaluation-plan/metadata',
+                objeto: `plan-datos|${data.classroomId}|${data.subjectId}|${data.lapso}`,
+                resumen: `Datos del plan (lapso ${data.lapso})`,
+                datos: data,
+            });
+            return (esPendiente(r) ? { metadata: data, pendiente: true } : r) as { metadata?: EvaluationPlanMetadata; pendiente?: boolean };
         },
-        onSuccess: (_, variables) => {
+        onSuccess: (respuesta, variables) => {
+            const clave = ['evaluationPlanMetadata', { classroomId: variables.classroomId, subjectId: variables.subjectId, lapso: variables.lapso }];
+            // Lo guardado se ve ya (mismo motivo que en las filas, abajo).
+            if (respuesta?.metadata) {
+                queryClient.setQueryData(clave, (viejo: any) => (viejo ? { ...viejo, metadata: respuesta.metadata } : viejo));
+            }
             queryClient.invalidateQueries({
                 queryKey: ['evaluationPlanMetadata', { classroomId: variables.classroomId, subjectId: variables.subjectId, lapso: variables.lapso }]
             });
@@ -138,24 +159,59 @@ export function useEvaluationPlanRows(params: { classroomId?: string; subjectId?
         queryFn: async () => {
             if (!params.classroomId || !params.subjectId || !params.lapso) return null;
             const { data } = await api.get('/evaluation-plan/rows', { params });
-            return data as { rows: EvaluationPlanRow[]; grouped: Record<number, EvaluationPlanRow[]> };
+            return data as { rows: EvaluationPlanRow[]; grouped: Record<number, EvaluationPlanRow[]>; version?: string };
         },
         enabled: !!params.classroomId && !!params.subjectId && !!params.lapso,
     });
 }
 
+/**
+ * Guardar el plan. Va con la VERSIÓN que se tenía delante: si alguien guardó
+ * entretanto desde otra pestaña u otro dispositivo, el servidor responde 409 y
+ * no toca nada (ver `utils/version-del-plan.ts` en el servidor).
+ */
 export function useBatchUpsertRows() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (data: { classroomId: string; subjectId: string; lapso: string; rows: Partial<EvaluationPlanRow>[] }) => {
-            const res = await api.post('/evaluation-plan/rows/batch', data);
-            return res.data;
+        mutationFn: async (data: {
+            classroomId: string;
+            subjectId: string;
+            lapso: string;
+            rows: Partial<EvaluationPlanRow>[];
+            version?: string;
+        }) => {
+            const r = await hacerODejarPendiente(async () => (await api.post('/evaluation-plan/rows/batch', data)).data, {
+                tipo: 'plan',
+                grupo: 1,
+                metodo: 'post',
+                url: '/evaluation-plan/rows/batch',
+                objeto: `plan|${data.classroomId}|${data.subjectId}|${data.lapso}`,
+                resumen: `Plan de evaluación (lapso ${data.lapso})`,
+                datos: data,
+            });
+            // Pendiente: lo editado se sigue viendo tal cual hasta que suba.
+            if (esPendiente(r)) return { success: true, rows: data.rows as EvaluationPlanRow[], version: data.version, pendiente: true };
+            return r as { success: boolean; rows: EvaluationPlanRow[]; version?: string; pendiente?: boolean };
         },
-        onSuccess: (_, variables) => {
-            queryClient.invalidateQueries({ queryKey: ['evaluationPlanRows'] });
+        onSuccess: (respuesta, variables) => {
+            // Lo guardado pasa a ser lo que se ve, ya: sin esto, al cerrar el
+            // editor se pintaba un instante el plan de ANTES, hasta que llegaba
+            // la nueva lectura, y parecía que no se había guardado.
+            if (respuesta?.rows) {
+                queryClient.setQueryData(
+                    ['evaluationPlanRows', { classroomId: variables.classroomId, subjectId: variables.subjectId, lapso: variables.lapso }],
+                    { rows: respuesta.rows, grouped: agruparPorSemana(respuesta.rows), version: respuesta.version }
+                );
+            }
             queryClient.invalidateQueries({ queryKey: ['activities'] });
         },
     });
+}
+
+function agruparPorSemana(rows: EvaluationPlanRow[]): Record<number, EvaluationPlanRow[]> {
+    const grupos: Record<number, EvaluationPlanRow[]> = {};
+    for (const row of rows) (grupos[row.weekNumber] ??= []).push(row);
+    return grupos;
 }
 
 // ============================================================

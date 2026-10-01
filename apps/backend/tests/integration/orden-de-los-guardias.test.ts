@@ -48,6 +48,11 @@ const PUERTAS_PUBLICAS: RegExp[] = [
     /^\/uploads\//,
     /^\/api\/auth\/login/,
     /^\/api\/auth\/refresh/,
+    // Entrar con la llave que guardó un teléfono es una PUERTA, como el login:
+    // se llega sin sesión, por definición. Lo que se manda es una llave que
+    // emitió el propio servidor, y si no vale se responde lo mismo que a una
+    // contraseña mala. Ver `services/llave-del-telefono.service.ts`.
+    /^\/api\/auth\/entrar-con-el-telefono/,
     /^\/api\/auth\/forgot-password/,
     /^\/api\/auth\/reset-password/,
     /^\/api\/superadmin\/auth\/login/,

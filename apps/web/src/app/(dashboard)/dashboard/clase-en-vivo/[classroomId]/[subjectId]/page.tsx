@@ -1,14 +1,19 @@
 'use client';
 
+import { OtraFormaDeEvaluarBoton } from '@/components/live-class/OtraFormaDeEvaluar';
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import { AyudaDeLaPantalla } from '@/components/common/AyudaDeLaPantalla';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
     ChevronLeft, Clock, User, Users, Save, Loader2, Calendar,
     Plus, Trash2, CheckCircle2, ListTodo, Ban, Search, X,
     ArrowUp, ShieldCheck, UserPlus, StickyNote, GraduationCap, CheckSquare, Square,
-    ArrowUpDown, ArrowUp as ArrowUpIcon, ArrowDown, Award, MoreVertical, Check
+    ArrowUpDown, ArrowUp as ArrowUpIcon, ArrowDown, Award, Check, ClipboardCheck, CloudUpload, QrCode, ScanLine, Clock3
 } from 'lucide-react';
+import { usePorEnviar } from '@/hooks/usePorEnviar';
+import { conLoPendiente } from '@/lib/lo-pendiente-de-la-clase';
+import { useConfigAsistenciaQr } from '@/lib/asistencia-qr';
 import {
     useLiveClassDetail,
     useSaveLiveClass,
@@ -16,29 +21,43 @@ import {
     useUpdateClassActivity,
     useDeleteClassActivity,
     useSaveActivityGrades,
-    useSuspendClass,
     useSearchStudents,
     useSavePlanWeek,
     SearchStudentResult,
     ClassActivity,
 } from '@/hooks/useLiveClass';
-import { useAuthStore } from '@/store/auth.store';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { toast } from 'sonner';
 
-import AnimatedAttendancePicker, { ATTENDANCE_CONFIG, AttendanceStatusType } from '@/components/live-class/AnimatedAttendancePicker';
+import { ATTENDANCE_CONFIG, AttendanceStatusType } from '@/components/live-class/AnimatedAttendancePicker';
+import BotonesDeAsistencia from '@/components/live-class/BotonesDeAsistencia';
+import UserAvatar from '@/components/ui/UserAvatar';
+import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
+import TurnoBadge from '@/components/common/TurnoBadge';
 import LiveTopicMirrorCard from '@/components/live-class/LiveTopicMirrorCard';
 import LiveActivitiesCard from '@/components/live-class/LiveActivitiesCard';
 import LiveGradesSliderInput from '@/components/live-class/LiveGradesSliderInput';
-import StudentObservationsModal from '@/components/observations/StudentObservationsModal';
-import LiveClassObservationModal from '@/components/observations/LiveClassObservationModal';
+import { diferido } from '@/components/common/Diferido';
 import { toLocalYMD } from '@/utils/date.utils';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
+const CalificarConInstrumento = diferido(() => import('@/components/live-class/CalificarConInstrumento'), { alto: 320 });
+
+// Lo que se abre al pulsar baja al pulsarlo, no con la clase (carga diferida).
+const PaseDeListaQr = diferido(() => import('@/components/asistencia/PaseDeListaQr'), { sinEsqueleto: true });
+const SuspenderClaseDialogo = diferido(() => import('@/components/schedule/SuspenderClaseDialogo').then((m) => ({ default: m.SuspenderClaseDialogo })), { sinEsqueleto: true });
+const StudentObservationsModal = diferido(() => import('@/components/observations/StudentObservationsModal'), { sinEsqueleto: true });
+const LiveClassObservationModal = diferido(() => import('@/components/observations/LiveClassObservationModal'), { sinEsqueleto: true });
 
 function LiveClassPageInner() {
     const params = useParams();
     const searchParams = useSearchParams();
     const router = useRouter();
-    const { user } = useAuthStore();
+    // El rol lo dice el servidor (`useQuienSoy`), no el almacén del navegador:
+    // con la sesión viva pero el almacén vacío, el profesor no veía «Pasar
+    // asistencia» ni podía marcar a nadie (ASIS-DOS-01). CLAUDE.md, «Lo que ve
+    // cada rol en las listas».
+    const { yo } = useQuienSoy();
+    const user = yo;
 
     const classroomId = params.classroomId as string;
     const subjectId = params.subjectId as string;
@@ -49,9 +68,22 @@ function LiveClassPageInner() {
     const startTime = searchParams.get('start') || undefined;
     const endTime = searchParams.get('end') || undefined;
 
-    const { data, isLoading, refetch } = useLiveClassDetail(classroomId, subjectId, date);
+    const { data: delServidor, isLoading, refetch } = useLiveClassDetail(classroomId, subjectId, date);
+    /**
+     * SIN CONEXIÓN, LO HECHO QUEDA PENDIENTE (⏱) Y SE VE IGUAL
+     *
+     * Lo que espera para subir (`lib/por-enviar.ts`) se pinta encima de lo del
+     * servidor: la asistencia marcada, las notas, las actividades nuevas y sin
+     * las borradas. Un refresco no lo tapa; al llegar, deja de estar pendiente.
+     */
+    const cola = usePorEnviar();
+    const data = useMemo(() => conLoPendiente(delServidor, cola, classroomId, subjectId, date), [delServidor, cola, classroomId, subjectId, date]);
+    const claseEnCola = cola.some((c) => c.objeto === `clase|${classroomId}|${subjectId}|${date}` && c.estado === 'pendiente');
+    const nombresDeLaClase = useMemo(
+        () => Object.fromEntries((delServidor?.students ?? []).map((s) => [s.id, `${s.firstName} ${s.lastName}`])),
+        [delServidor]
+    );
     const saveMutation = useSaveLiveClass();
-    const suspendClass = useSuspendClass();
     const saveActivityGrades = useSaveActivityGrades();
 
     // Mode States
@@ -74,21 +106,94 @@ function LiveClassPageInner() {
     const [studentSearch, setStudentSearch] = useState('');
     const [sortColumn, setSortColumn] = useState<string | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+    /**
+     * MODO ASISTENCIA
+     *
+     * Un botón cambia la tabla entera: fuera las columnas de notas y
+     * observaciones, y cada alumno con sus cuatro botones a la vista. Es el
+     * momento del día en que el profesor solo quiere marcar y salir.
+     */
+    const [modoAsistencia, setModoAsistencia] = useState(false);
+
+    /**
+     * LA ASISTENCIA SE PASA A PROPÓSITO, NUNCA DE REFILÓN
+     *
+     * Los botones de asistencia estaban siempre a la vista en cada alumno, y
+     * un toque sin querer (al bajar la lista, al ir a poner una nota) le
+     * cambiaba la asistencia a alguien. Fuera de «Pasar asistencia» ahora
+     * solo se LEE; y «Pasar asistencia» pregunta cómo: a mano, enseñando el
+     * QR a la clase o escaneando el QR de cada alumno.
+     */
+    const [eligiendoAsistencia, setEligiendoAsistencia] = useState(false);
+    const [qrEscaneando, setQrEscaneando] = useState(false);
+    // El QR es cosa del teléfono (su cámara, su GPS, tenerlo en la mano): en
+    // un ordenador «Pasar asistencia» va directo a marcar a mano.
+    const [esTelefono, setEsTelefono] = useState(false);
+    useEffect(() => {
+        const mq = window.matchMedia('(pointer: coarse)');
+        const ver = () => setEsTelefono(mq.matches);
+        ver();
+        mq.addEventListener('change', ver);
+        return () => mq.removeEventListener('change', ver);
+    }, []);
+    useEffect(() => {
+        if (!eligiendoAsistencia) return;
+        const alTeclear = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setEligiendoAsistencia(false);
+        };
+        window.addEventListener('keydown', alTeclear);
+        return () => window.removeEventListener('keydown', alTeclear);
+    }, [eligiendoAsistencia]);
+
+    /**
+     * EL PASE DE LISTA POR QR
+     *
+     * Mientras el QR está abierto, esta pantalla NO guarda la asistencia sola:
+     * la escribe el servidor alumno por alumno según escanean, y un guardado de
+     * aquí mandaría a todos como «presente» (lo que se ve por defecto) antes de
+     * que escaneen. Al cerrar el pase se vuelve a pedir la clase y se ve lo que
+     * quedó de verdad.
+     */
+    const [paseQrAbierto, setPaseQrAbierto] = useState(false);
+    const { data: configQr } = useConfigAsistenciaQr();
+    const conQr = esTelefono && configQr?.activa !== false;
 
     // Modal de observaciones
     const [isLiveObsModalOpen, setIsLiveObsModalOpen] = useState(false);
     const [selectedObsStudentId, setSelectedObsStudentId] = useState<string | null>(null);
     const [selectedStudentForObs, setSelectedStudentForObs] = useState<any | null>(null);
 
+    /**
+     * LO QUE ESTA PANTALLA CAMBIÓ Y AÚN NO SE HA GUARDADO
+     *
+     * Cada guardado mandaba la asistencia de TODOS los alumnos con lo que tenía
+     * esta pantalla, y cada vez que llegaban datos nuevos del servidor se
+     * reemplazaba todo lo marcado. Con dos pantallas en la misma clase (el
+     * profesor en el teléfono y la coordinadora en el ordenador, o el mismo
+     * profesor en dos aparatos), lo de una volvía atrás lo de la otra sin
+     * avisar; y un clic que caía justo antes de un refresco se perdía
+     * (ASIS-DOS-01). Ahora se guarda solo lo tocado aquí, y lo tocado se
+     * respeta al refrescar hasta que llega al servidor.
+     */
+    const asistenciaTocada = React.useRef<Map<string, AttendanceStatusType>>(new Map());
+    // Lo mismo con las notas escritas y aún sin guardar: un aviso de tiempo
+    // real refrescaba la clase y las borraba de la pantalla.
+    const notasTocadas = React.useRef<Map<string, Record<string, number | null>>>(new Map());
+    const textoSinGuardar = React.useRef(false);
+
     // Initialize data
     useEffect(() => {
         if (data) {
-            setObservationsTitle(data.session?.observationsTitle || '');
-            setObservations(data.session?.observations || '');
+            if (!textoSinGuardar.current) {
+                setObservationsTitle(data.session?.observationsTitle || '');
+                setObservations(data.session?.observations || '');
+            }
             const attMap: Record<string, AttendanceStatusType> = {};
             data.students.forEach((s) => {
-                if (s.status) attMap[s.id] = s.status as AttendanceStatusType;
+                const pendiente = asistenciaTocada.current.get(s.id);
+                if (pendiente) attMap[s.id] = pendiente;
+                else if (s.status) attMap[s.id] = s.status as AttendanceStatusType;
                 else attMap[s.id] = 'PRESENT';
             });
             setAttendance(attMap);
@@ -106,7 +211,7 @@ function LiveClassPageInner() {
                 if (act.scores) {
                     try {
                         const parsed = typeof act.scores === 'string' ? JSON.parse(act.scores) : act.scores;
-                        drafts[act.id] = parsed;
+                        drafts[act.id] = { ...parsed, ...(notasTocadas.current.get(act.id) ?? {}) };
                     } catch {
                         drafts[act.id] = {};
                     }
@@ -120,13 +225,41 @@ function LiveClassPageInner() {
 
     const canEdit = user?.role === 'TEACHER' || user?.role === 'ADMIN';
 
+    /**
+     * SE GUARDA SOLO
+     *
+     * El botón «Guardar» se quitó: obligaba a acordarse de pulsarlo y, si no,
+     * la asistencia de la hora se perdía al salir de la pantalla. Ahora cada
+     * marca se manda sola, agrupando las que caen seguidas (una tanda de treinta
+     * alumnos es UNA petición, no treinta), y arriba se ve si ya está guardado.
+     */
+    const [cambiosPorGuardar, setCambiosPorGuardar] = useState(0);
+    const [guardadoALas, setGuardadoALas] = useState<string | null>(null);
+
     const handleAttendanceChange = (studentId: string, status: AttendanceStatusType) => {
+        asistenciaTocada.current.set(studentId, status);
         setAttendance((prev) => ({ ...prev, [studentId]: status }));
+        setCambiosPorGuardar((n) => n + 1);
+    };
+
+    const marcarTodosPresentes = () => {
+        (data?.students || []).filter((s) => !s.external).forEach((s) => {
+            asistenciaTocada.current.set(s.id, 'PRESENT');
+        });
+        setAttendance((prev) => {
+            const copia = { ...prev };
+            (data?.students || []).filter((s) => !s.external).forEach((s) => {
+                copia[s.id] = 'PRESENT';
+            });
+            return copia;
+        });
+        setCambiosPorGuardar((n) => n + 1);
     };
 
     const handleGradeScoreChange = (studentId: string, newScore: number | null) => {
         if (!activeGradingActivity) return;
         const actId = activeGradingActivity.id;
+        notasTocadas.current.set(actId, { ...(notasTocadas.current.get(actId) ?? {}), [studentId]: newScore });
         setActivityGradesDraft((prev) => ({
             ...prev,
             [actId]: {
@@ -139,13 +272,36 @@ function LiveClassPageInner() {
     const handleSaveCurrentActivityGrades = async () => {
         if (!activeGradingActivity) return;
         const actId = activeGradingActivity.id;
-        const scores = activityGradesDraft[actId] || {};
+        const borrador = activityGradesDraft[actId] || {};
+        // Solo lo que cambió, con la nota que tenía (lo que se vio): mandar el
+        // mapa entero reescribía con lo viejo lo que otro hubiera puesto.
+        const delSrv = delServidor?.activities?.find((a) => a.id === actId);
+        const antesMapa: Record<string, number | null> =
+            typeof delSrv?.scores === 'string' ? JSON.parse(delSrv.scores || '{}') : ((delSrv?.scores as any) ?? {});
+        const scores: Record<string, number | null> = {};
+        const antes: Record<string, number | null> = {};
+        for (const [id, nota] of Object.entries(borrador)) {
+            const habia = antesMapa[id] ?? null;
+            if ((nota ?? null) === habia) continue;
+            scores[id] = nota;
+            antes[id] = habia;
+        }
+        if (!Object.keys(scores).length) {
+            toast('No hay notas nuevas que guardar.', { id: 'nada-nuevo' });
+            return;
+        }
         try {
             await saveActivityGrades.mutateAsync({
                 activityId: actId,
                 scores,
                 maxScore: activeGradingActivity.maxScore || 20,
+                paraLaCola: {
+                    resumen: `Notas de «${activeGradingActivity.title}» · ${Object.keys(scores).length} alumno(s)`,
+                    nombres: nombresDeLaClase,
+                    antes,
+                },
             });
+            notasTocadas.current.delete(actId);
         } catch {
             // error handled
         }
@@ -200,18 +356,20 @@ function LiveClassPageInner() {
         }
     };
 
-    const SortIcon = ({ column }: { column: string }) => {
-        if (sortColumn !== column) return <ArrowUpDown className="h-3.5 w-3.5 text-gray-300" />;
-        return sortDirection === 'asc' ? (
-            <ArrowUpIcon className="h-3.5 w-3.5 text-indigo-600" />
-        ) : (
-            <ArrowDown className="h-3.5 w-3.5 text-indigo-600" />
-        );
-    };
-
-    const handleSave = async () => {
+    const guardarLaClase = async () => {
+        // Lo tocado aquí va tal cual. El que todavía no tiene asistencia ese
+        // día va como se ve (presente por defecto), pero «solo si no hay»: si
+        // otra pantalla lo marcó mientras tanto, se respeta lo de la otra.
+        const enviadas = new Map(asistenciaTocada.current);
+        const attendances = (data?.students || []).flatMap((s) => {
+            const tocada = enviadas.get(s.id);
+            if (tocada) return [{ studentId: s.id, status: tocada }];
+            if (!s.status) return [{ studentId: s.id, status: attendance[s.id] || 'PRESENT', soloSiNoHay: true }];
+            return [];
+        });
+        textoSinGuardar.current = false;
         try {
-            await saveMutation.mutateAsync({
+            const r: any = await saveMutation.mutateAsync({
                 classroomId,
                 subjectId,
                 date,
@@ -220,30 +378,65 @@ function LiveClassPageInner() {
                 involvedStudentIds: involvedIds,
                 startTime,
                 endTime,
-                attendances: data?.students.map((s) => ({
-                    studentId: s.id,
-                    status: attendance[s.id] || 'PRESENT',
-                })) || [],
+                attendances,
+                paraLaCola: {
+                    resumen: `Clase de ${delServidor?.subject?.name ?? 'la materia'} del ${date.split('-').reverse().join('/')}`,
+                    nombres: nombresDeLaClase,
+                    // Lo que había al abrir la clase: si otro lo cambió, se pregunta.
+                    antes: Object.fromEntries((delServidor?.students ?? []).map((s) => [s.id, s.status ?? null])),
+                },
             });
-            toast.success('Clase y asistencias guardadas exitosamente');
+            if (r?.pendiente) {
+                // Quedó en la cola del teléfono: desde ahí se pinta (⏱).
+                enviadas.forEach((estado, id) => {
+                    if (asistenciaTocada.current.get(id) === estado) asistenciaTocada.current.delete(id);
+                });
+                setGuardadoALas(null);
+                return;
+            }
+            // Ya está en el servidor: deja de ser «pendiente», salvo que se haya
+            // vuelto a cambiar mientras se guardaba.
+            enviadas.forEach((estado, id) => {
+                if (asistenciaTocada.current.get(id) === estado) asistenciaTocada.current.delete(id);
+            });
+            setGuardadoALas(new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }));
         } catch {
-            // handled
+            // El aviso de error lo da el propio hook. Lo tocado sigue pendiente.
+            textoSinGuardar.current = true;
         }
     };
 
-    const handleSuspend = async () => {
-        try {
-            const reason = window.prompt('Motivo de la suspensión (opcional):') || undefined;
-            const res = await suspendClass.mutateAsync({ classroomId, subjectId, date, reason });
-            toast.success(
-                res?.mergedTemaGenerador
-                    ? 'Clase suspendida. Tema fusionado con la semana siguiente.'
-                    : 'Clase suspendida.'
-            );
-        } catch {
-            // handled
-        }
-    };
+    // Lo último que se marcó, siempre a mano: al salir de la pantalla se manda
+    // aunque no haya pasado el tiempo de espera.
+    const guardarRef = React.useRef(guardarLaClase);
+    const pendienteAlSalir = React.useRef(false);
+
+    // Se ponen al día DESPUÉS de pintar, no durante: tocar una referencia
+    // mientras se pinta deja a React sin saber qué volver a dibujar.
+    useEffect(() => {
+        guardarRef.current = guardarLaClase;
+        pendienteAlSalir.current = cambiosPorGuardar > 0 && !saveMutation.isPending;
+    });
+
+    useEffect(() => {
+        if (!cambiosPorGuardar || !canEdit || paseQrAbierto) return;
+        const t = setTimeout(() => {
+            guardarRef.current();
+        }, 800);
+        return () => clearTimeout(t);
+    }, [cambiosPorGuardar, canEdit, paseQrAbierto]);
+
+    useEffect(() => {
+        return () => {
+            // Al salir de la pantalla: si quedaba algo sin mandar, se manda. Lo
+            // que se marcó hace medio segundo no se pierde por cambiar de
+            // pantalla, que es justo lo que pasaba cuando había que pulsar
+            // «Guardar» y nadie lo pulsaba.
+            if (pendienteAlSalir.current) guardarRef.current();
+        };
+    }, []);
+
+    const [suspendiendo, setSuspendiendo] = useState(false);
 
     const toggleInvolved = (id: string) => {
         setInvolvedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -300,24 +493,29 @@ function LiveClassPageInner() {
                         <button
                             type="button"
                             onClick={() => router.back()}
-                            className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors flex-shrink-0"
+                            className="-ml-2 flex h-11 w-11 items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors flex-shrink-0"
                             title="Volver"
+                            aria-label="Volver"
                         >
-                            <ChevronLeft className="w-5 h-5" />
+                            <ChevronLeft className="w-5 h-5" aria-hidden />
                         </button>
                         <div className="min-w-0">
                             <div className="flex items-center gap-2 text-xs text-gray-400 font-medium mb-0.5">
-                                <Link href="/dashboard" className="hover:text-indigo-600 transition-colors">Dashboard</Link>
+                                <Link href="/dashboard" className="hover:text-indigo-600 transition-colors">Inicio</Link>
                                 <span>/</span>
                                 <span className="font-semibold text-gray-700">Clase en Vivo</span>
                             </div>
-                            <h1 className="text-xl sm:text-2xl font-black text-gray-900 truncate flex items-center gap-2.5">
+                            <h1 className="text-seccion sm:text-pantalla font-bold text-gray-900 truncate flex items-center gap-2.5">
                                 {data?.subject?.name || 'Materia'}
-                                {data?.weekNumber && (
+                                {data?.antesDelPlan ? (
+                                    <span className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full shadow-2xs">
+                                        {data.nombreAntesDelPlan || 'Diagnóstico'}
+                                    </span>
+                                ) : data?.weekNumber ? (
                                     <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100/80 px-2.5 py-0.5 rounded-full shadow-2xs">
                                         Semana {data.weekNumber}
                                     </span>
-                                )}
+                                ) : null}
                             </h1>
                             <div className="text-xs text-gray-500 flex items-center gap-3.5 flex-wrap mt-1">
                                 <span className="flex items-center gap-1 font-medium text-gray-700">
@@ -331,12 +529,42 @@ function LiveClassPageInner() {
                                 <span className="flex items-center gap-1 capitalize font-medium text-gray-600">
                                     <Calendar className="w-3.5 h-3.5 text-indigo-500" /> {formatDate(date)}
                                 </span>
+                                {data?.classroom && (
+                                    <span className="flex items-center gap-1.5 font-medium text-gray-700">
+                                        {data.classroom.name}
+                                        <TurnoBadge turno={data.classroom.shift} />
+                                    </span>
+                                )}
                             </div>
                         </div>
                     </div>
 
                     {/* Acciones derecha */}
-                    <div className="flex items-center gap-2.5 flex-shrink-0">
+                    {/* Sin `flex-shrink-0`: con la ayuda, en el teléfono no cabía en una fila
+                        y, sin poder encogerse, ensanchaba la pantalla (481 px en 390). */}
+                    <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+                        <AyudaDeLaPantalla
+                            titulo="Cómo funciona la clase en vivo"
+                            pasos={[
+                                {
+                                    titulo: 'Pasa la asistencia',
+                                    texto: '«Pasar asistencia» pregunta cómo: a mano (cuatro botones por alumno), con el QR en la mesa o escaneando el QR de cada alumno.',
+                                },
+                                {
+                                    titulo: 'Mira qué toca hoy',
+                                    texto: 'Arriba está el tema y la evaluación del plan para esta semana. «Editar» cambia el tema; «Añadir bloque» agrega una parte más.',
+                                },
+                                {
+                                    titulo: 'Crea actividades y pon notas',
+                                    texto: '«Nueva Actividad» la crea en esta clase. «Dar nota» cambia la tabla de alumnos para calificar; si la evaluación tiene instrumento, se califica por indicador.',
+                                },
+                                {
+                                    titulo: 'No hay botón de guardar',
+                                    texto: 'Todo se guarda solo («Guardado 07:45» arriba). Sin conexión queda pendiente con un relojito y sube cuando vuelve.',
+                                },
+                            ]}
+                            nota="«Observación» anota algo de la clase entera o de unos alumnos; la ven su representante y el profesor guía."
+                        />
                         {isSuspended && (
                             <span className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold px-3 py-2 rounded-xl shadow-2xs">
                                 <Ban className="w-4 h-4" /> Suspendida
@@ -357,24 +585,41 @@ function LiveClassPageInner() {
                         </button>
                         {canEdit && (
                             <>
+                                {/* Suspender es del admin: el servidor ya lo exige. */}
+                                {user?.role === 'ADMIN' && (
                                 <button
                                     type="button"
-                                    onClick={handleSuspend}
-                                    disabled={suspendClass.isPending || isSuspended}
+                                    onClick={() => setSuspendiendo(true)}
+                                    disabled={isSuspended}
                                     className="px-3.5 py-2 text-xs sm:text-sm font-semibold text-rose-600 bg-white border border-rose-200 rounded-xl hover:bg-rose-50 transition-colors disabled:opacity-50 flex items-center gap-1.5 shadow-2xs"
                                 >
-                                    {suspendClass.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+                                    <Ban className="w-4 h-4" />
                                     <span className="hidden sm:inline">Suspender</span>
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={handleSave}
-                                    disabled={saveMutation.isPending}
-                                    className="px-5 py-2 text-xs sm:text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-xs active:scale-95"
+                                )}
+                                {/* Ya no hay que acordarse de guardar: aquí se ve que se guardó. */}
+                                <span
+                                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-700"
+                                    aria-live="polite"
                                 >
-                                    {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                                    <span>Guardar</span>
-                                </button>
+                                    {saveMutation.isPending ? (
+                                        <>
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" /> Guardando…
+                                        </>
+                                    ) : claseEnCola ? (
+                                        <>
+                                            <Clock3 className="w-3.5 h-3.5 text-amber-600" /> Pendiente de enviar
+                                        </>
+                                    ) : guardadoALas ? (
+                                        <>
+                                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Guardado {guardadoALas}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <CloudUpload className="w-3.5 h-3.5 text-gray-500" /> Se guarda solo
+                                        </>
+                                    )}
+                                </span>
                             </>
                         )}
                     </div>
@@ -408,7 +653,7 @@ function LiveClassPageInner() {
                                 <input
                                     type="text"
                                     value={observationsTitle}
-                                    onChange={(e) => setObservationsTitle(e.target.value)}
+                                    onChange={(e) => { textoSinGuardar.current = true; setObservationsTitle(e.target.value); setCambiosPorGuardar((n) => n + 1); }}
                                     placeholder="Ej: Comportamiento del grupo / Novedad académica"
                                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
                                 />
@@ -417,7 +662,7 @@ function LiveClassPageInner() {
                                 <label className="block text-xs font-bold uppercase text-gray-600 mb-1.5">Descripción</label>
                                 <textarea
                                     value={observations}
-                                    onChange={(e) => setObservations(e.target.value)}
+                                    onChange={(e) => { textoSinGuardar.current = true; setObservations(e.target.value); setCambiosPorGuardar((n) => n + 1); }}
                                     rows={5}
                                     placeholder="Describe lo ocurrido en la sesión..."
                                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none resize-none"
@@ -502,6 +747,9 @@ function LiveClassPageInner() {
                                 subjectId={subjectId}
                                 date={date}
                                 weekNumber={data?.weekNumber}
+                                antesDelPlan={data?.antesDelPlan}
+                                nombreAntesDelPlan={data?.nombreAntesDelPlan}
+                                inicioDelPlan={data?.inicioDelPlan}
                                 weekRow={data?.weekRow}
                                 planContent={data?.planContent}
                                 planColumns={data?.planColumns}
@@ -520,6 +768,10 @@ function LiveClassPageInner() {
                                 canEdit={canEdit}
                                 planRowId={data?.weekRow?.id}
                                 classSessionId={data?.session?.id}
+                                date={date}
+                                esFuturo={Boolean(hoyDelLiceo) && date > hoyDelLiceo}
+                                evaluaciones={data?.evaluacionesDeLaSemana}
+                                planConPuntos={data?.planConPuntos}
                             />
                         </div>
                     </div>
@@ -548,6 +800,7 @@ function LiveClassPageInner() {
                                     </div>
 
                                     <div className="flex items-center gap-2">
+                                        {!activeGradingActivity.instrumento && (
                                         <button
                                             type="button"
                                             onClick={handleSaveCurrentActivityGrades}
@@ -557,6 +810,7 @@ function LiveClassPageInner() {
                                             {saveActivityGrades.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                                             Guardar Notas
                                         </button>
+                                        )}
                                         <button
                                             type="button"
                                             onClick={() => setActiveGradingActivity(null)}
@@ -583,8 +837,33 @@ function LiveClassPageInner() {
                                     />
                                 </div>
 
-                                {/* Contadores de Asistencia */}
+                                {/* Contadores de Asistencia + el botón que cambia la tabla */}
                                 <div className="flex items-center gap-2 flex-wrap">
+                                    {canEdit && (
+                                        <button
+                                            type="button"
+                                            onClick={() => (modoAsistencia ? setModoAsistencia(false) : conQr ? setEligiendoAsistencia(true) : setModoAsistencia(true))}
+                                            aria-pressed={modoAsistencia}
+                                            aria-haspopup={modoAsistencia || !conQr ? undefined : 'dialog'}
+                                            className={`flex min-h-[44px] items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
+                                                modoAsistencia
+                                                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                                                    : 'bg-white border-gray-200 text-gray-800 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            <ClipboardCheck className="w-4 h-4" />
+                                            {modoAsistencia ? 'Terminar asistencia' : date < hoyDelLiceo ? 'Corregir asistencia' : 'Pasar asistencia'}
+                                        </button>
+                                    )}
+                                    {modoAsistencia && canEdit && (
+                                        <button
+                                            type="button"
+                                            onClick={marcarTodosPresentes}
+                                            className="px-3 py-2 rounded-xl text-xs font-semibold border border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
+                                        >
+                                            Todos presentes
+                                        </button>
+                                    )}
                                     {(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED'] as AttendanceStatusType[]).map((key) => {
                                         const def = ATTENDANCE_CONFIG[key];
                                         return (
@@ -603,211 +882,362 @@ function LiveClassPageInner() {
                         </div>
 
                         {/* Tabla Idéntica a la Vista de Sección */}
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-gray-50/80">
-                                    <tr>
-                                        {/* Perfil */}
-                                        <th
-                                            scope="col"
-                                            className="px-6 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                                            onClick={() => handleSort('nombre')}
+                        {/*
+                            CADA ALUMNO, UNA FILA QUE CABE
+
+                            Fuera del modo asistencia son cinco columnas —quién
+                            es, cédula, asistencia, notas y observaciones— y en
+                            un teléfono eso son 862 px: había que arrastrar de
+                            lado para llegar a la nota, y al llegar ya no se
+                            sabía de qué alumno era. De pie, cada alumno es una
+                            tarjeta con todo lo suyo junto; en pantalla ancha
+                            sigue siendo la misma tabla.
+                        */}
+                        <div className="p-3 sm:p-4">
+                            {/* Calificar: una actividad cada vez. En el teléfono la
+                                fila de cada alumno solo ENSEÑA sus notas (no cabe
+                                un botón por actividad); se entra a calificar desde
+                                aquí, y ahí sí cada alumno tiene su control. */}
+                            {canEdit && !modoAsistencia && !activeGradingActivity && currentActivitiesList.length > 0 && (
+                                <div className="mb-3 flex flex-wrap items-center gap-2">
+                                    <span className="text-xs font-semibold text-gray-600">Calificar:</span>
+                                    {currentActivitiesList.map((act, i) => (
+                                        <button
+                                            key={act.id}
+                                            type="button"
+                                            onClick={() => setActiveGradingActivity(act)}
+                                            title={act.title}
+                                            className="inline-flex min-h-[44px] max-w-[14rem] items-center gap-1.5 rounded-xl border border-indigo-200 bg-white px-3 text-xs font-bold text-indigo-700 hover:bg-indigo-50"
                                         >
-                                            <div className="flex items-center gap-1.5">
-                                                Perfil <SortIcon column="nombre" />
-                                            </div>
-                                        </th>
-
-                                        {/* ID / Cédula */}
-                                        <th
-                                            scope="col"
-                                            className="px-6 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                                            onClick={() => handleSort('cedula')}
-                                        >
-                                            <div className="flex items-center gap-1.5">
-                                                ID / Cédula <SortIcon column="cedula" />
-                                            </div>
-                                        </th>
-
-                                        {/* Asistencia (animada) */}
-                                        <th scope="col" className="px-6 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                            Asistencia
-                                        </th>
-
-                                        {/* Calificaciones / Modo Calificar */}
-                                        <th
-                                            scope="col"
-                                            className={`px-6 py-3.5 text-left text-xs font-bold uppercase tracking-wider transition-colors ${
-                                                activeGradingActivity ? 'bg-blue-50/60 text-blue-900' : 'text-gray-500'
-                                            }`}
-                                        >
-                                            {activeGradingActivity ? 'Nota de Actividad (0 - 20 pts)' : 'Calificaciones'}
-                                        </th>
-
-                                        {/* Observaciones */}
-                                        <th scope="col" className="px-6 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                            Observaciones
-                                        </th>
-
-                                        <th scope="col" className="relative px-6 py-3.5">
-                                            <span className="sr-only">Acciones</span>
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white divide-y divide-gray-100">
-                                    {sortedStudents.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={6} className="px-6 py-8 text-center text-xs text-gray-400 font-medium">
-                                                {studentSearch ? 'No se encontraron estudiantes con esa búsqueda.' : 'No hay estudiantes registrados en esta sección.'}
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        sortedStudents.map((student) => {
-                                            const currentAtt = attendance[student.id] || 'PRESENT';
-
-                                            // Score draft for active grading activity
-                                            const activeActId = activeGradingActivity?.id;
-                                            const currentScore = activeActId ? activityGradesDraft[activeActId]?.[student.id] : undefined;
-
-                                            return (
-                                                <tr
-                                                    key={student.id}
-                                                    className={`hover:bg-gray-50/80 transition-colors ${
-                                                        activeGradingActivity ? 'hover:bg-blue-50/20' : ''
-                                                    }`}
-                                                >
-                                                    {/* Perfil */}
-                                                    <td className="px-6 py-4 whitespace-nowrap">
-                                                        <div className="flex items-center">
-                                                            <div className="flex-shrink-0 h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs bg-indigo-100 text-indigo-700 shadow-2xs">
-                                                                {student.firstName?.[0]}{student.lastName?.[0]}
-                                                            </div>
-                                                            <div className="ml-3">
-                                                                <div className="text-xs font-bold text-gray-900">
-                                                                    {student.firstName} {student.lastName}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-
-                                                    {/* Cédula */}
-                                                    <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-600 font-mono">
+                                            <Award className="h-3.5 w-3.5 shrink-0" />
+                                            <span className="truncate">Act #{i + 1} · {act.title}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            {/* CON INSTRUMENTO, LA TABLA CAMBIA: una columna por indicador,
+                                con los puntos que saca cada alumno en cada uno (la nota
+                                sale sola). Antes era una tarjeta por alumno debajo de la
+                                tabla: treinta tarjetas y la tabla de siempre al final. */}
+                            {activeGradingActivity?.instrumento ? (
+                                <CalificarConInstrumento
+                                    key={activeGradingActivity.id}
+                                    activityId={activeGradingActivity.id}
+                                    instrumento={activeGradingActivity.instrumento}
+                                    detalle={(currentActivitiesList.find((a) => a.id === activeGradingActivity.id) ?? activeGradingActivity).detalleDelInstrumento}
+                                    alumnos={sortedStudents}
+                                    puedeEditar={canEdit}
+                                />
+                            ) : (
+                            <TablaAdaptable<(typeof sortedStudents)[number]>
+                                compacta={!modoAsistencia && !activeGradingActivity}
+                                datos={sortedStudents}
+                                clave={(a) => a.id}
+                                orden={sortColumn ? { por: sortColumn, hacia: sortDirection } : null}
+                                alOrdenar={handleSort}
+                                vacio={
+                                    <p className="text-cuerpo text-tinta-suave">
+                                        {studentSearch
+                                            ? 'No se encontraron estudiantes con esa búsqueda.'
+                                            : 'No hay estudiantes registrados en esta sección.'}
+                                    </p>
+                                }
+                                columnas={[
+                                    {
+                                        id: 'nombre',
+                                        titulo: 'Perfil',
+                                        tituloCorto: 'Nombre',
+                                        principal: true,
+                                        ordenable: true,
+                                        celdaCompacta: (student) => (
+                                            <div className="flex min-w-0 items-center gap-2">
+                                                <UserAvatar
+                                                    name={`${student.firstName} ${student.lastName}`}
+                                                    src={(student as any).avatar}
+                                                    className="h-8 w-8 shrink-0"
+                                                    initialsClassName="text-xs"
+                                                />
+                                                <div className="min-w-0">
+                                                    <p className="line-clamp-2 break-words text-sm font-medium leading-5 text-gray-900" title={`${student.firstName} ${student.lastName}`}>
+                                                        {student.firstName} {student.lastName}
+                                                        {(student as any).pendiente && (
+                                                            <Clock3 className="ml-1 inline h-3.5 w-3.5 text-amber-600" aria-label="Pendiente de enviar" />
+                                                        )}
+                                                    </p>
+                                                    <p className="truncate font-mono text-xs text-gray-500">
                                                         {student.studentCode || student.id}
-                                                    </td>
-
-                                                    {/* Asistencia con ANIMACIÓN */}
-                                                    <td className="px-6 py-4 whitespace-nowrap">
-                                                        <AnimatedAttendancePicker
-                                                            status={currentAtt}
-                                                            onChange={(newSt) => handleAttendanceChange(student.id, newSt)}
-                                                            disabled={!canEdit}
-                                                        />
-                                                    </td>
-
-                                                    {/* Columna Calificaciones / Modo Calificación */}
-                                                    <td
-                                                        className={`px-6 py-4 whitespace-nowrap ${
-                                                            activeGradingActivity ? 'bg-blue-50/20' : ''
-                                                        }`}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ),
+                                        celda: (student) => (
+                                            <div className="flex items-center gap-3">
+                                                <UserAvatar
+                                                    name={`${student.firstName} ${student.lastName}`}
+                                                    src={(student as any).avatar}
+                                                    className="h-9 w-9 shrink-0"
+                                                    initialsClassName="text-xs"
+                                                />
+                                                <div className="min-w-0">
+                                                    <p className="truncate text-sm font-bold text-gray-900">
+                                                        {student.firstName} {student.lastName}
+                                                        {(student as any).pendiente && (
+                                                            <Clock3 className="ml-1 inline h-3.5 w-3.5 text-amber-600" aria-label="Pendiente de enviar" />
+                                                        )}
+                                                    </p>
+                                                    <p className="truncate font-mono text-xs text-gray-600 @2xl:hidden">
+                                                        {student.studentCode || student.id}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ),
+                                    },
+                                    ...(modoAsistencia
+                                        ? []
+                                        : [
+                                              {
+                                                  id: 'cedula',
+                                                  titulo: 'ID / Cédula',
+                                                  ordenable: true,
+                                                  soloAncha: true,
+                                                  celda: (student: (typeof sortedStudents)[number]) => (
+                                                      <span className="font-mono text-xs text-gray-700">
+                                                          {student.studentCode || student.id}
+                                                      </span>
+                                                  ),
+                                              },
+                                          ]),
+                                    {
+                                        id: 'asistencia',
+                                        titulo: 'Asistencia',
+                                        compacta: {
+                                            ancho: 'w-12',
+                                            titulo: 'Asist.',
+                                            celda: (student) => {
+                                                const def = ATTENDANCE_CONFIG[(attendance[student.id] || 'PRESENT') as AttendanceStatusType];
+                                                const Icono = def.icon;
+                                                return (
+                                                    <span
+                                                        role="img"
+                                                        aria-label={def.label}
+                                                        title={def.label}
+                                                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full border ${def.badgeBg}`}
                                                     >
-                                                        {activeGradingActivity ? (
-                                                            /* MODO CALIFICACIÓN: SLIDER + INPUT */
-                                                            <LiveGradesSliderInput
-                                                                studentId={student.id}
-                                                                studentName={`${student.firstName} ${student.lastName}`}
-                                                                score={currentScore}
-                                                                maxScore={activeGradingActivity.maxScore || 20}
-                                                                onChange={handleGradeScoreChange}
-                                                                disabled={!canEdit}
-                                                            />
-                                                        ) : (
-                                                            /* MODO NORMAL: Badges con progreso por actividad del día */
-                                                            <div className="flex items-center gap-2 flex-wrap">
-                                                                {currentActivitiesList.length === 0 ? (
-                                                                    <span className="text-[11px] text-gray-400 italic">
-                                                                        Sin notas hoy
-                                                                    </span>
-                                                                ) : (
-                                                                    currentActivitiesList.map((act, actIdx) => {
-                                                                        const actScores = activityGradesDraft[act.id] || {};
-                                                                        const sc = actScores[student.id];
-                                                                        const hasScore = sc !== undefined && sc !== null;
-                                                                        const maxSc = act.maxScore || 20;
-                                                                        const ratio = hasScore ? (sc as number) / maxSc : 0;
-                                                                        const badgeColor = !hasScore
-                                                                            ? 'bg-gray-100 text-gray-500'
-                                                                            : ratio >= 0.75
-                                                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                                            : ratio >= 0.5
-                                                                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                                            : 'bg-rose-50 text-rose-700 border border-rose-200';
-
-                                                                        return (
-                                                                            <button
-                                                                                key={act.id}
-                                                                                type="button"
-                                                                                onClick={() => setActiveGradingActivity(act)}
-                                                                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold shadow-2xs hover:scale-105 transition-all ${badgeColor}`}
-                                                                                title={`Hacer clic para calificar "${act.title}"`}
-                                                                            >
-                                                                                <span>Act #{actIdx + 1}:</span>
-                                                                                <span>{hasScore ? `${sc}/${maxSc}` : '—'}</span>
-                                                                            </button>
-                                                                        );
-                                                                    })
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Observaciones */}
-                                                    <td className="px-6 py-4 whitespace-nowrap text-xs">
-                                                        {((student as any).observationsCount || 0) > 0 ? (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setSelectedObsStudentId(student.id);
-                                                                    setIsLiveObsModalOpen(true);
-                                                                }}
-                                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 transition-colors shadow-2xs"
-                                                            >
-                                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                                                {(student as any).observationsCount} {(student as any).observationsCount === 1 ? 'observación' : 'observaciones'}
-                                                            </button>
-                                                        ) : (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setSelectedObsStudentId(student.id);
-                                                                    setIsLiveObsModalOpen(true);
-                                                                }}
-                                                                className="text-gray-400 hover:text-indigo-600 transition-colors italic text-xs flex items-center gap-1"
-                                                            >
-                                                                <Plus className="w-3 h-3" /> Sin observaciones
-                                                            </button>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Acciones */}
-                                                    <td className="px-6 py-4 whitespace-nowrap text-right text-xs font-medium">
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setOpenMenuId(openMenuId === student.id ? null : student.id);
-                                                            }}
-                                                            className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                                                            title="Opciones"
-                                                        >
-                                                            <MoreVertical className="w-4 h-4" />
-                                                        </button>
-                                                    </td>
-                                                </tr>
+                                                        <Icono className="h-3.5 w-3.5" />
+                                                    </span>
+                                                );
+                                            },
+                                        },
+                                        celda: (student) => {
+                                            const currentAtt = (attendance[student.id] || 'PRESENT') as AttendanceStatusType;
+                                            if (modoAsistencia) {
+                                                return (
+                                                    <BotonesDeAsistencia
+                                                        estado={currentAtt}
+                                                        nombre={`${student.firstName} ${student.lastName}`}
+                                                        alCambiar={(nuevo) => handleAttendanceChange(student.id, nuevo)}
+                                                        desactivado={!canEdit}
+                                                    />
+                                                );
+                                            }
+                                            const def = ATTENDANCE_CONFIG[currentAtt];
+                                            const Icono = def.icon;
+                                            return (
+                                                <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${def.badgeBg}`}>
+                                                    <Icono className="h-3.5 w-3.5" />
+                                                    {def.label}
+                                                </span>
                                             );
-                                        })
-                                    )}
-                                </tbody>
-                            </table>
+                                        },
+                                    },
+                                    ...(modoAsistencia
+                                        ? []
+                                        : [
+                                              {
+                                                  id: 'calificaciones',
+                                                  titulo: activeGradingActivity
+                                                      ? 'Nota de Actividad (0 - 20 pts)'
+                                                      : 'Calificaciones',
+                                                  tituloCorto: 'Nota',
+                                                  compacta: {
+                                                      ancho: 'w-16',
+                                                      titulo: 'Notas',
+                                                      celda: (student: (typeof sortedStudents)[number]) => {
+                                                          if (currentActivitiesList.length === 0) {
+                                                              return <span className="text-xs text-gray-500">—</span>;
+                                                          }
+                                                          return (
+                                                              <span className="flex flex-col items-center gap-0.5">
+                                                                  {currentActivitiesList.map((act, actIdx) => {
+                                                                      const sc = (activityGradesDraft[act.id] || {})[student.id];
+                                                                      const hay = sc !== undefined && sc !== null;
+                                                                      const maxSc = act.maxScore || 20;
+                                                                      const ratio = hay ? (sc as number) / maxSc : 0;
+                                                                      return (
+                                                                          <span
+                                                                              key={act.id}
+                                                                              title={`Act #${actIdx + 1}: ${act.title}`}
+                                                                              className={`text-xs font-bold tabular-nums ${
+                                                                                  !hay ? 'text-gray-500' : ratio >= 0.5 ? 'text-indigo-700' : 'text-red-600'
+                                                                              }`}
+                                                                          >
+                                                                              {hay ? sc : '—'}
+                                                                          </span>
+                                                                      );
+                                                                  })}
+                                                              </span>
+                                                          );
+                                                      },
+                                                  },
+                                                  celda: (student: (typeof sortedStudents)[number]) => {
+                                                      const activeActId = activeGradingActivity?.id;
+                                                      const currentScore = activeActId
+                                                          ? activityGradesDraft[activeActId]?.[student.id]
+                                                          : undefined;
+
+                                                      if (activeGradingActivity) {
+                                                          // La actividad tal como está ahora (la del estado es
+                                                          // la del momento de pulsar «Calificar»).
+                                                          const viva =
+                                                              currentActivitiesList.find((a) => a.id === activeGradingActivity.id) ??
+                                                              activeGradingActivity;
+                                                          // Con instrumento, la nota sale de las marcas de arriba.
+                                                          if (viva.instrumento) {
+                                                              const nota = viva.scores?.[student.id];
+                                                              return (
+                                                                  <span className="text-xs font-bold tabular-nums text-gray-800">
+                                                                      {typeof nota === 'number' ? `${nota} / ${viva.maxScore ?? 20}` : 'Sin nota'}
+                                                                  </span>
+                                                              );
+                                                          }
+                                                          return (
+                                                              <span className="flex flex-col items-start gap-1">
+                                                                  <LiveGradesSliderInput
+                                                                      studentId={student.id}
+                                                                      studentName={`${student.firstName} ${student.lastName}`}
+                                                                      score={currentScore}
+                                                                      maxScore={activeGradingActivity.maxScore || 20}
+                                                                      onChange={handleGradeScoreChange}
+                                                                      disabled={!canEdit}
+                                                                  />
+                                                                  {/* Evaluarle de otra forma (el cuaderno de quien no
+                                                                      puede hacer deporte): su nota cuenta igual. */}
+                                                                  {canEdit && !(student as any).external && (
+                                                                      <OtraFormaDeEvaluarBoton
+                                                                          activityId={viva.id}
+                                                                          studentId={student.id}
+                                                                          studentName={`${student.firstName} ${student.lastName}`}
+                                                                          actual={viva.evaluadoDeOtraForma?.[student.id] ?? null}
+                                                                      />
+                                                                  )}
+                                                              </span>
+                                                          );
+                                                      }
+
+                                                      if (currentActivitiesList.length === 0) {
+                                                          return <span className="text-xs italic text-gray-400">Sin notas hoy</span>;
+                                                      }
+
+                                                      return (
+                                                          <span className="flex flex-wrap items-center justify-end gap-2 @2xl:justify-start">
+                                                              {currentActivitiesList.map((act, actIdx) => {
+                                                                  const actScores = activityGradesDraft[act.id] || {};
+                                                                  const sc = actScores[student.id];
+                                                                  const hasScore = sc !== undefined && sc !== null;
+                                                                  const maxSc = act.maxScore || 20;
+                                                                  const ratio = hasScore ? (sc as number) / maxSc : 0;
+                                                                  const badgeColor = !hasScore
+                                                                      ? 'bg-gray-100 text-gray-500'
+                                                                      : ratio >= 0.75
+                                                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                                        : ratio >= 0.5
+                                                                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                                          : 'bg-rose-50 text-rose-700 border border-rose-200';
+
+                                                                  return (
+                                                                      <button
+                                                                          key={act.id}
+                                                                          type="button"
+                                                                          onClick={() => setActiveGradingActivity(act)}
+                                                                          className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold shadow-2xs ${badgeColor}`}
+                                                                          title={`Hacer clic para calificar "${act.title}"`}
+                                                                      >
+                                                                          <span>Act #{actIdx + 1}:</span>
+                                                                          <span>{hasScore ? `${sc}/${maxSc}` : '—'}</span>
+                                                                      </button>
+                                                                  );
+                                                              })}
+                                                          </span>
+                                                      );
+                                                  },
+                                              },
+                                              {
+                                                  id: 'observaciones',
+                                                  titulo: 'Observaciones',
+                                                  tituloCorto: 'Obs.',
+                                                  compacta: {
+                                                      ancho: 'w-12',
+                                                      titulo: 'Obs.',
+                                                      celda: (student: (typeof sortedStudents)[number]) => {
+                                                          const cuantas = (student as any).observationsCount || 0;
+                                                          return (
+                                                              <button
+                                                                  type="button"
+                                                                  onClick={() => {
+                                                                      setSelectedObsStudentId(student.id);
+                                                                      setIsLiveObsModalOpen(true);
+                                                                  }}
+                                                                  aria-label={
+                                                                      cuantas > 0
+                                                                          ? `${cuantas} ${cuantas === 1 ? 'observación' : 'observaciones'} de ${student.firstName} ${student.lastName}`
+                                                                          : `Añadir observación a ${student.firstName} ${student.lastName}`
+                                                                  }
+                                                                  className="inline-flex h-11 w-11 items-center justify-center rounded-full"
+                                                              >
+                                                                  {cuantas > 0 ? (
+                                                                      <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-amber-50 px-1.5 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
+                                                                          {cuantas}
+                                                                      </span>
+                                                                  ) : (
+                                                                      <Plus className="h-4 w-4 text-gray-500" />
+                                                                  )}
+                                                              </button>
+                                                          );
+                                                      },
+                                                  },
+                                                  celda: (student: (typeof sortedStudents)[number]) => {
+                                                      const cuantas = (student as any).observationsCount || 0;
+                                                      return (
+                                                          <button
+                                                              type="button"
+                                                              onClick={() => {
+                                                                  setSelectedObsStudentId(student.id);
+                                                                  setIsLiveObsModalOpen(true);
+                                                              }}
+                                                              className={
+                                                                  cuantas > 0
+                                                                      ? 'inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-800'
+                                                                      : 'inline-flex items-center gap-1 text-xs italic text-gray-500'
+                                                              }
+                                                          >
+                                                              {cuantas > 0 ? (
+                                                                  <>
+                                                                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                                                      {cuantas} {cuantas === 1 ? 'observación' : 'observaciones'}
+                                                                  </>
+                                                              ) : (
+                                                                  <>
+                                                                      <Plus className="h-3 w-3" /> Sin observaciones
+                                                                  </>
+                                                              )}
+                                                          </button>
+                                                      );
+                                                  },
+                                              },
+                                          ]),
+                                ]}
+                            />
+                            )}
                         </div>
                     </div>
                 </>
@@ -815,7 +1245,7 @@ function LiveClassPageInner() {
 
             {/* ===== MODAL BUSCADOR DE ESTUDIANTES EXTERNOS ===== */}
             {showStudentSearch && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-label="Agregar Estudiante de Otra Sección">
                     <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
                             <h3 className="text-sm font-bold text-gray-900">Agregar Estudiante de Otra Sección</h3>
@@ -891,15 +1321,18 @@ function LiveClassPageInner() {
             )}
 
             {/* Modal de Detalle de Observaciones del Estudiante */}
-            <StudentObservationsModal
-                isOpen={Boolean(selectedStudentForObs)}
-                onClose={() => setSelectedStudentForObs(null)}
-                student={selectedStudentForObs}
-            />
+            {selectedStudentForObs && (
+                <StudentObservationsModal
+                    isOpen
+                    onClose={() => setSelectedStudentForObs(null)}
+                    student={selectedStudentForObs}
+                />
+            )}
 
             {/* Modal para Crear y Gestionar Observaciones de esta Clase */}
+            {isLiveObsModalOpen && (
             <LiveClassObservationModal
-                isOpen={isLiveObsModalOpen}
+                isOpen
                 onClose={() => {
                     setIsLiveObsModalOpen(false);
                     setSelectedObsStudentId(null);
@@ -913,6 +1346,117 @@ function LiveClassPageInner() {
                 initialStudentId={selectedObsStudentId}
                 onObservationAdded={() => refetch()}
             />
+            )}
+
+            {user?.role === 'ADMIN' && suspendiendo && (
+                <SuspenderClaseDialogo
+                    abierto
+                    alCerrar={() => setSuspendiendo(false)}
+                    classroomId={classroomId}
+                    subjectId={subjectId}
+                    fecha={date}
+                    nombreMateria={data?.subject?.name}
+                />
+            )}
+
+            {eligiendoAsistencia && (
+                <div
+                    className="fixed inset-0 z-[65] flex items-end justify-center bg-black/50 p-4 sm:items-center"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="como-pasar-asistencia"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) setEligiendoAsistencia(false);
+                    }}
+                >
+                    <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl sm:p-5">
+                        <div className="mb-3 flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <h3 id="como-pasar-asistencia" className="text-base font-bold text-gray-900">
+                                    {date < hoyDelLiceo ? 'Corregir la asistencia' : 'Pasar asistencia'}
+                                </h3>
+                                <p className="text-xs text-gray-600">¿Cómo quieres hacerlo?</p>
+                            </div>
+                            <button
+                                type="button"
+                                aria-label="Cerrar"
+                                onClick={() => setEligiendoAsistencia(false)}
+                                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            {[
+                                {
+                                    clave: 'mano',
+                                    Icono: ClipboardCheck,
+                                    titulo: 'Marcar a mano',
+                                    detalle: 'Presente, ausente, tarde o justificado, alumno por alumno.',
+                                    visible: true,
+                                },
+                                {
+                                    clave: 'mostrar',
+                                    Icono: QrCode,
+                                    titulo: 'Enseñar el QR a la clase',
+                                    detalle: 'Cada alumno lo escanea desde su teléfono.',
+                                    visible: conQr,
+                                },
+                                {
+                                    clave: 'escanear',
+                                    Icono: ScanLine,
+                                    titulo: 'Escanear el QR de cada alumno',
+                                    detalle: 'El alumno te enseña su QR y lo lees con la cámara.',
+                                    visible: conQr,
+                                },
+                            ]
+                                .filter((o) => o.visible)
+                                .map(({ clave, Icono, titulo, detalle }) => (
+                                    <button
+                                        key={clave}
+                                        type="button"
+                                        onClick={async () => {
+                                            setEligiendoAsistencia(false);
+                                            if (clave === 'mano') {
+                                                setModoAsistencia(true);
+                                                return;
+                                            }
+                                            // Lo marcado a mano que quedara por mandar, primero.
+                                            if (cambiosPorGuardar > 0) await guardarRef.current();
+                                            setCambiosPorGuardar(0);
+                                            setModoAsistencia(false);
+                                            setQrEscaneando(clave === 'escanear');
+                                            setPaseQrAbierto(true);
+                                        }}
+                                        className="flex min-h-[64px] w-full items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left hover:border-indigo-300 hover:bg-indigo-50/60"
+                                    >
+                                        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
+                                            <Icono className="h-5 w-5" />
+                                        </span>
+                                        <span className="min-w-0">
+                                            <span className="block text-sm font-bold text-gray-900">{titulo}</span>
+                                            <span className="block text-xs text-gray-600">{detalle}</span>
+                                        </span>
+                                    </button>
+                                ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {paseQrAbierto && (
+                <PaseDeListaQr
+                    classroomId={classroomId}
+                    subjectId={subjectId}
+                    fecha={date}
+                    empezarEscaneando={qrEscaneando}
+                    alTerminar={() => {
+                        setPaseQrAbierto(false);
+                        // Lo que quedó de verdad (lo escribió el servidor).
+                        void refetch();
+                    }}
+                />
+            )}
         </div>
     );
 }

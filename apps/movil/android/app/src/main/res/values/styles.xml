@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+        <!-- Customize your theme here. -->
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+    </style>
+
+    <!--
+        LA FRANJA DEL RELOJ LA DECIDE ESTE TEMA, NO EL CÓDIGO
+
+        MainActivity y el plugin de la barra la pintaban de blanco al abrir, y
+        al segundo y pico —cuando se va la pantalla de arranque— Android la
+        volvía a pintar con lo que dijera ESTE tema (lo hace la librería de la
+        pantalla de arranque, `applyAppSystemUiTheme`). El tema no decía nada,
+        así que tocaba lo de fábrica: gris con el teléfono en modo claro y
+        NEGRO en modo oscuro, con el reloj en blanco. Medido en el emulador; es
+        la banda negra del Motorola.
+
+        Por eso aquí, y no en otro sitio: es lo último que se aplica.
+
+        - El color, el de la cabecera de la app (blanco).
+        - El reloj y la batería en oscuro, o blanco sobre blanco no se ve.
+        - Siempre claro (`Light`, no `DayNight`): la app es clara, y con el
+          teléfono en modo oscuro el tema de día y de noche cambiaba la franja
+          a negro.
+
+        En Android 15 o más, el color no lo pinta la barra sino el fondo de la
+        ventana (ver `dejarSitioParaElReloj`); los iconos oscuros valen igual.
+    -->
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:background">@null</item>
+        <item name="android:statusBarColor">@color/color_de_la_barra_de_estado</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:background">@drawable/splash</item>
+    </style>
+</resources>

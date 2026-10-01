@@ -21,6 +21,7 @@
  * Está dicho en la auditoría y sigue pendiente.
  */
 import { platformPrisma, getTenantPrisma } from '../config/database';
+import { guardarMedicion } from './guardar-medicion';
 
 const API = process.env.API_BASE || 'http://localhost:3001/api';
 const SLUG = process.env.LICEO || 'instituto-testing';
@@ -216,9 +217,14 @@ async function main() {
     console.log('');
     console.log('    profesores' + 'p50'.padStart(9) + 'peor'.padStart(9) + 'todo'.padStart(9));
     console.log('    ' + '─'.repeat(38));
+    const guardado: { profesoresGuardandoALaVez: unknown[]; pantallas: Record<string, unknown[]> } = {
+        profesoresGuardandoALaVez: [],
+        pantallas: {},
+    };
     for (const cuantos of [1, 3, 6, 12]) {
         const r = await profesoresALaVez(cuantos);
         if (!r) { console.log(`    ${String(cuantos).padStart(10)}  (faltan datos)`); continue; }
+        guardado.profesoresGuardandoALaVez.push(r);
         console.log(
             '    ' + String(r.profesores).padStart(10) +
             `${r.p50}`.padStart(7) + 'ms' +
@@ -236,6 +242,7 @@ async function main() {
 
         for (const gente of A_LA_VEZ) {
             const r = await tanda(admin, ruta, gente);
+            (guardado.pantallas[nombre] ??= []).push(r);
             console.log(
                 '    ' + String(r.gente).padStart(8) +
                 `${r.p50}`.padStart(7) + 'ms' +
@@ -251,6 +258,7 @@ async function main() {
     }
 
     console.log('');
+    guardarMedicion('concurrencia', { liceo: SLUG, aLaVez: A_LA_VEZ, porTanda: POR_TANDA, ...guardado });
     await platformPrisma.$disconnect();
     process.exit(0);
 }

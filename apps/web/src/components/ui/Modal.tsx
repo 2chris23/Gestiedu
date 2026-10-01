@@ -39,14 +39,18 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
                             <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
                                 <Dialog.Title
                                     as="h3"
-                                    className="text-lg font-medium leading-6 text-gray-900 flex justify-between items-center"
+                                    className="text-lg font-medium leading-6 text-gray-900 flex justify-between items-center gap-3"
                                 >
                                     {title}
+                                    {/* Una X de 20 px sin nombre: diminuta para el dedo y
+                                        muda para quien no ve la pantalla. */}
                                     <button
+                                        type="button"
                                         onClick={onClose}
-                                        className="text-gray-400 hover:text-gray-500 focus:outline-none"
+                                        aria-label="Cerrar"
+                                        className="-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                                     >
-                                        <X size={20} />
+                                        <X size={20} aria-hidden />
                                     </button>
                                 </Dialog.Title>
                                 <div className="mt-4">

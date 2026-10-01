@@ -43,7 +43,17 @@ services:
       # Es lo que permite que cientos de clientes compartan pocas conexiones.
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 2000
-      DEFAULT_POOL_SIZE: 20
+      # DIMENSIONADO PARA 200 LICEOS, NO PARA 10
+      # El tamaño del grupo es POR BASE, y hay una base por liceo: con 20, 200
+      # liceos podían pedir 4.000 conexiones a un PostgreSQL que da 200. Ahora
+      # 5 por liceo (el mejor valor medido, docs/DESPLIEGUE.md §5), y un tope
+      # para todas juntas por debajo de max_connections, dejando sitio a la
+      # plataforma, las migraciones y los respaldos, que van directos. Las que
+      # llevan un minuto sin usarse se sueltan para los liceos con gente dentro.
+      DEFAULT_POOL_SIZE: 5
+      MAX_DB_CONNECTIONS: 5
+      MAX_USER_CONNECTIONS: 160
+      SERVER_IDLE_TIMEOUT: 60
       # Necesario para que PgBouncer acepte bases que no están listadas una a una
       AUTH_TYPE: scram-sha-256
       IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
@@ -77,9 +87,15 @@ services:
       # Las migraciones van directas a PostgreSQL: PgBouncer en modo transacción
       # no mantiene los bloqueos que Prisma Migrate necesita.
       PGBOUNCER_HOST: ''
+    # El guion va COMPILADO: la imagen no lleva ni el código fuente de los
+    # guiones ni `tsx` (antes decía `npx tsx src/scripts/...`, que no existía
+    # dentro de la imagen, así que el migrador fallaba y el backend no arrancaba).
+    # La plataforma, con SUS migraciones (src/prisma/plataforma/migrations): su
+    # esquema estaba junto al de los liceos y `migrate deploy` le aplicaba las
+    # de los liceos. Ver src/scripts/migrar-plataforma.ts.
     command: >
-      sh -c "npx prisma migrate deploy --schema=src/prisma/platform-schema.prisma &&
-             npx tsx src/scripts/migrate-all-tenants.ts"
+      sh -c "node dist/scripts/migrar-plataforma.js &&
+             node dist/scripts/migrate-all-tenants.js"
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,12 +111,53 @@ services:
       NODE_ENV: production
       PGBOUNCER_HOST: pgbouncer
       PGBOUNCER_PORT: 6432
-      TENANT_CONNECTION_LIMIT: ${TENANT_CONNECTION_LIMIT:-2}
+      TENANT_CONNECTION_LIMIT: ${TENANT_CONNECTION_LIMIT:-5}
+      # El puerto va FIJO aquí, porque nginx y la sonda de salud lo esperan en
+      # el 4000. Antes lo decía solo .env.production y nginx apuntaba al 3001:
+      # toda la API respondía 502 en cuanto alguien usara el ejemplo tal cual.
+      PUERTO_DEL_HOST: '4000'
+      BACKUP_DIR: /app/backups
+      APP_MOVIL_DIR: /app/apks
+    volumes:
+      # Las APK que las apps ya instaladas se bajan solas al abrirse
+      # (`npm run publicar` en apps/movil; ver docs/APP-MOVIL.md). Publicar
+      # una es dejar sus dos archivos en `apks/`, junto a este archivo.
+      - ./apks:/app/apks:ro
+      # Los logos subidos ANTES de que fueran a la base (los nuevos van a la
+      # base de la plataforma: los ven todos los procesos y entran en el
+      # respaldo). Sin volumen vivían DENTRO del contenedor, y cada
+      # despliegue crea uno nuevo: se perdían en cada actualización.
+      - uploads:/app/uploads
+      # Solo para leer cómo fue el último respaldo (panel del superadmin).
+      - respaldos:/app/backups:ro
     depends_on:
       migrator:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    networks: [interna]
+
+  # Los respaldos, solos, cada noche (HORA_DE_RESPALDO, 02:00 por defecto).
+  # Van directos a PostgreSQL, no por PgBouncer. Si se configuran
+  # BACKUP_S3_*, cada respaldo se sube además fuera del servidor.
+  # Ver src/services/respaldos-programados.service.ts y docs/DESPLIEGUE.md §8.
+  respaldos:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    restart: unless-stopped
+    env_file: [.env.production]
+    environment:
+      NODE_ENV: production
+      PGBOUNCER_HOST: ''
+      BACKUP_DIR: /app/backups
+      TZ: ${TZ:-America/Caracas}
+    command: node dist/scripts/respaldos-cada-noche.js
+    volumes:
+      - respaldos:/app/backups
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
     networks: [interna]
 
   web:
@@ -135,6 +192,8 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  uploads:
+  respaldos:
 
 networks:
   interna:

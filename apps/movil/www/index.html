@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>GestiEdu</title>
+    <!--
+        ESTA PANTALLA SOLO SE VE CUANDO NO HAY INTERNET
+
+        La app no lleva el sistema dentro: enseña el del liceo, que vive en su
+        servidor (`server.url` en capacitor.config.json). Eso es lo correcto —el
+        liceo cambia una nota y se ve en el acto, sin que nadie actualice nada
+        desde la tienda—, pero tiene una consecuencia: sin conexión, la app
+        abriría el error feo del navegador, ese de "ERR_INTERNET_DISCONNECTED"
+        con letra pequeña.
+
+        Android enseña este archivo cuando no alcanza el servidor, PERO solo si
+        `capacitor.config.json` lo nombra en `server.errorPath` (lo pone
+        `scripts/preparar-liceo.mjs`). Sin eso no se veía nunca: salía el error
+        del navegador. Existe para que sin conexión se vea algo escrito para una
+        persona, y con un botón para volver a intentarlo.
+    -->
+    <style>
+        :root {
+            color-scheme: light;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            padding: 32px 24px calc(32px + env(safe-area-inset-bottom));
+            background: #f5f6f9;
+            color: #0f172a;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            text-align: center;
+        }
+
+        .marca {
+            width: 72px;
+            height: 72px;
+            border-radius: 20px;
+            background: #2563eb;
+            display: grid;
+            place-items: center;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 800;
+        }
+
+        p {
+            margin: 0;
+            max-width: 22rem;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            color: #475569;
+        }
+
+        button {
+            min-height: 48px;
+            padding: 0 24px;
+            border: 0;
+            border-radius: 14px;
+            background: #2563eb;
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        button:active {
+            background: #1d4ed8;
+        }
+    </style>
+</head>
+
+<body>
+    <span class="marca" aria-hidden="true">
+        <svg width="40" height="40" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M32 14L12 24L32 34L52 24L32 14Z" fill="#FFFFFF" />
+            <path d="M19 28.5V40.5C19 40.5 24 45 32 45C40 45 45 40.5 45 40.5V28.5L32 35L19 28.5Z" fill="#FFFFFF"
+                fill-opacity="0.9" />
+        </svg>
+    </span>
+
+    <!--
+        No decía la verdad: culpaba siempre al wifi. El caso más común es otro
+        —el teléfono tiene datos y el que no contesta es el servidor del liceo
+        (apagado, reiniciándose)—, y la persona se ponía a revisar el wifi.
+        Ahora dice cuál de las dos es, y vuelve a intentarlo sola.
+    -->
+    <h1 id="titulo">No se llega al liceo</h1>
+    <p id="motivo">
+        El servidor del liceo no contesta. Puede estar reiniciándose: se vuelve a
+        intentar solo cada 15 segundos.
+    </p>
+    <button type="button" onclick="reintentar()">Reintentar ahora</button>
+    <script>
+        // A dónde volver: lo pone `preparar-liceo.mjs` en `server.errorPath`.
+        // Recargar ESTA página no serviría: es la de error, que vive dentro
+        // del teléfono, y se volvería a ver a sí misma.
+        var volver = new URLSearchParams(location.search).get('volver');
+        function reintentar() {
+            if (volver) location.href = volver;
+            else location.reload();
+        }
+        if (navigator.onLine === false) {
+            document.getElementById('titulo').textContent = 'No hay internet';
+            document.getElementById('motivo').textContent =
+                'Este teléfono no tiene conexión. Revisa los datos o el wifi; se vuelve a intentar solo cada 15 segundos.';
+        }
+        setInterval(reintentar, 15000);
+    </script>
+</body>
+
+</html>

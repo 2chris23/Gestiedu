@@ -16,6 +16,7 @@ import {
     cycleAverage,
 } from './aggregation.service';
 import { getAcademicConfig } from './promotion/close-cycle.service';
+import { NOTAS_QUE_CUENTAN } from './apreciaciones.service';
 
 /**
  * SERVICIO UNIFICADO DE ESTADÍSTICAS - "The Unified Stats Engine"
@@ -469,7 +470,8 @@ class CycleStatisticsService {
             const gradesInActiveYears = await prisma.grade.findMany({
                 where: {
                     studentId,
-                    periodId: { in: periods.map(p => p.id) }
+                    periodId: { in: periods.map(p => p.id) },
+                    ...NOTAS_QUE_CUENTAN,
                 },
                 select: { score: true, periodId: true }
             });
@@ -523,7 +525,7 @@ class CycleStatisticsService {
                     prisma.grade.findMany({
                         where: {
                             studentId,
-                            subject: { classroomSubjects: { some: { classroomId: currentEnrollment.sectionId } } },
+                            subject: { classroomSubjects: { some: { classroomId: currentEnrollment.sectionId } }, ...NOTAS_QUE_CUENTAN.subject },
                             period: { academicYearId: currentEnrollment.academicYearId }
                         },
                         select: {
@@ -580,7 +582,7 @@ class CycleStatisticsService {
                         subjectId: cs.subjectId,
                         subjectName: cs.subject.name,
                         average: Math.round(avg * 100) / 100,
-                        isAtRisk: avg > 0 && avg < minAprobatoria,
+                        isAtRisk: scores.length > 0 && avg < minAprobatoria,
                         attendanceRate: globalAttendanceRate,
                         gradeCount: scores.length
                     });
@@ -828,7 +830,8 @@ class CycleStatisticsService {
                 prisma.grade.findMany({
                     where: {
                         studentId: { in: studentIds },
-                        subjectId: { in: classroomSubjects.map(cs => cs.subjectId) }
+                        subjectId: { in: classroomSubjects.map(cs => cs.subjectId) },
+                        ...NOTAS_QUE_CUENTAN,
                     },
                     select: {
                         studentId: true,
@@ -868,7 +871,10 @@ class CycleStatisticsService {
                 let subjectStudentsAtRisk = 0;
                 for (const studentId of studentsWithData) {
                     const avg2 = await gradesService.calculateWeightedSubjectAverage(prisma, studentId, cs.subjectId);
-                    if (avg2 !== 0 && avg2 < minAprobatoria) subjectStudentsAtRisk++;
+                    // `studentsWithData` ya son solo los que tienen nota: un 0 es
+                    // una nota y está por debajo de la mínima (CERO-05). Antes
+                    // `avg2 !== 0` lo dejaba fuera del riesgo.
+                    if (avg2 < minAprobatoria) subjectStudentsAtRisk++;
                 }
 
                 ssa.push({

@@ -12,6 +12,7 @@ import {
   assignTeacher
 } from '../controllers/classrooms.controller';
 import { authenticate, requireAdmin, requireTeacher } from '../middleware/auth.middleware';
+import { obtenerResumenFinal } from '../controllers/resumen-final.controller';
 
 const classroomsRoutes: FastifyPluginAsync = async (fastify) => {
 
@@ -21,6 +22,9 @@ const classroomsRoutes: FastifyPluginAsync = async (fastify) => {
     // Listar y Ver detalle (Profesor/Admin necesitan ver)
     protectedRoutes.get('/', getClassrooms);
     protectedRoutes.get('/:id/stats', getClassroomStats);
+    // El resumen final del rendimiento: admin y profesor guía (lo decide
+    // `puedeVerElResumen` dentro).
+    protectedRoutes.get('/:id/resumen-final', obtenerResumenFinal as any);
     protectedRoutes.get('/:id', getClassroom);
     protectedRoutes.get('/slug/:slug', getClassroomBySlug);
 
@@ -43,16 +47,22 @@ const classroomsRoutes: FastifyPluginAsync = async (fastify) => {
     // los guardias se adelantan a `onRequest` (ver `middleware/guardias.ts`):
     // sin él, `requireTeacher` corría antes de que nadie hubiera preguntado
     // quién llama y respondía 401 hasta al administrador.
+    //
+    // INSCRIBIR Y SACAR ALUMNOS ES DEL ADMINISTRADOR (control de estudios).
+    // Pedía solo «ser profesor»: cualquier profesor metía a un alumno en una
+    // sección ajena o lo sacaba de la suya (bastaba su propia contraseña), y
+    // con eso cambiaba quién ve sus notas y a quién se las pone
+    // (`quien-puede-que.test.ts`).
     protectedRoutes.post(
       '/:classroomId/students',
-      { preHandler: [authenticate, requireTeacher] },
+      { preHandler: [authenticate, requireAdmin] },
       enrollStudent as any
     );
 
     // DELETE /api/classrooms/:classroomId/students/:studentId
     protectedRoutes.delete(
       '/:classroomId/students/:studentId',
-      { preHandler: [authenticate, requireTeacher] },
+      { preHandler: [authenticate, requireAdmin] },
       unenrollStudent as any
     );
 

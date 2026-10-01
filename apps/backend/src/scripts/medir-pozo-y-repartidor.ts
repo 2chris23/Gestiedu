@@ -32,6 +32,7 @@ import path from 'path';
 import { Client } from 'pg';
 import { PrismaClient } from '@prisma/client';
 import { platformPrisma } from '../config/database';
+import { guardarMedicion } from './guardar-medicion';
 
 const PUERTO = Number(process.env.PUERTO_MEDIDA || 3007);
 const API = `http://localhost:${PUERTO}/api`;
@@ -300,6 +301,7 @@ async function main() {
     );
     console.log('    ' + '─'.repeat(72));
 
+    const filas: unknown[] = [];
     for (const s of situaciones) {
         const servidor = arrancar(s);
         try {
@@ -320,6 +322,7 @@ async function main() {
 
             const r = await tanda(token, ruta);
             const conexiones = await conexionesReales(admin, liceo.databaseName!);
+            filas.push({ situacion: s.nombre, ...r, conexionesReales: conexiones });
 
             console.log(
                 '    ' + s.nombre.padEnd(28) +
@@ -340,6 +343,7 @@ async function main() {
     }
 
     console.log('');
+    guardarMedicion('pozo-y-repartidor', { liceo: SLUG, ruta, aLaVez: A_LA_VEZ, porPersona: POR_PERSONA, filas });
     await platformPrisma.$disconnect();
     process.exit(0);
 }

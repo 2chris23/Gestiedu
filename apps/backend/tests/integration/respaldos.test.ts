@@ -4,6 +4,8 @@ import path from 'path';
 import { Client } from 'pg';
 import {
     respaldarLiceo,
+    respaldarPlataforma,
+    RESPALDO_DE_LA_PLATAFORMA,
     restaurarLiceo,
     limpiarRespaldosViejos,
     ultimoRespaldoDe,
@@ -200,6 +202,34 @@ describe('Respaldos por liceo', () => {
             expect(basura).toEqual([]);
         },
         120000
+    );
+
+    (disponible ? it : it.skip)(
+        'RESP-07: la base de la plataforma tambien se respalda, y se puede devolver con sus liceos',
+        async () => {
+            const r = await respaldarPlataforma(carpeta);
+            expect(r.ok).toBe(true);
+            expect(path.basename(r.archivo!)).toMatch(new RegExp(`^${RESPALDO_DE_LA_PLATAFORMA}__`));
+
+            const original = await new Client({ connectionString: process.env.PLATFORM_DATABASE_URL });
+            await original.connect();
+            const liceos = (await original.query('SELECT slug FROM institutes ORDER BY slug')).rows.map((f) => f.slug);
+            await original.end();
+            expect(liceos.length).toBeGreaterThan(0);
+
+            const copia = `t_plataforma_${Date.now()}`;
+            await enBase('postgres', (c) => c.query(`CREATE DATABASE "${copia}"`));
+            try {
+                await restaurarLiceo(r.archivo!, urlDe(copia));
+                const devueltos = await enBase(copia, async (c) =>
+                    (await c.query('SELECT slug FROM institutes ORDER BY slug')).rows.map((f) => f.slug)
+                );
+                expect(devueltos).toEqual(liceos);
+            } finally {
+                await enBase('postgres', (c) => c.query(`DROP DATABASE IF EXISTS "${copia}" WITH (FORCE)`));
+            }
+        },
+        180000
     );
 
     it('RESP-06: la carpeta de respaldos se puede cambiar por configuración', () => {

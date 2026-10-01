@@ -1,12 +1,32 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { criteriosQueCubren } from '../services/evaluacion-de-la-semana.service';
 import { logger } from '../utils/logger';
 import { AppErrors } from '../middleware/error.middleware';
 import { RequestUser } from '../types/fastify';
 import * as mammoth from 'mammoth';
-import * as cheerio from 'cheerio';
-import { planWeekNumberFromRange } from '../utils/plan-weeks';
-import { assertClassroomScope } from '../services/authorization.service';
+import { leerPlanDeWord } from '../services/importar-plan-de-word';
+import { semanaDelPlanCon, NOMBRE_ANTES_DEL_PLAN } from '../services/semana-del-plan.service';
+import { assertClassroomScope, assertCanSeeClassroom } from '../services/authorization.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
+import { versionDelPlan, filaSinCambios } from '../utils/version-del-plan';
+
+/** Alguien guardó este plan después de que quien guarda ahora lo abriera. */
+class PlanCambiadoEnOtroSitio extends Error {}
+
+/**
+ * Una evaluación del plan con notas puestas no se quita ni se deja sin puntos
+ * guardando el plan: sus actividades quedaban sin evaluación y su nota salía
+ * del promedio del lapso sin que nadie se enterase (SEMEVAL-05).
+ */
+class EvaluacionConNotas extends Error {
+  constructor(public evaluaciones: string[]) {
+    super('evaluación con notas');
+  }
+}
+
+/** ¿Alguna de estas actividades de clase tiene una nota puesta? */
+const conNotaPuesta = (a: { scores: any }) =>
+  Boolean(a.scores && typeof a.scores === 'object' && Object.values(a.scores).some((v) => v !== null && v !== undefined && v !== ''));
 
 // Helper para obtener el cliente DB del tenant.
 // SEGURIDAD: No hay fallback al platform DB. Si tenantPrisma no está resuelto,
@@ -33,6 +53,11 @@ export async function getEvaluationPlanMetadata(
     if (!classroomId || !subjectId || !lapso) {
       throw AppErrors.BadRequest('Faltan parámetros requeridos (classroomId, subjectId, lapso)');
     }
+
+    // La cabecera lleva la cédula, el teléfono y el correo del profesor: la
+    // consulta quien puede ver las filas del plan, ni uno más. Antes la leía
+    // cualquiera con sesión, un alumno de otra sección incluido.
+    await assertClassroomScope(db, request.user as any, classroomId, { subjectId, accion: 'consultar el plan' });
 
     // Obtener metadata guardada
     const metadata = await db.evaluationPlanMetadata.findUnique({
@@ -81,6 +106,21 @@ export async function getEvaluationPlanMetadata(
         autoPopulated.instituteLogo = c?.institute?.logo;
         autoPopulated.ministryLogo = c?.institute?.ministryLogo;
         autoPopulated.ministryText = c?.institute?.ministryText;
+
+        /**
+         * LAS SECCIONES DEL MISMO AÑO DONDE ESTE PROFESOR DA ESTA MATERIA
+         *
+         * El plan en papel dice «AÑO: 5TO · SECCIONES: A-B-C-D»: un profesor
+         * entrega un plan para todas sus secciones de ese año (lo copia con
+         * «Copiar a otra sección»).
+         */
+        if (t && c?.academicYearId) {
+          const hermanas = await db.classroomSubject.findMany({
+            where: { subjectId, teacherId: t.id, classroom: { academicYearId: c.academicYearId, grade: c.grade } },
+            select: { classroom: { select: { section: true } } },
+          });
+          autoPopulated.seccionesDelProfesor = [...new Set(hermanas.map((h: any) => h.classroom.section).filter(Boolean))].sort();
+        }
 
         // Academic Year + Periods
         if (c?.academicYearId) {
@@ -136,10 +176,17 @@ export async function getEvaluationPlanMetadata(
             const lapsoIndex = parseInt(lapso) - 1;
             const period = activePeriods[lapsoIndex];
             if (period) {
-              autoPopulated.lapsoStartDate = period.startDate;
+              // Las semanas del plan cuentan desde que EMPIEZA EL PLAN, que el
+              // liceo puede poner después del inicio del lapso (semanas de
+              // diagnóstico: `Period.inicioDelPlan`). Igual que la clase en
+              // vivo (`services/semana-del-plan.service.ts`).
+              const inicioDelPlan = (period as any).inicioDelPlan ?? period.startDate;
+              autoPopulated.lapsoStartDate = inicioDelPlan;
               autoPopulated.lapsoEndDate = period.endDate;
+              autoPopulated.inicioDelLapso = period.startDate;
+              autoPopulated.nombreAntesDelPlan = (period as any).nombreAntesDelPlan?.trim() || NOMBRE_ANTES_DEL_PLAN;
               // Calcular semanas asegurando que los dias sobrantes cuenten como semana (Math.ceil)
-              const start = new Date(period.startDate);
+              const start = new Date(inicioDelPlan);
               const end = new Date(period.endDate);
               const diffMs = end.getTime() - start.getTime();
               const diffWeeks = Math.ceil(diffMs / (7 * 24 * 60 * 60 * 1000));
@@ -272,7 +319,7 @@ export async function getEvaluationPlanRows(
       grouped[row.weekNumber].push(row);
     }
 
-    return reply.send({ rows, grouped });
+    return reply.send({ rows, grouped, version: versionDelPlan(rows) });
   } catch (error) {
     logger.error('Error al obtener filas del plan', { error });
     if (error && typeof error === 'object' && 'statusCode' in error) throw error;
@@ -289,11 +336,13 @@ export async function batchUpsertRows(
     subjectId: string;
     lapso: string;
     rows: any[];
+    /** La versión del plan que tenía delante quien guarda (`GET /rows`). */
+    version?: string;
   } }>,
   reply: FastifyReply
 ) {
   try {
-    const { classroomId, subjectId, lapso, rows } = request.body ?? ({} as any);
+    const { classroomId, subjectId, lapso, rows, version } = request.body ?? ({} as any);
     const db = getDb(request);
     const user = request.user as RequestUser;
 
@@ -333,15 +382,28 @@ export async function batchUpsertRows(
       });
     }
 
-    // Obtener filas actuales
-    const currentRows = await db.evaluationPlanRow.findMany({
-      where: { classroomId, subjectId, lapso }
-    });
-
     const quien = quienBorra(request as any);
     const result = await db.$transaction(async (tx: any) => {
+      // Un plan se guarda de uno en uno: dos guardados a la vez del mismo plan
+      // leerían las mismas filas y el segundo borraría lo que añadió el primero.
+      await tx.$executeRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext(${`plan|${classroomId}|${subjectId}|${lapso}`}))`;
+
+      // Las filas de ahora se leen DENTRO de la transacción, después del
+      // candado: leídas antes, otro guardado podía colarse en medio.
+      const currentRows = await tx.evaluationPlanRow.findMany({
+        where: { classroomId, subjectId, lapso }
+      });
+
+      // Si quien guarda tenía delante otra versión, alguien guardó entretanto
+      // (otra pestaña, otro dispositivo). No se toca nada: ver `version-del-plan.ts`.
+      if (version && version !== versionDelPlan(currentRows)) {
+        throw new PlanCambiadoEnOtroSitio();
+      }
+
       const savedRows = [];
       const usedIds = new Set<string>();
+      // Evaluaciones que tenían puntos y se quedan sin ellos: si tienen notas, no.
+      const bajanACero: string[] = [];
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
@@ -383,8 +445,18 @@ export async function batchUpsertRows(
           existingMatch = currentRows.find((cr: any) => cr.weekNumber === row.weekNumber && cr.rowType === (row.rowType || 'EVALUATION') && !usedIds.has(cr.id));
         }
 
+        if (existingMatch && (existingMatch.puntos ?? 0) > 0 && !(rawPuntos != null && rawPuntos > 0)) {
+          bajanACero.push(existingMatch.id);
+        }
+
         let savedRow;
-        if (existingMatch) {
+        let cambio = true;
+        if (existingMatch && filaSinCambios(existingMatch, rowData)) {
+          // Igual que la guardada: no se reescribe (ver `filaSinCambios`).
+          usedIds.add(existingMatch.id);
+          savedRow = existingMatch;
+          cambio = false;
+        } else if (existingMatch) {
           usedIds.add(existingMatch.id);
           savedRow = await tx.evaluationPlanRow.update({
             where: { id: existingMatch.id },
@@ -404,7 +476,6 @@ export async function batchUpsertRows(
             title: row.actividadEval || row.title || 'Actividad Evaluativa',
             type: row.tipoEvaluacion || 'OTHER',
             scope: 'CLASSROOM',
-            startDate: new Date(),
             maxGrade: rawPuntos || 20,
             weight: rawPuntos || 0, // Puntos como referencia de peso del criterio
             classroomId,
@@ -414,13 +485,18 @@ export async function batchUpsertRows(
           };
 
           if (savedRow.activityId) {
-            await tx.activity.update({
-              where: { id: savedRow.activityId },
-              data: actData
-            });
+            // Si la fila no cambió, su actividad tampoco. Y la fecha de la
+            // actividad es la de cuando se creó: antes cada guardado del plan
+            // la ponía en «hoy», a todas las actividades del lapso.
+            if (cambio) {
+              await tx.activity.update({
+                where: { id: savedRow.activityId },
+                data: actData
+              });
+            }
           } else {
             const newActivity = await tx.activity.create({
-              data: { ...actData, createdBy: user.userId }
+              data: { ...actData, startDate: new Date(), createdBy: user.userId }
             });
             await tx.evaluationPlanRow.update({
               where: { id: savedRow.id },
@@ -437,6 +513,21 @@ export async function batchUpsertRows(
       const idsToDelete = currentRows
         .filter((cr: any) => !usedIds.has(cr.id))
         .map((cr: any) => cr.id);
+
+      const enRiesgo = [...idsToDelete, ...bajanACero];
+      if (enRiesgo.length > 0) {
+        const actividades = await tx.classActivity.findMany({
+          where: { planRowId: { in: enRiesgo } },
+          select: { planRowId: true, scores: true },
+        });
+        const conNotas = [...new Set(actividades.filter(conNotaPuesta).map((a: any) => a.planRowId as string))];
+        if (conNotas.length > 0) {
+          const nombres = currentRows
+            .filter((cr: any) => conNotas.includes(cr.id))
+            .map((cr: any) => `${cr.actividadEval || 'Evaluación'} (semana ${cr.weekNumber})`);
+          throw new EvaluacionConNotas(nombres);
+        }
+      }
 
       if (idsToDelete.length > 0) {
         const rowsWithGrades = await tx.evaluationPlanRow.findMany({
@@ -464,11 +555,36 @@ export async function batchUpsertRows(
         }
       }
 
-      return savedRows;
+      const despues = await tx.evaluationPlanRow.findMany({
+        where: { classroomId, subjectId, lapso },
+        select: { id: true, updatedAt: true },
+      });
+      return { savedRows, version: versionDelPlan(despues) };
+    }, {
+      // Un plan largo son decenas de filas: los 5 s de fábrica de Prisma se
+      // quedaban cortos con el servidor cargado, y entonces se perdía el
+      // guardado ENTERO. Mismo margen que el guardado de la clase en vivo.
+      timeout: 20000,
+      maxWait: 10000,
     });
 
-    return reply.send({ success: true, rows: result });
+    return reply.send({ success: true, rows: result.savedRows, version: result.version });
   } catch (error) {
+    if (error instanceof PlanCambiadoEnOtroSitio) {
+      return reply.status(409).send({
+        success: false,
+        error: 'Este plan se guardó desde otro sitio (otra pestaña u otro dispositivo) mientras lo editabas. No se ha cambiado nada: tus cambios siguen en pantalla.',
+        code: 'PLAN_CAMBIADO_EN_OTRO_SITIO',
+      });
+    }
+    if (error instanceof EvaluacionConNotas) {
+      return reply.status(409).send({
+        success: false,
+        error: `No se guardó: ${error.evaluaciones.join(', ')} ya tiene notas puestas en la clase. Si la quitas o la dejas sin puntos, esas notas saldrían del promedio del lapso. Muévela de semana o cambia sus puntos, pero no la dejes en 0.`,
+        code: 'EVALUACION_CON_NOTAS',
+        evaluaciones: error.evaluaciones,
+      });
+    }
     logger.error('Error al guardar filas del plan', { error });
     if (error && typeof error === 'object' && 'statusCode' in error) throw error;
     return reply.status(500).send({ error: 'Error interno del servidor' });
@@ -542,6 +658,12 @@ export async function copyPlan(
       orderBy: [{ weekNumber: 'asc' }, { orderIndex: 'asc' }]
     });
 
+    // Los instrumentos de sus evaluaciones van con el plan.
+    const instrumentos = await db.instrumentoDeEvaluacion.findMany({
+      where: { planRowId: { in: sourceRows.map((r: any) => r.id) } },
+    });
+    const instrumentoDe = new Map(instrumentos.map((i: any) => [i.planRowId, i]));
+
     let copiedCount = 0;
 
     for (const targetClassroomId of targetClassroomIds) {
@@ -556,6 +678,15 @@ export async function copyPlan(
           });
         }
 
+        // Las actividades del destino que suman a su plan: se vuelven a enganchar
+        // a la evaluación nueva que cubra su semana. Borrar las filas las dejaba
+        // sin evaluación (la llave es SET NULL) y sus notas salían del promedio
+        // sin avisar (SEMEVAL-06).
+        const enganchadas = await tx.classActivity.findMany({
+          where: { classroomId: targetClassroomId, subjectId: sourceSubjectId, planRow: { lapso: sourceLapso } },
+          select: { id: true, planRow: { select: { weekNumber: true } } },
+        });
+
         // Eliminar filas existentes del destino (sin actividades con calificaciones)
         await borrarGuardandoCopia(
           tx,
@@ -565,11 +696,23 @@ export async function copyPlan(
         );
 
         // Copiar filas (sin activityId)
+        const nuevas: any[] = [];
         for (const row of sourceRows) {
           const { id, classroomId: _, activityId, createdAt, updatedAt, ...rowData } = row;
-          await tx.evaluationPlanRow.create({
+          const nueva = await tx.evaluationPlanRow.create({
             data: { ...rowData, classroomId: targetClassroomId }
           });
+          nuevas.push(nueva);
+          const inst: any = instrumentoDe.get(id);
+          if (inst) {
+            await tx.instrumentoDeEvaluacion.create({ data: { planRowId: nueva.id, tipo: inst.tipo, definicion: inst.definicion } });
+          }
+        }
+        for (const a of enganchadas) {
+          const semana = a.planRow?.weekNumber;
+          if (semana == null) continue;
+          const nueva = criteriosQueCubren(nuevas, semana)[0];
+          if (nueva) await tx.classActivity.update({ where: { id: a.id }, data: { planRowId: nueva.id } });
         }
       });
       copiedCount++;
@@ -679,6 +822,15 @@ export async function getCalendarData(
       throw AppErrors.BadRequest('Faltan parámetros requeridos');
     }
 
+    /**
+     * ESTA LECTURA NO PREGUNTABA DE QUIÉN ERA LA SECCIÓN
+     *
+     * Bastaba estar identificado: cambiando el id en la dirección, cualquiera
+     * —un alumno, un representante— leía el horario y el plan de evaluación de
+     * una sección ajena. El calendario sí es de todos, pero el de lo SUYO.
+     */
+    await assertCanSeeClassroom(db, request.user as any, classroomId);
+
     // Obtener schedule blocks de la sección
     const scheduleBlocks = await db.scheduleBlock.findMany({
       where: { classroomId },
@@ -703,6 +855,22 @@ export async function getCalendarData(
       where: { classroomId }
     });
 
+    // Los lapsos del año de la sección: la semana del plan de cada día se
+    // cuenta igual que en la rejilla y en la clase en vivo.
+    const seccion = await db.classroom.findUnique({
+      where: { id: classroomId },
+      select: {
+        academicYear: {
+          select: {
+            startDate: true,
+            periods: { select: { id: true, startDate: true, endDate: true, inicioDelPlan: true, nombreAntesDelPlan: true } },
+          },
+        },
+      },
+    });
+    const lapsosDelAno = seccion?.academicYear?.periods ?? [];
+    const inicioDelAno = seccion?.academicYear?.startDate ?? null;
+
     // Generar calendario
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -722,23 +890,28 @@ export async function getCalendarData(
         const subjectId = block.classroomSubject?.subject?.id;
         if (!subjectId) continue;
 
-        // Encontrar lapso activo para esta fecha
-        const meta = allMetadata.find((m: any) => 
+        /**
+         * El plan de ese día: el de su LAPSO. Antes solo se encontraba si el
+         * plan tenía `fechaDesde` y `fechaHasta`, que ninguna pantalla
+         * escribe: el calendario casi nunca enseñaba la semana.
+         */
+        const semanaDelDia = semanaDelPlanCon(new Date(d), lapsosDelAno, inicioDelAno);
+        const meta = allMetadata.find((m: any) =>
           m.subjectId === subjectId &&
-          m.fechaDesde && m.fechaHasta &&
-          new Date(m.fechaDesde) <= d && d <= new Date(m.fechaHasta)
+          (semanaDelDia.lapso ? m.lapso === semanaDelDia.lapso : true)
         );
+        const sem = meta?.fechaDesde
+          ? semanaDelPlanCon(new Date(d), lapsosDelAno, inicioDelAno, new Date(meta.fechaDesde))
+          : semanaDelDia;
 
         let weekNumber: number | undefined;
         let planContent: any = undefined;
         let hasEvaluation = false;
         let evaluationCount = 0;
 
-        if (meta && meta.fechaDesde) {
-          // Calcular semana (CORRECCIÓN: alineada a LUNES — Semana 2 inicia en
-          // el primer lunes posterior a la semana inicial; utils/plan-weeks.ts)
-          const lapsoStart = new Date(meta.fechaDesde);
-          weekNumber = planWeekNumberFromRange(lapsoStart, d);
+        if (meta && sem.inicioDelPlan && !sem.antesDelPlan) {
+          // Semanas alineadas a LUNES (utils/plan-weeks.ts)
+          weekNumber = sem.semana;
 
           // Obtener contenido de esa semana
           const weekRows = allPlanRows.filter((r: any) =>
@@ -808,61 +981,43 @@ export async function parseWordFile(request: FastifyRequest, reply: FastifyReply
       throw AppErrors.BadRequest('No se ha subido ningún archivo');
     }
 
-    const buffer = await data.toBuffer();
-    const result = await mammoth.convertToHtml({ buffer });
-    const html = result.value;
-
-    const $ = cheerio.load(html);
-    const table = $('table').first();
-
-    if (!table.length) {
-      throw AppErrors.BadRequest('El documento no contiene ninguna tabla válida para procesar');
+    // SEGURIDAD: Validar extensión .docx (parser-docx-memory-exhaustion-eval-plan)
+    if (!data.filename || !data.filename.toLowerCase().endsWith('.docx')) {
+      throw AppErrors.BadRequest('Solo se admiten documentos en formato Word (.docx)');
     }
 
-    const rows: Record<string, string>[] = [];
-    const headerMapping: Record<number, string> = {};
+    const buffer = await data.toBuffer();
 
-    // Keys mapping heuristic
-    const mapHeaderToKey = (text: string) => {
-      text = text.toLowerCase();
-      if (text.includes('tema')) return 'title';
-      if (text.includes('tejido')) return 'label';
-      if (text.includes('referente') || text.includes('teórico') || text.includes('teorico')) return 'textContent';
-      if (text.includes('actividad')) return 'actividadEval';
-      if (text.includes('técnica') || text.includes('tecnica')) return 'tecnicas';
-      if (text.includes('instrumento')) return 'instrumentos';
-      if (text.includes('criterio')) return 'criterios';
-      if (text.includes('tipo')) return 'tipoEvaluacion';
-      if (text.includes('%') || text.includes('ponderación') || text.includes('ponderacion')) return 'ponderacion';
-      if (text.includes('punto') || text.includes('pts')) return 'puntos';
-      return null;
-    };
+    // SEGURIDAD: Limitar tamaño del archivo a 2MB
+    if (buffer.length > 2 * 1024 * 1024) {
+      throw AppErrors.BadRequest('El documento excede el tamaño máximo permitido (2MB)');
+    }
 
-    table.find('tr').each((rowIndex, tr) => {
-      const isHeader = rowIndex === 0;
-      const rowData: Record<string, string> = {};
-      let hasData = false;
+    // SEGURIDAD: Validar cabecera mágica PKZip (0x50, 0x4B, 0x03, 0x04)
+    if (
+      buffer.length < 4 ||
+      buffer[0] !== 0x50 ||
+      buffer[1] !== 0x4b ||
+      buffer[2] !== 0x03 ||
+      buffer[3] !== 0x04
+    ) {
+      throw AppErrors.BadRequest('El archivo subido no es un documento .docx válido');
+    }
 
-      $(tr).find('td, th').each((colIndex, cell) => {
-        const text = $(cell).text().trim();
-        if (isHeader) {
-          const key = mapHeaderToKey(text);
-          if (key) headerMapping[colIndex] = key;
-        } else {
-          const key = headerMapping[colIndex];
-          if (key) {
-            rowData[key] = text;
-            if (text.length > 0) hasData = true;
-          }
-        }
-      });
-
-      if (!isHeader && hasData) {
-        rows.push(rowData);
-      }
-    });
-
-    return reply.send({ success: true, rows });
+    const result = await mammoth.convertToHtml({ buffer });
+    let leido;
+    try {
+      leido = leerPlanDeWord(result.value);
+    } catch (e: any) {
+      if (e?.message === 'DEMASIADAS_FILAS') throw AppErrors.BadRequest('El documento contiene demasiadas filas en la tabla (máximo 500)');
+      throw e;
+    }
+    if (!leido.filas.length) {
+      throw AppErrors.BadRequest('No se encontró la tabla del plan: hace falta una fila de títulos (Tema generador, Actividad, Técnica, Instrumento, Criterios, Ponderación…)');
+    }
+    // `rows` se queda por compatibilidad: las filas en orden, sin su semana.
+    const rows = leido.filas.map((f) => f.datos);
+    return reply.send({ success: true, rows, filas: leido.filas, metadatos: leido.metadatos });
   } catch (error: any) {
     logger.error('Error al parsear documento Word', { error: error.message });
     if (error && typeof error === 'object' && 'statusCode' in error) throw error;

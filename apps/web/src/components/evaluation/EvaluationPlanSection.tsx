@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { planWeekRangeFromRange } from '@/lib/plan-weeks';
+import { AyudaDeLaPantalla } from '@/components/common/AyudaDeLaPantalla';
+import { useConfirm } from '@/hooks/useConfirm';
 import { toast } from 'sonner';
 import {
   Save, Printer, ArrowLeft, Edit2,
@@ -19,7 +20,14 @@ import {
   type AutoPopulatedData
 } from '@/hooks/useEvaluationPlan';
 import api from '@/lib/axios';
+import Link from 'next/link';
+import { useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_PLAN_COLUMNS, type PlanColumnDef } from './planColumns';
+import PlanPorBloques from './PlanPorBloques';
+import InstrumentosDelPlan from './InstrumentosDelPlan';
+import { MembreteOficial } from '@/components/documentos/MembreteOficial';
+import { type WeekRow, getWeekDates, buildEmptyWeekRows, dbRowsToWeekRows } from './planEnSemanas';
+import CamposDelPlan from './CamposDelPlan';
 
 // ────────────────────────────────────────────────
 // CONSTANTS
@@ -34,74 +42,6 @@ const LAPSOS = [
 // TYPES
 // ────────────────────────────────────────────────
 type ColDef = PlanColumnDef;
-
-// Row stored in state: one entry per week (indexed by weekNumber)
-// mergeSpan > 1 means "this cell spans N weeks downward" (rowSpan)
-// hiddenByMerge = true means the row above has claimed this cell
-interface WeekRow {
-  id?: string;
-  activityId?: string;
-  weekNumber: number;
-  data: Record<string, string | number>;
-  /** Per-column span configuration: colKey → number of weeks it spans */
-  colSpan: Record<string, number>;
-}
-
-// ────────────────────────────────────────────────
-// HELPERS
-// ────────────────────────────────────────────────
-// CORRECCIÓN (reporte usuario): semanas del plan alineadas a LUNES.
-// Semana 1 = desde la fecha de inicio hasta el domingo previo al primer lunes
-// posterior a la semana inicial (ej: inicio 19/08 → semana 1: 19-30/08);
-// Semana 2 abre el LUNES 31/08 (semana lun→dom). Ver lib/plan-weeks.ts.
-function getWeekDates(lapsoStart: string | undefined, weekNumber: number): { start: string; end: string } | null {
-  if (!lapsoStart) return null;
-  const range = planWeekRangeFromRange(new Date(lapsoStart), weekNumber);
-  const fmt = (d: Date) => d.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  return { start: fmt(range.start), end: fmt(range.end) };
-}
-
-function buildEmptyWeekRows(totalWeeks: number): WeekRow[] {
-  return Array.from({ length: totalWeeks }, (_, i) => ({
-    weekNumber: i + 1,
-    data: {},
-    colSpan: {},
-  }));
-}
-
-/** Converts flat EvaluationPlanRow[] (from DB) → WeekRow[] */
-function dbRowsToWeekRows(dbRows: Partial<EvaluationPlanRow>[], totalWeeks: number): WeekRow[] {
-  const base = buildEmptyWeekRows(totalWeeks);
-  const sorted = [...dbRows].sort((a, b) => {
-    if (a.rowType === 'EVALUATION') return 1;
-    if (b.rowType === 'EVALUATION') return -1;
-    return 0;
-  });
-
-  sorted.forEach(r => {
-    const wn = (r.weekNumber || 1) - 1;
-    if (wn < 0 || wn >= base.length) return;
-    if (r.id) base[wn].id = r.id;
-    if (r.activityId) base[wn].activityId = r.activityId;
-    const span = r.endWeekNumber ? Math.max(1, r.endWeekNumber - r.weekNumber! + 1) : 1;
-    // Store all data fields
-    const d = base[wn].data;
-    (DEFAULT_PLAN_COLUMNS as ColDef[]).forEach(col => {
-      const val = (r as any)[col.key];
-      if (val !== undefined && val !== null && val !== '') d[col.key] = val;
-    });
-    // Also store any extra keys (custom columns)
-    const extra = (r as any).extraData;
-    if (extra) {
-      try { Object.assign(d, typeof extra === 'string' ? JSON.parse(extra) : extra); } catch {}
-    }
-    // Apply span to all mergeable columns
-    DEFAULT_PLAN_COLUMNS.filter(c => c.mergeable).forEach(col => {
-      base[wn].colSpan[col.key] = span;
-    });
-  });
-  return base;
-}
 
 /** Converts WeekRow[] → flat rows for DB save */
 function weekRowsToDbRows(weeks: WeekRow[], totalWeeks: number): any[] {
@@ -131,9 +71,18 @@ function weekRowsToDbRows(weeks: WeekRow[], totalWeeks: number): any[] {
     });
     // Store extra cols as extraData JSON
     const extraKeys = Object.keys(w.data).filter(k => !DEFAULT_PLAN_COLUMNS.find(c => c.key === k));
-    if (extraKeys.length > 0) {
-      const extraData: any = {};
-      extraKeys.forEach(k => { extraData[k] = w.data[k]; });
+    const extraData: any = {};
+    extraKeys.forEach(k => { extraData[k] = w.data[k]; });
+
+    // Y cuántas semanas abarca CADA columna, que es lo que el `endWeekNumber`
+    // de la fila no sabe contar.
+    const uniones: Record<string, number> = {};
+    Object.entries(w.colSpan).forEach(([col, n]) => {
+      if (Number(n) > 1) uniones[col] = Number(n);
+    });
+    if (Object.keys(uniones).length > 0) extraData.__uniones = uniones;
+
+    if (Object.keys(extraData).length > 0) {
       row.extraData = JSON.stringify(extraData);
     }
     out.push(row);
@@ -150,7 +99,7 @@ function ExpandHandle({ onExpand, onCollapse, canCollapse }: {
   canCollapse: boolean;
 }) {
   return (
-    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex items-center gap-1 pb-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+    <div className="absolute bottom-0 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 pb-0.5 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">
       <button
         title="Expandir hacia abajo (abarcar semana siguiente)"
         onClick={onExpand}
@@ -198,6 +147,16 @@ function AutoResizeTextarea({
     resize();
   }, [value, minHeight, resize]);
 
+  // Y cuando cambia su ancho (una columna que se mueve, la ventana que se
+  // estrecha): si no, el título se quedaba cortado («TIPO DE» sin «EVAL.»).
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const vigia = new ResizeObserver(() => resize());
+    vigia.observe(el);
+    return () => vigia.disconnect();
+  }, [resize]);
+
   return (
     <textarea
       ref={ref}
@@ -230,14 +189,24 @@ export default function EvaluationPlanSection({
   const { data: rowsData, isLoading: isLoadingRows } = useEvaluationPlanRows({ classroomId, subjectId, lapso });
   const { mutateAsync: saveMeta, isPending: isSavingMeta } = useUpsertEvaluationPlanMetadata();
   const { mutateAsync: saveRows, isPending: isSavingRows } = useBatchUpsertRows();
+  const queryClient = useQueryClient();
 
   // ── Local state ──────────────────────────────
   const [isEditing, setIsEditing] = useState(false);
+  /**
+   * La versión del plan que se tenía delante al empezar a editar, y cómo
+   * estaba todo en ese momento (para saber si hay cambios sin guardar).
+   */
+  const versionAlEditar = useRef<string | undefined>(undefined);
+  const comoEstabaAlEditar = useRef<string>('');
+  /** Alguien guardó este plan desde otro sitio mientras se editaba aquí. */
+  const [choque, setChoque] = useState<string | null>(null);
   const [localMeta, setLocalMeta] = useState<Partial<EvaluationPlanMetadata>>({});
   const [weeks, setWeeks] = useState<WeekRow[]>([]);
   const [columns, setColumns] = useState<ColDef[]>([...DEFAULT_PLAN_COLUMNS]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const preguntar = useConfirm();
   const [isImporting, setIsImporting] = useState(false);
 
   // ── Copiar el plan a otras secciones ─────────
@@ -289,43 +258,79 @@ export default function EvaluationPlanSection({
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await api.post('/api/evaluation-plan/parse-word', formData, {
+      // Sin «/api» delante: el cliente ya lo pone. Con él, la dirección era
+      // /api/api/… y la importación no funcionó nunca.
+      const response = await api.post('/evaluation-plan/parse-word', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      if (response.data?.success && response.data?.rows) {
-        const parsedRows: Record<string, string>[] = response.data.rows;
-        
-        const newWeeks = [...weeks];
-        parsedRows.forEach((r, i) => {
-          if (i < newWeeks.length) {
-            // Sincronizar puntos y ponderación si vienen del Word
-            if (r['ponderacion'] && !r['puntos']) {
-              const p = parseFloat(String(r['ponderacion']).replace('%', '').trim());
-              if (!isNaN(p)) {
-                const pt = Math.round((p / 100) * 20 * 100) / 100;
-                r['puntos'] = String(pt);
-                r['ponderacion'] = String(Math.round((pt / 20) * 100 * 100) / 100);
-              }
-            } else if (r['puntos']) {
-              const pt = parseFloat(String(r['puntos']).trim());
-              if (!isNaN(pt)) {
-                r['puntos'] = String(Math.round(pt * 100) / 100);
-                r['ponderacion'] = String(Math.round((pt / 20) * 100 * 100) / 100);
-              }
-            }
-            newWeeks[i].data = { ...newWeeks[i].data, ...r };
-            Object.keys(r).forEach(k => {
-              newWeeks[i].colSpan[k] = 1;
-            });
+      const filas: Array<{ semana: number | null; datos: Record<string, string> }> =
+        response.data?.filas ?? (response.data?.rows ?? []).map((datos: Record<string, string>) => ({ semana: null, datos }));
+      if (filas.length) {
+        /**
+         * EL WORD ES EL PLAN
+         *
+         * Importar es poner el plan del Word: si el lapso ya tiene algo, se
+         * pregunta y se vacía antes (si no, las semanas que el Word no trae
+         * se quedaban con lo de antes, mezclado). Nada se guarda hasta
+         * «Guardar»; y guardar sin una evaluación que ya tiene notas da 409.
+         */
+        const yaTieneAlgo = weeks.some((w) => Object.values(w.data).some((v) => v !== '' && v !== 0 && v !== undefined && v !== null));
+        if (yaTieneAlgo) {
+          const ok = await preguntar({
+            title: 'Reemplazar el plan con el del Word',
+            description: `Se pone el plan del Word (${filas.length} ${filas.length === 1 ? 'evaluación' : 'evaluaciones'}) y se vacía lo que había en este momento. No se guarda hasta que pulses «Guardar».`,
+            confirmLabel: 'Reemplazar',
+          });
+          if (!ok) return;
+        }
+        const newWeeks = weeks.map((w) => ({ ...w, data: {}, colSpan: {} }) as WeekRow);
+        let siguiente = 0;
+        let fuera = 0;
+        filas.forEach(({ semana, datos }) => {
+          const r = { ...datos };
+          // Cada evaluación a SU semana («Semana 3» → la fila 3); sin semana, en orden.
+          const i = semana && semana >= 1 ? semana - 1 : siguiente;
+          siguiente = i + 1;
+          if (i >= newWeeks.length) {
+            fuera++;
+            return;
           }
+          // Sincronizar puntos y ponderación si vienen del Word
+          if (r['ponderacion'] && !r['puntos']) {
+            const pc = parseFloat(String(r['ponderacion']).replace('%', '').trim());
+            if (!isNaN(pc)) {
+              const pt = Math.round((pc / 100) * 20 * 100) / 100;
+              r['puntos'] = String(pt);
+              r['ponderacion'] = String(Math.round((pt / 20) * 100 * 100) / 100);
+            }
+          } else if (r['puntos']) {
+            const pt = parseFloat(String(r['puntos']).trim());
+            if (!isNaN(pt)) {
+              r['puntos'] = String(Math.round(pt * 100) / 100);
+              r['ponderacion'] = String(Math.round((pt / 20) * 100 * 100) / 100);
+            }
+          }
+          newWeeks[i] = { ...newWeeks[i], data: { ...newWeeks[i].data, ...r }, colSpan: { ...newWeeks[i].colSpan } };
+          Object.keys(r).forEach((k) => {
+            newWeeks[i].colSpan[k] = 1;
+          });
         });
         setWeeks(newWeeks);
-        toast.success('Datos importados correctamente desde Word.');
+        // Los datos de la cabecera del Word (docente, referentes, P.E.I.C.…).
+        const metadatos = response.data?.metadatos ?? {};
+        if (Object.keys(metadatos).length) setLocalMeta((m) => ({ ...m, ...metadatos }));
+        const puestas = filas.length - fuera;
+        toast.success(
+          `Importadas ${puestas} ${puestas === 1 ? 'evaluación' : 'evaluaciones'} del Word` +
+            (fuera ? `; ${fuera} caen fuera de las ${newWeeks.length} semanas del lapso` : '') +
+            '. Revisa y guarda.'
+        );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error('Error al importar el documento. Asegúrate de que tenga una tabla válida.');
+      // El servidor dice qué no encontró; si no, lo de siempre.
+      toast.error(error?.response?.data?.message || error?.response?.data?.error || 'Error al importar el documento. Asegúrate de que tenga una tabla válida.');
     } finally {
       setIsImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -337,7 +342,14 @@ export default function EvaluationPlanSection({
   const totalWeeks = autoPopulated.lapsoWeeks || localMeta.totalSemanas || 24;
 
   // ── Sync from server ─────────────────────────
+  // MIENTRAS SE EDITA, LO DE LA PANTALLA NO SE TOCA.
+  // Estas dos sincronizaciones copiaban lo del servidor encima de lo que el
+  // profesor estaba escribiendo cada vez que llegaba una lectura nueva —y
+  // llega una tras CUALQUIER guardado de cualquier pantalla, y con cada aviso
+  // de tiempo real—. Veinte minutos de trabajo podían desaparecer sin que él
+  // hiciera nada. Al salir del editor, sí se vuelve a lo guardado.
   useEffect(() => {
+    if (isEditing) return;
     if (metaData?.metadata) {
       setLocalMeta(metaData.metadata);
       // restore custom columns if saved
@@ -351,16 +363,17 @@ export default function EvaluationPlanSection({
       setLocalMeta({});
       setColumns([...DEFAULT_PLAN_COLUMNS]);
     }
-  }, [metaData]);
+  }, [metaData, isEditing]);
 
   useEffect(() => {
+    if (isEditing) return;
     const tw = autoPopulated.lapsoWeeks || localMeta.totalSemanas || 24;
     if (rowsData?.rows && rowsData.rows.length > 0) {
       setWeeks(dbRowsToWeekRows(rowsData.rows, tw));
     } else {
       setWeeks(buildEmptyWeekRows(tw));
     }
-  }, [rowsData, autoPopulated.lapsoWeeks, localMeta.totalSemanas]);
+  }, [rowsData, autoPopulated.lapsoWeeks, localMeta.totalSemanas, isEditing]);
 
   // ── Totals ────────────────────────────────────
   const totalPuntos = useMemo(() =>
@@ -385,8 +398,53 @@ export default function EvaluationPlanSection({
     setColumns(prev => prev.map(c => c.key === key ? { ...c, label } : c));
   };
 
+  /**
+   * ORDENAR LAS COLUMNAS
+   *
+   * Arrastrando la manija de la cabecera (ratón), con las flechas ← → sobre
+   * ella (teclado) o, en el teléfono, con «subir/bajar» en «Campos del plan».
+   * El orden se guarda con el plan (`customColumns`).
+   */
+  const moverColumna = (desde: number, hasta: number) =>
+    setColumns(prev => {
+      if (desde === hasta || desde < 0 || hasta < 0 || desde >= prev.length || hasta >= prev.length) return prev;
+      const nuevas = [...prev];
+      const [movida] = nuevas.splice(desde, 1);
+      nuevas.splice(hasta, 0, movida);
+      return nuevas;
+    });
+  const [agarrada, setAgarrada] = useState<number | null>(null);
+  const [encima, setEncima] = useState<number | null>(null);
+  const soltarColumna = () => {
+    setAgarrada(null);
+    setEncima(null);
+  };
+
   const resetColumns = () => {
     setColumns([...DEFAULT_PLAN_COLUMNS]);
+  };
+
+  /**
+   * SI UN CAMPO ABARCA VARIAS SEMANAS O ES DE CADA SEMANA
+   *
+   * Venía fijo en el código para dos columnas concretas —tema generador y
+   * tejido temático—, así que una columna añadida por el profesor no podía
+   * abarcar nunca, y las dos de fábrica no podían dejar de hacerlo. Es una
+   * decisión suya, no nuestra.
+   */
+  const cambiarSiAbarca = (key: string, abarca: boolean) => {
+    setColumns(prev => prev.map(c => (c.key === key ? { ...c, mergeable: abarca } : c)));
+    if (!abarca) {
+      // Deja de abarcar: se sueltan las semanas que tenía cogidas, o
+      // quedarían escondidas sin nada que las enseñe.
+      setWeeks(prev =>
+        prev.map(w => {
+          const colSpan = { ...w.colSpan };
+          delete colSpan[key];
+          return { ...w, colSpan };
+        })
+      );
+    }
   };
 
   // ── Helpers: cell mutation ────────────────────
@@ -439,6 +497,27 @@ export default function EvaluationPlanSection({
     });
   }, []);
 
+  /**
+   * ALARGAR O ACORTAR UN BLOQUE
+   *
+   * En la tabla, unir celdas se hace columna a columna con un botón que sale
+   * al pasar el cursor. De pie no hay cursor y no hay tabla: hay bloques, y un
+   * bloque se alarga entero. Se aplica a las columnas que abarcan semanas
+   * —las `mergeable`—, que es lo mismo que se guarda.
+   */
+  const alargarBloque = useCallback((indice: number) => {
+    columns.filter(c => c.mergeable).forEach(col => expandCell(indice, col.key));
+  }, [columns, expandCell]);
+
+  const acortarBloque = useCallback((indice: number) => {
+    columns.filter(c => c.mergeable).forEach(col => collapseCell(indice, col.key));
+  }, [columns, collapseCell]);
+
+  const fechasDeLaSemana = useCallback(
+    (numero: number) => getWeekDates(autoPopulated?.lapsoStartDate, numero),
+    [autoPopulated?.lapsoStartDate]
+  );
+
   // ── Auto-distribute ───────────────────────────
   const distributeEqually = () => {
     const activeIdxs = weeks
@@ -472,18 +551,67 @@ export default function EvaluationPlanSection({
   };
 
   // ── Save ──────────────────────────────────────
+  const fotoDelEditor = () =>
+    JSON.stringify([weekRowsToDbRows(weeks, totalWeeks), columns, localMeta]);
+
+  const empezarAEditar = () => {
+    versionAlEditar.current = rowsData?.version;
+    comoEstabaAlEditar.current = fotoDelEditor();
+    setChoque(null);
+    setIsEditing(true);
+  };
+
+  const salirDelEditor = () => {
+    if (fotoDelEditor() !== comoEstabaAlEditar.current &&
+        !window.confirm('Tienes cambios sin guardar en el plan. ¿Salir y perderlos?')) {
+      return;
+    }
+    setChoque(null);
+    setIsEditing(false);
+  };
+
+  /** Tras un choque: se deja lo de aquí y se carga lo que se guardó en el otro sitio. */
+  const cargarLoGuardado = async () => {
+    setChoque(null);
+    setIsEditing(false);
+    await queryClient.invalidateQueries({ queryKey: ['evaluationPlanRows'] });
+    await queryClient.invalidateQueries({ queryKey: ['evaluationPlanMetadata'] });
+  };
+
   const handleSave = async () => {
     try {
+      // Primero las filas: son el trabajo del profesor, y es donde se
+      // comprueba que nadie guardó entretanto. Si choca, no se guarda nada.
+      const dbRows = weekRowsToDbRows(weeks, totalWeeks);
+      const guardado = await saveRows({ classroomId, subjectId, lapso, rows: dbRows, version: versionAlEditar.current });
+      versionAlEditar.current = guardado?.version;
       await saveMeta({
         classroomId, subjectId, lapso,
         ...localMeta,
         customColumns: JSON.stringify(columns),
       });
-      const dbRows = weekRowsToDbRows(weeks, totalWeeks);
-      await saveRows({ classroomId, subjectId, lapso, rows: dbRows });
+      setChoque(null);
       setIsEditing(false);
-    } catch {
-      toast.error('Error al guardar el plan de evaluación.');
+      if ((guardado as any)?.pendiente) {
+        toast('Sin conexión: el plan quedó pendiente ⏱ y se envía solo al volver.', { id: 'pendiente' });
+      } else {
+        toast.success('Plan de evaluación guardado');
+      }
+    } catch (error: any) {
+      const datos = error?.response?.data;
+      // Una evaluación con notas puestas no se quita ni se deja sin puntos:
+      // no es un choque con otra pestaña, es algo que el profesor arregla aquí.
+      if (datos?.code === 'EVALUACION_CON_NOTAS') {
+        toast.error(datos.error, { duration: 12000 });
+        return;
+      }
+      if (error?.response?.status === 409) {
+        setChoque(datos?.error || 'Este plan se guardó desde otro sitio mientras lo editabas.');
+        return;
+      }
+      // El motivo exacto (p. ej. «la suma de puntos es 18 y debe ser 20») es
+      // lo que el profesor necesita para arreglarlo: se enseña tal cual.
+      toast.error(datos?.error || datos?.message || 'No se pudo guardar el plan de evaluación. Tus cambios siguen en pantalla.');
     }
   };
 
@@ -504,49 +632,49 @@ export default function EvaluationPlanSection({
     ];
     return (
       <div className="bg-white border-b border-gray-200">
-        <div className="p-4 pb-2 text-center">
-          <div className="text-[10px] font-bold uppercase text-gray-800 leading-tight">
-            República Bolivariana de Venezuela<br />
-            Ministerio del Poder Popular para la Educación<br />
-            <span className="text-sm text-indigo-900 mt-1 block">
-              {autoPopulated.instituteName || 'INSTITUCIÓN EDUCATIVA'}
-            </span>
-          </div>
+        {/* El membrete oficial del liceo (ministerio, nombre, código DEA…), el mismo de la boleta. */}
+        <div className="p-4 pb-2">
+          <MembreteOficial respaldo={{ nombre: autoPopulated.instituteName || 'Institución educativa' }} />
         </div>
 
-        <div className="grid grid-cols-4 gap-0 border-t border-gray-200 bg-gray-50 text-[10px]">
+        <div className="grid grid-cols-4 gap-0 border-t border-gray-200 bg-slate-50 text-xs">
           {[
             ['Docente', autoPopulated.teacherName || 'Sin asignar'],
             ['Área de Formación', autoPopulated.subjectName || '—'],
             ['Año / Sección', `${autoPopulated.classroomGrade ? autoPopulated.classroomGrade + '°' : ''} ${autoPopulated.classroomSection ? '"' + autoPopulated.classroomSection + '"' : '—'}`],
             ['Momento Pedagógico', `${LAPSOS.find(l => l.id === selectedLapso)?.name} — ${autoPopulated.academicYearName || ''}`],
           ].map(([label, val]) => (
-            <div key={label} className="p-2 border-r border-b border-gray-200 last:border-r-0">
-              <span className="text-gray-400 font-bold uppercase block mb-0.5">{label}</span>
-              <span className="font-semibold text-gray-800">{val}</span>
+            <div key={label} className="px-3 py-2 border-r border-b border-gray-200 last:border-r-0">
+              <span className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide block mb-0.5">{label}</span>
+              <span className="font-semibold text-gray-900">{val}</span>
             </div>
           ))}
         </div>
 
         {/* Separador elegante para que las divisiones de 4 columnas no choquen visualmente con las de 5 */}
-        <div className="bg-slate-100 px-3 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-600 border-b border-gray-200 flex items-center justify-between">
+        <div className="bg-white px-3 pt-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center justify-between">
           <span>Referentes Curriculares e Institucionales</span>
         </div>
 
-        <div className="grid grid-cols-5 gap-0 bg-white text-[10px]">
+        <div className="grid grid-cols-5 gap-3 bg-white px-3 pb-3 text-xs">
           {fields.map(field => (
-            <div key={field.key} className="p-2 border-r border-gray-200 last:border-r-0">
-              <span className="text-gray-400 font-bold uppercase block mb-1">{field.label}</span>
+            <div key={field.key}>
               {mode === 'edit' ? (
-                <textarea
-                  value={(localMeta as any)[field.key] || ''}
-                  onChange={e => handleMetaChange(field.key, e.target.value)}
-                  placeholder={`Escriba ${field.label.toLowerCase()}...`}
-                  rows={2}
-                  className="w-full bg-gray-50 border border-gray-200 rounded p-1.5 focus:ring-2 focus:ring-indigo-500 outline-none resize-none text-[10px]"
-                />
+                <label className="block">
+                  <span className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide block mb-1">{field.label}</span>
+                  <textarea
+                    value={(localMeta as any)[field.key] || ''}
+                    onChange={e => handleMetaChange(field.key, e.target.value)}
+                    placeholder={`Escriba ${field.label.toLowerCase()}…`}
+                    rows={3}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs leading-snug text-gray-900 placeholder:text-slate-400 hover:border-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none resize-none"
+                  />
+                </label>
               ) : (
-                <span className="text-gray-700 leading-snug font-medium block">{(localMeta as any)[field.key] || '—'}</span>
+                <>
+                  <span className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide block mb-1">{field.label}</span>
+                  <span className="text-gray-800 leading-snug font-medium block">{(localMeta as any)[field.key] || '—'}</span>
+                </>
               )}
             </div>
           ))}
@@ -717,43 +845,83 @@ export default function EvaluationPlanSection({
       <div className="flex flex-col h-full bg-white">
         {/* Tabla unificada editable con thead y tfoot sticky */}
         <div className="overflow-auto flex-1 min-h-0">
-          <table className="w-full text-[10px] text-left text-gray-700 border-collapse">
-            <thead className="text-white uppercase bg-slate-800 sticky top-0 z-20 shadow-sm">
+          <table className="w-full text-xs text-left text-gray-800 border-collapse">
+            <thead className="text-slate-800 bg-slate-100 sticky top-0 z-20 shadow-[0_1px_0_#cbd5e1]">
               <tr>
-                <th className="px-1 py-1.5 border border-slate-700 text-center w-18 min-w-[70px] bg-slate-800 sticky top-0 font-bold whitespace-nowrap">
-                  FECHA/SEM.
+                <th className="px-2 py-2 border border-slate-200 text-center w-20 min-w-[76px] bg-slate-100 sticky top-0 left-0 z-30 text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">
+                  Semana
                 </th>
-                {columns.map(col => (
+                {columns.map((col, i) => (
                   <th
                     key={col.key}
-                    className="px-1 py-1.5 border border-slate-700 bg-slate-800 sticky top-0"
+                    // Se arrastra solo desde la manija: el nombre se sigue pudiendo escribir.
+                    draggable={agarrada === i}
+                    onDragStart={e => {
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', col.key);
+                    }}
+                    onDragOver={e => {
+                      if (agarrada === null) return;
+                      e.preventDefault();
+                      if (encima !== i) setEncima(i);
+                    }}
+                    onDrop={e => {
+                      e.preventDefault();
+                      if (agarrada !== null) moverColumna(agarrada, i);
+                      soltarColumna();
+                    }}
+                    onDragEnd={soltarColumna}
+                    className={`px-1.5 py-1.5 border border-slate-200 bg-slate-100 sticky top-0 align-bottom transition-colors ${
+                      agarrada === i ? 'opacity-40' : ''
+                    } ${agarrada !== null && encima === i && agarrada !== i ? 'bg-indigo-100 shadow-[inset_0_0_0_2px_#818cf8]' : ''}`}
                     style={{
-                      width: col.numeric ? (col.key === 'puntos' ? '54px' : '64px') : undefined,
-                      minWidth: col.numeric ? (col.key === 'puntos' ? '50px' : '60px') : '70px',
+                      width: col.numeric ? '120px' : undefined,
+                      minWidth: col.numeric ? '120px' : '140px',
                     }}
                   >
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-start gap-0.5">
+                      <button
+                        type="button"
+                        onMouseDown={() => setAgarrada(i)}
+                        onMouseUp={() => agarrada === i && encima === null && setAgarrada(null)}
+                        onKeyDown={e => {
+                          if (e.key === 'ArrowLeft') { e.preventDefault(); moverColumna(i, i - 1); }
+                          if (e.key === 'ArrowRight') { e.preventDefault(); moverColumna(i, i + 1); }
+                        }}
+                        aria-label={`Mover la columna ${col.label} (flechas izquierda y derecha)`}
+                        title="Arrastra para cambiarla de lugar"
+                        className="mt-0.5 shrink-0 cursor-grab rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      >
+                        <GripVertical className="w-3.5 h-3.5" aria-hidden />
+                      </button>
                       <AutoResizeTextarea
                         value={col.label}
                         onChange={e => renameColumn(col.key, e.target.value)}
-                        className="bg-slate-700 border border-slate-600 rounded px-1 py-0.5 text-white w-full focus:outline-none focus:ring-1 focus:ring-indigo-400 text-[10px] min-w-0 text-center leading-tight font-bold"
+                        className="w-full min-w-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-[11px] font-bold uppercase leading-tight tracking-wide text-slate-800 hover:border-slate-300 hover:bg-white focus:border-indigo-400 focus:bg-white focus:outline-none"
                         minHeight={20}
                       />
                       {!DEFAULT_PLAN_COLUMNS.find(d => d.key === col.key) && (
                         <button
+                          type="button"
                           onClick={() => removeColumn(col.key)}
-                          className="text-red-300 hover:text-red-100 shrink-0 p-0.5 rounded hover:bg-slate-600"
+                          className="mt-0.5 shrink-0 rounded p-0.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
                           title="Eliminar columna"
+                          aria-label={`Eliminar la columna ${col.label}`}
                         >
-                          <X className="w-3 h-3" />
+                          <X className="w-3.5 h-3.5" aria-hidden />
                         </button>
                       )}
                     </div>
                   </th>
                 ))}
-                <th className="px-1 py-1.5 border border-slate-700 w-8 text-center bg-slate-800 sticky top-0">
-                  <button onClick={addColumn} title="Agregar columna" className="bg-indigo-500 hover:bg-indigo-400 text-white rounded p-0.5 transition-colors">
-                    <Plus className="w-3 h-3 mx-auto" />
+                <th className="px-1.5 py-1.5 border border-slate-200 w-24 text-center bg-slate-100 sticky top-0">
+                  <button
+                    type="button"
+                    onClick={addColumn}
+                    title="Agregar columna (luego arrástrala donde quieras)"
+                    className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-dashed border-indigo-300 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700 hover:border-indigo-500 hover:bg-indigo-50"
+                  >
+                    <Plus className="w-3.5 h-3.5" aria-hidden /> Columna
                   </button>
                 </th>
               </tr>
@@ -761,11 +929,13 @@ export default function EvaluationPlanSection({
             <tbody className="bg-white">
               {weeks.map((w, idx) => {
                 return (
-                  <tr key={w.weekNumber} className="bg-white border-b border-gray-200 hover:bg-indigo-50/20 transition-colors">
-                    <td className="px-1 py-1 border border-gray-200 text-center align-middle w-20 bg-slate-50">
-                      <div className="font-bold text-gray-800 text-[10px] uppercase">S.{w.weekNumber}</div>
-                      <div className="text-[8px] text-gray-400 leading-tight">
-                        {getWeekDates(autoPopulated?.lapsoStartDate, w.weekNumber)?.start} - {getWeekDates(autoPopulated?.lapsoStartDate, w.weekNumber)?.end}
+                  <tr key={w.weekNumber} className="bg-white even:bg-slate-50/50 border-b border-gray-200 hover:bg-indigo-50/30 transition-colors">
+                    {/* La semana se queda a la vista al deslizar la tabla de lado. */}
+                    <td className="px-2 py-2 border border-gray-200 text-center align-top w-20 bg-slate-50 sticky left-0 z-10">
+                      <div className="font-bold text-slate-900 text-xs">Semana {w.weekNumber}</div>
+                      <div className="mt-0.5 text-[11px] text-slate-500 leading-tight">
+                        {getWeekDates(autoPopulated?.lapsoStartDate, w.weekNumber)?.start}
+                        <br />al {getWeekDates(autoPopulated?.lapsoStartDate, w.weekNumber)?.end}
                       </div>
                     </td>
 
@@ -776,7 +946,7 @@ export default function EvaluationPlanSection({
                       const canCollapse = span > 1;
 
                       return (
-                        <td key={col.key} rowSpan={span} className="px-0.5 py-0.5 border border-gray-200 align-top relative group">
+                        <td key={col.key} rowSpan={span} className={`px-1 py-1 border border-gray-200 align-top relative group ${span > 1 ? 'bg-indigo-50/40' : ''}`}>
                           {col.numeric ? (
                             col.key === 'ponderacion' ? (
                               <input
@@ -788,7 +958,7 @@ export default function EvaluationPlanSection({
                                   const pond = Math.round((pts / 20) * 100 * 100) / 100;
                                   return `${pond}%`;
                                 })()}
-                                className="w-full px-1 py-0.5 h-full min-h-[22px] border-none bg-gray-100 text-gray-600 text-[10px] cursor-not-allowed font-medium text-center"
+                                className="w-full px-1 py-1 h-full min-h-[28px] rounded border-none bg-slate-100 text-slate-700 text-xs cursor-not-allowed font-semibold text-center"
                                 title="La ponderación se deriva de los Puntos (puntos/20×100). Edita Puntos."
                                 placeholder="0%"
                               />
@@ -801,7 +971,8 @@ export default function EvaluationPlanSection({
                                   const val = e.target.value === '' ? '' : parseFloat(e.target.value);
                                   setCell(idx, col.key, isNaN(val as number) ? '' : (val as number));
                                 }}
-                                className="w-full px-1 py-0.5 h-full min-h-[22px] border-none focus:ring-1 focus:ring-indigo-500 outline-none bg-transparent text-[10px] text-center"
+                                aria-label={`${col.label}, semana ${w.weekNumber}`}
+                                className="w-full px-1 py-1 h-full min-h-[28px] rounded border border-slate-300 bg-white outline-none text-xs font-semibold text-center hover:border-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
                                 placeholder="0"
                               />
                             )
@@ -809,9 +980,9 @@ export default function EvaluationPlanSection({
                             <AutoResizeTextarea
                               value={String(w.data[col.key] ?? '')}
                               onChange={e => setCell(idx, col.key, e.target.value)}
-                              className="w-full px-1 py-0.5 h-full border-none focus:ring-1 focus:ring-indigo-500 outline-none bg-transparent text-[10px]"
-                              minHeight={Math.max(22, span * 28)}
-                              placeholder={`${col.label}...`}
+                              className="w-full px-1.5 py-1 h-full rounded border border-transparent bg-transparent text-xs leading-snug text-gray-900 placeholder:text-slate-300 outline-none hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                              minHeight={Math.max(28, span * 34)}
+                              placeholder="—"
                             />
                           )}
                           {!col.numeric && (
@@ -825,7 +996,7 @@ export default function EvaluationPlanSection({
                         </td>
                       );
                     })}
-                    <td className="px-0.5 py-0.5 border border-gray-200 bg-slate-50/50 w-8" />
+                    <td className="px-0.5 py-0.5 border border-gray-200 bg-slate-50/50 w-24" />
                   </tr>
                 );
               })}
@@ -834,7 +1005,7 @@ export default function EvaluationPlanSection({
               <tr>
                 <td
                   colSpan={nonNumericCols.length + 1}
-                  className="px-4 py-2 border border-gray-300 text-right uppercase text-[10px] tracking-wider text-gray-700 bg-slate-100 sticky bottom-0"
+                  className="px-4 py-2 border border-gray-300 text-right uppercase text-[11px] tracking-wider text-gray-700 bg-slate-100 sticky bottom-0"
                 >
                   Total Ponderación
                 </td>
@@ -853,16 +1024,16 @@ export default function EvaluationPlanSection({
         </div>
 
         {/* Footer: Observaciones editables */}
-        <div className="px-4 py-2 bg-white border-t border-gray-200 flex-shrink-0">
-          <span className="text-[10px] font-bold uppercase text-gray-500">Observaciones:</span>
+        <label className="block px-4 py-3 bg-white border-t border-gray-200 flex-shrink-0">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Observaciones</span>
           <textarea
             value={localMeta.observaciones || ''}
             onChange={e => handleMetaChange('observaciones', e.target.value)}
-            placeholder="Observaciones finales..."
-            rows={2}
-            className="w-full mt-1 text-xs border border-gray-200 bg-gray-50 rounded p-2 focus:ring-indigo-500 outline-none resize-none"
+            placeholder="Observaciones finales: criterios generales, recuperaciones, fechas…"
+            rows={3}
+            className="w-full mt-1 text-sm leading-snug border border-slate-300 bg-white rounded-lg px-3 py-2 text-gray-900 placeholder:text-slate-400 hover:border-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none resize-y"
           />
-        </div>
+        </label>
       </div>
     );
   };
@@ -883,19 +1054,19 @@ export default function EvaluationPlanSection({
   // ────────────────────────────────────────────────
   if (isEditing) {
     return (
-      <div className="fixed inset-0 z-[100] bg-[#f3f4f6] flex flex-col overflow-hidden">
+      <div className="fixed inset-0 z-[100] bg-[#f3f4f6] flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="Editor Inmersivo — Plan de Evaluación">
         {/* TOP BAR */}
-        <div className="bg-white border-b border-gray-200 shadow-sm h-16 flex items-center justify-between px-6 shrink-0">
+        <div className="bg-white border-b border-gray-200 shadow-sm min-h-16 flex flex-wrap items-center justify-between gap-3 px-4 py-2 sm:px-6 shrink-0">
           <div className="flex items-center gap-4">
-            <button onClick={() => setIsEditing(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-600">
+            <button onClick={salirDelEditor} aria-label="Salir del editor" className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-600">
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
               <h2 className="text-lg font-bold text-gray-900 leading-tight">Editor Inmersivo — Plan de Evaluación</h2>
-              <p className="text-xs text-indigo-600 font-medium">Modo Edición Avanzada · {LAPSOS.find(l => l.id === lapso)?.name} · {totalWeeks} semanas</p>
+              <p className="text-xs text-slate-600 font-medium">{autoPopulated.subjectName ? `${autoPopulated.subjectName} · ` : ''}{LAPSOS.find(l => l.id === lapso)?.name} · {totalWeeks} semanas</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <input
               type="file"
               accept=".docx"
@@ -907,46 +1078,87 @@ export default function EvaluationPlanSection({
               onClick={() => fileInputRef.current?.click()}
               disabled={isImporting}
               title="Importar un archivo Word (.docx) con una tabla de evaluación"
-              className="flex items-center px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-xs font-bold disabled:opacity-50"
+              className="flex min-h-10 items-center px-3 py-2 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-xs font-bold disabled:opacity-50"
             >
               <Upload className="w-4 h-4 mr-1.5" /> {isImporting ? 'Importando...' : 'Importar Word'}
             </button>
             <button
               onClick={distributeEqually}
               title="Distribuir ponderación y puntos equitativamente entre semanas con actividad"
-              className="flex items-center px-3 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors text-xs font-bold"
+              className="flex min-h-10 items-center px-3 py-2 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-xs font-bold"
             >
               <Zap className="w-4 h-4 mr-1.5" /> Distribuir Equitativamente
             </button>
             <button
               onClick={resetColumns}
               title="Restaurar columnas predeterminadas del Ministerio"
-              className="flex items-center px-3 py-2 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors text-xs font-bold"
+              className="flex min-h-10 items-center px-3 py-2 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-xs font-bold"
             >
               <RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Restaurar Columnas
             </button>
             <button
               onClick={handleSave}
               disabled={isSavingMeta || isSavingRows}
-              className="flex items-center px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-bold shadow-sm disabled:opacity-50"
+              className="flex min-h-10 items-center px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-bold shadow-sm disabled:opacity-50"
             >
               <Save className="w-4 h-4 mr-2" /> {isSavingRows ? 'Guardando...' : 'Guardar y Cerrar'}
             </button>
           </div>
         </div>
 
+        {choque && (
+          <div role="alert" className="bg-amber-50 border-b border-amber-200 px-6 py-3 flex flex-wrap items-center gap-3 text-sm text-amber-900 shrink-0">
+            <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600" />
+            <span className="flex-1 min-w-[16rem]">{choque}</span>
+            <button
+              onClick={cargarLoGuardado}
+              className="px-3 py-2 min-h-[44px] rounded-lg border border-amber-300 bg-white font-bold text-amber-800 hover:bg-amber-100"
+            >
+              Descartar mis cambios y cargar lo guardado
+            </button>
+          </div>
+        )}
+
         {/* HINT BAR */}
-        <div className="bg-indigo-50 border-b border-indigo-100 px-6 py-2 flex items-center gap-3 text-xs text-indigo-700 shrink-0">
-          <Sparkles className="w-4 h-4 shrink-0 text-indigo-400" />
+        <div className="bg-slate-50 border-b border-slate-200 px-4 sm:px-6 py-2 flex items-start gap-2.5 text-xs leading-relaxed text-slate-700 shrink-0">
+          <Sparkles className="mt-0.5 w-4 h-4 shrink-0 text-indigo-500" aria-hidden />
           <span>
-            <strong>Tip:</strong> Cada fila es una semana del lapso. Para que un tema abarque varias semanas, escríbelo y luego pasa el cursor sobre la celda — aparecerá un botón <strong>↓</strong> para expandirla hacia abajo. Añade o elimina columnas desde la cabecera de la tabla (➕ / ✕).
+            Cada fila es una semana. Para que un tema abarque varias, usa <strong>↓</strong> en su celda
+            (en el teléfono, <strong>+</strong> y <strong>−</strong> del bloque). Las columnas se cambian de lugar
+            arrastrando su manija <GripVertical className="inline w-3.5 h-3.5 align-text-bottom text-slate-500" aria-hidden />;
+            se añaden con <strong>+ Columna</strong>.
           </span>
         </div>
 
         {/* CANVAS */}
-        <div className="flex-1 overflow-auto p-4 sm:p-6">
+        <div className="flex-1 overflow-auto bg-slate-100 p-4 sm:p-6">
           <div className="max-w-[1600px] mx-auto space-y-4">
-            <div className="rounded-xl overflow-hidden shadow-xl border border-gray-300">
+            <div className="space-y-3 min-[700px]:hidden">
+              {/* Añadir, renombrar y quitar campos: en la tabla eso son dos
+                  iconos de 16 px en una cabecera de mil píxeles de ancho, o
+                  sea, fuera de la pantalla de cualquier teléfono. */}
+              <CamposDelPlan
+                columnas={columns}
+                alRenombrar={renameColumn}
+                alQuitar={removeColumn}
+                alAnadir={addColumn}
+                alCambiarSiAbarca={cambiarSiAbarca}
+                alRestaurar={resetColumns}
+                alMover={moverColumna}
+              />
+
+              <PlanPorBloques
+                semanas={weeks}
+                columnas={columns}
+                fechasDe={fechasDeLaSemana}
+                puedeEditar
+                alEscribir={(indice, columna, valor) => setCell(indice, columna, valor)}
+                alAlargar={alargarBloque}
+                alAcortar={acortarBloque}
+              />
+            </div>
+
+            <div className="rejilla-densa hidden rounded-2xl overflow-hidden shadow-sm ring-1 ring-slate-200 bg-white min-[700px]:block">
               {renderMembrete('edit')}
               {renderEditTable()}
             </div>
@@ -961,19 +1173,55 @@ export default function EvaluationPlanSection({
   // VIEW MODE
   // ────────────────────────────────────────────────
   return (
+    <>
     <div className="flex flex-col" style={{ height: 'calc(100vh - 240px)', minHeight: 400 }}>
       {/* Top bar */}
-      <div className="flex items-center justify-between bg-white px-4 py-3 rounded-xl shadow-sm border border-gray-100 print:hidden mb-3 shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-white px-4 py-3 rounded-xl shadow-sm border border-gray-100 print:hidden mb-3 shrink-0">
         <div>
           <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
             <BookOpen className="w-4 h-4 text-indigo-600" /> Plan de Evaluación
             <span className="text-xs font-normal text-gray-400 ml-1">— {LAPSOS.find(l => l.id === selectedLapso)?.name}</span>
           </h2>
+          {/* El liceo puso semanas antes del plan (diagnóstico): se dice desde
+              cuándo cuenta la Semana 1. */}
+          {autoPopulated?.inicioDelLapso && autoPopulated?.lapsoStartDate &&
+            String(autoPopulated.lapsoStartDate).slice(0, 10) > String(autoPopulated.inicioDelLapso).slice(0, 10) && (
+            <p className="mt-0.5 text-xs text-amber-800">
+              Semana 1: desde el {String(autoPopulated.lapsoStartDate).slice(0, 10).split('-').reverse().join('/')}. Antes, {(autoPopulated.nombreAntesDelPlan || 'Diagnóstico').toLowerCase()} (contenido del profesor).
+            </p>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => window.print()} className="flex items-center px-3 py-1.5 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <AyudaDeLaPantalla
+            titulo="Cómo funciona el plan de evaluación"
+            pasos={[
+              {
+                titulo: 'Una fila por semana',
+                texto: 'Cada fila es una semana del lapso. Las columnas las pone el profesor (tema, contenido, actividad…). Una celda puede abarcar varias semanas.',
+              },
+              {
+                titulo: 'Las evaluaciones y sus puntos',
+                texto: 'Marca qué semanas son de evaluación y cuánto valen. Las actividades que se crean en clase esa semana suman a esa evaluación.',
+              },
+              {
+                titulo: 'El instrumento (si lo quieres)',
+                texto: 'Lista de cotejo, escala, rúbrica o por puntos: se arma en la evaluación y en la clase se califica indicador por indicador.',
+              },
+              {
+                titulo: 'Atajos',
+                texto: '«Editar Plan» abre el editor (y desde ahí «Importar Word» lo lee de un archivo). «Copiar a otra sección» lo reutiliza; «Imprimir» saca la hoja del MPPE.',
+              },
+            ]}
+            nota="Lo guardado se ve en la clase en vivo de cada semana; quitar una evaluación con notas pide confirmarlo."
+          />
+          {/* El plan en papel tiene su propia hoja (`plan-de-evaluacion/...`):
+              imprimir esta pantalla sacaba la sección entera, cortada a una hoja. */}
+          <Link
+            href={`/dashboard/plan-de-evaluacion/${encodeURIComponent(classroomId)}/${encodeURIComponent(subjectId)}?lapso=${selectedLapso}`}
+            className="flex items-center px-3 py-1.5 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs"
+          >
             <Printer className="w-3.5 h-3.5 mr-1.5" /> Imprimir
-          </button>
+          </Link>
           {canEdit && (
             <button
               onClick={() => setCopiandoAbierto(true)}
@@ -984,7 +1232,7 @@ export default function EvaluationPlanSection({
             </button>
           )}
           {canEdit && (
-            <button onClick={() => setIsEditing(true)} className="flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-bold text-xs">
+            <button onClick={empezarAEditar} className="flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-bold text-xs">
               <Edit2 className="w-3.5 h-3.5 mr-1.5" /> Editar Plan
             </button>
           )}
@@ -993,7 +1241,7 @@ export default function EvaluationPlanSection({
 
       {/* ── Copiar el plan a otras secciones ───────────────────────── */}
       {copiandoAbierto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 print:hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 print:hidden" role="dialog" aria-modal="true" aria-label="Copiar plan a otra sección">
           <div className="w-full max-w-md bg-white rounded-xl shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
@@ -1073,19 +1321,34 @@ export default function EvaluationPlanSection({
         <div className="shrink-0">
           {renderMembrete('view')}
         </div>
+        {/*
+            DE PIE, POR BLOQUES
+
+            La tabla del plan son diez columnas por dieciocho semanas: mil y
+            pico de píxeles. De pie se enseña lo mismo contado como lo que es
+            —bloques de trabajo con sus semanas dentro—, y la tabla sale en
+            cuanto hay ancho, incluido el teléfono tumbado.
+        */}
+        <div className="flex-1 overflow-auto p-3 min-[700px]:hidden print:hidden">
+          <PlanPorBloques
+            semanas={weeks}
+            columnas={columns}
+            fechasDe={fechasDeLaSemana}
+            puedeEditar={false}
+            alEscribir={() => {}}
+            alAlargar={() => {}}
+            alAcortar={() => {}}
+          />
+        </div>
+
         {/* Table fills remaining height */}
-        <div className="flex-1 overflow-hidden">
+        <div className="rejilla-densa hidden flex-1 overflow-hidden min-[700px]:block print:block">
           {renderViewTable()}
         </div>
       </div>
 
-      <style>{`
-        @media print {
-          @page { size: landscape; margin: 10mm; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .print\\:hidden { display: none !important; }
-        }
-      `}</style>
     </div>
+    <InstrumentosDelPlan classroomId={classroomId} subjectId={subjectId} lapso={selectedLapso} canEdit={Boolean(canEdit)} />
+    </>
   );
 }

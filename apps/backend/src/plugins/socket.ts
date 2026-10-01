@@ -3,7 +3,7 @@ import fp from 'fastify-plugin';
 import { Server, Socket } from 'socket.io';
 import { verifyAccessToken } from '../config/jwt';
 import { getTenantPrisma } from '../config/database';
-import { loadUserSession } from '../middleware/auth.middleware';
+import { loadUserSession, isTokenRevoked } from '../middleware/auth.middleware';
 import { logger } from '../utils/logger';
 
 /**
@@ -99,6 +99,12 @@ const socketPlugin: FastifyPluginAsync<SocketPluginOptions> = async (fastify, op
             const instituteId = credencial.instituteId;
             if (!instituteId) {
                 return next(new Error('Authentication error: token sin instituto'));
+            }
+
+            // Cerrar sesión anula la llave en el acto también aquí, no solo en
+            // la API: antes el tiempo real la seguía aceptando sus 15 minutos.
+            if (await isTokenRevoked(instituteId, token)) {
+                return next(new Error('Authentication error: sesión cerrada'));
             }
 
             const db = await getTenantPrisma(instituteId);

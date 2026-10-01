@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { instituteService } from '@/services/institute.service';
-import { ScheduleConfig } from '@/utils/schedule.utils';
+import type { HorarioDelLiceo } from '@/lib/franjas-del-horario';
 
 export interface GradeScale {
     min: number;
@@ -14,9 +14,12 @@ export interface AcademicConfig {
     notaMinimaAprobatoria: number;
     maxMateriasPendientesParaPromover: number;
     permitePendientesEnUltimoAno: boolean;
+    /** Por debajo de este % de asistencia, el alumno está en riesgo. */
+    asistenciaMinima: number;
     language?: string;
     dateFormat?: string;
-    schedule: ScheduleConfig;
+    /** Por turno (`turnos`), y la forma vieja de la mañana para lo guardado antes. */
+    schedule: HorarioDelLiceo;
 }
 
 const DEFAULT_CONFIG: AcademicConfig = {
@@ -26,6 +29,7 @@ const DEFAULT_CONFIG: AcademicConfig = {
     notaMinimaAprobatoria: 10,
     maxMateriasPendientesParaPromover: 2,
     permitePendientesEnUltimoAno: false,
+    asistenciaMinima: 80,
     language: 'es',
     dateFormat: 'DD/MM/YYYY',
     schedule: {
@@ -73,6 +77,9 @@ export function useAcademicConfig() {
                     permitePendientesEnUltimoAno: typeof academicRules?.permitePendientesEnUltimoAno === 'boolean'
                         ? academicRules.permitePendientesEnUltimoAno
                         : DEFAULT_CONFIG.permitePendientesEnUltimoAno,
+                    asistenciaMinima: typeof academicRules?.asistenciaMinima === 'number'
+                        ? academicRules.asistenciaMinima
+                        : DEFAULT_CONFIG.asistenciaMinima,
                     gradeScale: {
                         ...DEFAULT_CONFIG.gradeScale,
                         ...(parsed.gradeScale || {}),

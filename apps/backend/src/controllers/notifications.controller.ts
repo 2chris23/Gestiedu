@@ -4,6 +4,26 @@ import { NotificationsService } from '../services/notifications.service';
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../utils/constants';
 import { createError } from '../middleware/error.middleware';
 import { NotificationType, NotificationPriority } from '../utils/validators';
+import { canSeeStudent } from '../services/authorization.service';
+
+/**
+ * A QUIÉN PUEDE ESCRIBIR UN PROFESOR
+ *
+ * Un profesor mandaba avisos a cualquier persona del liceo: alumnos de otras
+ * secciones, representantes, colegas, el director. Un aviso lleva título,
+ * mensaje y enlace (`actionUrl`) y sale en la campana como algo del liceo:
+ * es la puerta de un engaño. Ahora el profesor escribe solo a sus alumnos
+ * (los que puede ver: `canSeeStudent`); el administrador, a quien quiera.
+ */
+async function soloASusAlumnos(request: FastifyRequest, destinatarios: string[]): Promise<boolean> {
+  const quien = request.user as any;
+  if (quien?.role === 'ADMIN') return true;
+  for (const id of Array.from(new Set(destinatarios))) {
+    const esAlumno = await request.tenantPrisma.user.count({ where: { id, role: 'STUDENT' } });
+    if (esAlumno === 0 || !(await canSeeStudent(request.tenantPrisma, quien, id))) return false;
+  }
+  return true;
+}
 
 // Reemplaza NotificationFiltersDto de class-validator
 interface NotificationFilters {
@@ -69,6 +89,10 @@ export async function createNotification(request: FastifyRequest, reply: Fastify
     const data = request.body as any;
     const senderId = request.user?.userId;
 
+    if (!(await soloASusAlumnos(request, [data?.recipientId]))) {
+      return reply.status(403).send({ error: 'Solo puedes escribir a tus alumnos', code: 'FORBIDDEN' });
+    }
+
     const notification = await notificationsService.createNotification(
       request.tenantPrisma,
       {
@@ -124,6 +148,10 @@ export async function sendBulkNotifications(request: FastifyRequest, reply: Fast
         error: 'Hace falta al menos un destinatario',
         code: 'SIN_DESTINATARIOS',
       });
+    }
+
+    if (!(await soloASusAlumnos(request, destinatarios))) {
+      return reply.status(403).send({ error: 'Solo puedes escribir a tus alumnos', code: 'FORBIDDEN' });
     }
 
     const result = await notificationsService.sendBulkNotifications(

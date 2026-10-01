@@ -96,6 +96,7 @@ export async function getClassroomSubjects(
                         code: true,
                         color: true,
                         description: true,
+                        evaluacion: true,
                     },
                 },
                 teacher: {
@@ -812,6 +813,7 @@ export async function getClassroomSubjectsStats(
                         color: true,
                         code: true,
                         slug: true,
+                        evaluacion: true,
                     },
                 },
                 teacher: {

@@ -133,7 +133,7 @@ async function checkPrismaSchemas(): Promise<void> {
 
     const schemas = [
         { name: 'Main Schema', path: path.join(__dirname, '../../prisma/schema.prisma') },
-        { name: 'Platform Schema', path: path.join(__dirname, '../../prisma/platform-schema.prisma') },
+        { name: 'Platform Schema', path: path.join(__dirname, '../../prisma/plataforma/schema.prisma') },
     ];
 
     for (const schema of schemas) {

@@ -113,9 +113,9 @@ export default function CreateActivityModal({
     const selectedType = ACTIVITY_TYPES.find(t => t.value === type);
 
     return (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
+        <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Nueva Evaluación al Plan">
             <div className="flex items-center justify-center min-h-screen px-4 py-8">
-                <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClose(); } }} />
+                <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} aria-hidden="true" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClose(); } }} />
 
                 <div className="relative bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-auto z-10">
                     {/* Header */}
@@ -129,7 +129,7 @@ export default function CreateActivityModal({
                                 <p className="text-xs text-gray-500">Escala: 0 - {maxScale} pts</p>
                             </div>
                         </div>
-                        <button
+                        <button aria-label="Cerrar"
                             onClick={onClose}
                             className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white/60 rounded-lg transition-colors"
                         >

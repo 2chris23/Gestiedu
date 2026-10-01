@@ -1,6 +1,17 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+
+  /**
+   * Las dos pelotitas de desarrollo, fuera del pulgar.
+   *
+   * El indicador de Next se pinta abajo a la izquierda y las herramientas de
+   * React Query abajo a la derecha: justo encima de la barra de tareas del
+   * teléfono, tapando «Inicio» y «Horarios». Probando en un móvil parecía que
+   * la app estuviera mal hecha. Esto es solo de desarrollo —en el liceo no
+   * existe ninguna de las dos—, pero estorbaba justo donde se prueba.
+   */
+  devIndicators: false,
   transpilePackages: ['@repo/ui'],
 
   // Permite subdominios *.localhost en desarrollo y dominios de túnel público
@@ -19,6 +30,16 @@ const nextConfig = {
     '*.trycloudflare.com',
     '*.pinggy.link',
     '*.pinggy.io',
+    /**
+     * Y la red de casa, para probar en un teléfono de verdad (`npm run
+     * telefono`). Sin esto, el servidor de desarrollo corta lo que le pide una
+     * dirección que no sea `localhost` —y desde el móvil, TODO lo es—: la app
+     * se quedaba en blanco sin decir por qué. Es solo de desarrollo; en el
+     * servidor del liceo esta lista no pinta nada.
+     */
+    '192.168.*.*',
+    '10.*.*.*',
+    '172.*.*.*',
   ],
 
   // Configurar dominios permitidos para imágenes
@@ -54,13 +75,47 @@ const nextConfig = {
         source: '/api/:path*',
         destination: `${backendBase}/api/:path*`, // Proxy to backend
       },
+      {
+        source: '/uploads/:path*',
+        destination: `${backendBase}/uploads/:path*`, // Proxy uploads to backend
+      },
     ];
   },
 
-  // Headers para permitir acceso desde subdominios de localhost en desarrollo
+  /**
+   * LAS PANTALLAS NO SE DEJAN METER DENTRO DE OTRA PÁGINA
+   *
+   * La API ya llevaba estas cabeceras (helmet); las pantallas, ninguna. Sin
+   * ellas, cualquier página podía poner el login del liceo dentro de un marco
+   * invisible y hacer que la gente escribiera su clave creyendo que estaba en
+   * otra cosa (clickjacking). Van en TODAS las rutas, en desarrollo también:
+   * así las pruebas miden lo mismo que se despliega (SEG-WEB-01).
+   *
+   * La cámara (escanear el QR de asistencia) y la ubicación (el faro) solo
+   * para la propia app; micrófono, pagos y USB, para nadie.
+   */
+  poweredByHeader: false,
+
   async headers() {
+    const seguridad = [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(self), geolocation=(self), microphone=(), payment=(), usb=(), browsing-topics=()',
+          },
+        ],
+      },
+    ];
+    // Acceso desde subdominios de localhost en desarrollo
     if (process.env.NODE_ENV === 'development') {
       return [
+        ...seguridad,
         {
           source: '/api/:path*',
           headers: [
@@ -71,7 +126,7 @@ const nextConfig = {
         },
       ];
     }
-    return [];
+    return seguridad;
   },
 
   // Nota: la copia de shared/ a public/_shared la realiza scripts/copy-shared.js

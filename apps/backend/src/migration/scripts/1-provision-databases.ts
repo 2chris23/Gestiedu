@@ -103,7 +103,7 @@ async function provisionPlatformDb(
 
             // Run migrations
             logger.info('Running Prisma migrations...');
-            const schemaPath = path.join(__dirname, '../../prisma/platform-schema.prisma');
+            const schemaPath = path.join(__dirname, '../../prisma/plataforma/schema.prisma');
             const migrateResult = await runPrismaMigrations(platformDbUrl, schemaPath);
 
             if (!migrateResult.success) {

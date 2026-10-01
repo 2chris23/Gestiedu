@@ -2,6 +2,8 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { UserRole, ActivityType } from '../utils/prisma-enums';
 import { AppErrors } from '../middleware/error.middleware';
 import { RedisCache } from '../config/redis';
+import { esCualitativa } from './apreciaciones.service';
+import { fechaDeLaActividad, lapsoDeLaFecha, LapsoConFechas } from '../utils/lapso-de-la-actividad';
 import { logger } from '../utils/logger';
 import { CACHE_TTL, PAGINATION, GRADE_SYSTEM } from '../utils/constants';
 import { invalidateStudentGradesCache, invalidateStudentsGradesCache } from '../utils/cache-invalidation';
@@ -54,6 +56,12 @@ export interface GetGradesQuery {
   dateTo?: Date;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  /**
+   * Cédula del profesor que pide: solo salen las notas de sus clases (materia
+   * que imparte en esa sección) y de sus secciones guía. Sin esto, cualquier
+   * profesor listaba las notas de todo el liceo.
+   */
+  soloDelProfesor?: string;
 }
 
 export interface BulkGradeData {
@@ -176,26 +184,37 @@ class GradesService {
 
     // SEGURIDAD/AUTORIZACIÓN: Si la actividad pertenece a un aula, verificar que
     // (a) el estudiante esté inscrito en esa aula y (b) el profesor imparta la
-    // materia en esa aula. Evita calificar estudiantes de otras secciones.
-    if (activity.classroomId) {
-      const enrollment = await prisma.studentClassroom.findFirst({
-        where: {
-          studentId,
-          classroomId: activity.classroomId,
-          isActive: true,
-        },
-        select: { id: true },
-      });
+    // materia en esa aula. Si la actividad no tiene aula explícita, resolver el
+    // aula activa del estudiante para evitar el bypass de alcance (grades-null-classroom-scope-bypass).
+    const targetClassroomId = activity.classroomId || (await prisma.studentClassroom.findFirst({
+      where: {
+        studentId,
+        isActive: true,
+      },
+      select: { classroomId: true },
+    }))?.classroomId;
 
-      if (!enrollment) {
-        throw AppErrors.Forbidden(
-          'El estudiante no pertenece al aula de la actividad'
-        );
+    if (targetClassroomId) {
+      if (activity.classroomId) {
+        const enrollment = await prisma.studentClassroom.findFirst({
+          where: {
+            studentId,
+            classroomId: activity.classroomId,
+            isActive: true,
+          },
+          select: { id: true },
+        });
+
+        if (!enrollment) {
+          throw AppErrors.Forbidden(
+            'El estudiante no pertenece al aula de la actividad'
+          );
+        }
       }
 
       const teachingAssignment = await prisma.classroomSubject.findFirst({
         where: {
-          classroomId: activity.classroomId,
+          classroomId: targetClassroomId,
           subjectId: activity.subjectId || subjectId,
           teacherId,
         },
@@ -205,6 +224,20 @@ class GradesService {
       if (!teachingAssignment) {
         throw AppErrors.Forbidden(
           'El profesor no imparte esta materia en el aula de la actividad'
+        );
+      }
+    } else {
+      const hasSubjectAssignment = await prisma.classroomSubject.findFirst({
+        where: {
+          subjectId: activity.subjectId || subjectId,
+          teacherId,
+        },
+        select: { id: true },
+      });
+
+      if (!hasSubjectAssignment) {
+        throw AppErrors.Forbidden(
+          'El profesor no tiene asignada esta materia'
         );
       }
     }
@@ -367,37 +400,67 @@ class GradesService {
     }
 
     // ── 3. Permisos de la sección: una consulta para todos ──────────────────
-    const conSeccion = filas
-      .map((f, i) => ({ i, f, actividad: actividadDe.get(f.activityId)! }))
-      .filter((x) => Boolean(x.actividad.classroomId));
+    const alumnosSinClassroomDirecto = filas
+      .filter((f) => !actividadDe.get(f.activityId)?.classroomId)
+      .map((f) => f.studentId);
 
-    if (conSeccion.length > 0) {
-      const seccionesTocadas = Array.from(new Set(conSeccion.map((x) => x.actividad.classroomId!)));
-      const alumnosTocados = Array.from(new Set(conSeccion.map((x) => x.f.studentId)));
-
-      const [inscripciones, asignaciones] = await Promise.all([
-        prisma.studentClassroom.findMany({
+    const inscripcionesActivas = alumnosSinClassroomDirecto.length > 0
+      ? await prisma.studentClassroom.findMany({
           where: {
-            studentId: { in: alumnosTocados },
-            classroomId: { in: seccionesTocadas },
+            studentId: { in: Array.from(new Set(alumnosSinClassroomDirecto)) },
             isActive: true,
           },
           select: { studentId: true, classroomId: true },
-        }),
-        prisma.classroomSubject.findMany({
-          where: {
-            classroomId: { in: seccionesTocadas },
-            teacherId: { in: profesoresPedidos.filter((x): x is string => Boolean(x)) },
-          },
-          select: { classroomId: true, subjectId: true, teacherId: true },
-        }),
-      ]);
+        })
+      : [];
 
-      const inscrito = new Set(inscripciones.map((x) => `${x.studentId}|${x.classroomId}`));
-      const imparte = new Set(asignaciones.map((x) => `${x.classroomId}|${x.subjectId}|${x.teacherId}`));
+    const aulaActivaAlumno = new Map(inscripcionesActivas.map((x) => [x.studentId, x.classroomId]));
 
-      for (const { i, f, actividad } of conSeccion) {
-        if (!inscrito.has(`${f.studentId}|${actividad.classroomId}`)) {
+    const filasConAula = filas.map((f, i) => {
+      const actividad = actividadDe.get(f.activityId)!;
+      const targetClassroomId = actividad.classroomId || aulaActivaAlumno.get(f.studentId);
+      return { i, f, actividad, targetClassroomId };
+    });
+
+    const seccionesTocadas = Array.from(
+      new Set(filasConAula.map((x) => x.targetClassroomId).filter((x): x is string => Boolean(x)))
+    );
+    const alumnosTocados = Array.from(new Set(filasConAula.map((x) => x.f.studentId)));
+
+    const [inscripciones, asignaciones, asignacionesMateria] = await Promise.all([
+      prisma.studentClassroom.findMany({
+        where: {
+          studentId: { in: alumnosTocados },
+          classroomId: { in: seccionesTocadas },
+          isActive: true,
+        },
+        select: { studentId: true, classroomId: true },
+      }),
+      prisma.classroomSubject.findMany({
+        where: {
+          classroomId: { in: seccionesTocadas },
+          teacherId: { in: profesoresPedidos.filter((x): x is string => Boolean(x)) },
+        },
+        select: { classroomId: true, subjectId: true, teacherId: true },
+      }),
+      prisma.classroomSubject.findMany({
+        where: {
+          subjectId: { in: materiasPedidas },
+          teacherId: { in: profesoresPedidos.filter((x): x is string => Boolean(x)) },
+        },
+        select: { subjectId: true, teacherId: true },
+      }),
+    ]);
+
+    const inscrito = new Set(inscripciones.map((x) => `${x.studentId}|${x.classroomId}`));
+    const imparte = new Set(asignaciones.map((x) => `${x.classroomId}|${x.subjectId}|${x.teacherId}`));
+    const imparteMateriaGeneral = new Set(asignacionesMateria.map((x) => `${x.subjectId}|${x.teacherId}`));
+
+    for (const { i, f, actividad, targetClassroomId } of filasConAula) {
+      const materiaDeLaActividad = actividad.subjectId || f.subjectId;
+
+      if (targetClassroomId) {
+        if (actividad.classroomId && !inscrito.has(`${f.studentId}|${actividad.classroomId}`)) {
           throw fallo(
             i,
             AppErrors.Forbidden('El estudiante no pertenece al aula de la actividad'),
@@ -405,11 +468,19 @@ class GradesService {
             'ALUMNO_DE_OTRA_SECCION'
           );
         }
-        const materiaDeLaActividad = actividad.subjectId || f.subjectId;
-        if (!imparte.has(`${actividad.classroomId}|${materiaDeLaActividad}|${f.teacherId}`)) {
+        if (!imparte.has(`${targetClassroomId}|${materiaDeLaActividad}|${f.teacherId}`)) {
           throw fallo(
             i,
             AppErrors.Forbidden('El profesor no imparte esta materia en el aula de la actividad'),
+            403,
+            'NO_IMPARTE_LA_MATERIA'
+          );
+        }
+      } else {
+        if (!imparteMateriaGeneral.has(`${materiaDeLaActividad}|${f.teacherId}`)) {
+          throw fallo(
+            i,
+            AppErrors.Forbidden('El profesor no tiene asignada esta materia'),
             403,
             'NO_IMPARTE_LA_MATERIA'
           );
@@ -574,7 +645,8 @@ class GradesService {
         dateFrom,
         dateTo,
         sortBy = 'createdAt',
-        sortOrder = 'desc' } = query;
+        sortOrder = 'desc',
+        soloDelProfesor } = query;
 
       const offset = (page - 1) * limit;
       const appliedFilters: string[] = [];
@@ -622,6 +694,26 @@ class GradesService {
           }
         } as Prisma.UserWhereInput;
         appliedFilters.push('classroom');
+      }
+
+      if (soloDelProfesor) {
+        const [materias, guia] = await Promise.all([
+          prisma.classroomSubject.findMany({
+            where: { teacherId: soloDelProfesor },
+            select: { classroomId: true, subjectId: true },
+          }),
+          prisma.classroom.findMany({ where: { teacherId: soloDelProfesor }, select: { id: true } }),
+        ]);
+        const suyas: Prisma.GradeWhereInput[] = [
+          ...materias.map((m) => ({ subjectId: m.subjectId, activity: { classroomId: m.classroomId } })),
+          // Actividades sin sección: las de las materias que imparte.
+          ...(materias.length > 0
+            ? [{ subjectId: { in: materias.map((m) => m.subjectId) }, activity: { classroomId: null } }]
+            : []),
+          ...(guia.length > 0 ? [{ activity: { classroomId: { in: guia.map((g) => g.id) } } }] : []),
+        ];
+        where.AND = [{ OR: suyas.length > 0 ? suyas : [{ id: '__ninguna__' }] }];
+        appliedFilters.push('teacherScope');
       }
 
       // Filtro por rango de calificación
@@ -722,7 +814,8 @@ class GradesService {
         `pg:${page}`,
         `lm:${limit}`,
         `sb:${finalSortBy}`,
-        `so:${sortOrder}`
+        `so:${sortOrder}`,
+        `prof:${soloDelProfesor || '-'}`
       ];
       const cacheKey = keyParts.join('|');
       let cachedResult = await RedisCache.get<any>(cacheKey);
@@ -860,29 +953,6 @@ class GradesService {
   }
 
   /**
-   * Eliminar calificación
-   */
-  async deleteGrade(prisma: PrismaClient, id: string): Promise<void> {
-    // Verificar que la calificación existe
-    const grade = await prisma.grade.findUnique({
-      where: { id },
-      select: { id: true, studentId: true, subjectId: true, periodId: true }
-    });
-
-    if (!grade) {
-      throw new Error('Calificación no encontrada');
-    }
-
-    // Eliminar calificación
-    await prisma.grade.delete({
-      where: { id }
-    });
-
-    // Limpiar cache relacionado
-    await this.clearGradeCache(grade.studentId, grade.subjectId, grade.periodId);
-  }
-
-  /**
    * Calcular promedio por materia de un estudiante usando el PROMEDIO PONDERADO
    * POR CRITERIO del plan de evaluación (escala 01-20).
    *
@@ -899,11 +969,43 @@ class GradesService {
     subjectId: string,
     periodId: string
   ): Promise<number> {
+    return (await this.promedioDelLapso(prisma, studentId, subjectId, periodId)).promedio;
+  }
+
+  /**
+   * EL PROMEDIO DEL LAPSO, Y SI DE VERDAD HAY NOTAS
+   *
+   * Un 0 es una nota. Quien no entregó nada y sacó 0 no es lo mismo que quien
+   * todavía no tiene ninguna nota puesta, y el mapa de cálculos solo deja fuera
+   * al segundo. Todo el sistema miraba `promedio > 0` para saber si había
+   * notas, así que el alumno con todo en 0 pasaba por «sin calificar»: al cerrar
+   * el ciclo salía promovido sin materia pendiente, no salía en riesgo, el
+   * representante no recibía aviso, y un lapso en 0 no contaba en el ciclo
+   * (0 y 16 daba 16). `conNotas` dice lo que el número solo no puede decir.
+   * Pruebas: `funcional-notas-en-cero.test.ts` (CERO-01…07).
+   */
+  async promedioDelLapso(
+    prisma: PrismaClient,
+    studentId: string,
+    subjectId: string,
+    periodId: string
+  ): Promise<{ promedio: number; conNotas: boolean }> {
+    // Una materia con apreciación (Orientación, Grupos de Creación…) no entra
+    // en ningún promedio: sale «sin notas», y todo lo de encima —la sección,
+    // el año, el riesgo, el cierre— ya deja fuera lo que no tiene notas.
+    if (await esCualitativa(prisma, subjectId)) return { promedio: 0, conNotas: false };
+
     const cacheKey = `grade:avg:student:${studentId}:subject:${subjectId}:period:${periodId}`;
 
-    let average = await RedisCache.get<number>(cacheKey);
+    const guardado = await RedisCache.get<{ promedio: number; conNotas: boolean } | number>(cacheKey);
+    if (guardado !== null && guardado !== undefined) {
+      // Lo guardado por la versión anterior era solo el número.
+      if (typeof guardado === 'number') return { promedio: guardado, conNotas: guardado > 0 };
+      return guardado;
+    }
 
-    if (average === null) {
+    let average: number;
+    {
       const criteria = await this.buildCriteriaForStudent(prisma, studentId, subjectId, periodId);
       const result = calculateLapsoAverage(criteria);
 
@@ -920,16 +1022,29 @@ class GradesService {
       const gradedPts = criteria
         .filter(c => c.activities.some(a => a.score !== null && a.score !== undefined && !Number.isNaN(a.score)))
         .reduce((s, c) => s + (c.puntos || 0), 0);
-      average = (gradedPts > 0 && gradedPts < 20)
+      // Se escala a 20 siempre que lo calificado no sean justo 20 puntos: con
+      // un solo plan nunca pasa de 20, pero el alumno que se cambió de sección
+      // junta criterios de dos planes y puede pasar (SEC-04).
+      average = gradedPts > 0 && Math.abs(gradedPts - 20) > 0.009
         ? result.total * (20 / gradedPts)
         : result.total;
       average = Math.round(average * 100) / 100;
 
+      let detalle = { promedio: average, conNotas: result.gradedActivities > 0 };
+      // EL LAPSO QUE CURSÓ EN OTRO LICEO: si llegó trasladado y aquí no tiene
+      // notas de ese lapso, cuenta la que trajo (MAPA_DE_CALCULOS.md §1). Una
+      // nota propia, aunque sea una sola, manda sobre la traída.
+      if (!detalle.conNotas) {
+        const traida = await (prisma as any).notaDeOtroPlantel.findUnique({
+          where: { studentId_periodId_subjectId: { studentId, periodId, subjectId } },
+          select: { nota: true },
+        });
+        if (traida) detalle = { promedio: traida.nota, conNotas: true };
+      }
       // Cache por 10 minutos
-      await RedisCache.set(cacheKey, average, CACHE_TTL.SHORT * 2);
+      await RedisCache.set(cacheKey, detalle, CACHE_TTL.SHORT * 2);
+      return detalle;
     }
-
-    return average;
   }
 
   /**
@@ -964,8 +1079,29 @@ class GradesService {
     periodId?: string,
     lapsosConocidos?: string[]
   ): Promise<number> {
+    return (await this.promedioDeLaMateria(prisma, studentId, subjectId, periodId, lapsosConocidos)).promedio;
+  }
+
+  /**
+   * Lo mismo que `calculateWeightedSubjectAverage`, diciendo además si el
+   * alumno tiene alguna nota en la materia. Sin eso, quien lo usa no puede
+   * distinguir «sacó 0» de «no tiene notas» (ver `promedioDelLapso`).
+   */
+  async promedioDeLaMateria(
+    prisma: PrismaClient,
+    studentId: string,
+    subjectId: string,
+    periodId?: string,
+    lapsosConocidos?: string[],
+    redondeo?: 'MPPE' | 'NINGUNO'
+  ): Promise<{ promedio: number; conNotas: boolean }> {
+    // Con `redondeo: 'MPPE'` salen las DEFINITIVAS: cada lapso redondeado al
+    // entero (0,50 o más sube) y la de la materia, de esas, redondeada otra vez.
+    // Sin él, el promedio de siempre, a dos decimales (lo que se ve durante el año).
+    const definitiva = (n: number) => (redondeo === 'MPPE' ? redondearComoElMPPE(n) : n);
     if (periodId) {
-      return this.calculateSubjectAverage(prisma, studentId, subjectId, periodId);
+      const lapso = await this.promedioDelLapso(prisma, studentId, subjectId, periodId);
+      return { ...lapso, promedio: definitiva(lapso.promedio) };
     }
 
     let lapsos = lapsosConocidos;
@@ -985,18 +1121,19 @@ class GradesService {
       lapsos = (student?.studentClassrooms?.[0]?.classroom?.academicYear?.periods || []).map((p) => p.id);
     }
 
-    if (lapsos.length === 0) return 0;
+    if (lapsos.length === 0) return { promedio: 0, conNotas: false };
 
     // Los lapsos no dependen unos de otros: se piden a la vez y no de uno en
     // uno. Con tres lapsos, eso es una espera en vez de tres.
     const promedios = await Promise.all(
-      lapsos.map((id) => this.calculateSubjectAverage(prisma, studentId, subjectId, id))
+      lapsos.map((id) => this.promedioDelLapso(prisma, studentId, subjectId, id))
     );
 
-    const sums = promedios.filter((avg) => avg > 0);
-    if (sums.length === 0) return 0;
+    // Un lapso SIN notas no pesa; uno con notas en 0, sí (antes: `avg > 0`).
+    const sums = promedios.filter((p) => p.conNotas).map((p) => definitiva(p.promedio));
+    if (sums.length === 0) return { promedio: 0, conNotas: false };
     const global = sums.reduce((a, b) => a + b, 0) / sums.length;
-    return Math.round(global * 100) / 100;
+    return { promedio: definitiva(Math.round(global * 100) / 100), conNotas: true };
   }
 
   /**
@@ -1012,19 +1149,17 @@ class GradesService {
     // 1. Lapso del período (Primer→1, Segundo→2, Tercer→3; fallback '1')
     const period = await prisma.period.findUnique({
       where: { id: periodId },
-      select: { name: true },
+      select: { name: true, academicYearId: true },
     });
     const lapso = this.periodToLapso(period?.name);
 
-    // Obtener aula activa del estudiante para aislar su plan de evaluación
-    const studentEnrollment = await prisma.studentClassroom.findFirst({
-      where: { studentId, isActive: true },
-      select: { classroomId: true },
-    });
+    // Las secciones de las que salen sus criterios: la suya y las otras del
+    // mismo ciclo donde tiene notas de esta materia (ver `seccionesDelAlumno`).
+    const aulas = await this.seccionesDelAlumno(prisma, studentId, subjectId, periodId, period?.academicYearId);
 
     const whereClause: any = { subjectId, lapso, rowType: 'EVALUATION' };
-    if (studentEnrollment?.classroomId) {
-      whereClause.classroomId = studentEnrollment.classroomId;
+    if (aulas.length > 0) {
+      whereClause.classroomId = { in: aulas };
     }
 
     // 2. Filas EVALUATION del plan = criterios (solo las que tienen puntos > 0)
@@ -1049,20 +1184,42 @@ class GradesService {
       let activities: Array<{ score: number; maxScore: number }> =
         scores.map(score => ({ score, maxScore: 20 }));
 
-      const studentClassroom = await prisma.studentClassroom.findFirst({
-        where: { studentId, isActive: true },
-        select: { classroomId: true },
-      });
-      if (studentClassroom?.classroomId) {
-        const adHoc = await prisma.classActivity.findMany({
-          where: {
-            classroomId: studentClassroom.classroomId,
-            subjectId,
-            scores: { not: undefined },
-          },
-          select: { maxScore: true, scores: true },
-        });
+      if (aulas.length > 0) {
+        const [adHoc, lapsosDelCiclo] = await Promise.all([
+          prisma.classActivity.findMany({
+            where: {
+              classroomId: { in: aulas },
+              subjectId,
+              scores: { not: undefined },
+            },
+            select: {
+              maxScore: true,
+              scores: true,
+              dueDate: true,
+              createdAt: true,
+              classSession: { select: { date: true } },
+              planRow: { select: { lapso: true, rowType: true } },
+            },
+          }),
+          period?.academicYearId
+            ? prisma.period.findMany({
+                where: { academicYearId: period.academicYearId },
+                select: { id: true, startDate: true, endDate: true },
+              })
+            : Promise.resolve([] as LapsoConFechas[]),
+        ]);
         adHoc.forEach(ca => {
+          // Solo las de ESTE lapso: la del criterio, por el lapso del
+          // criterio; la suelta, por su fecha (LAP-01…03). Antes entraban
+          // todas en todos los lapsos.
+          const esDeEsteLapso = ca.planRow && ca.planRow.rowType === 'EVALUATION'
+            ? ca.planRow.lapso === lapso
+            : lapsosDelCiclo.length === 0 ||
+              lapsoDeLaFecha(
+                fechaDeLaActividad({ fechaDeLaClase: ca.classSession?.date, dueDate: ca.dueDate, createdAt: ca.createdAt }),
+                lapsosDelCiclo
+              ) === periodId;
+          if (!esDeEsteLapso) return;
           let parsed: Record<string, number | null> = {};
           try {
             parsed = typeof ca.scores === 'string' ? JSON.parse(ca.scores) : (ca.scores || {});
@@ -1132,6 +1289,64 @@ class GradesService {
       classActs.forEach(a => activities.push(a));
       return { puntos: r.puntos || 0, activities };
     });
+  }
+
+  /**
+   * LAS SECCIONES DE LAS QUE SALEN LAS NOTAS DE UN ALUMNO EN UN LAPSO
+   *
+   * Se miraba SOLO su sección de ahora. Si se cambió de sección a mitad de
+   * lapso, lo que sacó en la anterior —notas de verdad, puestas por su
+   * profesor— dejaba de contar sin avisar: 18 en la A y 10 en la B daba 10
+   * (SEC-04). Es de las quejas más repetidas de otros sistemas escolares.
+   *
+   * Ahora: su sección de ESE ciclo (activa o no; si hay varias, la activa) y
+   * además las otras secciones del mismo ciclo donde tiene notas de esta
+   * materia. Los criterios sin notas no pesan (el promedio se escala a lo
+   * calificado), así que traer el plan de la anterior no cambia nada a quien
+   * no se movió.
+   *
+   * Y el ciclo es el del LAPSO que se calcula: con dos inscripciones activas
+   * (la de este año y la del que viene, inscrito por adelantado) se cogía una
+   * cualquiera.
+   */
+  async seccionesDelAlumno(
+    prisma: PrismaClient,
+    studentId: string,
+    subjectId: string,
+    periodId: string,
+    academicYearId?: string | null
+  ): Promise<string[]> {
+    const inscripciones = await prisma.studentClassroom.findMany({
+      where: { studentId, ...(academicYearId ? { academicYearId } : { isActive: true }) },
+      select: { classroomId: true, isActive: true },
+    });
+    const aulas = new Set<string>();
+    const vigente = inscripciones.find((i) => i.isActive) ?? inscripciones[0];
+    if (vigente) aulas.add(vigente.classroomId);
+
+    if (academicYearId) {
+      const conNotas = await prisma.$queryRaw<Array<{ classroomId: string }>>`
+        SELECT DISTINCT ca."classroomId"
+          FROM class_activities ca
+          JOIN classrooms c ON c.id = ca."classroomId"
+         WHERE ca."subjectId" = ${subjectId}
+           AND c."academicYearId" = ${academicYearId}
+           AND jsonb_typeof(ca.scores) = 'object'
+           AND jsonb_typeof(ca.scores -> ${studentId}) = 'number'
+        UNION
+        SELECT DISTINCT r."classroomId"
+          FROM evaluation_plan_rows r
+          JOIN classrooms c2 ON c2.id = r."classroomId"
+          JOIN grades g ON g."activityId" = r."activityId"
+         WHERE r."subjectId" = ${subjectId}
+           AND r."rowType" = 'EVALUATION'
+           AND c2."academicYearId" = ${academicYearId}
+           AND g."studentId" = ${studentId}
+           AND g."subjectId" = ${subjectId}
+           AND g.score IS NOT NULL`;
+      conNotas.forEach((r) => r.classroomId && aulas.add(r.classroomId));
+    }
+    return [...aulas];
   }
 
   /** Mapea el nombre del período al lapso del plan (fallback '1'). */
@@ -1824,53 +2039,6 @@ class GradesService {
   }
 
   /**
-   * Eliminar múltiples calificaciones
-   */
-  async deleteBulkGrades(prisma: PrismaClient, gradeIds: string[]): Promise<{
-    deleted: string[];
-    errors: Array<{
-      gradeId: string;
-      error: string;
-    }>;
-    summary: {
-      total: number;
-      success: number;
-      failed: number;
-    };
-  }> {
-    const deleted: string[] = [];
-    const errors: Array<{ gradeId: string; error: string }> = [];
-
-    logger.info('Starting bulk grade deletion', { totalGrades: gradeIds.length });
-
-    for (const gradeId of gradeIds) {
-      try {
-        await this.deleteGrade(prisma, gradeId);
-        deleted.push(gradeId);
-      } catch (error) {
-        errors.push({
-          gradeId,
-          error: error instanceof Error ? error.message : 'Error desconocido'
-        });
-      }
-    }
-
-    const summary = {
-      total: gradeIds.length,
-      success: deleted.length,
-      failed: errors.length
-    };
-
-    logger.info('Bulk grade deletion completed', summary);
-
-    return {
-      deleted,
-      errors,
-      summary
-    };
-  }
-
-  /**
    * Limpiar cache de calificaciones
    */
   /**
@@ -1981,6 +2149,15 @@ class GradesService {
       });
     }
   }
+}
+
+/**
+ * La regla del Reglamento General de la LOE: al calcular, una fracción de
+ * 0,50 o más se lleva al entero inmediato superior. El `1e-9` es por la coma
+ * flotante: 9,5 guardado como 9,4999999… también es 9,5.
+ */
+export function redondearComoElMPPE(n: number): number {
+  return Math.floor(n + 0.5 + 1e-9);
 }
 
 export const gradesService = new GradesService();

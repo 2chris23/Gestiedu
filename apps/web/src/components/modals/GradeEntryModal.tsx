@@ -138,13 +138,12 @@ export default function GradeEntryModal({
     const failing = filledScores.filter(s => s < passingGrade).length;
 
     return (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
+        <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Registrar Calificaciones">
             <div className="flex items-center justify-center min-h-screen px-4">
                 <div
                     className="fixed inset-0 bg-gray-500 bg-opacity-75"
                     onClick={onClose}
-                    role="button"
-                    tabIndex={0}
+                    aria-hidden="true"
                     onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
@@ -167,7 +166,7 @@ export default function GradeEntryModal({
                                 </p>
                             </div>
                         </div>
-                        <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white/60 rounded-lg">
+                        <button aria-label="Cerrar" onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white/60 rounded-lg">
                             <X className="w-5 h-5" />
                         </button>
                     </div>

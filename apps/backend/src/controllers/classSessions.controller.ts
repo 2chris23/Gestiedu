@@ -1,11 +1,67 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
+import {
+    apuntarQuienPuso,
+    conNombres,
+    cuantasNotas,
+    dejarEnEspera,
+    nombreDe,
+    ponerNotasMirandoAntes,
+    quienLaBorro,
+    quienesPusieronNotas,
+} from '../services/cambios-sin-conexion.service';
+import { avisar } from '../services/avisos.service';
+import { crearReemplazo, esFecha } from '../services/class-replacements.service';
+import { avisarDelReemplazo } from './class-replacements.controller';
+import { parseDay } from '../services/school-events.service';
 import { logger } from '../utils/logger';
 import { randomUUID } from 'crypto';
 import { RequestUser } from '../types/fastify';
-import { planWeekNumberFromRange, planWeekRangeFromRange } from '../utils/plan-weeks';
+import { planWeekRangeFromRange } from '../utils/plan-weeks';
+import { semanaDelPlan, semanaDelPlanCon, type SemanaDelPlan } from '../services/semana-del-plan.service';
+
+/**
+ * El plan de una materia en una fecha: el del LAPSO de esa fecha (antes se
+ * cogía el primero que saliera, de cualquier lapso) y su semana, contada como
+ * la cuenta la rejilla (`services/semana-del-plan.service.ts`). Semana 0 =
+ * antes de que empiece el plan (diagnóstico).
+ */
+async function planDeLaFecha(
+    prisma: any,
+    classroomId: string,
+    subjectId: string,
+    fecha: Date
+): Promise<{ meta: any | null; sem: SemanaDelPlan }> {
+    const [base, metas] = await Promise.all([
+        semanaDelPlan(prisma, classroomId, fecha),
+        prisma.evaluationPlanMetadata.findMany({ where: { classroomId, subjectId }, orderBy: { lapso: 'asc' } }),
+    ]);
+    const meta = base.lapso ? metas.find((m: any) => m.lapso === base.lapso) ?? null : metas[0] ?? null;
+    const sem = meta?.fechaDesde ? await semanaDelPlan(prisma, classroomId, fecha, new Date(meta.fechaDesde)) : base;
+    return { meta, sem };
+}
 import { instituteTimezone, isFutureDate, todayInTimezone } from '../utils/school-time';
-import { assertClassroomScope } from '../services/authorization.service';
+import { assertClassroomScope, assertCanSeeClassroom, assertCanSeeStudent, teacherClassroomIds } from '../services/authorization.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
+import { revisarNotas, sumarNotas, arreglarNotasGuardadasComoTexto, Notas } from '../utils/notas-de-clase';
+import { clasificar, diaDeLaActividad } from '../utils/actividad-del-dia';
+import { evaluacionesDeLaFecha } from '../services/evaluacion-de-la-semana.service';
+import { instrumentoDeLaActividad, notaAManoProhibida } from '../services/instrumentos.service';
+import { maximoDelInstrumento } from '../utils/instrumentos';
+
+/**
+ * La sesión de una clase en un día («YYYY-MM-DD»): la que hay, o una nueva.
+ * Toda actividad nueva queda atada a la clase del día que se ve: sin eso, la
+ * que se creaba un día sin asistencia guardada no salía en ninguna lista
+ * (utils/actividad-del-dia.ts).
+ */
+async function sesionDelDia(db: any, classroomId: string, subjectId: string, dia: string) {
+    const date = new Date(`${dia}T00:00:00.000Z`);
+    return db.classSession.upsert({
+        where: { classroomId_subjectId_date: { classroomId, subjectId, date } },
+        update: {},
+        create: { publicId: randomUUID(), classroomId, subjectId, date },
+    });
+}
 
 /**
  * Parsea una fecha de input <input type="date"> (YYYY-MM-DD) a mediodía LOCAL.
@@ -72,6 +128,9 @@ export async function getClassSessionById(
         if (!session) {
             return reply.status(404).send({ error: 'Sesión no encontrada' });
         }
+        // La clase, con la asistencia de cada alumno, es de quien la da (y del
+        // guía de la sección, que la mira). Antes la leía cualquier profesor.
+        await exigirClasePropia(request, session.classroomId, session.subjectId, 'ver la clase');
 
         return reply.status(200).send(session);
     } catch (error) {
@@ -114,6 +173,16 @@ async function exigirClasePropia(
 }
 
 /** Igual, pero partiendo de la actividad: primero se mira de qué clase es. */
+/** Un id hecho en el teléfono: letras, números, guion y guion bajo (uuid o cuid). */
+const ID_DEL_TELEFONO = /^[A-Za-z0-9_-]{16,64}$/;
+
+/** La hora en que se hizo en el teléfono (`X-Hecho-En`), si se puede creer. */
+function parseHechoEn(valor: unknown): Date | null {
+    if (typeof valor !== 'string') return null;
+    const t = Date.parse(valor);
+    return Number.isNaN(t) || t > Date.now() + 5 * 60 * 1000 ? null : new Date(t);
+}
+
 async function exigirActividadPropia(
     request: FastifyRequest,
     activityId: string,
@@ -140,6 +209,17 @@ export async function updateClassSession(
         const { sessionId } = request.params;
         const { topic, observations, startTime, endTime } = request.body;
         const prisma = request.tenantPrisma;
+
+        // Antes cualquier profesor le cambiaba el tema y las observaciones a
+        // una clase ajena solo con su id.
+        const actual = await prisma.classSession.findUnique({
+            where: { id: sessionId },
+            select: { classroomId: true, subjectId: true },
+        });
+        if (!actual) {
+            return reply.status(404).send({ error: 'Sesión no encontrada' });
+        }
+        await exigirClasePropia(request, actual.classroomId, actual.subjectId, 'dar clase');
 
         const session = await prisma.classSession.update({
             where: { id: sessionId },
@@ -210,36 +290,76 @@ export async function getLiveClassDetail(
             targetSubjectId = sub.id;
         }
 
-        // 1. Sesión de clase existente para esta materia y fecha
-        const session = await prisma.classSession.findFirst({
-            where: { classroomId, subjectId: targetSubjectId, date: { gte: startOfDay, lte: endOfDay } },
+        /**
+         * LEER TAMBIÉN ES ALCANCE
+         *
+         * La ruta ya exigía ser profesor, pero no que la clase fuera suya: con
+         * cambiar el id en la dirección, un profesor veía la lista de alumnos,
+         * las notas y las observaciones de una sección ajena. Escribir sí
+         * estaba comprobado; leer, no.
+         */
+        await assertClassroomScope(prisma, request.user as any, classroomId, {
+            subjectId: targetSubjectId,
+            accion: 'ver las clases',
         });
 
-        // 2. Materia y docente (vía ClassroomSubject)
-        const classroomSubject = await prisma.classroomSubject.findFirst({
-            where: { classroomId, subjectId: targetSubjectId },
-            include: {
-                subject: { select: { id: true, name: true, color: true, slug: true } },
-                teacher: { select: { id: true, firstName: true, lastName: true } },
-            },
-        });
-
-        // 3. Estudiantes de la sección (vía StudentClassroom oficial)
-        const enrollments = await prisma.studentClassroom.findMany({
-            where: { classroomId, isActive: true },
-            include: {
-                student: {
-                    select: { id: true, firstName: true, lastName: true, avatar: true, studentCode: true, isActive: true }
-                }
-            },
-            orderBy: [{ student: { lastName: 'asc' } }, { student: { firstName: 'asc' } }],
-        });
+        /**
+         * LO QUE NO DEPENDE DE NADA, A LA VEZ
+         *
+         * Eran diez consultas en fila, cada una esperando a la anterior aunque
+         * ninguna necesitara lo de la otra. Con el servidor cargado, cada espera
+         * se sumaba a la siguiente: con 500 personas, esta pantalla —la que el
+         * profesor tiene abierta toda la clase— llegó a un p95 de 7,3 s. Las seis
+         * de abajo salen juntas; lo que sí depende de otra cosa (la semana del
+         * plan, los alumnos de fuera) sigue después.
+         */
+        const [session, classroomSubject, enrollments, attendances, planDelDia, activities, zonaLiceo, deLaSemana] = await Promise.all([
+            // 1. Sesión de clase existente para esta materia y fecha
+            prisma.classSession.findFirst({
+                where: { classroomId, subjectId: targetSubjectId, date: { gte: startOfDay, lte: endOfDay } },
+            }),
+            // 2. Materia y docente (vía ClassroomSubject)
+            prisma.classroomSubject.findFirst({
+                where: { classroomId, subjectId: targetSubjectId },
+                include: {
+                    subject: { select: { id: true, name: true, color: true, slug: true } },
+                    teacher: { select: { id: true, firstName: true, lastName: true } },
+                },
+            }),
+            // 3. Estudiantes de la sección (vía StudentClassroom oficial)
+            prisma.studentClassroom.findMany({
+                where: { classroomId, isActive: true },
+                include: {
+                    student: {
+                        select: { id: true, firstName: true, lastName: true, avatar: true, studentCode: true, isActive: true }
+                    }
+                },
+                orderBy: [{ student: { lastName: 'asc' } }, { student: { firstName: 'asc' } }],
+            }),
+            // 4. Asistencia de ese día para los estudiantes
+            prisma.dailyAttendance.findMany({
+                where: { classroomId, date: { gte: startOfDay, lte: endOfDay } },
+            }),
+            // 5. El plan de la materia en ESE lapso, y su semana
+            planDeLaFecha(prisma, classroomId, targetSubjectId, dayDate),
+            // 6. Actividades/tareas de la materia
+            prisma.classActivity.findMany({
+                where: { classroomId, subjectId: targetSubjectId },
+                include: {
+                    classSession: {
+                        select: { id: true, date: true },
+                    },
+                    // El instrumento de su evaluación, para las que aún no tienen copia.
+                    planRow: { select: { instrumento: { select: { definicion: true } } } },
+                },
+                orderBy: [{ isDone: 'asc' }, { createdAt: 'desc' }],
+            }),
+            instituteTimezone(prisma),
+            // 7. A qué evaluaciones del plan puede sumar lo que se haga este día.
+            evaluacionesDeLaFecha(prisma, classroomId, targetSubjectId, dayDate),
+        ]);
         const students = enrollments.map((e: any) => e.student).filter((s: any) => s && s.isActive);
 
-        // 4. Asistencia de ese día para los estudiantes
-        const attendances = await prisma.dailyAttendance.findMany({
-            where: { classroomId, date: { gte: startOfDay, lte: endOfDay } },
-        });
         const attendanceByStudent = new Map(attendances.map(a => [a.studentId, a]));
 
         const studentsWithAttendance = students.map(s => {
@@ -255,15 +375,12 @@ export async function getLiveClassDetail(
         });
 
         // 5. Contenido del plan de evaluación de la semana
+        const { meta, sem: semanaDeHoy } = planDelDia;
         let weekNumber: number | undefined;
         let planContent: any = undefined;
-        let planLapso: string | null = null;
+        let planLapso: string | null = semanaDeHoy.lapso;
         let planColumns: any = null;
         let weekRow: any = null;
-
-        const meta = await prisma.evaluationPlanMetadata.findFirst({
-            where: { classroomId, subjectId: targetSubjectId },
-        });
 
         if (meta) {
             planLapso = meta.lapso;
@@ -275,22 +392,10 @@ export async function getLiveClassDetail(
                 } catch { /* ignorar columnas inválidas */ }
             }
 
-            // Calcular la semana usando fechaDesde del plan; si no existe, usar el inicio del año académico
-            let lapsoStart: Date | null = meta.fechaDesde ? new Date(meta.fechaDesde) : null;
-
-            if (!lapsoStart) {
-                const classroom = await prisma.classroom.findUnique({
-                    where: { id: classroomId },
-                    select: { academicYear: { select: { startDate: true } } },
-                });
-                if (classroom?.academicYear?.startDate) {
-                    lapsoStart = new Date(classroom.academicYear.startDate);
-                }
-            }
-
-            if (lapsoStart) {
-                // CORRECCIÓN: semanas alineadas a LUNES (ver utils/plan-weeks.ts)
-                weekNumber = planWeekNumberFromRange(lapsoStart, dayDate);
+            // Antes de que empiece el plan (diagnóstico) no hay fila que enseñar.
+            if (semanaDeHoy.inicioDelPlan && !semanaDeHoy.antesDelPlan) {
+                // Semanas alineadas a LUNES (ver utils/plan-weeks.ts)
+                weekNumber = semanaDeHoy.semana;
 
                 const weekRows = await prisma.evaluationPlanRow.findMany({
                     where: { classroomId, subjectId: targetSubjectId, lapso: meta.lapso, weekNumber },
@@ -331,52 +436,25 @@ export async function getLiveClassDetail(
             }
         }
 
-        // 6. Actividades/tareas de la materia
-        const activities = await prisma.classActivity.findMany({
-            where: { classroomId, subjectId: targetSubjectId },
-            include: {
-                classSession: {
-                    select: { id: true, date: true },
-                },
-            },
-            orderBy: [{ isDone: 'asc' }, { createdAt: 'desc' }],
-        });
-
         // 6.1. Clasificación RELATIVA A ESTA CLASE:
         // - "Clase de Hoy": tareas cuya fecha de entrega sea la fecha de esta clase (dueOnClassDate),
         //   o actividades realizadas en esta misma sesión (target === 'CURRENT' && createdOnThisClass).
         // - "Próxima Clase": actividades CREADAS / ASIGNADAS en ESTA sesión (createdOnThisClass)
         //   para ser entregadas en una fecha futura. No se arrastran a todas las semanas arbitrariamente.
-        const classDateNoon = dayDate;
-        const dayOf = (dd: Date) => new Date(dd.getUTCFullYear(), dd.getUTCMonth(), dd.getUTCDate());
-        const classDay = dayOf(classDateNoon);
-
+        const diaDeLaClase = date.slice(0, 10);
         const activitiesWithDue = activities.map(a => {
-            const createdDay = a.classSession?.date ? dayOf(new Date(a.classSession.date)) : dayOf(new Date(a.createdAt));
-            const boundToSession = Boolean(a.classSessionId && session?.id && a.classSessionId === session.id);
-            const createdOnThisClass = Boolean(boundToSession || createdDay.getTime() === classDay.getTime());
-
-            const dueDay = a.dueDate ? dayOf(new Date(a.dueDate)) : null;
-            const dueOnClassDate = Boolean(dueDay && dueDay.getTime() === classDay.getTime());
-
-            const dueToday = Boolean(dueOnClassDate || (a.target === 'CURRENT' && createdOnThisClass));
-            // REGLA DEL PRODUCTO — no cambiar sin hablarlo:
-            // Una actividad para la PRÓXIMA clase se anuncia SOLO en la clase donde
-            // se creó (`createdOnThisClass`). Dos motivos:
-            //   1. así se sabe en qué clase se mandó, y
-            //   2. si se anunciara en todas las clases anteriores, 'Próxima clase'
-            //      se llenaría de actividades acumuladas.
-            // El día que toca entregarla aparece como 'Clase de hoy' por su fecha
-            // (`dueOnClassDate`), esté donde esté el profesor.
-            const isFuture = Boolean(a.target === 'NEXT' && createdOnThisClass && !dueToday);
-
+            // utils/actividad-del-dia.ts: el día de la actividad es el de su
+            // clase, o el de su creación EN LA ZONA DEL LICEO (no en UTC).
+            const c = clasificar(a, diaDeLaClase, session?.id, zonaLiceo);
+            const { planRow, ...resto } = a as any;
             return {
-                ...a,
-                createdDate: createdDay.toISOString(),
-                createdOnThisClass,
-                belongsToSession: createdOnThisClass,
-                dueToday,
-                isFuture,
+                ...resto,
+                instrumento: a.instrumento ?? planRow?.instrumento?.definicion ?? null,
+                createdDate: `${diaDeLaActividad(a, zonaLiceo)}T12:00:00.000Z`,
+                createdOnThisClass: c.nacioAqui,
+                belongsToSession: c.nacioAqui,
+                dueToday: c.hoy,
+                isFuture: c.proxima,
             };
         });
         const activitiesFiltered = activitiesWithDue;
@@ -538,7 +616,15 @@ export async function getLiveClassDetail(
         }
         sessionObservations = Array.from(groupedObsMap.values());
 
+        // La sección, con su turno: en un liceo de dos turnos, saber si esta
+        // clase es la de la mañana o la de la tarde no es un detalle.
+        const laSeccion = await prisma.classroom.findUnique({
+            where: { id: classroomId },
+            select: { id: true, name: true, shift: true, grade: true, section: true },
+        });
+
         return reply.status(200).send({
+            classroom: laSeccion,
             session: session ? {
                 id: session.id,
                 topic: session.topic,
@@ -554,10 +640,20 @@ export async function getLiveClassDetail(
                 : null,
             students: involvedStudents,
             weekNumber,
+            // Antes de que empiece el plan del lapso: semanas de diagnóstico
+            // (o como las llame el liceo), con contenido del profesor.
+            antesDelPlan: semanaDeHoy.antesDelPlan,
+            nombreAntesDelPlan: semanaDeHoy.nombreAntesDelPlan,
+            inicioDelPlan: semanaDeHoy.inicioDelPlan ? semanaDeHoy.inicioDelPlan.toISOString().slice(0, 10) : null,
             planContent,
             planColumns,
             planLapso: planLapso || '1',
             weekRow,
+            // Las evaluaciones del plan que cubren este día (una actividad suma
+            // a una de ellas) y si el plan tiene puntos: sin evaluación, lo que
+            // se haga hoy no suma a la nota del lapso y la pantalla lo dice.
+            evaluacionesDeLaSemana: deLaSemana.evaluaciones,
+            planConPuntos: deLaSemana.planConPuntos,
             activities: activitiesFiltered,
             sessionObservations,
         });
@@ -588,6 +684,10 @@ export async function createClassSession(
         const { classroomId, subjectId, date, topic, observations, startTime, endTime } = request.body;
         const prisma = request.tenantPrisma;
 
+        // Abrir la clase es darla: solo quien la imparte. Antes bastaba ser
+        // profesor, de cualquier sección.
+        await exigirClasePropia(request, classroomId, subjectId, 'dar clase');
+
         // La fecha la decide el servidor: con el reloj del dispositivo adelantado
         // (a mano o por VPN) se podría abrir la clase de un día que no ha llegado.
         const zonaLiceo = await instituteTimezone(prisma);
@@ -599,7 +699,7 @@ export async function createClassSession(
             });
         }
 
-        const parsedDate = new Date(date);
+        const parsedDate = parseDay(date);
         const startOfDay = new Date(parsedDate);
         startOfDay.setUTCHours(0, 0, 0, 0);
 
@@ -655,13 +755,19 @@ export async function saveLiveClassSession(
             involvedStudentIds?: string[];
             startTime?: string;
             endTime?: string;
-            attendances?: Array<{ studentId: string; status: string; comments?: string }>;
+            /**
+             * `antes`: lo que había cuando se marcó (lo hecho sin conexión). Si otro
+             * lo cambió mientras tanto, no se pisa: se pregunta (409).
+             */
+            attendances?: Array<{ studentId: string; status: string; comments?: string; soloSiNoHay?: boolean; antes?: string | null }>;
+            /** «la-mia»: ya se preguntó y se queda lo de quien envía. */
+            decision?: 'la-mia';
         };
     }>,
     reply: FastifyReply
 ) {
     try {
-        const { classroomId, subjectId, date, topic, observations, observationsTitle, involvedStudentIds, startTime, endTime, attendances = [] } = request.body;
+        const { classroomId, subjectId, date, topic, observations, observationsTitle, involvedStudentIds, startTime, endTime, attendances = [], decision } = request.body;
         const prisma = request.tenantPrisma;
         const user = request.user as RequestUser;
 
@@ -670,6 +776,34 @@ export async function saveLiveClassSession(
         }
 
         await exigirClasePropia(request, classroomId, subjectId, 'dar clase');
+
+        // Una clase de un día que no ha llegado no se guarda: con lo hecho sin
+        // conexión, la fecha la puso el reloj del teléfono (SINCON-09).
+        const zonaDelLiceo = await instituteTimezone(prisma);
+        if (!/^\d{4}-\d{2}-\d{2}/.test(String(date)) || isFutureDate(String(date).slice(0, 10), zonaDelLiceo)) {
+            return reply.status(400).send({
+                error: 'No se puede guardar una clase de una fecha futura',
+                code: 'FUTURE_DATE',
+                today: todayInTimezone(zonaDelLiceo),
+            });
+        }
+
+        // La lista que se pasa es la de ESTA sección. Sin mirarlo, el profesor
+        // de 1.º A ponía ausente a un alumno de 1.º B —y le pisaba lo que su
+        // profesor ya hubiera marcado ese día—, igual que ya no puede por
+        // `/attendance` (`quien-puede-que.test.ts`).
+        if (attendances.length > 0) {
+            const ids = Array.from(new Set(attendances.map((a) => a.studentId)));
+            const deLaSeccion = await prisma.studentClassroom.count({
+                where: { classroomId, isActive: true, studentId: { in: ids } },
+            });
+            if (deLaSeccion !== ids.length) {
+                return reply.status(403).send({
+                    error: 'Solo se pasa asistencia a los alumnos de esta sección',
+                    code: 'STUDENT_NOT_IN_CLASSROOM',
+                });
+            }
+        }
 
         const parsedDate = new Date(date);
         const startOfDay = new Date(parsedDate);
@@ -722,6 +856,40 @@ export async function saveLiveClassSession(
                     ).map((a: { studentId: string }) => a.studentId)
                 );
 
+                /**
+                 * LO QUE OTRO MARCÓ MIENTRAS TANTO (2026-09-30)
+                 *
+                 * Lo marcado sin conexión trae lo que había (`antes`). Si ahora
+                 * hay otra cosa —y no es lo mismo que se quiere poner—, no se
+                 * pisa: se pregunta a quien envía cuál queda.
+                 */
+                const conAntes = attendances.filter((a) => a.antes !== undefined && !a.soloSiNoHay);
+                if (conAntes.length && decision !== 'la-mia') {
+                    const hoyHay = await tx.dailyAttendance.findMany({
+                        where: { date: startOfDay, studentId: { in: conAntes.map((a) => a.studentId) } },
+                        select: { studentId: true, status: true, teacherId: true, modificadoPorId: true },
+                    });
+                    const porAlumno = new Map<string, any>(hoyHay.map((a: any) => [a.studentId, a]));
+                    const choques = conAntes
+                        .map((a) => {
+                            const hay = porAlumno.get(a.studentId);
+                            const ahora = hay?.status ?? null;
+                            if (ahora === (a.antes ?? null) || ahora === a.status) return null;
+                            // Lo que él mismo marcó mientras tanto (otra pestaña, la clase
+                            // que se guardó sola al salir) no es «otra persona».
+                            if (user?.userId && (hay?.modificadoPorId ?? hay?.teacherId) === user.userId) return null;
+                            return { studentId: a.studentId, antes: a.antes ?? null, ahora, tuya: a.status, quien: hay?.modificadoPorId ?? hay?.teacherId ?? null };
+                        })
+                        .filter(Boolean);
+                    if (choques.length) {
+                        throw Object.assign(new Error('Mientras tanto otra persona cambió esta asistencia: elige cuál queda'), {
+                            statusCode: 409,
+                            code: 'CAMBIO_MIENTRAS_TANTO',
+                            choques,
+                        });
+                    }
+                }
+
                 const nuevas = attendances.filter((a) => !yaTenian.has(a.studentId));
                 if (nuevas.length > 0) {
                     await tx.dailyAttendance.createMany({
@@ -743,6 +911,11 @@ export async function saveLiveClassSession(
                 const porLoQueSeLesPone = new Map<string, string[]>();
                 for (const a of attendances) {
                     if (!yaTenian.has(a.studentId)) continue;
+                    // «Solo si no hay»: lo que la pantalla NO tocó y manda como
+                    // se ve (presente por defecto). Si ya hay algo guardado —otra
+                    // pantalla lo marcó mientras tanto—, se respeta (ASIS-DOS-01,
+                    // SOLO-01…03). Antes se pisaba y un ausente volvía a presente.
+                    if (a.soloSiNoHay) continue;
                     const clave = `${a.status}\u0000${a.comments ?? ''}`;
                     const grupo = porLoQueSeLesPone.get(clave);
                     if (grupo) grupo.push(a.studentId);
@@ -757,6 +930,7 @@ export async function saveLiveClassSession(
                             status: status as any,
                             comments: comentario === '' ? null : comentario,
                             classSessionId: session.id,
+                            modificadoPorId: user?.userId ?? null,
                         },
                     });
                 }
@@ -795,6 +969,17 @@ export async function saveLiveClassSession(
 
         return reply.status(200).send({ success: true, session: result });
     } catch (error) {
+        if ((error as any)?.code === 'CAMBIO_MIENTRAS_TANTO') {
+            const choques = (error as any).choques as Array<{ quien: string | null }>;
+            const nombres = new Map<string, string>();
+            for (const c of choques) if (c.quien && !nombres.has(c.quien)) nombres.set(c.quien, await nombreDe(request.tenantPrisma, c.quien));
+            return reply.status(409).send({
+                code: 'CAMBIO_MIENTRAS_TANTO',
+                que: 'ASISTENCIA',
+                error: (error as Error).message,
+                choques: choques.map((c) => ({ ...c, quienNombre: c.quien ? nombres.get(c.quien) : null })),
+            });
+        }
         // Los errores con motivo propio (permisos, no encontrado…) se responden tal
         // cual: convertirlos en 500 esconde por qué se negó.
         if ((error as any)?.statusCode) {
@@ -831,6 +1016,8 @@ export async function getClassActivities(
             select: { id: true },
         });
         if (sub) targetSubjectId = sub.id;
+
+        await exigirClasePropia(request, classroomId, targetSubjectId, 'ver las actividades');
 
         const activities = await prisma.classActivity.findMany({
             where: { classroomId, subjectId: targetSubjectId },
@@ -876,12 +1063,21 @@ export async function createClassActivity(
             maxScore?: number;
             planRowId?: string;
             classSessionId?: string;
+            /** El día de la clase que se ve («YYYY-MM-DD»). */
+            date?: string;
+            /**
+             * El id lo pone el teléfono cuando se crea sin conexión: así las
+             * notas de esa actividad, hechas también sin conexión, ya saben a
+             * cuál van antes de que llegue.
+             */
+            id?: string;
         };
     }>,
     reply: FastifyReply
 ) {
     try {
         const {
+            id: idDelTelefono,
             classroomId,
             subjectId,
             title,
@@ -893,11 +1089,23 @@ export async function createClassActivity(
             maxScore = 20,
             planRowId,
             classSessionId,
+            date,
         } = request.body;
         const prisma = request.tenantPrisma;
 
         if (!classroomId || !subjectId || !title) {
             return reply.status(400).send({ error: 'Faltan parámetros requeridos' });
+        }
+        if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            return reply.status(400).send({ error: 'Fecha inválida', code: 'FECHA_INVALIDA' });
+        }
+        if (idDelTelefono !== undefined) {
+            if (typeof idDelTelefono !== 'string' || !ID_DEL_TELEFONO.test(idDelTelefono)) {
+                return reply.status(400).send({ error: 'El id de la actividad no es válido', code: 'ID_INVALIDO' });
+            }
+            if (await prisma.classActivity.findUnique({ where: { id: idDelTelefono }, select: { id: true } })) {
+                return reply.status(409).send({ error: 'Ya hay una actividad con ese id', code: 'ID_EN_USO' });
+            }
         }
 
         let targetSubjectId = subjectId;
@@ -908,9 +1116,58 @@ export async function createClassActivity(
         if (sub) targetSubjectId = sub.id;
 
         await exigirClasePropia(request, classroomId, targetSubjectId, 'dejar actividades');
+        const zonaLiceo = await instituteTimezone(prisma);
+
+        // La clase donde nace: la que manda la pantalla (si es de ESTA clase) o
+        // la del día que se ve. Sin ella la actividad no salía en ninguna lista.
+        let sesion: { id: string; date: Date } | null = null;
+        if (classSessionId) {
+            sesion = await prisma.classSession.findFirst({
+                where: { id: classSessionId, classroomId, subjectId: targetSubjectId },
+                select: { id: true, date: true },
+            });
+            if (!sesion) {
+                return reply.status(400).send({ error: 'Esa clase no es de esta sección y materia', code: 'SESION_AJENA' });
+            }
+        } else if (date) {
+            if (isFutureDate(date, zonaLiceo)) {
+                return reply.status(400).send({
+                    error: 'Esa clase todavía no ha llegado: crea la actividad hoy y ponle fecha de entrega',
+                    code: 'FUTURE_DATE',
+                    today: todayInTimezone(zonaLiceo),
+                });
+            }
+            sesion = await sesionDelDia(prisma, classroomId, targetSubjectId, date);
+        }
+
+        // A qué evaluación del plan suma: la de la semana en que se entrega
+        // (si tiene fecha) o la de la clase donde nace. Una candidata, esa;
+        // varias, la que elija el profesor; ninguna, no suma (formativa).
+        const diaDeLaSemana = dueDate || (sesion ? sesion.date.toISOString().slice(0, 10) : date) || todayInTimezone(zonaLiceo);
+        const { evaluaciones, planConPuntos } = await evaluacionesDeLaFecha(
+            prisma,
+            classroomId,
+            targetSubjectId,
+            parseDayDate(diaDeLaSemana)
+        );
+        let fila: string | null = null;
+        // Lo que mande la pantalla solo vale si es una de ellas (la de una
+        // pantalla vieja puede ser la fila vacía de la semana, o ajena).
+        if (planRowId && evaluaciones.some((e) => e.id === planRowId)) {
+            fila = planRowId;
+        } else if (evaluaciones.length === 1) {
+            fila = evaluaciones[0].id;
+        } else if (evaluaciones.length > 1) {
+            return reply.status(400).send({
+                error: 'Esta semana tiene varias evaluaciones en el plan: elige a cuál suma la actividad',
+                code: 'ELIGE_LA_EVALUACION',
+                evaluaciones,
+            });
+        }
 
         const activity = await prisma.classActivity.create({
             data: {
+                ...(idDelTelefono ? { id: idDelTelefono } : {}),
                 classroomId,
                 subjectId: targetSubjectId,
                 title,
@@ -921,12 +1178,29 @@ export async function createClassActivity(
                 dueDate: dueDate ? parseDayDate(dueDate) : null,
                 maxScore: maxScore ? Number(maxScore) : 20,
                 scores: {},
-                planRowId: planRowId || null,
-                classSessionId: classSessionId || null,
+                planRowId: fila,
+                classSessionId: sesion?.id ?? null,
             },
         });
+        // Si su evaluación del plan tiene instrumento, se califica con él.
+        const def = fila ? await instrumentoDeLaActividad(prisma, { id: activity.id, instrumento: null, planRowId: fila }) : null;
+        if (def) {
+            Object.assign(
+                activity,
+                await prisma.classActivity.update({ where: { id: activity.id }, data: { instrumento: def as any, maxScore: maximoDelInstrumento(def), detalleDelInstrumento: {} } })
+            );
+        }
 
-        return reply.status(201).send({ activity });
+        // Una actividad nueva cambia el horario en vivo de ESA sección: sus
+        // alumnos, sus representantes y su personal. Sin esta línea se tiraba la
+        // copia guardada del liceo entero.
+        request.aQuienAfecta = { classroomId };
+
+        // Dónde sale en la clase que se ve: la pantalla lo dice tal cual, y no
+        // «añadida» si no se va a ver.
+        const diaVisto = date || (sesion ? sesion.date.toISOString().slice(0, 10) : todayInTimezone(zonaLiceo));
+        const { dondeSale } = clasificar({ ...activity, classSession: sesion }, diaVisto, sesion?.id, zonaLiceo);
+        return reply.status(201).send({ activity, dondeSale, sumaALaNota: Boolean(fila) || !planConPuntos });
     } catch (error) {
         // Los errores con motivo propio (permisos, no encontrado…) se responden tal
         // cual: convertirlos en 500 esconde por qué se negó.
@@ -985,6 +1259,32 @@ export async function updateClassActivity(
             return reply.status(404).send({ error: 'Actividad no encontrada' });
         }
 
+        // Las notas que vengan aquí se AÑADEN, como en la puerta de las notas:
+        // antes reemplazaban el mapa entero y borraban las del resto de la clase.
+        if (scores !== undefined) {
+            // Con instrumento, la nota sale de las marcas: a mano, solo al alumno
+            // evaluado de otra forma (INSTR-05).
+            const noSe = await notaAManoProhibida(prisma, activityId, Object.keys(scores || {}));
+            if (noSe) {
+                return reply.status(409).send({
+                    error: 'Esta actividad se califica con el instrumento de su evaluación del plan: marca sus casillas',
+                    code: 'NOTA_POR_INSTRUMENTO',
+                });
+            }
+            const actual = await prisma.classActivity.findUnique({
+                where: { id: activityId },
+                select: { maxScore: true, scores: true },
+            });
+            const escala = maxScore !== undefined ? (maxScore ? Number(maxScore) : 20) : (actual?.maxScore ?? 20);
+            const problema = revisarNotas(scores, escala);
+            if (problema) {
+                return reply.status(400).send({ error: problema, code: 'NOTA_NO_VALIDA' });
+            }
+            await arreglarNotasGuardadasComoTexto(prisma as any, activityId, actual?.scores);
+            await sumarNotas(prisma as any, activityId, scores as Notas);
+            await apuntarQuienPuso(prisma, activityId, Object.keys(scores || {}), (request.user as RequestUser).id);
+        }
+
         const activity = await prisma.classActivity.update({
             where: { id: activityId },
             data: {
@@ -995,11 +1295,12 @@ export async function updateClassActivity(
                 ...(tag !== undefined && { tag }),
                 ...(dueDate !== undefined && { dueDate: dueDate ? parseDayDate(dueDate) : null }),
                 ...(maxScore !== undefined && { maxScore: maxScore ? Number(maxScore) : 20 }),
-                ...(scores !== undefined && { scores }),
                 ...(isDone !== undefined && { isDone }),
                 ...(carriedOver !== undefined && { carriedOver }),
             },
         });
+
+        request.aQuienAfecta = { classroomId: propia.classroomId };
 
         return reply.status(200).send({ activity });
     } catch (error) {
@@ -1027,38 +1328,96 @@ export async function saveClassActivityGrades(
         Body: {
             scores: Record<string, number | null>;
             maxScore?: number;
+            /** Lo que había cuando se cambió (lo hecho sin conexión): si ya no es eso, se pregunta. */
+            antes?: Record<string, number | null>;
+            /** «la-mia»: ya se preguntó y se queda la de quien envía. */
+            decision?: 'la-mia';
         };
     }>,
     reply: FastifyReply
 ) {
     try {
         const { activityId } = request.params;
-        const { scores = {}, maxScore } = request.body;
+        const { scores = {}, maxScore, antes, decision } = request.body;
         const prisma = request.tenantPrisma;
+        const user = request.user as RequestUser;
 
         const activity = await prisma.classActivity.findUnique({ where: { id: activityId } });
         if (!activity) {
+            /**
+             * NOTAS PARA UNA ACTIVIDAD QUE OTRO BORRÓ MIENTRAS TANTO
+             *
+             * Lo hecho sin conexión llega tarde. Si la actividad ya se borró,
+             * las notas no se tiran: se le pregunta a quien la borró si la
+             * recupera con ellas (decidido con Cristian, 2026-09-30).
+             */
+            const borrada = request.headers['x-cambio'] || antes ? await quienLaBorro(prisma, 'classActivity', activityId) : null;
+            if (borrada?.contenido?.classroomId) {
+                await assertClassroomScope(prisma, user as any, borrada.contenido.classroomId, {
+                    subjectId: borrada.contenido.subjectId ?? undefined,
+                    accion: 'dar notas',
+                });
+                const titulo = String(borrada.contenido.title ?? 'la actividad');
+                const autor = await nombreDe(prisma, user.id);
+                const espera = await dejarEnEspera(prisma, request.server.io as any, user.instituteId, {
+                    autorId: user.id,
+                    decideId: borrada.borradoPor,
+                    tipo: 'NOTAS_A_ACTIVIDAD_BORRADA',
+                    objetivo: activityId,
+                    datos: { scores, maxScore, titulo, classroomId: borrada.contenido.classroomId },
+                    motivo: 'La actividad se borró mientras estas notas esperaban para enviarse',
+                    hechoEn: parseHechoEn(request.headers['x-hecho-en']),
+                    titulo: `Notas para «${titulo}», que borraste`,
+                    mensaje: `${autor} le había puesto nota a ${Object.keys(scores).length} alumno(s) en «${titulo}» sin conexión, y la borraste antes de que llegaran. ¿La recuperas con esas notas?`,
+                });
+                return reply.status(202).send({
+                    code: 'EN_ESPERA',
+                    esperaId: espera.id,
+                    esperaA: await nombreDe(prisma, borrada.borradoPor),
+                    error: `«${titulo}» se borró mientras tanto. Tus notas esperan a que quien la borró decida si la recupera.`,
+                });
+            }
             return reply.status(404).send({ error: 'Actividad no encontrada' });
         }
 
         await exigirActividadPropia(request, activityId, 'dar notas');
 
-        let existingScores: Record<string, any> = {};
-        if (activity.scores) {
-            try {
-                existingScores = typeof activity.scores === 'string' ? JSON.parse(activity.scores) : (activity.scores as Record<string, any>);
-            } catch { existingScores = {}; }
+        // Con instrumento, la nota sale de las marcas: a mano, solo al alumno
+        // evaluado de otra forma (INSTR-05).
+        const noSe = await notaAManoProhibida(prisma, activityId, Object.keys(scores || {}));
+        if (noSe) {
+            return reply.status(409).send({
+                error: 'Esta actividad se califica con el instrumento de su evaluación del plan: marca sus casillas',
+                code: 'NOTA_POR_INSTRUMENTO',
+            });
         }
 
-        const mergedScores = { ...existingScores, ...scores };
+        const escala = maxScore !== undefined ? Number(maxScore) : (activity.maxScore ?? 20);
+        const problema = revisarNotas(scores, escala);
+        if (problema) {
+            return reply.status(400).send({ error: problema, code: 'NOTA_NO_VALIDA' });
+        }
 
-        const updated = await prisma.classActivity.update({
-            where: { id: activityId },
-            data: {
-                scores: mergedScores,
-                ...(maxScore !== undefined && { maxScore: Number(maxScore) }),
-            },
-        });
+        // Se añaden a lo guardado en la misma escritura (`utils/notas-de-clase.ts`),
+        // y si venía lo que había (sin conexión) y otro lo cambió, se pregunta.
+        const { choques } = await ponerNotasMirandoAntes(
+            prisma,
+            activityId,
+            scores as Notas,
+            maxScore,
+            decision === 'la-mia' ? undefined : antes,
+            user.id
+        );
+        if (choques.length) {
+            return reply.status(409).send({
+                code: 'CAMBIO_MIENTRAS_TANTO',
+                que: 'NOTAS',
+                error: 'Mientras tanto otra persona cambió estas notas: elige cuál queda',
+                actividad: { id: activityId, title: activity.title },
+                choques: await conNombres(prisma, choques),
+            });
+        }
+        const updated = await prisma.classActivity.findUnique({ where: { id: activityId } });
 
         // A quién le toca: a los alumnos que recibieron nota y al personal de la
         // sección. Antes se avisaba al liceo entero: con los profesores
@@ -1087,22 +1446,146 @@ export async function saveClassActivityGrades(
 }
 
 /**
+ * EVALUAR A UN ALUMNO DE OTRA FORMA EN UNA ACTIVIDAD
+ *
+ * Un alumno que no puede hacer deporte se evalúa con el cuaderno; uno con una
+ * adaptación, con un trabajo escrito. Queda dicho en la actividad, alumno por
+ * alumno: cómo se le evaluó y por qué. Su nota se pone igual que la de los
+ * demás y cuenta igual (mismo peso en el plan): lo que cambia es el método,
+ * no la regla. Lo ven él y su representante en «Mi clase».
+ *
+ * `metodo` vacío o DELETE = se quita (vuelve a evaluarse como los demás).
+ * Solo el profesor de esa clase o el admin (`exigirActividadPropia`).
+ */
+export async function evaluarDeOtraForma(
+    request: FastifyRequest<{
+        Params: { activityId: string; studentId: string };
+        Body?: { metodo?: string; motivo?: string | null };
+    }>,
+    reply: FastifyReply
+) {
+    try {
+        const { activityId, studentId } = request.params;
+        const prisma = request.tenantPrisma;
+
+        const propia = await exigirActividadPropia(request, activityId, 'dar notas');
+        if (!propia) return reply.status(404).send({ error: 'Actividad no encontrada' });
+
+        const metodo = typeof request.body?.metodo === 'string' ? request.body.metodo.trim() : '';
+        const motivo = typeof request.body?.motivo === 'string' ? request.body.motivo.trim() : '';
+        const quitar = request.method === 'DELETE' || metodo === '';
+
+        if (!quitar) {
+            if (metodo.length > 60) {
+                return reply.status(400).send({ error: 'Cómo se le evalúa: 60 letras como mucho', code: 'METODO_MUY_LARGO' });
+            }
+            if (motivo.length > 200) {
+                return reply.status(400).send({ error: 'El motivo: 200 letras como mucho', code: 'MOTIVO_MUY_LARGO' });
+            }
+            // Un alumno de ESA sección: no se anota a cualquiera en la actividad.
+            const inscrito = await prisma.studentClassroom.findFirst({
+                where: { studentId, classroomId: propia.classroomId, isActive: true },
+                select: { id: true },
+            });
+            if (!inscrito) {
+                return reply.status(400).send({ error: 'Ese alumno no es de esta sección', code: 'ALUMNO_AJENO' });
+            }
+        }
+
+        // En la misma escritura (jsonb), como las notas: dos profesores no se
+        // pisan el uno al otro al anotar a alumnos distintos a la vez.
+        if (quitar) {
+            await prisma.$executeRaw`
+                UPDATE "class_activities"
+                   SET "evaluadoDeOtraForma" = COALESCE("evaluadoDeOtraForma", '{}'::jsonb) - ${studentId}::text,
+                       "updatedAt" = now()
+                 WHERE id = ${activityId}`;
+        } else {
+            const valor = JSON.stringify({ metodo, ...(motivo ? { motivo } : {}) });
+            await prisma.$executeRaw`
+                UPDATE "class_activities"
+                   SET "evaluadoDeOtraForma" = COALESCE("evaluadoDeOtraForma", '{}'::jsonb) || jsonb_build_object(${studentId}::text, ${valor}::jsonb),
+                       "updatedAt" = now()
+                 WHERE id = ${activityId}`;
+        }
+
+        const actividad = await prisma.classActivity.findUnique({ where: { id: activityId } });
+        request.aQuienAfecta = { studentIds: [studentId], classroomId: propia.classroomId };
+        return reply.status(200).send({ success: true, activity: actividad });
+    } catch (error) {
+        if ((error as any)?.statusCode) {
+            return reply.status((error as any).statusCode).send({
+                error: (error as any).message || 'No autorizado',
+                code: (error as any).code || 'FORBIDDEN',
+            });
+        }
+        logger.error('Error anotando la otra forma de evaluar', {
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return reply.status(500).send({ error: 'No se pudo guardar cómo se le evalúa' });
+    }
+}
+
+/**
  * Eliminar una actividad.
  */
 export async function deleteClassActivity(
-    request: FastifyRequest<{ Params: { activityId: string } }>,
+    request: FastifyRequest<{ Params: { activityId: string }; Querystring: { notasVistas?: string; decision?: string } }>,
     reply: FastifyReply
 ) {
     try {
         const { activityId } = request.params;
         const prisma = request.tenantPrisma;
+        const user = request.user as RequestUser;
 
         const propia = await exigirActividadPropia(request, activityId, 'borrar actividades');
         if (!propia) {
+            // Ya estaba borrada (lo hecho sin conexión llega dos veces, o la borró
+            // otro): lo que se quería ya es así.
+            if (request.headers['x-cambio'] && (await quienLaBorro(prisma, 'classActivity', activityId))) {
+                return reply.status(200).send({ success: true, yaEstabaBorrada: true });
+            }
             return reply.status(404).send({ error: 'Actividad no encontrada' });
         }
 
+        /**
+         * BORRAR SIN HABER VISTO LAS NOTAS QUE OTRO PUSO (2026-09-30)
+         *
+         * Lo que se borra sin conexión llega al final, y puede que mientras
+         * tanto el profesor le pusiera notas. Quien borra dice cuántas vio
+         * (`notasVistas`); si ahora hay más, no se borra: se le pregunta si aún
+         * quiere. Con `decision=borrar`, se borra (copia en la papelera) y se
+         * avisa a quien puso esas notas.
+         */
+        const actual = await prisma.classActivity.findUnique({ where: { id: activityId }, select: { title: true, scores: true, notasPuestasPor: true } });
+        const hay = cuantasNotas(actual?.scores);
+        const vistas = request.query?.notasVistas !== undefined ? Number(request.query.notasVistas) : null;
+        if (vistas !== null && Number.isFinite(vistas) && hay > vistas && request.query?.decision !== 'borrar') {
+            const quienes = quienesPusieronNotas(actual?.notasPuestasPor, user.id);
+            return reply.status(409).send({
+                code: 'CAMBIO_MIENTRAS_TANTO',
+                que: 'NOTAS_NUEVAS',
+                error: 'Mientras tanto le pusieron notas a esta actividad: ¿aún quieres borrarla?',
+                actividad: { id: activityId, title: actual?.title },
+                notas: hay,
+                notasVistas: vistas,
+                quienes: await Promise.all(quienes.map((q) => nombreDe(prisma, q))),
+            });
+        }
+
         await borrarGuardandoCopia(prisma, 'classActivity', { id: activityId }, quienBorra(request as any));
+
+        const avisados = quienesPusieronNotas(actual?.notasPuestasPor, user.id);
+        if (avisados.length && hay > 0 && user.instituteId) {
+            await avisar(prisma, user.instituteId, request.server.io as any, {
+                a: avisados,
+                titulo: `Se borró «${actual?.title ?? 'una actividad'}»`,
+                mensaje: `${await nombreDe(prisma, user.id)} borró «${actual?.title ?? 'la actividad'}» con las notas que tenía. Quedan en la papelera del liceo.`,
+                tipo: 'INFO',
+            });
+        }
+
+        request.aQuienAfecta = { classroomId: propia.classroomId };
 
         return reply.status(200).send({ success: true });
     } catch (error) {
@@ -1122,15 +1605,31 @@ export async function deleteClassActivity(
 }
 
 /**
- * Obtener el tema generador (plan de la semana) por materia para una sección y fecha.
- * Se usa para enriquecer el "Horario en Vivo" sin tener que abrir el detalle de cada clase.
+ * EL HORARIO EN VIVO DE UNA SECCIÓN
+ *
+ * Por cada materia del horario: el tema de la semana y dos contadores.
+ *
+ * QUÉ SIGNIFICA CADA CONTADOR (esto estaba mal y se veía mal):
+ *
+ *   Hoy   — lo que toca HACER en esa clase: actividades con fecha de hoy, o
+ *           puestas en la clase de hoy para hoy mismo.
+ *   Próx. — lo que se DEJÓ en esa clase para otro día. Es un dato de esa clase,
+ *           no de la materia: por eso solo cuenta lo que nació en la sesión de
+ *           ESE día.
+ *
+ * Antes "Próx." sumaba toda actividad pendiente de la materia, viniera de donde
+ * viniera. El horario anunciaba "1 actividad para la próxima clase" en bloques
+ * donde no se había puesto nada, y al entrar no había nada: el contador mentía.
+ *
+ * Lo ven el profesor de la sección, el alumno que estudia en ella y su
+ * representante. Un alumno solo recibe SU nota; de los demás, nada.
  */
 export async function getLiveOverview(
-    request: FastifyRequest<{ Querystring: { classroomId: string; date: string } }>,
+    request: FastifyRequest<{ Querystring: { classroomId: string; date: string; studentId?: string } }>,
     reply: FastifyReply
 ) {
     try {
-        const { classroomId, date } = request.query;
+        const { classroomId, date, studentId } = request.query;
         const prisma = request.tenantPrisma;
 
         if (!classroomId || !date) {
@@ -1141,85 +1640,188 @@ export async function getLiveOverview(
         if (isNaN(parsedDate.getTime())) {
             return reply.status(400).send({ error: 'Fecha inválida' });
         }
+
+        await assertCanSeeClassroom(prisma, request.user as any, classroomId);
+
+        // ¿De quién son las notas que se devuelven? Del alumno que pregunta, o
+        // del representado que se pida (si de verdad lo representa).
+        const quienPregunta = request.user as RequestUser | undefined;
+        let alumnoDeLasNotas: string | null =
+            quienPregunta?.role === 'STUDENT' ? (quienPregunta.userId ?? null) : null;
+        if (studentId) {
+            await assertCanSeeStudent(prisma, request.user as any, studentId);
+            alumnoDeLasNotas = studentId;
+        }
+
         // Día intencionado a mediodía LOCAL (ver getLiveClassDetail)
         const dayDate = parseDayDate(date);
+        const inicioDelDia = new Date(parsedDate);
+        inicioDelDia.setUTCHours(0, 0, 0, 0);
+        const finDelDia = new Date(parsedDate);
+        finDelDia.setUTCHours(23, 59, 59, 999);
 
-        // Para cada materia de la sección, calcular la semana y obtener el tema generador (HEADER)
-        const subjects = await prisma.classroomSubject.findMany({
-            where: { classroomId },
-            include: { subject: { select: { id: true, name: true, color: true } } },
-        });
+        const [subjects, classroom, metas, sesionesDelDia, zonaLiceo] = await Promise.all([
+            prisma.classroomSubject.findMany({
+                where: { classroomId },
+                include: { subject: { select: { id: true, name: true, color: true } } },
+            }),
+            prisma.classroom.findUnique({
+                where: { id: classroomId },
+                select: {
+                    shift: true,
+                    academicYear: {
+                        select: {
+                            startDate: true,
+                            periods: { select: { id: true, startDate: true, endDate: true, inicioDelPlan: true, nombreAntesDelPlan: true } },
+                        },
+                    },
+                },
+            }),
+            prisma.evaluationPlanMetadata.findMany({ where: { classroomId }, orderBy: { lapso: 'asc' } }),
+            prisma.classSession.findMany({
+                where: { classroomId, date: { gte: inicioDelDia, lte: finDelDia } },
+                select: { id: true, subjectId: true, status: true },
+            }),
+            instituteTimezone(prisma),
+        ]);
 
-        // Fecha de referencia del año académico para calcular la semana
-        const classroom = await prisma.classroom.findUnique({
-            where: { id: classroomId },
-            select: { academicYear: { select: { startDate: true } } },
-        });
         const yearStart = classroom?.academicYear?.startDate ? new Date(classroom.academicYear.startDate) : null;
+        const lapsos = classroom?.academicYear?.periods ?? [];
+        // La semana del plan de ese día, contada como la rejilla. El plan de
+        // cada materia es el del LAPSO de ese día (antes, el primero que saliera).
+        const semanaDelDia = semanaDelPlanCon(dayDate, lapsos, yearStart);
+        const metaPorMateria = new Map<string, (typeof metas)[number]>();
+        for (const m of metas) {
+            if (semanaDelDia.lapso && m.lapso !== semanaDelDia.lapso) continue;
+            if (!metaPorMateria.has(m.subjectId)) metaPorMateria.set(m.subjectId, m);
+        }
+        const sesionPorMateria = new Map(sesionesDelDia.map((s) => [s.subjectId, s]));
+        const idsDeSesion = sesionesDelDia.map((s) => s.id);
 
-        const result: Record<string, { subjectName: string; color?: string; weekNumber?: number; temaGenerador?: string; firstColumnLabel?: string; activitiesCount?: number; todayActivitiesCount?: number; nextActivitiesCount?: number }> = {};
+        // Semana del plan por materia (cada materia puede empezar su lapso en
+        // otra fecha, así que el número de semana se calcula una por una).
+        const semanaPorMateria = new Map<string, number>();
+        for (const cs of subjects) {
+            const meta = metaPorMateria.get(cs.subject.id);
+            if (!meta) continue;
+            const sem = meta.fechaDesde
+                ? semanaDelPlanCon(dayDate, lapsos, yearStart, new Date(meta.fechaDesde))
+                : semanaDelDia;
+            // Semana 0: antes de que empiece el plan. No hay tema que buscar.
+            if (sem.inicioDelPlan && !sem.antesDelPlan) semanaPorMateria.set(cs.subject.id, sem.semana);
+        }
+
+        // Las filas del plan de todas las materias, de un tirón (antes era una
+        // consulta por materia dentro de un bucle: 15 materias, 45 consultas).
+        const condicionesDePlan = subjects
+            .map((cs) => {
+                const meta = metaPorMateria.get(cs.subject.id);
+                const semana = semanaPorMateria.get(cs.subject.id);
+                if (!meta || semana === undefined) return null;
+                return { classroomId, subjectId: cs.subject.id, lapso: meta.lapso, weekNumber: semana };
+            })
+            .filter(Boolean) as Array<{ classroomId: string; subjectId: string; lapso: string; weekNumber: number }>;
+
+        const filasDelPlan = condicionesDePlan.length
+            ? await prisma.evaluationPlanRow.findMany({
+                  where: { OR: condicionesDePlan },
+                  orderBy: { orderIndex: 'asc' },
+              })
+            : [];
+        const filaPorMateria = new Map<string, (typeof filasDelPlan)[number]>();
+        for (const fila of filasDelPlan) {
+            if (fila.subjectId && !filaPorMateria.has(fila.subjectId)) filaPorMateria.set(fila.subjectId, fila);
+        }
+
+        /**
+         * Solo las actividades que tienen que ver con ESE día: las que nacieron
+         * en la clase de ese día y las que vencen ese día. Antes se traían
+         * TODAS las de la materia desde el principio del año.
+         */
+        const actividades = await prisma.classActivity.findMany({
+            where: {
+                classroomId,
+                OR: [
+                    ...(idsDeSesion.length ? [{ classSessionId: { in: idsDeSesion } }] : []),
+                    { dueDate: { gte: inicioDelDia, lte: finDelDia } },
+                    // Las viejas sin clase: se fechan por su creación en la zona
+                    // del liceo (utils/actividad-del-dia.ts); ±1 día de margen.
+                    {
+                        classSessionId: null,
+                        createdAt: { gte: new Date(inicioDelDia.getTime() - 86400000), lte: new Date(finDelDia.getTime() + 86400000) },
+                    },
+                ],
+            },
+            orderBy: { createdAt: 'asc' },
+        });
+
+        const result: Record<string, {
+            subjectName: string;
+            color?: string;
+            weekNumber?: number;
+            temaGenerador?: string;
+            firstColumnLabel?: string;
+            activitiesCount?: number;
+            todayActivitiesCount?: number;
+            nextActivitiesCount?: number;
+            suspendida?: boolean;
+            antesDelPlan?: boolean;
+            nombreAntesDelPlan?: string;
+            actividades?: Array<{
+                id: string;
+                title: string;
+                type: string;
+                tag?: string | null;
+                target: string;
+                dueDate: string | null;
+                maxScore: number | null;
+                paraOtroDia: boolean;
+                miNota?: number | null;
+            }>;
+        }> = {};
+
+        const soloElDia = (d: Date) => new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+        const diaDeClase = soloElDia(dayDate);
 
         for (const cs of subjects) {
-            const meta = await prisma.evaluationPlanMetadata.findFirst({
-                where: { classroomId, subjectId: cs.subject.id },
-            });
-
-            let weekNumber: number | undefined;
-            let temaGenerador: string | undefined;
-
-            if (meta) {
-                let lapsoStart: Date | null = meta.fechaDesde ? new Date(meta.fechaDesde) : yearStart;
-
-                if (lapsoStart) {
-                    // CORRECCIÓN: semanas alineadas a LUNES (ver utils/plan-weeks.ts)
-                    weekNumber = planWeekNumberFromRange(lapsoStart, dayDate);
-
-                    const planRow = await prisma.evaluationPlanRow.findFirst({
-                        where: {
-                            classroomId,
-                            subjectId: cs.subject.id,
-                            lapso: meta.lapso,
-                            weekNumber,
-                        },
-                        orderBy: { orderIndex: 'asc' },
-                    });
-                    temaGenerador = planRow?.title || undefined;
-                }
-            }
-
-            // Actividades de esta materia en la sección para la fecha dada
-            const allActivities = await prisma.classActivity.findMany({
-                where: {
-                    classroomId,
-                    subjectId: cs.subject.id,
-                },
-            });
-
-            const dayOf = (dd: Date) => new Date(dd.getUTCFullYear(), dd.getUTCMonth(), dd.getUTCDate());
-            const classDay = dayOf(dayDate);
+            const materiaId = cs.subject.id;
+            const meta = metaPorMateria.get(materiaId);
+            const sesion = sesionPorMateria.get(materiaId);
+            const deLaMateria = actividades.filter((a) => a.subjectId === materiaId);
 
             let todayActivitiesCount = 0;
             let nextActivitiesCount = 0;
+            const listaDelDia: NonNullable<(typeof result)[string]['actividades']> = [];
 
-            for (const a of allActivities) {
-                const dueDay = a.dueDate ? dayOf(a.dueDate) : null;
-                const isDueToday = Boolean(dueDay && dueDay.getTime() === classDay.getTime());
-                const isCreatedToday = dayOf(a.createdAt).getTime() === classDay.getTime();
+            for (const a of deLaMateria) {
+                const venceHoy = Boolean(a.dueDate && soloElDia(a.dueDate).getTime() === diaDeClase.getTime());
+                const naceHoy = Boolean(
+                    (sesion && a.classSessionId === sesion.id) ||
+                        (!a.classSessionId && diaDeLaActividad(a, zonaLiceo) === date.slice(0, 10))
+                );
+                if (!venceHoy && !naceHoy) continue;
 
-                if (a.target === 'CURRENT') {
-                    if (isDueToday || isCreatedToday) todayActivitiesCount++;
-                } else if (a.target === 'NEXT') {
-                    if (isDueToday) {
-                        todayActivitiesCount++;
-                    } else if (!a.dueDate || (dueDay && dueDay.getTime() > classDay.getTime())) {
-                        nextActivitiesCount++;
-                    }
-                }
+                // Puesta en esta clase para otro día: eso es "Próx."
+                const paraOtroDia = naceHoy && !venceHoy && a.target === 'NEXT';
+                if (paraOtroDia) nextActivitiesCount++;
+                else todayActivitiesCount++;
+
+                const notas = (a.scores ?? {}) as Record<string, number | null>;
+                listaDelDia.push({
+                    id: a.id,
+                    title: a.title,
+                    type: a.type,
+                    tag: a.tag,
+                    target: a.target,
+                    dueDate: a.dueDate ? a.dueDate.toISOString() : null,
+                    maxScore: a.maxScore ?? null,
+                    paraOtroDia,
+                    ...(alumnoDeLasNotas ? { miNota: notas?.[alumnoDeLasNotas] ?? null } : {}),
+                });
             }
 
-            const activitiesCount = allActivities.length;
-
-            // Obtener el nombre de la primera columna del plan
+            // El nombre de la primera columna del plan (el liceo la puede llamar
+            // de otra forma que "Tema Generador").
             let firstColumnLabel = 'Tema Generador';
             if (meta?.customColumns) {
                 try {
@@ -1230,19 +1832,23 @@ export async function getLiveOverview(
                 } catch {}
             }
 
-            result[cs.subject.id] = {
+            result[materiaId] = {
                 subjectName: cs.subject.name,
                 color: cs.subject.color || undefined,
-                weekNumber,
-                temaGenerador,
+                weekNumber: semanaPorMateria.get(materiaId),
+                temaGenerador: filaPorMateria.get(materiaId)?.title || undefined,
+                antesDelPlan: semanaDelDia.antesDelPlan,
+                nombreAntesDelPlan: semanaDelDia.nombreAntesDelPlan,
                 firstColumnLabel,
-                activitiesCount,
+                activitiesCount: listaDelDia.length,
                 todayActivitiesCount,
                 nextActivitiesCount,
+                suspendida: sesion?.status === 'SUSPENDED',
+                actividades: listaDelDia,
             };
         }
 
-        return reply.status(200).send({ overview: result });
+        return reply.status(200).send({ overview: result, shift: classroom?.shift ?? 'MANANA' });
     } catch (error) {
         // Los errores con motivo propio (permisos, no encontrado…) se responden tal
         // cual: convertirlos en 500 esconde por qué se negó.
@@ -1267,17 +1873,26 @@ export async function getLiveOverview(
  */
 export async function suspendClassSession(
     request: FastifyRequest<{
-        Body: { classroomId: string; subjectId: string; date: string; reason?: string };
+        Body: { classroomId: string; subjectId: string; date: string; reason?: string; replacementSubjectId?: string };
     }>,
     reply: FastifyReply
 ) {
     try {
-        const { classroomId, subjectId, date, reason } = request.body;
+        const { classroomId, subjectId, date, reason, replacementSubjectId } = request.body ?? ({} as any);
         const prisma = request.tenantPrisma;
-        const user = request.user as RequestUser;
 
-        if (!classroomId || !subjectId || !date) {
-            return reply.status(400).send({ error: 'Faltan parámetros requeridos' });
+        if (!classroomId || !subjectId || !esFecha(date)) {
+            return reply.status(400).send({ error: 'Faltan parámetros requeridos o la fecha no es válida (AAAA-MM-DD)' });
+        }
+
+        // Antes se aceptaba cualquier par de identificadores y se creaba una
+        // sesión suspendida para una materia que la sección ni tenía.
+        const asignada = await prisma.classroomSubject.findUnique({
+            where: { classroomId_subjectId: { classroomId, subjectId } },
+            select: { id: true, classroom: { select: { name: true } } },
+        });
+        if (!asignada) {
+            return reply.status(404).send({ error: 'Esa materia no es de esta sección', code: 'SUBJECT_NOT_IN_CLASSROOM' });
         }
 
         const parsedDate = new Date(date);
@@ -1326,12 +1941,32 @@ export async function suspendClassSession(
             // 3. Fusionar tema generador de la semana actual con la siguiente
             const mergeResult = await mergeTemaGeneradorOnSuspend(tx, classroomId, subjectId, parsedDate);
 
+            // 4. Otra materia en su lugar, si el admin la eligió. Va en la MISMA
+            // transacción: si el reemplazo no se puede (el profesor está
+            // ocupado), la clase tampoco queda suspendida y el admin decide.
+            const reemplazo = replacementSubjectId
+                ? await crearReemplazo(tx, {
+                      classroomId,
+                      suspendedSubjectId: subjectId,
+                      subjectId: replacementSubjectId,
+                      fecha: date,
+                      reason,
+                      createdById: (request.user as any)?.userId ?? (request.user as any)?.id,
+                  })
+                : null;
+
             return {
                 session,
                 carriedOverCount: pendingNext.length,
+                reemplazo,
                 ...mergeResult,
             };
         });
+
+        request.aQuienAfecta = { classroomId };
+        if (result.reemplazo) {
+            await avisarDelReemplazo(request, result.reemplazo, asignada.classroom?.name ?? 'la sección', date);
+        }
 
         return reply.status(200).send({
             success: true,
@@ -1339,6 +1974,7 @@ export async function suspendClassSession(
             carriedOverCount: result.carriedOverCount,
             mergedWeek: result.mergedWeek,
             mergedTemaGenerador: result.mergedTemaGenerador,
+            replacements: result.reemplazo?.reemplazos ?? [],
         });
     } catch (error) {
         // Los errores con motivo propio (permisos, no encontrado…) se responden tal
@@ -1365,29 +2001,11 @@ async function getPlanWeekNumber(
     classroomId: string,
     subjectId: string,
     date: Date
-): Promise<number | null> {
-    const meta = await prisma.evaluationPlanMetadata.findFirst({
-        where: { classroomId, subjectId },
-    });
-    if (!meta) return null;
-
-    let lapsoStart: Date | null = meta.fechaDesde ? new Date(meta.fechaDesde) : null;
-
-    if (!lapsoStart) {
-        const classroom = await prisma.classroom.findUnique({
-            where: { id: classroomId },
-            select: { academicYear: { select: { startDate: true } } },
-        });
-        if (classroom?.academicYear?.startDate) {
-            lapsoStart = new Date(classroom.academicYear.startDate);
-        }
-    }
-
-    if (!lapsoStart) return null;
-
-    // CORRECCIÓN: semanas alineadas a LUNES (Semana 2 inicia en el primer lunes
-    // posterior a la semana inicial; ver utils/plan-weeks.ts).
-    return planWeekNumberFromRange(lapsoStart, date);
+): Promise<{ semana: number; lapso: string; meta: any } | null> {
+    const { meta, sem } = await planDeLaFecha(prisma, classroomId, subjectId, date);
+    // Sin plan en ese lapso, o antes de que empiece (diagnóstico): no hay semana.
+    if (!meta || !sem.inicioDelPlan || sem.antesDelPlan) return null;
+    return { semana: sem.semana, lapso: meta.lapso, meta };
 }
 
 /**
@@ -1402,11 +2020,14 @@ async function mergeTemaGeneradorOnSuspend(
     subjectId: string,
     date: Date
 ): Promise<{ mergedWeek: number | null; mergedTemaGenerador: boolean }> {
-    const currentWeek = await getPlanWeekNumber(prisma, classroomId, subjectId, date);
-    if (!currentWeek) return { mergedWeek: null, mergedTemaGenerador: false };
+    const semana = await getPlanWeekNumber(prisma, classroomId, subjectId, date);
+    if (!semana) return { mergedWeek: null, mergedTemaGenerador: false };
+    const currentWeek = semana.semana;
 
+    // Las filas de ESE lapso: antes se buscaba la semana en cualquier lapso y
+    // se podía fusionar el tema del lapso equivocado.
     const currentHeader = await prisma.evaluationPlanRow.findFirst({
-        where: { classroomId, subjectId, weekNumber: currentWeek, rowType: 'HEADER' },
+        where: { classroomId, subjectId, lapso: semana.lapso, weekNumber: currentWeek, rowType: 'HEADER' },
         orderBy: { orderIndex: 'asc' },
     });
 
@@ -1422,7 +2043,7 @@ async function mergeTemaGeneradorOnSuspend(
 
     const nextWeek = currentWeek + 1;
     const nextHeader = await prisma.evaluationPlanRow.findFirst({
-        where: { classroomId, subjectId, weekNumber: nextWeek, rowType: 'HEADER' },
+        where: { classroomId, subjectId, lapso: semana.lapso, weekNumber: nextWeek, rowType: 'HEADER' },
         orderBy: { orderIndex: 'asc' },
     });
 
@@ -1477,6 +2098,17 @@ export async function searchStudentsForSession(
         const prisma = request.tenantPrisma;
 
         const where: any = { role: 'STUDENT', isActive: true };
+        /**
+         * El profesor encuentra a los alumnos de las secciones donde da clase o
+         * es guía; el admin, a todos. Antes cualquier profesor sacaba el nombre,
+         * la cédula, la foto y la sección de cualquier alumno del liceo con solo
+         * escribir una letra (HUECOS_ABIERTOS de `quien-puede-que.test.ts`).
+         */
+        const quien = request.user as any;
+        if (quien?.role !== 'ADMIN') {
+            const secciones = await teacherClassroomIds(prisma, quien?.userId ?? quien?.id ?? '');
+            where.studentClassrooms = { some: { isActive: true, classroomId: { in: secciones } } };
+        }
         if (search) {
             where.OR = [
                 { firstName: { contains: search, mode: 'insensitive' } },
@@ -1580,15 +2212,20 @@ export async function savePlanWeekRow(
             return reply.status(400).send({ error: 'Fecha inválida' });
         }
 
-        // 1. Metadata del plan (para lapso y columnas)
-        let meta = await prisma.evaluationPlanMetadata.findFirst({
-            where: { classroomId, subjectId },
-        });
+        // 1. El plan de ESE lapso (para lapso y columnas)
+        const { meta: delLapso, sem } = await planDeLaFecha(prisma, classroomId, subjectId, parsedDate);
+        if (sem.antesDelPlan) {
+            return reply.status(400).send({
+                error: `Esta semana es de ${sem.nombreAntesDelPlan.toLowerCase()}: el plan de evaluación empieza el ${sem.inicioDelPlan!.toISOString().slice(0, 10).split('-').reverse().join('/')}.`,
+                code: 'ANTES_DEL_PLAN',
+            });
+        }
+        let meta = delLapso;
 
-        // Si no existe metadata, crearla mínima
+        // Si no existe metadata, crearla mínima, del lapso de esa fecha
         if (!meta) {
             meta = await prisma.evaluationPlanMetadata.create({
-                data: { classroomId, subjectId, lapso: '1' },
+                data: { classroomId, subjectId, lapso: sem.lapso ?? '1' },
             });
         }
 
@@ -1602,7 +2239,7 @@ export async function savePlanWeekRow(
         }
 
         // 3. Calcular semana
-        const weekNumber = await getPlanWeekNumber(prisma, classroomId, subjectId, parsedDate);
+        const weekNumber = (await getPlanWeekNumber(prisma, classroomId, subjectId, parsedDate))?.semana;
         if (!weekNumber) {
             return reply.status(400).send({ error: 'No se pudo determinar la semana del plan (falta fecha de inicio del ciclo)' });
         }

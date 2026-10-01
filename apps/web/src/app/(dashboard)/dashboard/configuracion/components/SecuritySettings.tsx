@@ -5,6 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Save, Shield, Clock, Lock, AlertTriangle, RefreshCw, Laptop, Smartphone, ShieldAlert, Trash2 } from 'lucide-react';
 import { instituteService } from '@/services/institute.service';
 import { toast } from 'sonner';
+import { esPendiente } from '@/lib/por-enviar';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 interface SecurityConfig {
     sessionTimeout: number;
@@ -60,7 +62,7 @@ export function SecuritySettings() {
             }
         } catch (error) {
             console.error(error);
-            toast.error('Error al cargar la configuración');
+            if (!esQueNoContesta(error)) toast.error('Error al cargar la configuración');
         } finally {
             setLoading(false);
         }
@@ -83,11 +85,12 @@ export function SecuritySettings() {
                 security: config
             };
 
-            await instituteService.updateConfig({
+            const r = await instituteService.updateConfig({
                 configuration: newConfigObj as any
             });
 
-            toast.success('Configuración de seguridad actualizada');
+            if (esPendiente(r)) toast('Sin conexión: el cambio quedó pendiente ⏱ y se guarda solo al volver.', { id: 'pendiente' });
+            else toast.success('Configuración de seguridad actualizada');
         } catch (error) {
             console.error(error);
             toast.error('Error al guardar cambios');

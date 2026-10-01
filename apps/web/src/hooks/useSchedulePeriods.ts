@@ -1,16 +1,11 @@
 import { useAcademicConfig } from './useAcademicConfig';
-import { generateSchedulePeriods, Period } from '@/utils/schedule.utils';
+import { Period, ShiftType, periodosDelTurno } from '@/utils/schedule.utils';
 import { useMemo } from 'react';
 
-export function useSchedulePeriods(): { periods: Period[], isLoading: boolean } {
+export function useSchedulePeriods(shift: ShiftType = 'MANANA'): { periods: Period[], isLoading: boolean } {
     const { data: config, isLoading } = useAcademicConfig();
 
-    const periods = useMemo(() => {
-        if (!config || !config.schedule) {
-            return [];
-        }
-        return generateSchedulePeriods(config.schedule);
-    }, [config]);
+    const periods = useMemo(() => periodosDelTurno(config?.schedule, shift), [config, shift]);
 
     return { periods, isLoading };
 }

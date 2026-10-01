@@ -26,6 +26,14 @@ enum Gender {
   OTRO
 }
 
+/// Cómo se evalúa una materia: con nota de 01 a 20, o con una apreciación
+/// (Orientación y Convivencia, Grupos de Creación…). Las cualitativas no
+/// entran en ningún promedio ni en la promoción.
+enum EvaluacionDeMateria {
+  NUMERICA
+  CUALITATIVA
+}
+
 enum AcademicYearStatus {
   ACTIVE
   COMPLETED
@@ -114,7 +122,7 @@ model Institute {
   name      String
   code      String
   // Opcional por decisión de producto: un instituto puede no tener email de contacto.
-  // Debe seguir al espejo de `Institute.email` en platform-schema.prisma.
+  // Debe seguir al espejo de `Institute.email` en plataforma/schema.prisma.
   email     String?
   phone     String?
   address   String?
@@ -198,22 +206,29 @@ model InstituteInvitation {
 // =====================================================
 
 model User {
-  id         String    @id // Cédula de identidad (CI) - definida por administrador
-  email      String    @unique
-  password   String
-  firstName  String
-  lastName   String
-  phone      String?
-  birthDate  DateTime?
-  address    String?
-  gender     Gender?
-  avatar     String?
-  role       UserRole
-  isActive   Boolean   @default(true)
-  status     String    @default("ACTIVE") // ACTIVE, ARCHIVED, DELETED
-  archivedAt DateTime?
-  joinDate   DateTime  @default(now())
-  lastLogin  DateTime?
+  id        String    @id // Cédula de identidad (CI) - definida por administrador
+  email     String    @unique
+  password  String
+  firstName String
+  lastName  String
+  phone     String?
+  birthDate DateTime?
+  address   String?
+  gender    Gender?
+  avatar    String?
+
+  // Lo que piden los documentos del Ministerio (Resumen Final, certificación).
+  nacionalidad        String? // 'V' | 'E'
+  lugarDeNacimiento   String?
+  entidadDeNacimiento String? // una de ENTIDADES_DE_NACIMIENTO
+  tipoDeCedula        String? // 'IDENTIDAD' | 'ESCOLAR'
+  cedulaEscolar       String? // la escolar de antes, si la cambió por la de identidad
+  role                UserRole
+  isActive            Boolean   @default(true)
+  status              String    @default("ACTIVE") // ACTIVE, ARCHIVED, DELETED
+  archivedAt          DateTime?
+  joinDate            DateTime  @default(now())
+  lastLogin           DateTime?
 
   // Campos específicos para profesores
   specialization String?
@@ -241,6 +256,11 @@ model User {
   schedules              Schedule[]              @relation("ScheduleTeacher")
   personalScheduleBlocks ScheduleBlock[]         @relation("ScheduleBlockTeacher")
   createdSchoolEvents    SchoolEvent[]           @relation("CreatedSchoolEvents")
+  replacementsTaught     ClassReplacement[]      @relation("ReplacementTeacher")
+  photo                  UserPhoto?
+  paymentPlans           StudentPaymentPlan[]
+  payments               Payment[]               @relation("PaymentStudent")
+  fichaDePersonal        Personal?               @relation("PersonalConCuenta")
 
   // Como Estudiante
   studentClassrooms   StudentClassroom[]
@@ -258,7 +278,28 @@ model User {
   auditLogs AuditLog[]
 
   // Sesiones y tokens
-  refreshTokens RefreshToken[]
+  refreshTokens           RefreshToken[]
+  llavesDeTelefono        DeviceKey[]
+  // Asistencia por QR
+  pasesDeListaAbiertos    PaseDeLista[]            @relation("PaseAbiertoPor")
+  registrosDeAsistenciaQr RegistroDeAsistenciaQr[] @relation("RegistroQrAlumno")
+  notasDeRevision         NotaDeRevision[]         @relation("RevisionAlumno")
+  apreciaciones           Apreciacion[]            @relation("ApreciacionAlumno")
+  apreciacionesPuestas    Apreciacion[]            @relation("ApreciacionPuestaPor")
+  decisionesDeFinDeAno    DecisionDeFinDeAno[]     @relation("DecisionFinDeAnoAlumno")
+  materiasPendientes      MateriaPendiente[]       @relation("PendienteAlumno")
+  pendientesQueEvalua     MateriaPendiente[]       @relation("PendienteProfesor")
+  evaluacionesDePendiente EvaluacionDePendiente[]  @relation("EvaluacionPendientePuestaPor")
+  laborSocial             ActividadDeLaborSocial[] @relation("LaborSocialAlumno")
+  laborSocialAnotada      ActividadDeLaborSocial[] @relation("LaborSocialPuestaPor")
+  calificacionesExternas  CalificacionExterna[]    @relation("CalificacionExternaAlumno")
+  recaudosEntregados      RecaudoEntregado[]       @relation("RecaudoAlumno")
+  suscripcionesDeAviso    SuscripcionDeAviso[]     @relation("SuscripcionesDeAviso")
+  citaciones              Citacion[]               @relation("CitacionAlumno")
+  notasDeOtroPlantel      NotaDeOtroPlantel[]      @relation("NotaDeOtroPlantelAlumno")
+  titulos                 Titulo[]                 @relation("TituloAlumno")
+  casosDelConsejo         CasoDelConsejo[]         @relation("CasoDelConsejoAlumno")
+  aparatoDeAsistencia     AparatoDelAlumno?
 
   // Notificaciones
   notifications Notification[]
@@ -271,6 +312,15 @@ model User {
   @@index([isActive])
   @@index([studentCode])
   @@index([role, isActive])
+  // Buscar y ordenar la lista de usuarios sin recorrer la tabla entera
+  // (migración 20260923120000_busqueda_de_usuarios). Medido con 15.000
+  // personas: buscar 14 ms → 0,1 ms; ordenar una página 16 ms → 0,5 ms.
+  @@index([role, lastName, firstName], map: "users_role_lastName_firstName_idx")
+  @@index([firstName(ops: raw("gin_trgm_ops"))], type: Gin, map: "users_firstName_trgm_idx")
+  @@index([lastName(ops: raw("gin_trgm_ops"))], type: Gin, map: "users_lastName_trgm_idx")
+  @@index([email(ops: raw("gin_trgm_ops"))], type: Gin, map: "users_email_trgm_idx")
+  @@index([studentCode(ops: raw("gin_trgm_ops"))], type: Gin, map: "users_studentCode_trgm_idx")
+  @@index([id(ops: raw("gin_trgm_ops"))], type: Gin, map: "users_id_trgm_idx")
   @@map("users")
 }
 
@@ -285,12 +335,51 @@ model RefreshToken {
   // Datos de sesión de dispositivo
   userAgent  String?
   ip         String? // IP con la que se creó la sesión
-  lastUsedAt DateTime @default(now()) // último uso actualizado en cada refresh
-  rememberMe Boolean  @default(false) // sliding expiration activa
+  lastUsedAt DateTime  @default(now()) // último uso actualizado en cada refresh
+  rememberMe Boolean   @default(false) // sliding expiration activa
+  /// Cuándo se cambió por uno nuevo. Sigue valiendo unos segundos más: dos
+  /// pestañas que renuevan a la vez mandan el mismo token y una se quedaría
+  /// fuera. Ver `GRACIA_DE_ROTACION_MS` en auth.service.ts.
+  replacedAt DateTime?
 
   @@index([userId])
   @@index([expiresAt])
   @@map("refresh_tokens")
+}
+
+/// LA LLAVE QUE GUARDA UN TELÉFONO PARA VOLVER A ENTRAR
+///
+/// No sirve para entrar por primera vez: se crea DESPUÉS de una entrada con
+/// correo y contraseña, en ese teléfono y solo si su dueño lo pide. Lo que
+/// hace la huella es abrir el cajón donde el teléfono la guardó (el almacén de
+/// claves de Android, respaldado por hardware); la huella no viaja a ningún
+/// sitio ni se guarda aquí.
+///
+/// Tres cosas la hacen segura, y las tres importan:
+///   · aquí se guarda **solo el resumen** (SHA-256). Quien se lleve la base de
+///     datos no se lleva ninguna llave;
+///   · **se cambia en cada uso**, como la de volver a entrar: una copia robada
+///     deja de valer en cuanto su dueño abre la app;
+///   · caduca sola, y al cerrar sesión se anula.
+model DeviceKey {
+  id        String @id @default(cuid())
+  /// SHA-256 de la llave. La llave en claro solo existe en el teléfono.
+  tokenHash String @unique
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// «Android · Chrome», para que se reconozca en la lista de sesiones.
+  label String?
+
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("device_keys")
 }
 
 // =====================================================
@@ -311,14 +400,27 @@ model AcademicYear {
   updatedAt DateTime @updatedAt
 
   // Relaciones
-  periods          Period[]
-  classrooms       Classroom[]
-  academicRecords  AcademicRecord[]
-  enrollments      StudentClassroom[]
-  subjectResources SubjectResource[]
-  schoolEvents     SchoolEvent[]
-  institute        Institute?         @relation(fields: [instituteId], references: [id])
-  instituteId      String?
+  periods               Period[]
+  classrooms            Classroom[]
+  academicRecords       AcademicRecord[]
+  enrollments           StudentClassroom[]
+  subjectResources      SubjectResource[]
+  paymentPlans          StudentPaymentPlan[]
+  ajustesDePagos        AjustesDePagosDelCiclo?
+  ajustesDeNomina       AjustesDeNomina?
+  acuerdosDePago        AcuerdoDePago[]
+  pagosAlPersonal       PagoAlPersonal[]
+  payments              Payment[]
+  schoolEvents          SchoolEvent[]
+  notasDeRevision       NotaDeRevision[]
+  apreciaciones         Apreciacion[]
+  decisionesDeFinDeAno  DecisionDeFinDeAno[]
+  pendientesQueNacieron MateriaPendiente[]       @relation("PendienteOrigen")
+  pendientesQueSeCursan MateriaPendiente[]       @relation("PendienteCiclo")
+  laborSocial           ActividadDeLaborSocial[]
+  titulos               Titulo[]
+  institute             Institute?               @relation(fields: [instituteId], references: [id])
+  instituteId           String?
 
   @@unique([name])
   @@map("academic_years")
@@ -331,6 +433,13 @@ model Period {
   endDate   DateTime
   isActive  Boolean  @default(false)
 
+  /// Cuándo empieza el contenido del plan de evaluación en este lapso. Antes,
+  /// semanas de diagnóstico o adaptación con contenido del profesor. Vacía =
+  /// empieza con el lapso. La Semana 1 del plan es la que contiene esta fecha.
+  inicioDelPlan      DateTime?
+  /// Cómo se llaman esas semanas de antes en el liceo («Diagnóstico» si no dice).
+  nombreAntesDelPlan String?
+
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
 
@@ -339,20 +448,25 @@ model Period {
   updatedAt DateTime @updatedAt
 
   // Relaciones
-  grades     Grade[]
-  activities Activity[]
+  grades             Grade[]
+  activities         Activity[]
+  apreciaciones      Apreciacion[]
+  notasDeOtroPlantel NotaDeOtroPlantel[]
+  consejos           ConsejoDeSeccion[]
 
   @@unique([academicYearId, name])
   @@map("periods")
 }
 
 model Subject {
-  id          String  @id @default(cuid())
+  id          String              @id @default(cuid())
   name        String
-  slug        String  @unique
+  slug        String              @unique
   code        String?
   description String?
   color       String?
+  /// Con nota (01 a 20) o con apreciación; la eligen en el liceo.
+  evaluacion  EvaluacionDeMateria @default(NUMERICA)
 
   // Instituto
   // Timestamps
@@ -360,15 +474,22 @@ model Subject {
   updatedAt DateTime @updatedAt
 
   // Relaciones
+  apreciaciones      Apreciacion[]
+  materiasPendientes MateriaPendiente[]
   classroomSubjects  ClassroomSubject[]
   activities         Activity[]
   grades             Grade[]
   schedules          Schedule[]
   classSessions      ClassSession[]
+  pasesDeLista       PaseDeLista[]
   classActivities    ClassActivity[]
   resources          SubjectResource[]
   evaluationPlanRows EvaluationPlanRow[]
+  replacedIn         ClassReplacement[]  @relation("ReplacementSuspendedSubject")
+  replacingIn        ClassReplacement[]  @relation("ReplacementSubject")
   observations       Observation[]
+  notasDeRevision    NotaDeRevision[]
+  notasDeOtroPlantel NotaDeOtroPlantel[]
   institute          Institute?          @relation(fields: [instituteId], references: [id])
   instituteId        String?
 
@@ -402,6 +523,7 @@ model Classroom {
   section     String
   grade       Int
   capacity    Int?
+  shift       String  @default("MANANA") // "MANANA" | "TARDE" | "INTEGRAL"
   isActive    Boolean @default(true)
 
   // Instituto
@@ -425,9 +547,13 @@ model Classroom {
   attendanceRecords  DailyAttendance[]
   scheduleBlocks     ScheduleBlock[]     @relation("ClassroomScheduleBlocks")
   classSessions      ClassSession[]
+  pasesDeLista       PaseDeLista[]
   classActivities    ClassActivity[]
   evaluationPlanRows EvaluationPlanRow[]
+  replacements       ClassReplacement[]
   observations       Observation[]
+  apreciaciones      Apreciacion[]
+  consejos           ConsejoDeSeccion[]
   institute          Institute?          @relation(fields: [instituteId], references: [id])
   instituteId        String?
 
@@ -435,6 +561,7 @@ model Classroom {
   @@index([academicYearId])
   @@index([teacherId])
   @@index([grade])
+  @@index([shift])
   @@map("classrooms")
 }
 
@@ -474,8 +601,14 @@ model StudentClassroom {
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
 
-  enrollmentDate DateTime @default(now())
-  isActive       Boolean  @default(true)
+  enrollmentDate  DateTime  @default(now())
+  isActive        Boolean   @default(true)
+  /// El día en que se retiró del liceo (traslado u otro motivo) y por qué.
+  /// Lo cuenta la estadística de matrícula. Ver `services/traslado.service.ts`.
+  retiradoEl      DateTime? @db.Date
+  motivoDeRetiro  String?
+  /// El plantel del que venía, si llegó trasladado (archivo de traslado).
+  plantelDeOrigen String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -750,6 +883,10 @@ model EvaluationPlanRow {
   // Actividades de Clase en Vivo vinculadas a este criterio/bloque
   classActivities ClassActivity[]
 
+  /// El instrumento con que se califica esta evaluación (lista de cotejo,
+  /// escala de estimación, rúbrica…). Ver `utils/instrumentos.ts`.
+  instrumento InstrumentoDeEvaluacion?
+
   // Link a Activity para calificaciones
   activityId String?   @unique
   activity   Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
@@ -824,6 +961,8 @@ model DailyAttendance {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  /// Quién la cambió por última vez (la crea `teacherId`).
+  modificadoPorId String?
 
   @@unique([studentId, date])
   @@index([studentId, classroomId])
@@ -962,6 +1101,8 @@ model Observation {
 
   groupId String?
 
+  citaciones Citacion[]
+
   // Instituto
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
@@ -1001,10 +1142,431 @@ model AcademicRecord {
   subjectGrades       Json?
   assignedClassroomId String?
 
+  /// Lo que sugería el sistema con las reglas del liceo (para ver qué cambió el admin).
+  condicionSugerida String?
+  /// Por qué el admin decidió distinto de la sugerencia, o por qué lo corrigió después.
+  motivo            String?
+  decididaPor       String?
+  corregidoEl       DateTime?
+  /// Solo en el último año: EGRESADO, o PENDIENTE (le faltan materias o la labor social).
+  egreso            String?
+
   createdAt DateTime @default(now())
 
   @@unique([studentId, academicYearId])
   @@map("academic_records")
+}
+
+/// LA REVISIÓN DE UNA MATERIA REPROBADA
+///
+/// Al terminar el tercer lapso, el alumno que reprobó una materia la presenta
+/// en revisión; esa nota es su definitiva para la promoción. Se registra ANTES
+/// de cerrar el ciclo y el cierre la usa. Ver `services/revision.service.ts`.
+model NotaDeRevision {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("RevisionAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  score         Float
+  fecha         DateTime @db.Date
+  registradaPor String
+  observaciones String?
+  /// Las partes de la revisión con su peso y su nota, si el liceo la divide
+  /// (p. ej. 30 % actividades + 70 % prueba): [{ nombre, peso, nota }].
+  componentes   Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, subjectId, academicYearId])
+  @@index([academicYearId])
+  @@map("notas_de_revision")
+}
+
+/// Lo que decide el admin para un alumno al cerrar el año, cuando no es lo que
+/// sugiere el sistema: con su motivo, que queda anotado. Sin fila, manda la
+/// sugerencia. Ver `services/fin-de-ano.service.ts`.
+model DecisionDeFinDeAno {
+  id String @id @default(cuid())
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  studentId String
+  student   User   @relation("DecisionFinDeAnoAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  /// PROMOVIDO | PROMOVIDO_CON_PENDIENTES | NO_PROMOVIDO
+  condicion   String
+  motivo      String
+  decididaPor String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([academicYearId, studentId])
+  @@map("decisiones_de_fin_de_ano")
+}
+
+/// LA MATERIA PENDIENTE: la que el alumno reprobó y arrastra al año siguiente.
+/// La evalúa un profesor en varios momentos (`EvaluacionDePendiente`); el
+/// cierre de ese año la tiene en cuenta. Ver `services/materias-pendientes.service.ts`.
+model MateriaPendiente {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("PendienteAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  /// El año (grado) en que la reprobó y el año escolar.
+  gradoDeOrigen   Int
+  cicloDeOrigenId String
+  cicloDeOrigen   AcademicYear @relation("PendienteOrigen", fields: [cicloDeOrigenId], references: [id], onDelete: Cascade)
+  /// La definitiva con que la reprobó (o la de la revisión).
+  notaDeOrigen    Float?
+
+  /// El año escolar en que se cursa.
+  cicloId String
+  ciclo   AcademicYear @relation("PendienteCiclo", fields: [cicloId], references: [id], onDelete: Cascade)
+
+  /// Quién la evalúa: por defecto el que da esa materia en ese grado este año.
+  profesorId String?
+  profesor   User?   @relation("PendienteProfesor", fields: [profesorId], references: [id], onDelete: SetNull)
+
+  /// PENDIENTE | APROBADA | NO_APROBADA
+  estado    String @default("PENDIENTE")
+  notaFinal Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  evaluaciones EvaluacionDePendiente[]
+
+  @@unique([studentId, subjectId, cicloDeOrigenId, cicloId])
+  @@index([cicloId])
+  @@index([profesorId])
+  @@map("materias_pendientes")
+}
+
+/// Cada momento en que se evalúa una materia pendiente (4 por defecto).
+model EvaluacionDePendiente {
+  id String @id @default(cuid())
+
+  materiaPendienteId String
+  materiaPendiente   MateriaPendiente @relation(fields: [materiaPendienteId], references: [id], onDelete: Cascade)
+
+  momento       Int
+  nota          Float
+  fecha         DateTime @db.Date
+  observaciones String?
+
+  registradaPorId String?
+  registradaPor   User?   @relation("EvaluacionPendientePuestaPor", fields: [registradaPorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([materiaPendienteId, momento])
+  @@map("evaluaciones_de_pendientes")
+}
+
+/// LA LABOR SOCIAL (las horas comunitarias de los últimos años): cada alumno
+/// hace actividades distintas, en sitios distintos y de horas distintas. La
+/// anotan el admin y el profesor guía de su sección. Ver
+/// `services/labor-social.service.ts`.
+model ActividadDeLaborSocial {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("LaborSocialAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  fecha             DateTime @db.Date
+  horas             Float
+  /// Qué hizo, dónde, en qué proyecto y quién lo supervisó en la comunidad.
+  que               String
+  donde             String?
+  proyecto          String?
+  responsable       String?
+  observaciones     String?
+  /// Con esta actividad culmina su proyecto (para el liceo que la mide por proyecto).
+  culminaElProyecto Boolean  @default(false)
+  /// Las que se anotaron juntas (una salida de toda la sección) llevan el mismo.
+  grupo             String?
+
+  registradaPorId String?
+  registradaPor   User?   @relation("LaborSocialPuestaPor", fields: [registradaPorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([studentId])
+  @@index([academicYearId])
+  @@map("actividades_de_labor_social")
+}
+
+/// Las notas de los años que el alumno cursó en OTRO plantel, para su
+/// certificación de calificaciones (las del liceo salen de sus expedientes).
+/// Las carga el admin desde la certificación del alumno.
+model CalificacionExterna {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("CalificacionExternaAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  grado            Int
+  anoEscolar       String
+  materia          String
+  nota             Float?
+  /// Si la materia se evalúa con apreciación, en lugar de la nota.
+  apreciacion      String?
+  /// F (final), R (revisión) o MP (materia pendiente)
+  tipo             String  @default("F")
+  /// Mes y año en que se aprobó (p. ej. «07/2024»), como pide la certificación.
+  fecha            String?
+  plantel          String
+  codigoDelPlantel String?
+  entidad          String?
+
+  registradaPor String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([studentId])
+  @@map("calificaciones_externas")
+}
+
+/// El acta del consejo de sección de un lapso: cuándo fue, qué profesores
+/// asistieron, los casos de alumnos tratados y los acuerdos. La escriben el
+/// admin y el profesor guía; la leen los profesores de la sección. Una por
+/// sección y lapso. Ver `services/consejo.service.ts`.
+model ConsejoDeSeccion {
+  id String @id @default(cuid())
+
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  periodId String
+  period   Period @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  fecha             DateTime @db.Date
+  /// [{ id, nombre, materias, asistio }]: los profesores de la sección.
+  asistentes        Json
+  acuerdosGenerales String?
+  escritoPor        String?
+
+  casos CasoDelConsejo[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([classroomId, periodId])
+  @@map("consejos_de_seccion")
+}
+
+/// Un alumno tratado en el consejo: por qué (lo que propuso el sistema o se
+/// añadió a mano), lo que se trató y el acuerdo.
+model CasoDelConsejo {
+  id String @id @default(cuid())
+
+  consejoId String
+  consejo   ConsejoDeSeccion @relation(fields: [consejoId], references: [id], onDelete: Cascade)
+
+  studentId String
+  student   User   @relation("CasoDelConsejoAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  /// Lo que lo trae al consejo: materias reprobadas, asistencia, observaciones.
+  motivos   Json?
+  loTratado String?
+  acuerdo   String?
+  orden     Int     @default(0)
+
+  @@unique([consejoId, studentId])
+  @@map("casos_del_consejo")
+}
+
+/// El título de bachiller de un egresado: la mención, el número (serial) del
+/// título y cuándo se expidió. Lo anota el admin en «Graduandos» del ciclo,
+/// solo para quien egresó al cerrar el año. Ver `services/graduandos.service.ts`.
+model Titulo {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("TituloAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  mencion           String
+  serial            String?   @unique
+  fechaDeExpedicion DateTime? @db.Date
+  registradoPor     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, academicYearId])
+  @@map("titulos")
+}
+
+/// La nota de un lapso que el alumno cursó en OTRO liceo este mismo año,
+/// traída con su archivo de traslado. Cuenta en el promedio de ese lapso
+/// (nivel 2) solo si el alumno no tiene notas propias en él.
+/// Ver `services/traslado.service.ts` y MAPA_DE_CALCULOS.md §1.
+model NotaDeOtroPlantel {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("NotaDeOtroPlantelAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  periodId String
+  period   Period @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  nota             Float
+  /// Cómo se llamaba la materia allá y en qué plantel.
+  materiaDeOrigen  String
+  plantel          String
+  codigoDelPlantel String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, periodId, subjectId])
+  @@index([studentId])
+  @@map("notas_de_otro_plantel")
+}
+
+/// Citar al representante desde una observación: cuándo, dónde y para qué,
+/// y después si vino y lo que se habló. Al crearla se le avisa (campana y
+/// teléfono). La ponen el admin, el profesor guía de la sección del alumno y
+/// quien escribió la observación. Ver `services/citaciones.service.ts`.
+model Citacion {
+  id String @id @default(cuid())
+
+  observationId String
+  observation   Observation @relation(fields: [observationId], references: [id], onDelete: Cascade)
+
+  studentId String
+  student   User   @relation("CitacionAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  /// El día y la hora (hora del liceo, guardada como texto «08:00»).
+  fecha        DateTime @db.Date
+  hora         String
+  lugar        String
+  motivo       String
+  /// PENDIENTE | ASISTIO | NO_ASISTIO
+  estado       String   @default("PENDIENTE")
+  /// Lo que se habló en la reunión (o por qué no vino).
+  loQueSeHablo String?
+
+  citadaPor  String
+  marcadaPor String?
+  marcadaEl  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([studentId])
+  @@index([observationId])
+  @@index([fecha])
+  @@map("citaciones")
+}
+
+/// Un teléfono (o navegador) que recibe avisos de esta persona con la app
+/// cerrada: Web Push (la PWA) o Firebase (la APK). Se borra al cerrar sesión
+/// en ese teléfono y cuando el servicio dice que ya no existe (404/410).
+/// Ver `services/avisos.service.ts`.
+model SuscripcionDeAviso {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation("SuscripcionesDeAviso", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// WEB | FCM
+  tipo      String
+  /// La dirección de Web Push o el token de Firebase.
+  destino   String   @unique
+  /// Web Push: las llaves del navegador (p256dh, auth).
+  llaves    Json?
+  aparato   String?
+  createdAt DateTime @default(now())
+  ultimaVez DateTime @default(now())
+
+  @@index([userId])
+  @@map("suscripciones_de_aviso")
+}
+
+/// Lo que el alumno ya entregó para su inscripción (partida de nacimiento,
+/// fotos…). La lista de lo que se pide es de cada liceo
+/// (`academicConfig.inscripcion.recaudos`); aquí solo lo entregado. Lo marca
+/// el admin en la ficha, cuando llega: no hace falta al crear la cuenta.
+/// Ver `services/inscripcion.service.ts`.
+model RecaudoEntregado {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("RecaudoAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  /// La clave del recaudo en la lista del liceo.
+  recaudo     String
+  entregadoEl DateTime @default(now())
+  anotadoPor  String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, recaudo])
+  @@map("recaudos_entregados")
+}
+
+/// La apreciación de un alumno en una materia cualitativa: por lapso o la
+/// final del año (`momento` = id del lapso o «FINAL»). La pone el profesor
+/// que da esa materia en esa sección. Ver `services/apreciaciones.service.ts`.
+model Apreciacion {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation("ApreciacionAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  /// El lapso, o vacío si es la apreciación final.
+  periodId String?
+  period   Period? @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  /// El id del lapso o «FINAL» (una clave única no puede apoyarse en un vacío).
+  momento  String
+
+  valor       String
+  observacion String?
+
+  registradaPorId String?
+  registradaPor   User?   @relation("ApreciacionPuestaPor", fields: [registradaPorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, subjectId, academicYearId, momento])
+  @@index([classroomId, subjectId])
+  @@map("apreciaciones")
 }
 
 // =====================================================
@@ -1141,21 +1703,389 @@ model ClassSession {
 }
 
 // =====================================================
+// ASISTENCIA POR QR (ver services/asistencia-qr.service.ts)
+// =====================================================
+
+/// UN PASE DE LISTA POR QR
+///
+/// Lo abre el profesor (o el admin) en una clase: su teléfono enseña un código
+/// que cambia cada 10 s y los alumnos lo escanean desde su app. Es solo la
+/// forma de IDENTIFICAR al alumno: lo que queda es la asistencia de siempre
+/// (`daily_attendance`), la misma que marca el profesor a mano.
+model PaseDeLista {
+  id String @id @default(cuid())
+
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  subjectId   String
+  subject     Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  /// El día de la clase. Si es anterior a hoy, el pase es una CORRECCIÓN.
+  fecha       DateTime  @db.Date
+
+  abiertoPorId String
+  abiertoPor   User   @relation("PaseAbiertoPor", fields: [abiertoPorId], references: [id], onDelete: Cascade)
+
+  abiertoEn    DateTime  @default(now())
+  /// Quien escanea después de esto entra como TARDE.
+  aTiempoHasta DateTime
+  /// Cierre de seguridad: un pase olvidado abierto no sirve para siempre.
+  caducaEn     DateTime
+  cerradoEn    DateTime?
+  esCorreccion Boolean   @default(false)
+
+  /// Firma los códigos que rotan. No sale nunca del servidor.
+  secreto String
+
+  /// El faro: dónde estaba el teléfono del profesor al abrirlo.
+  latitud   Float?
+  longitud  Float?
+  precision Float?
+
+  registros RegistroDeAsistenciaQr[]
+
+  @@index([classroomId, subjectId, fecha])
+  @@index([abiertoPorId, cerradoEn])
+  @@map("pases_de_lista")
+}
+
+/// CADA INTENTO DE UN ALUMNO, ACEPTADO O NO
+///
+/// Si mañana hay un reclamo, aquí está con qué teléfono, a qué hora, desde
+/// dónde y por qué se aceptó o se rechazó.
+model RegistroDeAsistenciaQr {
+  id String @id @default(cuid())
+
+  paseId String
+  pase   PaseDeLista @relation(fields: [paseId], references: [id], onDelete: Cascade)
+
+  studentId String
+  student   User   @relation("RegistroQrAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+
+  /// ALUMNO_ESCANEA (el alumno escanea el QR del profesor) | PROFESOR_ESCANEA
+  forma  String
+  /// ACEPTADO | POR_CONFIRMAR | RECHAZADO | QUITADO
+  estado String
+  /// Por qué no se aceptó a la primera (OTRO_TELEFONO, FUERA_DEL_RADIO…).
+  motivo String?
+
+  /// Lo que se le puso: PRESENT o LATE.
+  asistencia         String?
+  /// Lo que tenía antes, para devolverlo si el profesor lo quita (corrección).
+  asistenciaAnterior String?
+
+  /// Resumen del identificador del aparato (nunca el identificador en claro).
+  aparatoHash String?
+  aparato     String?
+
+  latitud        Float?
+  longitud       Float?
+  precision      Float?
+  distancia      Float?
+  ubicacionFalsa Boolean @default(false)
+
+  creadoEn      DateTime  @default(now())
+  resueltoPorId String?
+  resueltoEn    DateTime?
+
+  @@index([paseId])
+  @@index([studentId])
+  @@index([aparatoHash])
+  @@map("registros_asistencia_qr")
+}
+
+/// EL TELÉFONO DE CADA ALUMNO PARA LA ASISTENCIA
+///
+/// Una cuenta, un teléfono. El primero desde el que un alumno pasa asistencia
+/// queda suyo; un teléfono, de un alumno. Si lo cambia, el admin lo desbloquea
+/// desde su perfil (y queda anotado en `audit_logs`).
+model AparatoDelAlumno {
+  studentId String @id
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  aparatoHash  String   @unique
+  descripcion  String?
+  registradoEn DateTime @default(now())
+  ultimoUso    DateTime @default(now())
+
+  @@map("aparatos_de_alumnos")
+}
+
+// =====================================================
+// PAGOS (módulo que el liceo activa en Configuración)
+// =====================================================
+
+/// CONFIGURACIÓN DE PAGOS DEL LICEO
+///
+/// Una sola fila (`id = "liceo"`). Todo configurable: nada de montos, monedas
+/// ni frecuencias fijas en el código. Las reglas de cálculo están en
+/// `services/pagos.service.ts` y en docs/MAPA_DE_CALCULOS.md.
+model PaymentSettings {
+  id      String  @id @default("liceo")
+  enabled Boolean @default(false)
+
+  /// MONTHLY | BIWEEKLY | PER_PERIOD
+  frequency String @default("MONTHLY")
+  /// SAME_DAY (todos el mismo día) | PER_STUDENT (cada alumno su día)
+  dueMode   String @default("SAME_DAY")
+  /// Día del mes en que vence (1–28). En quincenal, vence este día y 15 días después.
+  dueDay    Int    @default(5)
+  graceDays Int    @default(0)
+
+  /// Moneda en que se fijan los montos: USD | VES
+  baseCurrency       String @default("USD")
+  /// Monedas en que se aceptan los pagos: USD | VES | BOTH
+  acceptedCurrencies String @default("BOTH")
+
+  feeAmount Decimal @default(0) @db.Decimal(12, 2)
+
+  enrollmentEnabled Boolean @default(false)
+  enrollmentAmount  Decimal @default(0) @db.Decimal(12, 2)
+
+  /// Métodos de pago que ofrece el liceo (lista de textos).
+  methods Json @default("[\"Efectivo\", \"Pago Móvil\", \"Transferencia\", \"Zelle\"]")
+
+  /// Las categorías con que se anotan los gastos (lista de textos, editable).
+  categoriasDeGasto Json @default("[\"Mantenimiento\", \"Reparación\", \"Compras\", \"Servicios\", \"Otro\"]")
+
+  /// Lo que lleva un ciclo nuevo (ver `AjustesDePagosDelCiclo`).
+  descuentoHermanosPct  Int     @default(0)
+  moraTipo              String  @default("NINGUNA")
+  moraValor             Decimal @default(0) @db.Decimal(12, 2)
+  moraDiasDespues       Int     @default(0)
+  recordatorioDiasAntes Int     @default(3)
+
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("payment_settings")
+}
+
+/// LA CONFIGURACIÓN DE PAGOS DE UN CICLO (2026-10-01)
+///
+/// `PaymentSettings` es una sola fila para todo el liceo. Con solo eso, subir la
+/// cuota el año que viene recalculaba los ciclos pasados con la cuota nueva y
+/// salían «debiendo». Cada ciclo guarda aquí SU configuración: la del liceo se
+/// copia al primer pago del ciclo (o al guardar la configuración con él en
+/// curso), y desde entonces ese ciclo no cambia aunque cambie la del liceo.
+model AjustesDePagosDelCiclo {
+  academicYearId String       @id
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  frequency          String  @default("MONTHLY")
+  dueMode            String  @default("SAME_DAY")
+  dueDay             Int     @default(5)
+  graceDays          Int     @default(0)
+  baseCurrency       String  @default("USD")
+  acceptedCurrencies String  @default("BOTH")
+  feeAmount          Decimal @default(0) @db.Decimal(12, 2)
+  enrollmentEnabled  Boolean @default(false)
+  enrollmentAmount   Decimal @default(0) @db.Decimal(12, 2)
+  methods            Json    @default("[\"Efectivo\", \"Pago Móvil\", \"Transferencia\", \"Zelle\"]")
+
+  /// Descuento automático desde el 2.º hijo del mismo representante (0–100).
+  descuentoHermanosPct Int     @default(0)
+  /// Recargo por cuota vencida: NINGUNA | FIJA | PORCENTAJE. Una vez por cuota.
+  moraTipo             String  @default("NINGUNA")
+  moraValor            Decimal @default(0) @db.Decimal(12, 2)
+  /// Días después de la gracia en que se cobra el recargo.
+  moraDiasDespues      Int     @default(0)
+  /// Cuántos días antes del vencimiento se le recuerda al representante (0 = no).
+  recordatorioDiasAntes Int    @default(3)
+
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("ajustes_de_pagos_del_ciclo")
+}
+
+/// Lo particular de un alumno en un ciclo: su día de pago (si cada uno tiene el
+/// suyo) y si está exonerado o becado.
+model StudentPaymentPlan {
+  id String @id @default(cuid())
+
+  studentId String
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  dueDay       Int?
+  exempt       Boolean @default(false)
+  exemptReason String?
+  /// Beca o descuento propio (0–100 %), con su motivo (2026-10-01).
+  descuentoPct    Int     @default(0)
+  descuentoMotivo String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, academicYearId])
+  @@index([academicYearId])
+  @@map("student_payment_plans")
+}
+
+/// UN PAGO RECIBIDO
+///
+/// No se borra nunca: un pago mal registrado se ANULA con motivo, y queda a la
+/// vista quién lo registró y quién lo anuló.
+model Payment {
+  id            String @id @default(cuid())
+  /// Número correlativo del comprobante dentro del liceo.
+  receiptNumber Int    @unique @default(autoincrement())
+
+  studentId String
+  student   User   @relation("PaymentStudent", fields: [studentId], references: [id], onDelete: Cascade)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  paidAt    DateTime @db.Date
+  method    String
+  reference String?
+  notes     String?
+
+  /// Lo que entregó el representante, en su moneda.
+  currency     String
+  amount       Decimal  @db.Decimal(12, 2)
+  /// Bolívares por dólar, cuando se paga en una moneda distinta a la base.
+  exchangeRate Decimal? @db.Decimal(14, 4)
+  /// El mismo monto llevado a la moneda base: es lo que se reparte en cuotas.
+  amountBase   Decimal  @db.Decimal(12, 2)
+
+  createdById String?
+
+  annulledAt   DateTime?
+  annulledById String?
+  annulReason  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  allocations PaymentAllocation[]
+
+  @@index([studentId, academicYearId])
+  @@index([academicYearId, annulledAt])
+  @@map("payments")
+}
+
+/// Cuánto de un pago va a cada cuota. Permite abonos: una cuota puede tener
+/// varios repartos que juntos la completan.
+model PaymentAllocation {
+  id String @id @default(cuid())
+
+  paymentId String
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  /// "INS", "2026-09", "2026-09-2" (2ª quincena), "P:<periodId>".
+  installmentKey String
+  amountBase     Decimal @db.Decimal(12, 2)
+
+  @@index([paymentId])
+  @@index([installmentKey])
+  @@map("payment_allocations")
+}
+
+/// FOTO DE PERFIL
+///
+/// Se guarda en la base del liceo y no en una carpeta: viaja con el respaldo y
+/// no hay forma de pedir la de otro liceo cambiando una dirección. Nunca es la
+/// imagen que se subió: el servidor la redibuja a 256×256 en WebP (unos 15 KB),
+/// lo que de paso tira los metadatos (la ubicación GPS de la foto del teléfono)
+/// y cualquier cosa escondida dentro del archivo original.
+model UserPhoto {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  data    Bytes
+  /// Huella corta del contenido: cambia con cada foto, para que el navegador
+  /// no enseñe la vieja guardada.
+  version String
+  size    Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_photos")
+}
+
+/// REEMPLAZO DE UNA CLASE SUSPENDIDA
+///
+/// Cuando el admin suspende una clase puede poner OTRA materia de la misma
+/// sección en ese hueco (un profesor faltó y otro adelanta su clase). Es una
+/// fila por bloque del horario que se cubre, en una fecha concreta: el horario
+/// semanal no cambia.
+///
+/// El profesor es el de la materia que entra (`classroomSubject.teacherId`)
+/// copiado aquí, para que sus permisos de pasar asistencia y poner notas sean
+/// los de siempre: da esa materia en esa sección.
+///
+/// La clase que se da es la sesión normal de esa materia ese día
+/// (`ClassSession` es única por sección + materia + día).
+model ClassReplacement {
+  id String @id @default(cuid())
+
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  date      DateTime @db.Date
+  startTime String
+  endTime   String
+
+  /// La materia suspendida cuyo hueco se cubre.
+  suspendedSubjectId String
+  suspendedSubject   Subject @relation("ReplacementSuspendedSubject", fields: [suspendedSubjectId], references: [id], onDelete: Cascade)
+
+  /// La materia que entra en su lugar.
+  subjectId String
+  subject   Subject @relation("ReplacementSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+
+  teacherId String
+  teacher   User   @relation("ReplacementTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  reason      String?
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([classroomId, date, startTime])
+  @@index([teacherId, date])
+  @@index([classroomId, date])
+  @@map("class_replacements")
+}
+
+// =====================================================
 // ACTIVIDADES / TAREAS POR CLASE
 // =====================================================
 
 model ClassActivity {
-  id          String    @id @default(cuid())
-  title       String
-  description String?
-  type        String    @default("TAREA") // TAREA | EXAMEN | ACTIVIDAD
-  target      String    @default("NEXT") // CURRENT (esta clase) | NEXT (próxima clase)
-  tag         String? // Etiqueta personalizada (ej: Examen, Taller, Tarea, Proyecto...)
-  dueDate     DateTime? // Fecha asignada o fecha límite
-  maxScore    Float?    @default(20)
-  scores      Json? // Mapa de puntajes por estudiante: { "studentId": score }
-  isDone      Boolean   @default(false)
-  carriedOver Boolean   @default(false) // true si fue movida por suspensión
+  id                    String    @id @default(cuid())
+  title                 String
+  description           String?
+  type                  String    @default("TAREA") // TAREA | EXAMEN | ACTIVIDAD
+  target                String    @default("NEXT") // CURRENT (esta clase) | NEXT (próxima clase)
+  tag                   String? // Etiqueta personalizada (ej: Examen, Taller, Tarea, Proyecto...)
+  dueDate               DateTime? // Fecha asignada o fecha límite
+  maxScore              Float?    @default(20)
+  scores                Json? // Mapa de puntajes por estudiante: { "studentId": score }
+  /// Alumnos evaluados de otra forma en esta actividad (p. ej. con el cuaderno
+  /// quien no puede hacer deporte): { "studentId": { metodo, motivo? } }. Su
+  /// nota va en `scores` y cuenta igual que la de los demás.
+  evaluadoDeOtraForma   Json?
+  /// Copia del instrumento de su evaluación del plan al empezar a calificarla:
+  /// editar el plan después no cambia lo que ya significan las marcas.
+  instrumento           Json?
+  /// Las marcas de cada alumno en el instrumento y su total:
+  /// { "studentId": { "marcas": { criterioId: valor }, "total": n | null } }.
+  /// La nota sigue yendo a `scores`.
+  detalleDelInstrumento Json?
+  /// Quién puso la nota de cada alumno y cuándo: { "studentId": { usuarioId, en } }.
+  /// Sirve para decir «el admin le puso 15 mientras estabas sin conexión».
+  notasPuestasPor       Json?
+  isDone                Boolean   @default(false)
+  carriedOver           Boolean   @default(false) // true si fue movida por suspensión
 
   classroomId String
   classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
@@ -1230,3 +2160,352 @@ model RegistroBorrado {
   @@index([tabla, createdAt(sort: Desc)])
   @@map("registros_borrados")
 }
+
+/// EL COMEDOR (PAE): un módulo que el liceo activa o no, como los pagos.
+/// Apagado, sus rutas responden 403. Una sola fila. Ver `services/pae.service.ts`.
+model PaeConfig {
+  id      String  @id @default("liceo")
+  enabled Boolean @default(false)
+  /// Las comidas que da el liceo: ["DESAYUNO", "ALMUERZO", "MERIENDA"].
+  comidas Json
+
+  updatedAt DateTime @updatedAt
+
+  @@map("pae_config")
+}
+
+/// Lo del comedor de un día y una comida: raciones recibidas y servidas, el
+/// menú y lo que haya que anotar. Solo el admin.
+model PaeRegistro {
+  id String @id @default(cuid())
+
+  fecha         DateTime @db.Date
+  /// DESAYUNO | ALMUERZO | MERIENDA
+  comida        String
+  recibidas     Int
+  servidas      Int
+  menu          String?
+  observaciones String?
+  registradoPor String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([fecha, comida])
+  @@index([fecha])
+  @@map("pae_registros")
+}
+
+/// EL INSTRUMENTO DE UNA EVALUACIÓN DEL PLAN
+///
+/// Lista de cotejo, escala de estimación, rúbrica o reparto por puntos (Ser,
+/// Hacer, Conocer, Convivir). Aparte de la fila del plan a propósito: guardar el
+/// plan compara filas «sin cambios» y una columna más la daría siempre por
+/// cambiada (409 falsos a quien tiene el plan abierto). `version` sube en cada
+/// guardado: dos profesores no se pisan. Ver `utils/instrumentos.ts`.
+model InstrumentoDeEvaluacion {
+  id String @id @default(cuid())
+
+  planRowId String            @unique
+  planRow   EvaluationPlanRow @relation(fields: [planRowId], references: [id], onDelete: Cascade)
+
+  /// COTEJO | ESCALA | RUBRICA | PUNTOS
+  tipo       String
+  definicion Json
+  version    Int    @default(1)
+  /// Quién lo cambió por última vez: a quien se le pregunta si llegan marcas del anterior.
+  cambiadoPor String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("instrumentos_de_evaluacion")
+}
+
+/// LO HECHO SIN CONEXIÓN QUE YA LLEGÓ (2026-09-30)
+///
+/// Cada cambio llega con su id del teléfono (`X-Cambio`): el mismo id no se
+/// aplica dos veces aunque se reenvíe días después (se devuelve la respuesta
+/// de la primera vez). Y queda el rastro: cuándo se hizo y cuándo llegó.
+/// `plugins/cambios-sin-conexion.ts`.
+model CambioRecibido {
+  id         String    @id
+  usuarioId  String
+  metodo     String
+  ruta       String
+  /// 0 = en curso; -1 = falló sin aplicarse (se puede reintentar); si no, el código HTTP.
+  estado     Int       @default(0)
+  respuesta  Json?
+  hechoEn    DateTime?
+  recibidoEn DateTime  @default(now())
+
+  @@index([recibidoEn])
+  @@map("cambios_recibidos")
+}
+
+/// LO QUE LLEGÓ SIN CONEXIÓN Y TIENE QUE DECIDIRLO OTRA PERSONA
+///
+/// Notas a una actividad que otro borró mientras tanto (decide quien la
+/// borró: ¿la recupera con esas notas?), o marcas de un instrumento que otro
+/// cambió (decide quien lo cambió: ¿sigue queriendo el nuevo?). Nada se pierde
+/// en silencio. `services/cambios-en-espera.service.ts`.
+model CambioEnEspera {
+  id          String    @id @default(cuid())
+  autorId     String
+  decideId    String?
+  /// NOTAS_A_ACTIVIDAD_BORRADA | MARCAS_CON_OTRO_INSTRUMENTO
+  tipo        String
+  /// El id de la actividad.
+  objetivo    String
+  datos       Json
+  motivo      String
+  hechoEn     DateTime?
+  creadoEn    DateTime  @default(now())
+  resuelto    Boolean   @default(false)
+  resolucion  String?
+  resueltoPor String?
+  resueltoEn  DateTime?
+
+  @@index([decideId, resuelto])
+  @@index([autorId, resuelto])
+  @@map("cambios_en_espera")
+}
+
+// =====================================================
+// FINANZAS DEL LICEO (2026-10-01)
+// =====================================================
+//
+// Cristian: «que sea para manejar sus finanzas»: los fondos del liceo, lo que
+// deben los alumnos, lo que se paga a profesores y personal (con vacaciones) y
+// los gastos sueltos. Todo el dinero en la moneda base del liceo, como Pagos;
+// nada se borra: se anula con motivo.
+
+/// Lo que entra que no es una cuota: el saldo con que el liceo empieza a usar
+/// el sistema, una donación, otro ingreso.
+model FondoDelLiceo {
+  id          String   @id @default(cuid())
+  fecha       DateTime @db.Date
+  /// SALDO_INICIAL | DONACION | OTRO
+  concepto    String
+  descripcion String?
+  moneda      String
+  monto       Decimal  @db.Decimal(12, 2)
+  tasa        Decimal? @db.Decimal(14, 4)
+  /// El mismo monto en la moneda base del liceo.
+  montoBase   Decimal  @db.Decimal(12, 2)
+
+  creadoPorId     String?
+  anuladoEn       DateTime?
+  anuladoPorId    String?
+  motivoAnulacion String?
+  createdAt       DateTime  @default(now())
+
+  @@index([fecha])
+  @@map("fondos_del_liceo")
+}
+
+/// Un gasto suelto: un tablero de básquet, una reparación, el internet.
+model Gasto {
+  id        String   @id @default(cuid())
+  fecha     DateTime @db.Date
+  concepto  String
+  categoria String
+  proveedor String?
+  notas     String?
+  moneda    String
+  monto     Decimal  @db.Decimal(12, 2)
+  tasa      Decimal? @db.Decimal(14, 4)
+  montoBase Decimal  @db.Decimal(12, 2)
+
+  /// La foto de la factura (redibujada a WebP en el servidor).
+  comprobanteId String?
+  comprobante   Comprobante? @relation(fields: [comprobanteId], references: [id], onDelete: SetNull)
+
+  creadoPorId     String?
+  anuladoEn       DateTime?
+  anuladoPorId    String?
+  motivoAnulacion String?
+  createdAt       DateTime  @default(now())
+
+  @@index([fecha])
+  @@map("gastos")
+}
+
+/// Una imagen de un papel de dinero: la factura de un gasto, la captura de un
+/// pago móvil. Nunca la que se subió: el servidor la redibuja (sin metadatos,
+/// sin nada escondido) a WebP de 1600 px como mucho.
+model Comprobante {
+  id          String   @id @default(cuid())
+  data        Bytes
+  tipo        String   @default("image/webp")
+  tamano      Int
+  subidoPorId String?
+  createdAt   DateTime @default(now())
+
+  gastos Gasto[]
+
+  @@map("comprobantes")
+}
+
+/// Una persona a la que el liceo le paga: un profesor (con cuenta) u otro
+/// personal (sin cuenta: la señora de la limpieza, el vigilante…).
+model Personal {
+  id     String  @id @default(cuid())
+  /// Si tiene cuenta en el sistema (profesor o admin).
+  userId String? @unique
+  user   User?   @relation("PersonalConCuenta", fields: [userId], references: [id], onDelete: SetNull)
+  /// Si no tiene cuenta, su nombre.
+  nombre String?
+  cedula String?
+  cargo  String
+  activo Boolean @default(true)
+  /// Se trae solo al ciclo siguiente, con su mismo acuerdo.
+  seQuedaParaProximosCiclos Boolean @default(true)
+  notas  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  acuerdos AcuerdoDePago[]
+  pagos    PagoAlPersonal[]
+
+  @@map("personal")
+}
+
+/// Lo acordado con una persona en un ciclo: cuánto, cada cuánto, qué día y sus
+/// vacaciones. Lo que queda en null toma el valor del liceo (`AjustesDeNomina`).
+model AcuerdoDePago {
+  id             String       @id @default(cuid())
+  personalId     String
+  personal       Personal     @relation(fields: [personalId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  /// Lo de CADA pago (en quincenal, cada quincena).
+  monto      Decimal   @db.Decimal(12, 2)
+  /// UNICO | MENSUAL | QUINCENAL
+  frecuencia String    @default("MENSUAL")
+  /// Día del mes (1–31; más que el mes = el último). Null = el del liceo.
+  diaDePago  Int?
+  /// Para el pago único.
+  fechaUnica DateTime? @db.Date
+
+  /// Null = lo que diga el liceo.
+  cobraEnVacaciones Boolean?
+  bonoVacacional    Decimal?  @db.Decimal(12, 2)
+  fechaBono         DateTime? @db.Date
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([personalId, academicYearId])
+  @@index([academicYearId])
+  @@map("acuerdos_de_pago")
+}
+
+/// Lo del liceo para la nómina de un ciclo: el día de pago de todos, los meses
+/// de vacaciones y el bono vacacional.
+model AjustesDeNomina {
+  academicYearId String       @id
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  /// Día del mes del pago mensual (31 = el último día del mes).
+  diaDePago         Int      @default(31)
+  /// Meses de vacaciones, como «AAAA-MM».
+  mesesDeVacaciones Json     @default("[]")
+  cobraEnVacaciones Boolean  @default(true)
+  bonoVacacional    Decimal  @default(0) @db.Decimal(12, 2)
+  fechaBono         DateTime? @db.Date
+
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("ajustes_de_nomina")
+}
+
+/// Un pago hecho a una persona. No se borra: se anula con motivo.
+model PagoAlPersonal {
+  id             String       @id @default(cuid())
+  /// Número correlativo del recibo.
+  numero         Int          @unique @default(autoincrement())
+  personalId     String
+  personal       Personal     @relation(fields: [personalId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  fecha      DateTime @db.Date
+  metodo     String
+  referencia String?
+  notas      String?
+  moneda     String
+  monto      Decimal  @db.Decimal(12, 2)
+  tasa       Decimal? @db.Decimal(14, 4)
+  montoBase  Decimal  @db.Decimal(12, 2)
+
+  creadoPorId     String?
+  anuladoEn       DateTime?
+  anuladoPorId    String?
+  motivoAnulacion String?
+  createdAt       DateTime  @default(now())
+
+  asignaciones AsignacionAlPersonal[]
+
+  @@index([personalId, academicYearId])
+  @@index([fecha])
+  @@map("pagos_al_personal")
+}
+
+/// A qué pagos del acuerdo va cada pago al personal («S:2026-10», «B»…).
+model AsignacionAlPersonal {
+  id        String         @id @default(cuid())
+  pagoId    String
+  pago      PagoAlPersonal @relation(fields: [pagoId], references: [id], onDelete: Cascade)
+  clave     String
+  montoBase Decimal        @db.Decimal(12, 2)
+
+  @@index([pagoId])
+  @@map("asignaciones_al_personal")
+}
+
+/// Un recordatorio de cuota ya enviado: una sola vez por alumno, ciclo y cuota,
+/// aunque corran varios procesos a la vez (la clave única lo garantiza).
+model RecordatorioDeCuota {
+  id             String   @id @default(cuid())
+  studentId      String
+  academicYearId String
+  installmentKey String
+  enviadoEn      DateTime @default(now())
+
+  @@unique([studentId, academicYearId, installmentKey])
+  @@map("recordatorios_de_cuota")
+}
+
+/// Un pago que el representante dice que hizo (con la captura del pago móvil).
+/// El admin lo confirma —y entonces es un `Payment` de verdad— o lo rechaza con
+/// motivo. Mientras tanto no cuenta para nada.
+model PagoReportado {
+  id              String    @id @default(cuid())
+  studentId       String
+  academicYearId  String
+  reportadoPorId  String
+  installmentKeys Json
+  moneda          String
+  monto           Decimal   @db.Decimal(12, 2)
+  tasa            Decimal?  @db.Decimal(14, 4)
+  metodo          String
+  referencia      String?
+  fechaDePago     DateTime  @db.Date
+  comprobanteId   String?
+  /// PENDIENTE | CONFIRMADO | RECHAZADO
+  estado          String    @default("PENDIENTE")
+  motivoRechazo   String?
+  paymentId       String?
+  revisadoPorId   String?
+  revisadoEn      DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([estado])
+  @@index([studentId])
+  @@map("pagos_reportados")
+}
+

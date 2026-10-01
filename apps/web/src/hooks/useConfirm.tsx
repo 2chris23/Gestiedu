@@ -1,16 +1,10 @@
 'use client';
 
 import { createContext, useCallback, useContext, useState, ReactNode } from 'react';
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { diferido } from '@/components/common/Diferido';
+
+// La ventana baja la primera vez que se pregunta algo (carga diferida).
+const DialogoDeConfirmar = diferido(() => import('@/components/common/DialogoDeConfirmar'), { sinEsqueleto: true });
 
 export interface ConfirmOptions {
     title: string;
@@ -48,29 +42,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     return (
         <ConfirmContext.Provider value={confirm}>
             {children}
-            <AlertDialog
-                open={!!state}
-                onOpenChange={(open) => {
-                    if (!open) close(false);
-                }}
-            >
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>{state?.options.title}</AlertDialogTitle>
-                        {state?.options.description && (
-                            <AlertDialogDescription>{state.options.description}</AlertDialogDescription>
-                        )}
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => close(false)}>
-                            {state?.options.cancelLabel || 'Cancelar'}
-                        </AlertDialogCancel>
-                        <AlertDialogAction onClick={() => close(true)}>
-                            {state?.options.confirmLabel || 'Confirmar'}
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+            {state && <DialogoDeConfirmar options={state.options} alResponder={close} />}
         </ConfirmContext.Provider>
     );
 }

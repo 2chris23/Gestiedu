@@ -1,25 +1,52 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { instituteService, InstituteConfig, UpdateInstituteDto } from '@/services/institute.service';
 import { toast } from 'sonner';
+import { esPendiente } from '@/lib/por-enviar';
+import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
 
-// Query keys
+function getActiveTenantSlug(): string | null {
+    if (typeof window === 'undefined') return null;
+    // Ver `lib/el-liceo-de-la-direccion.ts`: una dirección de red (probar desde
+    // el teléfono) no nombra a ningún liceo, y antes se leía como «192».
+    const delHost = elLiceoDelHost(window.location.hostname);
+    if (delHost) return delHost;
+
+    // Si viene en parámetro de URL
+    const params = new URLSearchParams(window.location.search);
+    const slugParam = params.get('slug') || params.get('instituto') || params.get('institute');
+    if (slugParam) return slugParam;
+
+    // La que deja la entrada: en `localhost:3000`, por la IP de casa o en un
+    // dominio único no hay subdominio, y sin esto el nombre y el icono del
+    // liceo no se pedían nunca (lo mismo que hace `lib/axios.ts`).
+    const deCookie = document.cookie.match(/(?:^|;\s*)institute_slug=([^;]+)/)?.[1];
+    if (deCookie) return decodeURIComponent(deCookie);
+
+    return null;
+}
+
+// Query keys aisladas por inquilino
 export const instituteKeys = {
     all: ['institute'] as const,
-    config: () => [...instituteKeys.all, 'config'] as const,
-    palette: () => [...instituteKeys.all, 'palette'] as const,
+    /** Todas las configuraciones, de cualquier liceo: lo que se invalida al guardar. */
+    configs: () => [...instituteKeys.all, 'config'] as const,
+    config: (slug?: string | null) => [...instituteKeys.all, 'config', slug || 'none'] as const,
+    palette: (slug?: string | null) => [...instituteKeys.all, 'palette', slug || 'none'] as const,
 };
 
 /**
- * Hook para obtener la configuración del instituto
+ * Hook para obtener la configuración del instituto.
+ * Se desactiva automáticamente si estamos en la Landing Page o fuera de un liceo.
  */
-export function useInstituteConfig(options?: { enabled?: boolean }) {
+export function useInstituteConfig(options?: { enabled?: boolean; slug?: string }) {
+    const slug = options?.slug || getActiveTenantSlug();
     return useQuery({
-        queryKey: instituteKeys.config(),
-        queryFn: instituteService.getConfig,
+        queryKey: instituteKeys.config(slug),
+        queryFn: () => instituteService.getConfig(slug),
         staleTime: 5 * 60 * 1000, // 5 minutos
         retry: false,
         refetchOnWindowFocus: false,
-        enabled: options?.enabled !== false,
+        enabled: options?.enabled !== false && Boolean(slug),
     });
 }
 
@@ -31,8 +58,15 @@ export function useUpdateInstituteConfig() {
 
     return useMutation({
         mutationFn: (data: UpdateInstituteDto) => instituteService.updateConfig(data),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: instituteKeys.config() });
+        onSuccess: (r) => {
+            if (esPendiente(r)) {
+                toast('Sin conexión: el cambio quedó pendiente ⏱ y se guarda solo al volver.', { id: 'pendiente' });
+                return;
+            }
+            // `config()` a secas es la del liceo «none»: no coincidía con la de ningún
+            // liceo y, tras «Guardado», nada se volvía a pedir hasta recargar.
+            queryClient.invalidateQueries({ queryKey: instituteKeys.configs() });
+            queryClient.invalidateQueries({ queryKey: ['membrete'] });
             toast.success('Configuración actualizada exitosamente');
         },
         onError: (error: Error) => {
@@ -51,7 +85,10 @@ export function useUploadLogos() {
         mutationFn: ({ favicon, logo }: { favicon?: File; logo?: File }) =>
             instituteService.uploadLogos(favicon, logo),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: instituteKeys.config() });
+            // `config()` a secas es la del liceo «none»: no coincidía con la de ningún
+            // liceo y, tras «Guardado», nada se volvía a pedir hasta recargar.
+            queryClient.invalidateQueries({ queryKey: instituteKeys.configs() });
+            queryClient.invalidateQueries({ queryKey: ['membrete'] });
             toast.success('Logos actualizados exitosamente');
         },
         onError: (error: Error) => {
@@ -70,7 +107,10 @@ export function useUpdateColors() {
         mutationFn: ({ primaryColor, secondaryColor }: { primaryColor: string; secondaryColor: string }) =>
             instituteService.updateColors(primaryColor, secondaryColor),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: instituteKeys.config() });
+            // `config()` a secas es la del liceo «none»: no coincidía con la de ningún
+            // liceo y, tras «Guardado», nada se volvía a pedir hasta recargar.
+            queryClient.invalidateQueries({ queryKey: instituteKeys.configs() });
+            queryClient.invalidateQueries({ queryKey: ['membrete'] });
             toast.success('Colores actualizados exitosamente');
         },
         onError: (error: Error) => {

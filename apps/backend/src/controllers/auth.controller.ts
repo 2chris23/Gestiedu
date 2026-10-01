@@ -2,8 +2,13 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { authService } from '../services/auth.service';
 import { logger } from '../utils/logger';
 import { RequestUser } from '../types/fastify';
-import { invalidateUserSession } from '../middleware/auth.middleware';
-import { verifyRefreshToken } from '../config/jwt';
+import { invalidateUserSession, revokeAccessToken } from '../middleware/auth.middleware';
+import { verifyRefreshToken, extractTokenFromHeader } from '../config/jwt';
+import {
+    crearLlaveDelTelefono,
+    canjearLlaveDelTelefono,
+    anularLlavesDelTelefono,
+} from '../services/llave-del-telefono.service';
 import {
   comoEstaLaCuenta,
   apuntarFallo,
@@ -98,6 +103,116 @@ export async function login(
 }
 
 /**
+ * GUARDAR LA LLAVE DE ESTE TELÉFONO
+ *
+ * Se pide DESPUÉS de haber entrado con correo y contraseña —lleva sesión—, y
+ * solo cuando su dueño lo pide. La llave se devuelve una vez y no se vuelve a
+ * saber: el servidor guarda únicamente su resumen.
+ */
+export async function crearLlaveDeTelefono(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    const user = request.user as RequestUser;
+    if (!user) {
+      return reply.status(401).send({ error: 'No autorizado', code: 'UNAUTHORIZED' });
+    }
+
+    const { llave, expiresAt } = await crearLlaveDelTelefono(
+      user.userId,
+      request.headers['user-agent']?.toString() ?? null,
+      request.tenantPrisma
+    );
+
+    return reply.status(201).send({ llave, expiresAt: expiresAt.toISOString() });
+  } catch (error) {
+    logger.error('No se pudo crear la llave del teléfono', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return reply.status(500).send({ error: 'Error interno del servidor', code: 'INTERNAL_SERVER_ERROR' });
+  }
+}
+
+/**
+ * ENTRAR CON LA LLAVE QUE GUARDÓ ESTE TELÉFONO
+ *
+ * Sin sesión, como el login normal, y con su mismo freno de intentos: por aquí
+ * se podría probar llaves a lo bruto igual que contraseñas.
+ *
+ * Si la llave no vale se responde exactamente lo mismo que a una contraseña
+ * mala, sin decir si no existe, si está anulada o si caducó.
+ */
+export async function entrarConLaLlaveDelTelefono(
+  request: FastifyRequest<{ Body: { llave?: string } }>,
+  reply: FastifyReply
+) {
+  const instituteId = request.institute?.id;
+
+  try {
+    const { userId, llaveNueva } = await canjearLlaveDelTelefono(
+      request.body?.llave ?? '',
+      request.tenantPrisma,
+      request.headers['user-agent']?.toString() ?? null
+    );
+
+    const persona = await request.tenantPrisma.user.findUnique({
+      where: { id: userId },
+      include: { institute: { select: { id: true, name: true, code: true } } },
+    });
+
+    if (!persona) {
+      return reply.status(400).send({ error: 'Credenciales inválidas', code: 'INVALID_CREDENTIALS' });
+    }
+
+    // A partir de aquí, exactamente lo mismo que una entrada con contraseña.
+    const sesion = await authService.abrirSesion(
+      persona as any,
+      request.tenantPrisma,
+      { keepSession: true, rememberMe: true },
+      instituteId,
+      {
+        userAgent: request.headers['user-agent']?.toString(),
+        ip: request.ip,
+      }
+    );
+
+    return reply.status(200).send({ ...sesion, llave: llaveNueva.llave, expiresAt: llaveNueva.expiresAt.toISOString() });
+  } catch (error) {
+    logger.error('Entrada con la llave del teléfono rechazada', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return reply.status(400).send({ error: 'Credenciales inválidas', code: 'INVALID_CREDENTIALS' });
+  }
+}
+
+/** Anular la llave de este teléfono, o las de todos si no se manda ninguna. */
+export async function anularLlaveDeTelefono(
+  request: FastifyRequest<{ Body?: { llave?: string } }>,
+  reply: FastifyReply
+) {
+  try {
+    const user = request.user as RequestUser;
+    if (!user) {
+      return reply.status(401).send({ error: 'No autorizado', code: 'UNAUTHORIZED' });
+    }
+
+    const anuladas = await anularLlavesDelTelefono(
+      user.userId,
+      request.tenantPrisma,
+      request.body?.llave ?? null
+    );
+
+    return reply.status(200).send({ anuladas });
+  } catch (error) {
+    logger.error('No se pudo anular la llave del teléfono', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return reply.status(500).send({ error: 'Error interno del servidor', code: 'INTERNAL_SERVER_ERROR' });
+  }
+}
+
+/**
  * Controlador para actualizar token de acceso
  */
 export async function refreshToken(
@@ -105,7 +220,7 @@ export async function refreshToken(
   reply: FastifyReply
 ) {
   try {
-    const result = await authService.refreshToken(request.body, request.tenantPrisma);
+    const result = await authService.refreshToken(request.body, request.tenantPrisma, request.institute?.id);
 
     return reply.status(200).send(result);
   } catch (error) {
@@ -122,18 +237,35 @@ export async function refreshToken(
  * Controlador para cerrar sesión
  */
 export async function logout(
-  request: FastifyRequest<{ Body: { refreshToken?: string } }>,
+  request: FastifyRequest<{ Body: { refreshToken?: string; llaveDelTelefono?: string } }>,
   reply: FastifyReply
 ) {
   try {
     const user = request.user as RequestUser;
     const userId = user?.userId;
     const { refreshToken } = request.body || {};
+    const token = extractTokenFromHeader(request.headers.authorization);
 
     if (userId) {
       await authService.logout(userId, request.tenantPrisma, refreshToken);
       // Invalidar caché de sesión para que el usuario deslogueado no revalide
       await invalidateUserSession(request.institute?.id ?? user?.instituteId, userId);
+
+      // Revocar el access token actual en Redis para que no pueda seguir siendo usado
+      if (token) {
+        await revokeAccessToken(request.institute?.id ?? user?.instituteId, token);
+      }
+
+      /**
+       * Y la llave que este teléfono guardó para volver a entrar. Cerrar
+       * sesión es cerrar sesión: si se quedara, el siguiente que abriera la
+       * app entraría con la huella del dueño del teléfono sin pasar por la
+       * contraseña. Se anula la de ESTE teléfono; las de otros siguen.
+       */
+      const { llaveDelTelefono } = request.body || {};
+      if (llaveDelTelefono) {
+        await anularLlavesDelTelefono(userId, request.tenantPrisma, llaveDelTelefono);
+      }
     }
 
     return reply.status(200).send({

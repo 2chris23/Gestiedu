@@ -5,6 +5,7 @@ import { X, Calendar, AlertCircle, RefreshCw, Layers, GraduationCap, CalendarDay
 import { useForm } from 'react-hook-form';
 import { academicYearService, CreateAcademicYearDto, AcademicYear, Period } from '@/services/academic-year.service';
 import { toast } from 'sonner';
+import { calendarioComoElMPPE } from '@/lib/calendario-mppe';
 
 interface AcademicYearModalProps {
     isOpen: boolean;
@@ -59,6 +60,35 @@ const autoSplitPeriods = (startStr: string, endStr: string, existingPeriods?: Pe
     });
 };
 
+/** Semanas (redondeadas hacia arriba) entre el inicio del lapso y el del plan. */
+const semanasAntesDelPlan = (p: Period): number => {
+    if (!p.inicioDelPlan || !p.startDate || p.inicioDelPlan <= p.startDate) return 0;
+    const dias = (new Date(p.inicioDelPlan).getTime() - new Date(p.startDate).getTime()) / 864e5;
+    return Math.ceil(dias / 7);
+};
+
+/**
+ * Los lapsos del calendario del MPPE para ese año escolar, conservando el id de
+ * los que ya existían (al editar) para no crear lapsos nuevos.
+ */
+const lapsosDelMPPE = (anioDeInicio: number, existentes?: Period[]): Period[] =>
+    calendarioComoElMPPE(anioDeInicio).lapsos.map((l, i) => ({
+        id: existentes?.find((e) => e.name === l.nombre)?.id,
+        name: l.nombre,
+        startDate: l.inicio,
+        endDate: l.fin,
+        isActive: i === 0,
+        inicioDelPlan: l.inicioDelPlan,
+        nombreAntesDelPlan: l.nombreAntesDelPlan,
+    }));
+
+/** El año en que empieza un ciclo por su fecha de inicio (de julio en adelante, ese año). */
+const anioDeInicioDe = (fecha: string): number | null => {
+    const [y, m] = fecha.split('-').map(Number);
+    if (!y || !m) return null;
+    return m >= 7 ? y : y - 1;
+};
+
 const fmtShort = (iso: string): string => {
     if (!iso) return '—';
     const [y, m, d] = iso.split('-');
@@ -69,9 +99,15 @@ const fmtShort = (iso: string): string => {
 
 export default function AcademicYearModal({ isOpen, onClose, onSuccess, existingYears = [], yearToEdit }: AcademicYearModalProps) {
     const [isLoading, setIsLoading] = useState(false);
-    const [isManual, setIsManual] = useState(false);
+    const [isManual, setIsManual] = useState(!!yearToEdit);
     const [startYear, setStartYear] = useState<number>(new Date().getFullYear());
-    const [lapsoSplitMode, setLapsoSplitMode] = useState<'auto' | 'manual'>('auto');
+    // «mppe»: las fechas del calendario del Ministerio; «auto»: tres partes
+    // iguales; «manual»: a mano. Lo nuevo nace como el MPPE; lo que se edita,
+    // con sus fechas. Tiene que nacer así, no cambiarse al abrir: en la misma
+    // pasada el calendario del MPPE pisaba las fechas guardadas del ciclo.
+    const [lapsoSplitMode, setLapsoSplitMode] = useState<'mppe' | 'auto' | 'manual'>(
+        yearToEdit ? (yearToEdit.periods?.length ? 'manual' : 'auto') : 'mppe'
+    );
     const [periods, setPeriods] = useState<Period[]>([
         { name: 'Primer Lapso', startDate: '', endDate: '', isActive: true },
         { name: 'Segundo Lapso', startDate: '', endDate: '', isActive: false },
@@ -99,6 +135,8 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                         startDate: p.startDate.split('T')[0],
                         endDate: p.endDate.split('T')[0],
                         isActive: p.isActive,
+                        inicioDelPlan: p.inicioDelPlan ? p.inicioDelPlan.split('T')[0] : null,
+                        nombreAntesDelPlan: p.nombreAntesDelPlan ?? null,
                     })));
                     setLapsoSplitMode('manual');
                 } else {
@@ -113,7 +151,7 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                     endDate: '',
                     status: 'UPCOMING'
                 });
-                setLapsoSplitMode('auto');
+                setLapsoSplitMode('mppe');
             }
         }
     }, [isOpen, yearToEdit, setValue, reset]);
@@ -122,24 +160,35 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
     const endYear = startYear + 1;
     const calculatedName = `${startYear}-${endYear}`;
 
-    // Auto-calculate dates logic
+    // Las fechas automáticas son las del calendario del MPPE de ese año
+    // (`lib/calendario-mppe.ts`), no un 20 de agosto inventado.
+    const plantilla = calendarioComoElMPPE(startYear);
     useEffect(() => {
         if (!isManual && startYear) {
-            const startDate = `${startYear}-08-20`;
-            const endDate = `${endYear}-07-15`;
-
+            const c = calendarioComoElMPPE(startYear);
             setValue('name', calculatedName);
-            setValue('startDate', startDate);
-            setValue('endDate', endDate);
+            setValue('startDate', c.inicio);
+            setValue('endDate', c.fin);
         }
     }, [startYear, endYear, isManual, setValue, calculatedName]);
+
+    // Los lapsos como el MPPE: los del año del ciclo.
+    useEffect(() => {
+        if (lapsoSplitMode !== 'mppe') return;
+        const anio = !isManual ? startYear : anioDeInicioDe(watchStartDate || '');
+        if (anio) setPeriods(lapsosDelMPPE(anio, yearToEdit?.periods));
+    }, [lapsoSplitMode, isManual, startYear, watchStartDate, yearToEdit]);
 
     // Auto-calculate period splits
     useEffect(() => {
         if (lapsoSplitMode === 'auto' && watchStartDate && watchEndDate) {
             const split = autoSplitPeriods(watchStartDate, watchEndDate, yearToEdit?.periods);
             if (split.length > 0) {
-                setPeriods(split);
+                // Repartir las fechas no borra cuándo empieza el plan de cada lapso.
+                setPeriods(prev => split.map(p => {
+                    const antes = prev.find(x => x.name === p.name);
+                    return { ...p, inicioDelPlan: antes?.inicioDelPlan ?? null, nombreAntesDelPlan: antes?.nombreAntesDelPlan ?? null };
+                }));
             }
         }
     }, [lapsoSplitMode, watchStartDate, watchEndDate, yearToEdit]);
@@ -207,6 +256,12 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                 return false;
             }
 
+            // El plan empieza dentro de su lapso (o con él, si no se dice).
+            if (p.inicioDelPlan && (p.inicioDelPlan < p.startDate || p.inicioDelPlan > p.endDate)) {
+                toast.error(`En el ${p.name}, el plan de evaluación tiene que empezar dentro del lapso (${fmtShort(p.startDate)} a ${fmtShort(p.endDate)}).`);
+                return false;
+            }
+
             // check overlap with next period
             if (i < periods.length - 1) {
                 const nextP = periods[i + 1];
@@ -234,7 +289,9 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                 name: p.name,
                 startDate: p.startDate,
                 endDate: p.endDate,
-                isActive: p.isActive
+                isActive: p.isActive,
+                inicioDelPlan: p.inicioDelPlan || null,
+                nombreAntesDelPlan: p.inicioDelPlan ? (p.nombreAntesDelPlan?.trim() || null) : null,
             }));
 
             if (yearToEdit) {
@@ -265,8 +322,8 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                 // Create Mode
                 const createData = (!isManual) ? {
                     name: calculatedName,
-                    startDate: `${startYear}-08-20`,
-                    endDate: `${endYear}-07-15`,
+                    startDate: plantilla.inicio,
+                    endDate: plantilla.fin,
                 } : {
                     name: data.name,
                     startDate: data.startDate,
@@ -376,14 +433,18 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                                 <div className="flex items-center justify-center gap-2.5 mt-4 flex-wrap">
                                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary-50 border border-primary-100 text-xs font-semibold text-primary-700">
                                         <Calendar className="w-3.5 h-3.5" />
-                                        20 Ago {startYear}
+                                        {fmtShort(plantilla.inicio)}
                                     </span>
                                     <ArrowRight className="w-4 h-4 text-gray-300" />
                                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary-50 border border-primary-100 text-xs font-semibold text-primary-700">
                                         <Calendar className="w-3.5 h-3.5" />
-                                        15 Jul {endYear}
+                                        {fmtShort(plantilla.fin)}
                                     </span>
                                 </div>
+                                <p className="mt-2 text-xs text-gray-500">
+                                    Con el calendario del MPPE: alumnos desde el {fmtShort(plantilla.inicio)} (el personal, el{' '}
+                                    {fmtShort(plantilla.inicioDelPersonal)}). Todo se puede cambiar después.
+                                </p>
 
                                 {errors.name && (
                                     <div className="flex items-center justify-center gap-2 mt-4 text-red-600 bg-red-50 px-4 py-2.5 rounded-xl text-sm">
@@ -467,6 +528,18 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                                 <div className="flex bg-gray-100 p-1 rounded-full">
                                     <button
                                         type="button"
+                                        onClick={() => setLapsoSplitMode('mppe')}
+                                        className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-full transition-all ${
+                                            lapsoSplitMode === 'mppe'
+                                                ? 'bg-white text-slate-800 shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-700'
+                                        }`}
+                                    >
+                                        <CalendarDays className="w-3.5 h-3.5" />
+                                        Como el MPPE
+                                    </button>
+                                    <button
+                                        type="button"
                                         onClick={() => setLapsoSplitMode('auto')}
                                         className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-full transition-all ${
                                             lapsoSplitMode === 'auto'
@@ -475,7 +548,7 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                                         }`}
                                     >
                                         <RefreshCw className="w-3.5 h-3.5" />
-                                        Auto
+                                        Iguales
                                     </button>
                                     <button
                                         type="button"
@@ -487,7 +560,7 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                                         }`}
                                     >
                                         <PencilRuler className="w-3.5 h-3.5" />
-                                        Manual
+                                        A mano
                                     </button>
                                 </div>
                             </div>
@@ -497,12 +570,19 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                                     Las fechas se reparten automáticamente en partes iguales según el periodo del ciclo.
                                 </p>
                             )}
+                            {lapsoSplitMode === 'mppe' && (
+                                <p className="text-xs text-primary-700 bg-primary-50 px-3.5 py-2.5 rounded-xl border border-primary-100 leading-relaxed">
+                                    Como el calendario del Ministerio: el 1er lapso hasta antes del 15 de diciembre (con un mes de
+                                    diagnóstico), el 2º del segundo lunes de enero hasta antes de Semana Santa y el 3º hasta el 31 de
+                                    julio. Pasa a «A mano» para cambiar cualquier fecha.
+                                </p>
+                            )}
 
                             <div className="space-y-2.5">
                                 {periods.map((period, index) => (
+                                    <div key={period.name} className="rounded-xl bg-gray-50/70 border border-gray-100 hover:border-gray-200 transition-colors">
                                     <div
-                                        key={period.name}
-                                        className="flex items-center gap-3.5 px-4 py-3 rounded-xl bg-gray-50/70 border border-gray-100 hover:border-gray-200 transition-colors"
+                                        className="flex items-center gap-3.5 px-4 py-3"
                                     >
                                         <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColors[index]}`} />
                                         <div className="w-36 flex-shrink-0">
@@ -512,7 +592,7 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                                             <p className="text-xs text-gray-400">{period.name}</p>
                                         </div>
 
-                                        {lapsoSplitMode === 'auto' ? (
+                                        {lapsoSplitMode !== 'manual' ? (
                                             <div className="flex-1 text-right text-xs font-medium text-gray-500 tabular-nums">
                                                 {period.startDate && period.endDate
                                                     ? `${fmtShort(period.startDate)} → ${fmtShort(period.endDate)}`
@@ -538,6 +618,47 @@ export default function AcademicYearModal({ isOpen, onClose, onSuccess, existing
                                                 />
                                             </div>
                                         )}
+                                    </div>
+                                    {/*
+                                        CUÁNDO EMPIEZA EL PLAN EN ESTE LAPSO
+                                        Muchos liceos dejan una o dos semanas (diagnóstico,
+                                        adaptación) con contenido del profesor antes de
+                                        empezar el plan de evaluación. Libre: cada liceo lo
+                                        pone donde le toque. Vacío = con el lapso.
+                                    */}
+                                    <div className="grid gap-2 border-t border-gray-100 px-4 py-3 sm:grid-cols-2">
+                                        <label htmlFor={`period-plan-${index}`} className="block">
+                                            <span className="mb-1 block text-xs font-semibold text-gray-600">El plan de evaluación empieza el</span>
+                                            <input
+                                                id={`period-plan-${index}`}
+                                                type="date"
+                                                value={period.inicioDelPlan ?? ''}
+                                                min={period.startDate || undefined}
+                                                max={period.endDate || undefined}
+                                                onChange={(e) => handlePeriodChange(index, 'inicioDelPlan', e.target.value || null)}
+                                                className="w-full min-h-[44px] px-3 text-sm rounded-lg border border-gray-200 bg-white outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                            />
+                                            <span className="mt-1 block text-xs text-gray-500">
+                                                {semanasAntesDelPlan(period) > 0
+                                                    ? `Antes: ${semanasAntesDelPlan(period) === 1 ? '1 semana' : `${semanasAntesDelPlan(period)} semanas`} con contenido del profesor.`
+                                                    : 'Vacío: el plan empieza con el lapso.'}
+                                            </span>
+                                        </label>
+                                        {period.inicioDelPlan && period.inicioDelPlan > period.startDate && (
+                                            <label htmlFor={`period-antes-${index}`} className="block">
+                                                <span className="mb-1 block text-xs font-semibold text-gray-600">Esas semanas se llaman</span>
+                                                <input
+                                                    id={`period-antes-${index}`}
+                                                    type="text"
+                                                    maxLength={40}
+                                                    placeholder="Diagnóstico"
+                                                    value={period.nombreAntesDelPlan ?? ''}
+                                                    onChange={(e) => handlePeriodChange(index, 'nombreAntesDelPlan', e.target.value)}
+                                                    className="w-full min-h-[44px] px-3 text-sm rounded-lg border border-gray-200 bg-white outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                                />
+                                            </label>
+                                        )}
+                                    </div>
                                     </div>
                                 ))}
                             </div>

@@ -14,6 +14,7 @@
  * Todo lo que se escribe se borra al final. Corre contra el liceo de pruebas.
  */
 import { platformPrisma, getTenantPrisma } from '../config/database';
+import { guardarMedicion } from './guardar-medicion';
 
 const API = process.env.API_BASE || 'http://localhost:3001/api';
 const SLUG = process.env.LICEO || 'instituto-testing';
@@ -250,6 +251,16 @@ async function main() {
 
     console.log(`  Limpieza: ${dejadas} notas y ${diasDejados} asistencias de la medición recogidas.
 `);
+
+    const resumen = (xs: number[]) =>
+        xs.length ? { p50: percentil(xs, 50), p95: percentil(xs, 95), peor: Math.max(...xs), veces: xs.length } : null;
+    guardarMedicion('guardado', {
+        liceo: SLUG,
+        alumnos: alumnos.length,
+        notasDeUnaVez: resumen(lotes),
+        notaSuelta: resumen(sueltas),
+        asistencia: resumen(asistencias),
+    });
 
     await platformPrisma.$disconnect();
     process.exit(0);

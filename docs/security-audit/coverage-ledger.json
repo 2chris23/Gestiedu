@@ -1,0 +1,482 @@
+[
+  {
+    "coverage_id": "apps%2Fbackend%2Fsrc%2Fcontrollers%2Fstudents.controller.ts%23GET%20%2Fapi%2Fstudents::apps%2Fbackend%2Fsrc%2Fconfig%2Fdatabase.ts%23getTenantPrisma::apps%2Fbackend::DATA-ISOLATION-AND-LIFECYCLE.md%23Data-store%20query%20and%20mutation%20injection",
+    "canonical_refs": {
+      "surface": "apps/backend/src/controllers/students.controller.ts#GET /api/students",
+      "boundary": "apps/backend/src/config/database.ts#getTenantPrisma",
+      "subsystem": "apps/backend",
+      "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Data-store query and mutation injection"
+    },
+    "surface": "Student Search & Analytics",
+    "boundary": "Prisma Raw SQL Execution",
+    "subsystem": "Backend API",
+    "attack_class": "Data-store query and mutation injection",
+    "starting_paths": [
+      "apps/backend/src/controllers/students.controller.ts",
+      "apps/backend/src/controllers/classrooms.controller.ts"
+    ],
+    "ordinary_attack_class_block": "DATA-ISOLATION-AND-LIFECYCLE.md#Data-store query and mutation injection",
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Data-store query and mutation injection"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter-b",
+    "reviewed_paths": [
+      "apps/backend/src/controllers/students.controller.ts",
+      "apps/backend/src/controllers/classrooms.controller.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-b",
+        "reviewed_paths": [
+          "apps/backend/src/controllers/students.controller.ts",
+          "apps/backend/src/controllers/classrooms.controller.ts"
+        ],
+        "invariant": "Raw database queries must neutralize SQL injection and parameter manipulation.",
+        "method": "source",
+        "result": "Raw SQL queries use positional parameters safely; recommendation made to adopt Prisma.join.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "apps%2Fbackend%2Fsrc%2Fmiddleware%2Ftenant.middleware.ts%23identifyTenant::apps%2Fbackend%2Fsrc%2Fconfig%2Fambito-del-liceo.ts%23conLiceo::apps%2Fbackend::DATA-ISOLATION-AND-LIFECYCLE.md%23Multi-tenant%20and%20multi-principal%20isolation",
+    "canonical_refs": {
+      "surface": "apps/backend/src/middleware/tenant.middleware.ts#identifyTenant",
+      "boundary": "apps/backend/src/config/ambito-del-liceo.ts#conLiceo",
+      "subsystem": "apps/backend",
+      "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Multi-tenant and multi-principal isolation"
+    },
+    "surface": "Tenant Resolution & Domain Mapping",
+    "boundary": "AsyncLocalStorage & Redis Key Namespace",
+    "subsystem": "Backend API",
+    "attack_class": "Multi-tenant and multi-principal isolation",
+    "starting_paths": [
+      "apps/backend/src/middleware/tenant.middleware.ts",
+      "apps/backend/src/config/ambito-del-liceo.ts"
+    ],
+    "ordinary_attack_class_block": "DATA-ISOLATION-AND-LIFECYCLE.md#Multi-tenant and multi-principal isolation",
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Multi-tenant and multi-principal isolation"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter-a",
+    "reviewed_paths": [
+      "apps/backend/src/middleware/tenant.middleware.ts",
+      "apps/backend/src/config/ambito-del-liceo.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "apps/backend/src/middleware/tenant.middleware.ts",
+          "apps/backend/src/config/ambito-del-liceo.ts"
+        ],
+        "invariant": "Tenants must remain isolated with fail-closed database and cache namespaces.",
+        "method": "source",
+        "result": "Tenant mapping is enforced with 401 TENANT_MISMATCH and AsyncLocalStorage cache prefixing.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "apps%2Fbackend%2Fsrc%2Froutes%2Fauth.routes.ts%23POST%20%2Fapi%2Fauth%2Flogin::apps%2Fbackend%2Fsrc%2Fmiddleware%2Fauth.middleware.ts%23authenticate::apps%2Fbackend::WEB-PROTOCOL-AND-AUTH.md%23Session%20and%20token%20lifetime",
+    "canonical_refs": {
+      "surface": "apps/backend/src/routes/auth.routes.ts#POST /api/auth/login",
+      "boundary": "apps/backend/src/middleware/auth.middleware.ts#authenticate",
+      "subsystem": "apps/backend",
+      "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Session and token lifetime"
+    },
+    "surface": "Authentication & Session Lifetime",
+    "boundary": "JWT & Refresh Token Validation",
+    "subsystem": "Backend API",
+    "attack_class": "Session and token lifetime",
+    "starting_paths": [
+      "apps/backend/src/routes/auth.routes.ts",
+      "apps/backend/src/config/jwt.ts"
+    ],
+    "ordinary_attack_class_block": "WEB-PROTOCOL-AND-AUTH.md#Session and token lifetime",
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Session and token lifetime"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-a",
+    "reviewed_paths": [
+      "apps/backend/src/routes/auth.routes.ts",
+      "apps/backend/src/config/jwt.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "apps/backend/src/routes/auth.routes.ts",
+          "apps/backend/src/config/jwt.ts"
+        ],
+        "invariant": "Authentication tokens must be safely issued, rotated, and revoked upon logout.",
+        "method": "source",
+        "result": "Access tokens remain valid after logout and refresh tokens are updated in-place without rotation.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "auth-bypass-logout-access-token",
+      "auth-refresh-token-rotation-missing"
+    ],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "apps%2Fbackend%2Fsrc%2Froutes%2Fevaluation-plan.routes.ts%23POST%20%2Fapi%2Fevaluation-plan%2Fparse-word::apps%2Fbackend%2Fsrc%2Fserver.ts%23multipart::apps%2Fbackend::ATTACK-CLASSES.md%23Input%20handling%20and%20parsers",
+    "canonical_refs": {
+      "surface": "apps/backend/src/routes/evaluation-plan.routes.ts#POST /api/evaluation-plan/parse-word",
+      "boundary": "apps/backend/src/server.ts#multipart",
+      "subsystem": "apps/backend",
+      "attack_class": "ATTACK-CLASSES.md#Input handling and parsers"
+    },
+    "surface": "Evaluation Plan Document Ingestion",
+    "boundary": "Multipart & Mammoth HTML Conversion",
+    "subsystem": "Backend API",
+    "attack_class": "Input handling and parsers",
+    "starting_paths": [
+      "apps/backend/src/routes/evaluation-plan.routes.ts",
+      "apps/backend/src/controllers/evaluation-plan.controller.ts"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Input handling and parsers",
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Parser and serializer bombs"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-b",
+    "reviewed_paths": [
+      "apps/backend/src/routes/evaluation-plan.routes.ts",
+      "apps/backend/src/controllers/evaluation-plan.controller.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-b",
+        "reviewed_paths": [
+          "apps/backend/src/routes/evaluation-plan.routes.ts",
+          "apps/backend/src/controllers/evaluation-plan.controller.ts"
+        ],
+        "invariant": "Uploaded document archives must be verified for safe decompression and memory limits.",
+        "method": "source",
+        "result": "Uploaded DOCX archives are parsed in memory without MIME or zip-bomb validation.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "parser-docx-memory-exhaustion-eval-plan"
+    ],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "apps%2Fbackend%2Fsrc%2Froutes%2Fgrades.routes.ts%23POST%20%2Fapi%2Fgrades::apps%2Fbackend%2Fsrc%2Fservices%2Fauthorization.service.ts%23assertClassroomScope::apps%2Fbackend::ATTACK-CLASSES.md%23Access%20control",
+    "canonical_refs": {
+      "surface": "apps/backend/src/routes/grades.routes.ts#POST /api/grades",
+      "boundary": "apps/backend/src/services/authorization.service.ts#assertClassroomScope",
+      "subsystem": "apps/backend",
+      "attack_class": "ATTACK-CLASSES.md#Access control"
+    },
+    "surface": "Grades & Academic Evaluations",
+    "boundary": "Section & Classroom Teacher Scoping",
+    "subsystem": "Backend API",
+    "attack_class": "Access control",
+    "starting_paths": [
+      "apps/backend/src/routes/grades.routes.ts",
+      "apps/backend/src/services/authorization.service.ts"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Object and tenant access control"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-a",
+    "reviewed_paths": [
+      "apps/backend/src/routes/grades.routes.ts",
+      "apps/backend/src/services/authorization.service.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "apps/backend/src/routes/grades.routes.ts",
+          "apps/backend/src/services/authorization.service.ts"
+        ],
+        "invariant": "Teachers must only view and modify grades for their assigned subjects and classrooms.",
+        "method": "source",
+        "result": "IDOR permits viewing arbitrary student grades and activities with null classroomId bypass teaching assignment checks.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "grades-null-classroom-scope-bypass",
+      "idor-single-grade-lookup"
+    ],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "apps%2Fbackend%2Fsrc%2Froutes%2Finstitutes.routes.ts%23POST%20%2Fapi%2Finstitutes%2Flogos::apps%2Fbackend%2Fsrc%2Fmiddleware%2Fupload.middleware.ts%23deleteOldFile::apps%2Fbackend::ATTACK-CLASSES.md%23Path%20traversal%20and%20canonicalization",
+    "canonical_refs": {
+      "surface": "apps/backend/src/routes/institutes.routes.ts#POST /api/institutes/logos",
+      "boundary": "apps/backend/src/middleware/upload.middleware.ts#deleteOldFile",
+      "subsystem": "apps/backend",
+      "attack_class": "ATTACK-CLASSES.md#Path traversal and canonicalization"
+    },
+    "surface": "Logo & File Upload / Unlink Handlers",
+    "boundary": "Filesystem Path Sanitization",
+    "subsystem": "Backend API",
+    "attack_class": "Path traversal and canonicalization",
+    "starting_paths": [
+      "apps/backend/src/routes/institutes.routes.ts",
+      "apps/backend/src/middleware/upload.middleware.ts"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Path traversal and canonicalization",
+    "selected_companion_blocks": [
+      "ATTACK-CLASSES.md#Path traversal and canonicalization"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-b",
+    "reviewed_paths": [
+      "apps/backend/src/routes/institutes.routes.ts",
+      "apps/backend/src/middleware/upload.middleware.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-b",
+        "reviewed_paths": [
+          "apps/backend/src/routes/institutes.routes.ts",
+          "apps/backend/src/middleware/upload.middleware.ts"
+        ],
+        "invariant": "File unlinking and path sanitization must be confined strictly to the uploads directory.",
+        "method": "source",
+        "result": "deleteOldFile uses an ineffective regex leaving directory traversal tokens vulnerable.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "filesystem-path-traversal-delete-old-file"
+    ],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "apps%2Fbackend%2Fsrc%2Froutes%2Fpagos.routes.ts%23POST%20%2Fapi%2Fpayments%2Fstudents%2F%3AstudentId%2Fpayments::apps%2Fbackend%2Fsrc%2Fcontrollers%2Fpagos.controller.ts%23pg_advisory_xact_lock::apps%2Fbackend::ATTACK-CLASSES.md%23State%2C%20concurrency%2C%20and%20race%20conditions",
+    "canonical_refs": {
+      "surface": "apps/backend/src/routes/pagos.routes.ts#POST /api/payments/students/:studentId/payments",
+      "boundary": "apps/backend/src/controllers/pagos.controller.ts#pg_advisory_xact_lock",
+      "subsystem": "apps/backend",
+      "attack_class": "ATTACK-CLASSES.md#State, concurrency, and race conditions"
+    },
+    "surface": "Financial Payments Collection",
+    "boundary": "PostgreSQL Advisory Transaction Locks",
+    "subsystem": "Backend API",
+    "attack_class": "State, concurrency, and race conditions",
+    "starting_paths": [
+      "apps/backend/src/routes/pagos.routes.ts",
+      "apps/backend/src/controllers/pagos.controller.ts"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#State, concurrency, and race conditions",
+    "selected_companion_blocks": [
+      "ATTACK-CLASSES.md#State, concurrency, and race conditions"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-c",
+    "reviewed_paths": [
+      "apps/backend/src/routes/pagos.routes.ts",
+      "apps/backend/src/controllers/pagos.controller.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-c",
+        "reviewed_paths": [
+          "apps/backend/src/routes/pagos.routes.ts",
+          "apps/backend/src/controllers/pagos.controller.ts"
+        ],
+        "invariant": "Financial payments intake must be strictly serialized and idempotent.",
+        "method": "source",
+        "result": "Partial payment abonos lack idempotency keys and reference uniqueness, risking duplicate billing.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "payments-missing-idempotency-race-condition"
+    ],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "apps%2Fbackend%2Fsrc%2Froutes%2Fsuperadmin-institutes.routes.ts%23DELETE%20%2Fapi%2Fsuperadmin%2Finstitutes%2F%3Aid::apps%2Fbackend%2Fsrc%2Fservices%2Frespaldos.service.ts%23respaldarLiceo::apps%2Fbackend::ATTACK-CLASSES.md%23Command%20and%20process%20execution",
+    "canonical_refs": {
+      "surface": "apps/backend/src/routes/superadmin-institutes.routes.ts#DELETE /api/superadmin/institutes/:id",
+      "boundary": "apps/backend/src/services/respaldos.service.ts#respaldarLiceo",
+      "subsystem": "apps/backend",
+      "attack_class": "ATTACK-CLASSES.md#Command and process execution"
+    },
+    "surface": "Platform Institute Deletion & Backup",
+    "boundary": "Child Process Spawn pg_dump",
+    "subsystem": "Backend API",
+    "attack_class": "Command and process execution",
+    "starting_paths": [
+      "apps/backend/src/services/respaldos.service.ts",
+      "apps/backend/src/services/tenant-provisioning.service.ts"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Command and process execution",
+    "selected_companion_blocks": [
+      "CLOUD-AND-DEPLOYMENT.md#Container and workload boundaries"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-d",
+    "reviewed_paths": [
+      "apps/backend/src/services/respaldos.service.ts",
+      "apps/backend/src/services/tenant-provisioning.service.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-d",
+        "reviewed_paths": [
+          "apps/backend/src/services/respaldos.service.ts",
+          "apps/backend/src/services/tenant-provisioning.service.ts"
+        ],
+        "invariant": "CLI backup processes must pass database credentials securely via environment variables.",
+        "method": "source",
+        "result": "pg_dump is spawned with database password exposed in process CLI arguments.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "process-plaintext-db-credentials-in-cli-args"
+    ],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "apps%2Fbackend%2Fsrc%2Fserver.ts%23cupoDeLaPeticion::apps%2Fbackend%2Fsrc%2Fplugins%2Fno-aceptar-mas-de-lo-que-aguanta.ts%23topeDeCarga::apps%2Fbackend::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Rate%20limits%20and%20concurrency%20controls",
+    "canonical_refs": {
+      "surface": "apps/backend/src/server.ts#cupoDeLaPeticion",
+      "boundary": "apps/backend/src/plugins/no-aceptar-mas-de-lo-que-aguanta.ts#topeDeCarga",
+      "subsystem": "apps/backend",
+      "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Rate limits and concurrency controls"
+    },
+    "surface": "Global HTTP Request Intake",
+    "boundary": "Fastify Rate Limiting & Load Shedder",
+    "subsystem": "Backend API",
+    "attack_class": "Rate limits and concurrency controls",
+    "starting_paths": [
+      "apps/backend/src/server.ts",
+      "apps/backend/src/plugins/no-aceptar-mas-de-lo-que-aguanta.ts"
+    ],
+    "ordinary_attack_class_block": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Rate limits and concurrency controls",
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Rate limits and concurrency controls"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-c",
+    "reviewed_paths": [
+      "apps/backend/src/server.ts",
+      "apps/backend/src/plugins/no-aceptar-mas-de-lo-que-aguanta.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-c",
+        "reviewed_paths": [
+          "apps/backend/src/server.ts",
+          "apps/backend/src/plugins/no-aceptar-mas-de-lo-que-aguanta.ts"
+        ],
+        "invariant": "Global request intake must enforce rate limits and load shedding fairly.",
+        "method": "source",
+        "result": "Untrusted Authorization headers bypass IP rate limits on public endpoints and /health bypasses load shedding.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "dos-health-check-db-pool-exhaustion",
+      "ratelimit-bypass-unauthenticated-header"
+    ],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "apps%2Fweb%2Fsrc%2Fapp%2Fapi%2Fsuperadmin%2Fauth%2Flogin%2Froute.ts%23POST%20%2Fapi%2Fsuperadmin%2Fauth%2Flogin::apps%2Fweb%2Fsrc%2Flib%2Fauth-cookies.ts%23setAuthCookies::apps%2Fweb::WEB-PROTOCOL-AND-AUTH.md%23Cookie%20and%20browser-state%20security",
+    "canonical_refs": {
+      "surface": "apps/web/src/app/api/superadmin/auth/login/route.ts#POST /api/superadmin/auth/login",
+      "boundary": "apps/web/src/lib/auth-cookies.ts#setAuthCookies",
+      "subsystem": "apps/web",
+      "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Cookie and browser-state security"
+    },
+    "surface": "Next.js SuperAdmin Auth Proxy",
+    "boundary": "HTTP Cookie Attributes & Flags",
+    "subsystem": "Web Frontend",
+    "attack_class": "Cookie and browser-state security",
+    "starting_paths": [
+      "apps/web/src/app/api/superadmin/auth/login/route.ts",
+      "apps/web/src/lib/auth-cookies.ts"
+    ],
+    "ordinary_attack_class_block": "WEB-PROTOCOL-AND-AUTH.md#Cookie and browser-state security",
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Cookie and browser-state security"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-d",
+    "reviewed_paths": [
+      "apps/web/src/app/api/superadmin/auth/login/route.ts",
+      "apps/web/src/lib/auth-cookies.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-d",
+        "reviewed_paths": [
+          "apps/web/src/app/api/superadmin/auth/login/route.ts",
+          "apps/web/src/lib/auth-cookies.ts"
+        ],
+        "invariant": "Administrative authentication cookies must be marked HttpOnly and session revocation synchronized.",
+        "method": "source",
+        "result": "SuperAdmin JWT cookie is non-HttpOnly, persisted in localStorage, and logout fails to revoke database token.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "auth-superadmin-cookie-httponly-missing",
+      "auth-superadmin-logout-revocation-broken"
+    ],
+    "unresolved": []
+  }
+]

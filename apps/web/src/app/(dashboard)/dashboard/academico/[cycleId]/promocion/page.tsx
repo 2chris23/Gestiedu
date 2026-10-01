@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import { Lista } from '@/components/ui/lista';
 import { toast } from 'sonner';
 import {
     ArrowLeft, GraduationCap, CheckCircle2, Users, Wand2, Loader2,
@@ -9,6 +10,10 @@ import {
     Printer, FileText
 } from 'lucide-react';
 import { academicYearService } from '@/services/academic-year.service';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
+import { MembreteOficial } from '@/components/documentos/MembreteOficial';
+import { createPortal } from 'react-dom';
+import { imprimirConAviso } from '@/components/documentos/HojaImprimible';
 
 interface Suggestion {
     studentId: string;
@@ -19,12 +24,24 @@ interface Suggestion {
     isLastGrade: boolean;
     defaultTargetGrade: number | null;
     defaultTargetSection: string | null;
-    subjectGrades: Array<{ subjectId: string; subjectName: string; average: number; approved: boolean }>;
-    failedSubjects: Array<{ name: string; average: number }>;
+    subjectGrades: Array<{ subjectId: string; subjectName: string; average: number; approved: boolean; revision?: number | null; definitivaDeLapsos?: number }>;
+    failedSubjects: Array<{ subjectId?: string; name: string; average: number; revision?: number | null }>;
     pendingCount: number;
     finalAverage: number;
     suggestedStatus: 'PROMOVIDO' | 'PROMOVIDO_CON_PENDIENTES' | 'NO_PROMOVIDO';
+    /** Lo que decidió el admin en el paso 4 (con su motivo) y la condición que vale. */
+    decision?: { condicion: string; motivo: string } | null;
+    condicionFinal?: 'PROMOVIDO' | 'PROMOVIDO_CON_PENDIENTES' | 'NO_PROMOVIDO';
+    motivoDeLaSugerencia?: string;
 }
+
+/**
+ * El grado al que va según la condición: repite el suyo; el del último año que
+ * no repite no va a ninguna sección (egresa o solo cursa sus pendientes).
+ * La misma cuenta que el servidor (`gradoDeDestino`).
+ */
+const gradoDestino = (s: { gradeLevel: number; isLastGrade: boolean }, condicion: string): number | null =>
+    condicion === 'NO_PROMOVIDO' ? s.gradeLevel : s.isLastGrade ? null : s.gradeLevel + 1;
 
 interface DestSection {
     id: string;
@@ -121,12 +138,21 @@ export default function PromotionPage() {
     // Asignaciones por estudiante
     const [assignments, setAssignments] = useState<Record<string, StudentAssignment>>({});
     const [finalResults, setFinalResults] = useState<Record<string, string>>({});
+    // Por qué el admin decide distinto de lo sugerido (obligatorio; queda en el expediente).
+    const [motivos, setMotivos] = useState<Record<string, string>>({});
+    // Sin año siguiente no se cierra: se crea en el paso 5 del fin de año.
+    const [nextYear, setNextYear] = useState<{ id: string; name: string } | null>(null);
 
     // Filtro por condición académica en Nivel 3
     const [statusFilter, setStatusFilter] = useState<'ALL' | 'PROMOVIDO' | 'PROMOVIDO_CON_PENDIENTES' | 'NO_PROMOVIDO'>('ALL');
 
     // Modal de Acta de Materia Pendiente (Arrastre venezolano)
     const [pendingModalStudent, setPendingModalStudent] = useState<Suggestion | null>(null);
+
+    // Revisión de las materias reprobadas: su nota es la definitiva.
+    const [revisionStudent, setRevisionStudent] = useState<Suggestion | null>(null);
+    const [revisionScores, setRevisionScores] = useState<Record<string, string>>({});
+    const [savingRevision, setSavingRevision] = useState(false);
 
     // Modales
     const [confirmOpen, setConfirmOpen] = useState(false);
@@ -167,6 +193,7 @@ export default function PromotionPage() {
             setSuggestions(loadedSuggestions);
             setDestYears(context.destinationYears || []);
             setSuggestedNextYearName(context.suggestedNextYearName || '2027-2028');
+            setNextYear(context.nextYear ?? null);
             setStrategies(strat || []);
 
             // Inicializar asignaciones lógicas iniciales
@@ -174,8 +201,8 @@ export default function PromotionPage() {
             const initialResults: Record<string, string> = {};
 
             loadedSuggestions.forEach((s: Suggestion) => {
-                initialResults[s.studentId] = s.suggestedStatus;
-                if (s.isLastGrade) {
+                initialResults[s.studentId] = s.condicionFinal ?? s.suggestedStatus;
+                if (s.defaultTargetGrade === null) {
                     initialAssignments[s.studentId] = {
                         action: 'GRADUATE',
                         targetGrade: null,
@@ -205,7 +232,7 @@ export default function PromotionPage() {
                 setSelectedSection(sorted[0].currentSection || 'A');
             }
         } catch (e: any) {
-            toast.error(e?.response?.data?.error || 'Error al cargar el panel de promoción');
+            if (!esQueNoContesta(e)) toast.error(e?.response?.data?.error || 'Error al cargar el panel de promoción');
         } finally {
             setLoading(false);
         }
@@ -214,6 +241,55 @@ export default function PromotionPage() {
     useEffect(() => {
         load();
     }, [load]);
+
+    /** Materias que se pueden revisar: las reprobadas y las que ya tienen revisión. */
+    const materiasDeRevision = (s: Suggestion) =>
+        s.subjectGrades.filter(g => g.revision != null || s.failedSubjects.some(f => f.subjectId === g.subjectId));
+
+    const abrirRevision = (s: Suggestion) => {
+        const iniciales: Record<string, string> = {};
+        materiasDeRevision(s).forEach(g => { iniciales[g.subjectId] = g.revision != null ? String(g.revision) : ''; });
+        setRevisionScores(iniciales);
+        setRevisionStudent(s);
+    };
+
+    const guardarRevisiones = async () => {
+        if (!revisionStudent) return;
+        const cambios = materiasDeRevision(revisionStudent).filter(g => {
+            const v = revisionScores[g.subjectId];
+            return v !== undefined && v.trim() !== '' && Number(v) !== g.revision;
+        });
+        for (const g of cambios) {
+            const n = Number(revisionScores[g.subjectId].replace(',', '.'));
+            if (!Number.isFinite(n) || n < 0 || n > 20) {
+                toast.error(`La nota de revisión de ${g.subjectName} va de 0 a 20`);
+                return;
+            }
+        }
+        setSavingRevision(true);
+        try {
+            for (const g of cambios) {
+                await academicYearService.guardarRevision(yearId, {
+                    studentId: revisionStudent.studentId,
+                    subjectId: g.subjectId,
+                    score: Number(revisionScores[g.subjectId].replace(',', '.')),
+                });
+            }
+            // Se vuelven a pedir las sugerencias, sin tocar lo que el admin ya
+            // asignó: solo cambia la condición de este alumno.
+            const context = await academicYearService.getPromotionContext(yearId);
+            const nuevas: Suggestion[] = context.suggestions || [];
+            setSuggestions(nuevas);
+            const suya = nuevas.find(n => n.studentId === revisionStudent.studentId);
+            if (suya) setFinalResults(prev => ({ ...prev, [suya.studentId]: suya.suggestedStatus }));
+            toast.success(cambios.length > 0 ? 'Revisión guardada' : 'No había cambios');
+            setRevisionStudent(null);
+        } catch (e: any) {
+            if (!esQueNoContesta(e)) toast.error(e?.response?.data?.error || 'No se pudo guardar la revisión');
+        } finally {
+            setSavingRevision(false);
+        }
+    };
 
     // Niveles 1 y 2 derivados
     const grades = useMemo(() => {
@@ -289,7 +365,8 @@ export default function PromotionPage() {
             (res.assignments || []).forEach((a: any) => {
                 const s = suggestions.find(st => st.studentId === a.studentId);
                 if (s) {
-                    if (s.isLastGrade) {
+                    const destino = gradoDestino(s, finalResults[s.studentId] || s.suggestedStatus);
+                    if (destino === null) {
                         nextAssignments[a.studentId] = {
                             action: 'GRADUATE',
                             targetGrade: null,
@@ -297,11 +374,12 @@ export default function PromotionPage() {
                             classroomId: null,
                         };
                     } else {
+                        const deEseGrado = destYears.some(y => y.sections.some(sec => sec.id === a.sectionId && sec.grade === destino));
                         nextAssignments[a.studentId] = {
                             action: 'ENROLL',
-                            targetGrade: a.targetGrade ?? s.defaultTargetGrade,
+                            targetGrade: destino,
                             targetSectionLetter: a.targetSectionLetter || s.currentSection || 'A',
-                            classroomId: a.sectionId || null,
+                            classroomId: deEseGrado ? a.sectionId : null,
                         };
                     }
                 }
@@ -322,18 +400,25 @@ export default function PromotionPage() {
             toast.error(`Escribe "${yearName}" exactamente para confirmar`);
             return;
         }
+        const sinMotivo = suggestions.filter(s => faltaElMotivo(s));
+        if (sinMotivo.length > 0) {
+            toast.error(`Falta el motivo de ${sinMotivo.length === 1 ? sinMotivo[0].name : `${sinMotivo.length} alumnos`}: decides distinto de lo que sugiere el sistema.`);
+            return;
+        }
         setConfirming(true);
         try {
             const decisions = suggestions.map(s => {
                 const asg = assignments[s.studentId] || {
-                    action: s.isLastGrade ? 'GRADUATE' : 'ENROLL',
+                    action: s.defaultTargetGrade === null ? 'GRADUATE' : 'ENROLL',
                     targetGrade: s.defaultTargetGrade,
                     targetSectionLetter: s.currentSection || 'A',
                     classroomId: null,
                 };
+                const finalResult = finalResults[s.studentId] || s.suggestedStatus;
                 return {
                     studentId: s.studentId,
-                    finalResult: finalResults[s.studentId] || s.suggestedStatus,
+                    finalResult,
+                    motivo: motivos[s.studentId]?.trim() || (s.decision?.condicion === finalResult ? s.decision.motivo : undefined),
                     action: asg.action,
                     targetGrade: asg.targetGrade,
                     targetSectionLetter: asg.targetSectionLetter,
@@ -341,22 +426,33 @@ export default function PromotionPage() {
                 };
             });
 
-            await academicYearService.confirmClose(
-                yearId,
-                decisions,
-                'manual',
-                undefined,
-                true, // autoCreateNextYear
-                suggestedNextYearName
-            );
+            await academicYearService.confirmClose(yearId, decisions, 'manual');
 
             toast.success(`¡Ciclo escolar ${yearName} finalizado exitosamente!`);
-            router.push(`/dashboard/academico`);
+            router.push(`/dashboard/academico/${yearName}/cierre`);
         } catch (e: any) {
             toast.error(e?.response?.data?.error || e?.message || 'Error al confirmar el cierre');
         } finally {
             setConfirming(false);
         }
+    };
+
+    /** Distinto de lo sugerido y sin motivo (ni escrito aquí ni guardado en el paso 4). */
+    const faltaElMotivo = (s: Suggestion) => {
+        const fr = finalResults[s.studentId] || s.suggestedStatus;
+        const accion = assignments[s.studentId]?.action;
+        if (accion === 'RETIRE_KEEP_HISTORY' || accion === 'RETIRE_DELETE') return false;
+        if (fr === s.suggestedStatus) return false;
+        return !(motivos[s.studentId]?.trim() || (s.decision?.condicion === fr && s.decision.motivo));
+    };
+
+    /** Cambiar la condición mueve también su destino (repite, pasa o egresa). */
+    const cambiarCondicion = (s: Suggestion, condicion: string) => {
+        setFinalResults(prev => ({ ...prev, [s.studentId]: condicion }));
+        const destino = gradoDestino(s, condicion);
+        updateStudentAssignment(s.studentId, destino === null
+            ? { action: 'GRADUATE', targetGrade: null, targetSectionLetter: '', classroomId: null }
+            : { action: 'ENROLL', targetGrade: destino, targetSectionLetter: s.currentSection || 'A', classroomId: null });
     };
 
     // Actualizar asignación individual de alumno
@@ -405,23 +501,29 @@ export default function PromotionPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50/50 pb-24">
-            {/* Header Sticky */}
-            <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-xs">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="space-y-6">
+            {/* LA FRANJA DE ARRIBA, DE BORDE A BORDE Y ALINEADA
+                Iba con su propio `px-4` DENTRO del margen del marco: una franja
+                blanca que no llegaba a los bordes y un título 16 px más adentro
+                que todo lo demás. Ahora sale de borde a borde (márgenes negativos
+                iguales a los del marco) y su contenido cae en la misma columna.
+                Pegada arriba solo con barra lateral: en el teléfono, título,
+                botón y estrategias pegados se comían media pantalla al bajar. */}
+            <header className="-mx-4 -mt-6 border-b border-gray-200 bg-white px-4 py-4 shadow-xs sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 lateral:sticky lateral:top-0 lateral:z-30">
+                <div>
                     <div className="flex items-center justify-between gap-4 flex-wrap">
                         <div className="flex items-center gap-3">
                             <button
-                                onClick={() => router.push(`/dashboard/academico/${yearName}`)}
-                                className="p-2 -ml-2 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
+                                onClick={() => router.push(`/dashboard/academico/${yearName}/cierre`)}
+                                className="-ml-2.5 flex h-11 w-11 shrink-0 items-center justify-center hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
                                 title="Volver al panel académico"
+                                aria-label="Volver al ciclo"
                             >
-                                <ArrowLeft className="w-5 h-5" />
+                                <ArrowLeft className="w-5 h-5" aria-hidden />
                             </button>
                             <div>
-                                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                                    <GraduationCap className="w-7 h-7 text-indigo-600" />
-                                    Promoción Escolar — Ciclo {yearName}
+                                <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">
+                                    Colocar y cerrar — Ciclo {yearName}
                                 </h1>
                                 <p className="text-sm text-gray-500">
                                     {suggestions.length} estudiantes matriculados · <strong className="text-indigo-600">{allAssignedCount}</strong> con destino asignado
@@ -431,12 +533,23 @@ export default function PromotionPage() {
 
                         <button
                             onClick={() => setConfirmOpen(true)}
-                            className="px-5 py-2.5 text-sm font-bold rounded-xl shadow-sm transition-all flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                            disabled={!nextYear}
+                            className="min-h-[44px] px-5 py-2.5 text-sm font-bold rounded-xl shadow-sm transition-all flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
                         >
                             <CheckCircle2 className="w-4 h-4" />
                             Confirmar y Cerrar Ciclo
                         </button>
                     </div>
+
+                    {!nextYear && (
+                        <p role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            Falta el año escolar siguiente. Créalo en el{' '}
+                            <a href={`/dashboard/academico/${yearName}/cierre`} className="font-semibold underline">
+                                paso 5 del fin de año
+                            </a>{' '}
+                            (con el calendario del MPPE y las secciones de este año) y vuelve aquí para colocar a los alumnos.
+                        </p>
+                    )}
 
                     {/* Barra de Estrategias Automáticas */}
                     <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-2 flex-wrap">
@@ -448,7 +561,7 @@ export default function PromotionPage() {
                                 key={s.key}
                                 onClick={() => applyStrategy(s.key)}
                                 disabled={applyingStrategy !== null}
-                                className="px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-indigo-400 hover:bg-indigo-50/50 hover:text-indigo-700 transition-colors disabled:opacity-50"
+                                className="whitespace-nowrap px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-indigo-400 hover:bg-indigo-50/50 hover:text-indigo-700 transition-colors disabled:opacity-50"
                                 title={s.description}
                             >
                                 {applyingStrategy === s.key ? 'Aplicando...' : s.name}
@@ -458,7 +571,7 @@ export default function PromotionPage() {
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+            <div className="space-y-6">
                 {/* NIVEL 1 — Selector de Años */}
                 <section>
                     <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -558,28 +671,28 @@ export default function PromotionPage() {
                                 </h2>
 
                                 {/* Filtros por Condición Académica */}
-                                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
+                                <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
                                     <button
                                         onClick={() => setStatusFilter('ALL')}
-                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'ALL' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                                        className={`whitespace-nowrap px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'ALL' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
                                     >
                                         Todos
                                     </button>
                                     <button
                                         onClick={() => setStatusFilter('PROMOVIDO')}
-                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'PROMOVIDO' ? 'bg-emerald-600 text-white' : 'text-emerald-700 hover:bg-emerald-50'}`}
+                                        className={`whitespace-nowrap px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'PROMOVIDO' ? 'bg-emerald-600 text-white' : 'text-emerald-700 hover:bg-emerald-50'}`}
                                     >
                                         Aprobados
                                     </button>
                                     <button
                                         onClick={() => setStatusFilter('PROMOVIDO_CON_PENDIENTES')}
-                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'PROMOVIDO_CON_PENDIENTES' ? 'bg-amber-600 text-white' : 'text-amber-700 hover:bg-amber-50'}`}
+                                        className={`whitespace-nowrap px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'PROMOVIDO_CON_PENDIENTES' ? 'bg-amber-600 text-white' : 'text-amber-700 hover:bg-amber-50'}`}
                                     >
                                         Con Pendientes (Arrastre)
                                     </button>
                                     <button
                                         onClick={() => setStatusFilter('NO_PROMOVIDO')}
-                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'NO_PROMOVIDO' ? 'bg-rose-600 text-white' : 'text-rose-700 hover:bg-rose-50'}`}
+                                        className={`whitespace-nowrap px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${statusFilter === 'NO_PROMOVIDO' ? 'bg-rose-600 text-white' : 'text-rose-700 hover:bg-rose-50'}`}
                                     >
                                         Repitientes
                                     </button>
@@ -603,7 +716,7 @@ export default function PromotionPage() {
                         <div className="divide-y divide-gray-100">
                             {level3Students.map(s => {
                                 const currentAsg = assignments[s.studentId] || {
-                                    action: s.isLastGrade ? 'GRADUATE' : 'ENROLL',
+                                    action: s.defaultTargetGrade === null ? 'GRADUATE' : 'ENROLL',
                                     targetGrade: s.defaultTargetGrade,
                                     targetSectionLetter: s.currentSection || 'A',
                                     classroomId: null,
@@ -611,8 +724,9 @@ export default function PromotionPage() {
 
                                 const isMale = s.gender === 'MASCULINO';
                                 const isRetired = currentAsg.action === 'RETIRE_KEEP_HISTORY' || currentAsg.action === 'RETIRE_DELETE';
-                                const isGraduate = s.isLastGrade || currentAsg.action === 'GRADUATE';
+                                const isGraduate = currentAsg.action === 'GRADUATE';
                                 const hasPending = s.failedSubjects.length > 0;
+                                const conRevision = s.subjectGrades.some(g => g.revision != null);
 
                                 // Secciones disponibles para el año destino elegido
                                 const availableSections = [
@@ -645,7 +759,7 @@ export default function PromotionPage() {
                                                     <div className="inline-flex items-center gap-1.5 flex-wrap">
                                                         <span className="inline-flex items-center gap-1 text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-md font-semibold">
                                                             <AlertTriangle className="w-3 h-3 text-amber-600" />
-                                                            Materia Pendiente ({s.failedSubjects.length}): {s.failedSubjects.map(f => `${f.name} (${f.average} pts)`).join(', ')}
+                                                            Materia Pendiente ({s.failedSubjects.length}): {s.failedSubjects.map(f => `${f.name} (${f.average} pts${f.revision != null ? ', en revisión' : ''})`).join(', ')}
                                                         </span>
                                                         <button
                                                             onClick={() => setPendingModalStudent(s)}
@@ -655,29 +769,57 @@ export default function PromotionPage() {
                                                             <FileText className="w-3 h-3 text-indigo-600" />
                                                             Acta de Arrastre
                                                         </button>
+                                                        <button
+                                                            onClick={() => abrirRevision(s)}
+                                                            className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 bg-white border border-indigo-200 hover:bg-indigo-50 px-2 py-0.5 rounded-md transition-colors"
+                                                            title="Anotar la nota de la revisión de las materias reprobadas"
+                                                        >
+                                                            Revisión
+                                                        </button>
                                                     </div>
                                                 ) : (
-                                                    <span className="text-emerald-600 font-medium">✓ Todas las materias aprobadas</span>
+                                                    <span className="inline-flex items-center gap-1.5 flex-wrap">
+                                                        <span className="text-emerald-600 font-medium">
+                                                            ✓ Todas las materias aprobadas{conRevision ? ' (con revisión)' : ''}
+                                                        </span>
+                                                        {conRevision && (
+                                                            <button
+                                                                onClick={() => abrirRevision(s)}
+                                                                className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 bg-white border border-indigo-200 hover:bg-indigo-50 px-2 py-0.5 rounded-md transition-colors"
+                                                            >
+                                                                Revisión
+                                                            </button>
+                                                        )}
+                                                    </span>
                                                 )}
                                             </div>
                                         </div>
 
                                         {/* Selector de Estado Sugerido */}
-                                        {!isRetired && !isGraduate && (
-                                            <div className="flex items-center gap-2">
-                                                <span className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${STATUS_COLOR[s.suggestedStatus]}`}>
-                                                    {STATUS_LABEL[s.suggestedStatus]}
-                                                </span>
-                                                <select
-                                                    className="text-xs font-semibold border border-gray-200 rounded-lg px-2 py-1 bg-white"
-                                                    value={finalResults[s.studentId] || s.suggestedStatus}
-                                                    onChange={e => setFinalResults(prev => ({ ...prev, [s.studentId]: e.target.value }))}
-                                                    title="Resultado evaluativo final"
-                                                >
-                                                    {Object.entries(STATUS_LABEL).map(([k, v]) => (
-                                                        <option key={k} value={k}>{v}</option>
-                                                    ))}
-                                                </select>
+                                        {!isRetired && (
+                                            <div className="flex flex-col gap-1.5">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${STATUS_COLOR[s.suggestedStatus]}`} title={s.motivoDeLaSugerencia}>
+                                                        {STATUS_LABEL[s.suggestedStatus]}
+                                                    </span>
+                                                    <Lista
+                                                        tamano="chica"
+                                                        etiqueta="Resultado evaluativo final"
+                                                        valor={finalResults[s.studentId] || s.suggestedStatus}
+                                                        alCambiar={v => cambiarCondicion(s, v)}
+                                                        opciones={Object.entries(STATUS_LABEL).map(([k, v]) => ({ valor: k, texto: v }))}
+                                                    />
+                                                </div>
+                                                {(finalResults[s.studentId] || s.suggestedStatus) !== s.suggestedStatus && (
+                                                    <input
+                                                        aria-label={`Motivo de la decisión de ${s.name}`}
+                                                        placeholder="Motivo (obligatorio, queda anotado)"
+                                                        maxLength={500}
+                                                        value={motivos[s.studentId] ?? (s.decision?.condicion === finalResults[s.studentId] ? s.decision.motivo : '')}
+                                                        onChange={e => setMotivos(prev => ({ ...prev, [s.studentId]: e.target.value }))}
+                                                        className={`min-h-[44px] w-full rounded-lg border px-3 text-sm ${faltaElMotivo(s) ? 'border-rose-400 bg-rose-50' : 'border-gray-300'}`}
+                                                    />
+                                                )}
                                             </div>
                                         )}
 
@@ -686,7 +828,7 @@ export default function PromotionPage() {
                                             {isGraduate ? (
                                                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 text-xs font-bold">
                                                     <GraduationCap className="w-4 h-4" />
-                                                    🎓 5to Año — Egresado del Liceo
+                                                    🎓 {s.gradeLevel}º Año — Egresado del Liceo
                                                 </span>
                                             ) : isRetired ? (
                                                 <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-red-50 text-red-700 border border-red-200 text-xs font-bold">
@@ -698,31 +840,25 @@ export default function PromotionPage() {
                                                     {/* Selector de Año Destino */}
                                                     <div className="flex items-center gap-1">
                                                         <span className="text-xs text-gray-500 font-medium">Pasa a:</span>
-                                                        <select
-                                                            className="text-xs font-bold border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-800"
-                                                            value={currentAsg.targetGrade || 1}
-                                                            onChange={e => updateStudentAssignment(s.studentId, { targetGrade: parseInt(e.target.value) })}
-                                                        >
-                                                            <option value={1}>1º Año</option>
-                                                            <option value={2}>2º Año</option>
-                                                            <option value={3}>3º Año</option>
-                                                            <option value={4}>4º Año</option>
-                                                            <option value={5}>5º Año</option>
-                                                        </select>
+                                                        <Lista
+                                                            tamano="chica"
+                                                            etiqueta="Año al que pasa"
+                                                            valor={String(currentAsg.targetGrade || 1)}
+                                                            alCambiar={v => updateStudentAssignment(s.studentId, { targetGrade: parseInt(v) })}
+                                                            opciones={[1, 2, 3, 4, 5, 6].map(n => ({ valor: String(n), texto: `${n}º Año` }))}
+                                                        />
                                                     </div>
 
                                                     {/* Selector de Sección Destino */}
                                                     <div className="flex items-center gap-1">
                                                         <span className="text-xs text-gray-500 font-medium">Sección:</span>
-                                                        <select
-                                                            className="text-xs font-bold border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-800"
-                                                            value={currentAsg.targetSectionLetter || 'A'}
-                                                            onChange={e => updateStudentAssignment(s.studentId, { targetSectionLetter: e.target.value })}
-                                                        >
-                                                            {uniqueSectionLetters.map(sec => (
-                                                                <option key={sec} value={sec}>Sección {sec}</option>
-                                                            ))}
-                                                        </select>
+                                                        <Lista
+                                                            tamano="chica"
+                                                            etiqueta="Sección a la que pasa"
+                                                            valor={currentAsg.targetSectionLetter || 'A'}
+                                                            alCambiar={v => updateStudentAssignment(s.studentId, { targetSectionLetter: v })}
+                                                            opciones={uniqueSectionLetters.map(sec => ({ valor: sec, texto: `Sección ${sec}` }))}
+                                                        />
                                                     </div>
 
                                                     <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">
@@ -759,11 +895,11 @@ export default function PromotionPage() {
                         </div>
                     </section>
                 )}
-            </main>
+            </div>
 
             {/* Modal de Retiro de Estudiante */}
             {retireModalStudent && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-label="Retirar Estudiante">
                     <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3 bg-red-50/50">
                             <ShieldAlert className="w-5 h-5 text-red-600" />
@@ -822,7 +958,7 @@ export default function PromotionPage() {
 
             {/* Modal para Crear Nueva Sección al Vuelo */}
             {newSectionModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-label="Crear Sección para el Siguiente Ciclo">
                     <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2 bg-indigo-50/50">
                             <Plus className="w-5 h-5 text-indigo-600" />
@@ -831,17 +967,12 @@ export default function PromotionPage() {
                         <div className="p-6 space-y-4">
                             <div>
                                 <label className="block text-xs font-bold text-gray-600 mb-1">Año Escolar Destino</label>
-                                <select
-                                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-bold"
-                                    value={newSectionGrade}
-                                    onChange={e => setNewSectionGrade(parseInt(e.target.value))}
-                                >
-                                    <option value={1}>1º Año</option>
-                                    <option value={2}>2º Año</option>
-                                    <option value={3}>3º Año</option>
-                                    <option value={4}>4º Año</option>
-                                    <option value={5}>5º Año</option>
-                                </select>
+                                <Lista
+                                    etiqueta="Año escolar destino"
+                                    valor={String(newSectionGrade)}
+                                    alCambiar={v => setNewSectionGrade(parseInt(v))}
+                                    opciones={[1, 2, 3, 4, 5].map(n => ({ valor: String(n), texto: `${n}º Año` }))}
+                                />
                             </div>
 
                             <div>
@@ -873,7 +1004,7 @@ export default function PromotionPage() {
 
             {/* Modal de Confirmación y Cierre de Ciclo */}
             {confirmOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-label="Confirmar Cierre de Ciclo Escolar">
                     <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3 bg-gradient-to-r from-emerald-50/80 to-transparent">
                             <AlertTriangle className="w-6 h-6 text-amber-500" />
@@ -884,9 +1015,9 @@ export default function PromotionPage() {
                                 Al confirmar, el sistema:
                             </p>
                             <ul className="text-xs text-gray-600 space-y-1.5 list-disc list-inside bg-gray-50 p-3.5 rounded-xl border border-gray-100 font-medium">
-                                <li>Creará automáticamente el ciclo escolar siguiente (<strong>{suggestedNextYearName}</strong>) y las secciones destino.</li>
-                                <li>Promocionará a los estudiantes a sus años respectivos (1º → 2º, 2º → 3º).</li>
-                                <li>Registrará a los estudiantes de 5to año como <strong>Egresados</strong> y sellará su récord histórico.</li>
+                                <li>Matriculará a los estudiantes en <strong>{nextYear?.name ?? suggestedNextYearName}</strong>: el que pasa, en el año siguiente; el que repite, en el suyo.</li>
+                                <li>Creará las <strong>materias pendientes</strong> de quien pasa con pendientes, con el profesor que las evalúa.</li>
+                                <li>Registrará como <strong>Egresados</strong> a los de último año que aprobaron, y sellará el expediente de cada uno con su condición (y el motivo, si se cambió).</li>
                                 <li>Marcará el ciclo <strong>{yearName}</strong> como finalizado.</li>
                             </ul>
 
@@ -926,16 +1057,66 @@ export default function PromotionPage() {
             )}
 
             {/* Modal de Acta de Materia Pendiente (Arrastre venezolano) */}
-            {pendingModalStudent && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto print:p-0 print:bg-white">
-                    <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 print:shadow-none print:max-w-full">
+            {revisionStudent && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
+                    <div role="dialog" aria-modal="true" aria-labelledby="titulo-revision" className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden">
+                        <div className="px-6 py-4 border-b border-gray-100">
+                            <h3 id="titulo-revision" className="font-bold text-gray-900">Revisión de {revisionStudent.name}</h3>
+                            <p className="mt-1 text-xs text-gray-600">
+                                La nota de la revisión es la definitiva de la materia para la promoción. Del 0 al 20; se redondea como las definitivas del liceo.
+                            </p>
+                        </div>
+                        <div className="px-6 py-4 space-y-3">
+                            {materiasDeRevision(revisionStudent).map(g => (
+                                <div key={g.subjectId} className="flex items-center justify-between gap-3">
+                                    <label htmlFor={`revision-${g.subjectId}`} className="text-sm text-gray-800">
+                                        <span className="font-semibold">{g.subjectName}</span>
+                                        <span className="block text-xs text-gray-600">Definitiva del año: {g.definitivaDeLapsos ?? g.average}</span>
+                                    </label>
+                                    <input
+                                        id={`revision-${g.subjectId}`}
+                                        type="number"
+                                        inputMode="decimal"
+                                        min={0}
+                                        max={20}
+                                        step="0.5"
+                                        value={revisionScores[g.subjectId] ?? ''}
+                                        onChange={e => setRevisionScores(prev => ({ ...prev, [g.subjectId]: e.target.value }))}
+                                        className="w-24 min-h-[44px] border border-gray-300 rounded-lg px-3 text-center"
+                                        placeholder="—"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-2">
+                            <button onClick={() => setRevisionStudent(null)} className="min-h-[44px] px-4 text-sm font-semibold text-gray-700 hover:bg-gray-200 rounded-xl">
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={guardarRevisiones}
+                                disabled={savingRevision}
+                                className="min-h-[44px] px-4 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-60"
+                            >
+                                {savingRevision ? 'Guardando…' : 'Guardar revisión'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* El acta va suelta en <body> (`data-hoja-suelta`): al imprimir,
+                `globals.css` deja solo ella. Dentro de la página salía la
+                promoción entera detrás y el acta, fija, repetida en cada hoja. */}
+            {pendingModalStudent && createPortal(
+                <div data-hoja-suelta className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto print:static print:block print:p-0 print:bg-white print:overflow-visible print:backdrop-blur-none" role="dialog" aria-modal="true" aria-label="Acta de compromiso de materias pendientes">
+                    <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 print:shadow-none print:max-w-full print:rounded-none print:overflow-visible print:animate-none">
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-amber-50/70 print:hidden">
                             <div className="flex items-center gap-2 text-amber-900 font-bold text-base">
                                 <FileText className="w-5 h-5 text-amber-600" />
                                 Acta de Compromiso de Materias Pendientes (Arrastre)
                             </div>
                             <button
-                                onClick={() => window.print()}
+                                onClick={() => void imprimirConAviso()}
                                 className="px-3 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-1.5 shadow-2xs transition-colors"
                             >
                                 <Printer className="w-3.5 h-3.5" /> Imprimir Acta
@@ -943,12 +1124,12 @@ export default function PromotionPage() {
                         </div>
 
                         {/* Documento Oficial Formateado para Venezuela */}
-                        <div className="p-8 space-y-6 text-gray-800 font-sans text-xs leading-relaxed print:p-8">
+                        <div className="p-8 space-y-6 text-gray-800 font-sans text-xs leading-relaxed print:p-0">
                             <div className="text-center border-b border-gray-200 pb-4 space-y-1">
-                                <div className="font-extrabold uppercase tracking-wider text-gray-900 text-sm">República Bolivariana de Venezuela</div>
-                                <div className="font-semibold text-gray-700">Ministerio del Poder Popular para la Educación</div>
+                                {/* El membrete del liceo: antes el acta no decía de qué liceo era. */}
+                                <MembreteOficial className="mb-3" />
                                 <div className="font-bold text-indigo-900 text-sm">ACTA DE COMPROMISO ACADÉMICO — MATERIA PENDIENTE</div>
-                                <div className="text-gray-500 font-medium text-[11px]">Año Escolar Cursado: <strong>{yearName}</strong></div>
+                                <div className="text-gray-600 font-medium text-xs">Año Escolar Cursado: <strong>{yearName}</strong></div>
                             </div>
 
                             <div className="space-y-2">
@@ -1016,7 +1197,8 @@ export default function PromotionPage() {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

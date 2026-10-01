@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+    </application>
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!--
+        Instalar la versión nueva de la app desde la propia app
+        (`ActualizarAppPlugin`). Android además pide a la persona que lo
+        permita la primera vez, y confirmar cada instalación.
+
+        OJO: Google Play no permite que una app se actualice por fuera de la
+        tienda. La APK que se publique en Play NO lleva este permiso: allí se
+        actualiza por Play. Ver docs/APP-MOVIL.md.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!--
+        Asistencia por QR (`AsistenciaQrPlugin`): la cámara para leer el QR del
+        profesor (o el del alumno), y la ubicación para el faro —el alumno
+        tiene que estar cerca del teléfono del profesor—. Android pide las dos
+        la primera vez que hacen falta, no al instalar.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <!--
+        Guardar un comprobante o un boletín en «Descargas». Desde Android 10 el
+        sistema ya no pide permiso para su propia carpeta de descargas, pero en
+        los teléfonos viejos (la app llega hasta Android 6) sí hace falta: sin
+        esto, ahí la descarga falla sin decir por qué.
+    -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+</manifest>

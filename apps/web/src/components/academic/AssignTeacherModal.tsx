@@ -4,6 +4,7 @@ import { X, Search, UserPlus, Check } from 'lucide-react';
 import { useTeachers, useAssignTeacher } from '@/hooks/useTeachers';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { Teacher } from '@/services/teachers.service';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 interface AssignTeacherModalProps {
     isOpen: boolean;
@@ -49,7 +50,7 @@ export default function AssignTeacherModal({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={currentTeacher ? 'Cambiar Profesor Guía' : 'Asignar Profesor Guía'}>
             <div className="bg-white w-full max-w-2xl max-h-[80vh] rounded-xl shadow-2xl overflow-hidden flex flex-col">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-white">
@@ -62,7 +63,7 @@ export default function AssignTeacherModal({
                             Sección: <span className="font-semibold">{classroomName}</span>
                         </p>
                     </div>
-                    <button
+                    <button aria-label="Cerrar"
                         onClick={onClose}
                         className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
                     >
@@ -108,19 +109,12 @@ export default function AssignTeacherModal({
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
                                                 {/* Avatar */}
-                                                <div className="relative w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
-                                                    {teacher.avatar ? (
-                                                        <Image
-                                                            src={teacher.avatar}
-                                                            alt={`${teacher.firstName} ${teacher.lastName}`}
-                                                            fill
-                                                            sizes="48px"
-                                                            className="rounded-full object-cover"
-                                                        />
-                                                    ) : (
-                                                        `${teacher.firstName[0]}${teacher.lastName[0]}`
-                                                    )}
-                                                </div>
+                                                <UserAvatar
+                                                    name={`${teacher.firstName} ${teacher.lastName}`}
+                                                    src={teacher.avatar}
+                                                    className="h-12 w-12 shadow-md"
+                                                    initialsClassName="text-sm"
+                                                />
 
                                                 {/* Info */}
                                                 <div>

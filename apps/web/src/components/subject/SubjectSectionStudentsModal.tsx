@@ -6,6 +6,7 @@ import { useStudents } from '@/hooks/useStudents';
 import { SectionStudent } from '@/services/students.service';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 interface Props {
     isOpen: boolean;
@@ -58,7 +59,7 @@ export default function SubjectSectionStudentsModal({
         : section.slug || section.id;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150" role="dialog" aria-modal="true" aria-label={`Promedios en ${section.name}`}>
             <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-150">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/80">
@@ -125,9 +126,12 @@ export default function SubjectSectionStudentsModal({
                                         className="py-3 px-3 flex items-center justify-between hover:bg-gray-50 rounded-xl transition-colors"
                                     >
                                         <div className="flex items-center gap-3 min-w-0">
-                                            <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-xs shrink-0">
-                                                {student.firstName[0]}{student.lastName[0]}
-                                            </div>
+                                            <UserAvatar
+                                                name={`${student.firstName} ${student.lastName}`}
+                                                src={(student as any).avatar}
+                                                className="h-9 w-9"
+                                                initialsClassName="text-xs"
+                                            />
                                             <div className="min-w-0">
                                                 <div className="text-sm font-semibold text-gray-900 truncate">
                                                     {student.firstName} {student.lastName}

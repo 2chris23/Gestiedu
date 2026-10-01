@@ -1,18 +1,18 @@
 'use client';
 
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { toast } from 'sonner';
 import {
-    Calendar, Clock, Printer, Edit, MapPin,
+    Calendar, Clock, Edit, MapPin,
     ChevronLeft, ChevronRight, BookOpen, CalendarDays
 } from 'lucide-react';
 import { ScheduleBlock } from '@/components/schedule/UniversalScheduleViewer';
+import { DescargarHorario } from '@/components/schedule/DescargarHorario';
 import ScheduleHistoryModal from '@/components/schedule/ScheduleHistoryModal';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLiveOverview } from '@/hooks/useLiveClass';
 import { toLocalYMD } from '@/utils/date.utils';
-import { useSchoolToday } from '@/hooks/useSchoolTime';
+import { useRelojDelLiceo } from '@/hooks/useSchoolTime';
 
 interface Props {
     schedule: ScheduleBlock[];
@@ -21,6 +21,8 @@ interface Props {
     showActions?: boolean;
     classroomId?: string;
     editUrl?: string;
+    /** Debajo del nombre de la materia en el horario descargado: la sección. */
+    subtitulo?: string;
 }
 
 const WORKING_DAYS = [
@@ -48,17 +50,18 @@ export default function SubjectScheduleSection({
     role,
     showActions = false,
     classroomId,
-    editUrl
+    editUrl,
+    subtitulo
 }: Props) {
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [selectedHistoryDate, setSelectedHistoryDate] = useState<string | null>(null);
     const carouselRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
 
-    const now = new Date();
-    const currentTime = now.toTimeString().slice(0, 5);
-    // 'Hoy' según el liceo, no según el reloj del dispositivo
-    const todayDateStr = useSchoolToday();
+    // Día y hora del LICEO, no los del aparato (RELOJ-01).
+    const reloj = useRelojDelLiceo();
+    const currentTime = reloj.hora;
+    const todayDateStr = reloj.fecha;
 
     // Live Overview (temas generadores y actividades de la materia)
     const activeDate = selectedHistoryDate || todayDateStr;
@@ -76,15 +79,16 @@ export default function SubjectScheduleSection({
             return a.startTime.localeCompare(b.startTime);
         });
 
-        const baseDate = selectedHistoryDate ? new Date(`${selectedHistoryDate}T12:00:00`) : new Date(now);
-        baseDate.setHours(12, 0, 0, 0);
+        // Todo en UTC a mediodía, a partir del día del LICEO: con getDate/getDay
+        // (hora del aparato) un teléfono en otra zona corría las fechas un día.
+        const baseDate = new Date(`${selectedHistoryDate || todayDateStr}T12:00:00Z`);
 
         const pastClasses: SubjectClassSession[] = [];
         // 1. Buscar hacia atrás hasta 35 días para obtener 2 clases anteriores
         for (let offset = 1; offset <= 35 && pastClasses.length < 2; offset++) {
             const d = new Date(baseDate);
-            d.setDate(baseDate.getDate() - offset);
-            const dow = d.getDay(); // 0=dom..6=sáb
+            d.setUTCDate(baseDate.getUTCDate() - offset);
+            const dow = d.getUTCDay(); // 0=dom..6=sáb
             if (dow >= 1 && dow <= 5) {
                 const dayKey = WORKING_DAYS[dow - 1].key;
                 const blocksForDay = sortedBlocks.filter((b) => b.day === dayKey);
@@ -96,7 +100,7 @@ export default function SubjectScheduleSection({
                         dateStr: dStr,
                         dayKey,
                         dayLabel: WORKING_DAYS[dow - 1].label,
-                        formattedDate: `${WORKING_DAYS[dow - 1].key} ${d.getDate()}/${d.getMonth() + 1}`,
+                        formattedDate: `${WORKING_DAYS[dow - 1].key} ${d.getUTCDate()}/${d.getUTCMonth() + 1}`,
                         block: b,
                         status: 'past',
                         statusLabel: 'REALIZADA',
@@ -106,7 +110,7 @@ export default function SubjectScheduleSection({
         }
 
         // 2. Clases del día base (hoy o día seleccionado)
-        const baseDow = baseDate.getDay();
+        const baseDow = baseDate.getUTCDay();
         const currentClasses: SubjectClassSession[] = [];
         if (baseDow >= 1 && baseDow <= 5) {
             const dayKey = WORKING_DAYS[baseDow - 1].key;
@@ -141,7 +145,7 @@ export default function SubjectScheduleSection({
                     dateStr: baseDate.toISOString().split('T')[0],
                     dayKey,
                     dayLabel: WORKING_DAYS[baseDow - 1].label,
-                    formattedDate: `HOY ${baseDate.getDate()}/${baseDate.getMonth() + 1}`,
+                    formattedDate: `HOY ${baseDate.getUTCDate()}/${baseDate.getUTCMonth() + 1}`,
                     block: b,
                     status,
                     statusLabel,
@@ -155,8 +159,8 @@ export default function SubjectScheduleSection({
 
         for (let offset = 1; offset <= 45 && futureClasses.length < totalNeededFuture; offset++) {
             const d = new Date(baseDate);
-            d.setDate(baseDate.getDate() + offset);
-            const dow = d.getDay();
+            d.setUTCDate(baseDate.getUTCDate() + offset);
+            const dow = d.getUTCDay();
             if (dow >= 1 && dow <= 5) {
                 const dayKey = WORKING_DAYS[dow - 1].key;
                 const blocksForDay = sortedBlocks.filter((b) => b.day === dayKey);
@@ -168,7 +172,7 @@ export default function SubjectScheduleSection({
                             dateStr: d.toISOString().split('T')[0],
                             dayKey,
                             dayLabel: WORKING_DAYS[dow - 1].label,
-                            formattedDate: `${WORKING_DAYS[dow - 1].key} ${d.getDate()}/${d.getMonth() + 1}`,
+                            formattedDate: `${WORKING_DAYS[dow - 1].key} ${d.getUTCDate()}/${d.getUTCMonth() + 1}`,
                             block: b,
                             status: 'upcoming',
                             statusLabel: isNext ? 'PRÓXIMA CLASE' : 'SIGUIENTE',
@@ -227,7 +231,7 @@ export default function SubjectScheduleSection({
     const headerDateText = selectedHistoryDate
         ? `Clase seleccionada: ${selectedHistoryDate.split('-').reverse().join('/')}`
         : currentActiveSession
-        ? `${currentActiveSession.status === 'today' || currentActiveSession.status === 'current' ? 'Hoy' : 'Próxima'}, ${currentActiveSession.dayLabel} (${currentActiveSession.date.toLocaleDateString('es-VE', { day: 'numeric', month: 'long' })})`
+        ? `${currentActiveSession.status === 'today' || currentActiveSession.status === 'current' ? 'Hoy' : 'Próxima'}, ${currentActiveSession.dayLabel} (${currentActiveSession.date.toLocaleDateString('es-VE', { day: 'numeric', month: 'long', timeZone: 'UTC' })})`
         : 'Horario semanal';
 
     return (
@@ -272,16 +276,10 @@ export default function SubjectScheduleSection({
                         </div>
                     )}
 
+                    <DescargarHorario bloques={schedule} titulo={subject.name} subtitulo={subtitulo} />
+
                     {showActions && (
                         <div className="flex items-center gap-1 mr-1 pr-1 border-r border-gray-200">
-                            <button
-                                type="button"
-                                onClick={() => toast.info('Impresión de horario disponible')}
-                                className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                title="Imprimir horario de la materia"
-                            >
-                                <Printer size={15} />
-                            </button>
                             {editUrl && (
                                 <Link
                                     href={editUrl}
@@ -325,7 +323,9 @@ export default function SubjectScheduleSection({
             {/* VISTA DE CLASES SECUENCIALES (2 ANTERIORES + HOY + SIGUIENTES HASTA 10) */}
             <div
                 ref={carouselRef}
-                className="flex w-full gap-3 overflow-x-auto pb-2 pt-0.5 snap-x snap-mandatory scroll-smooth no-scrollbar"
+                /* De pie, en vertical: cinco tarjetas de 190 px no caben en 390,
+                   y arrastrar de lado para ver la clase de las 10 es un fastidio. */
+                className="flex w-full flex-col gap-3 pb-2 pt-0.5 min-[700px]:flex-row min-[700px]:snap-x min-[700px]:snap-mandatory min-[700px]:overflow-x-auto min-[700px]:scroll-smooth min-[700px]:no-scrollbar"
                 style={{
                     scrollbarWidth: 'none',
                     msOverflowStyle: 'none',
@@ -343,7 +343,9 @@ export default function SubjectScheduleSection({
                         const isToday = session.status === 'today';
                         const isPast = session.status === 'past';
 
-                        const temaGenerador = subjectInfo?.temaGenerador || 'Tema de clase programado';
+                        const temaGenerador = subjectInfo?.antesDelPlan
+                            ? subjectInfo.nombreAntesDelPlan || 'Diagnóstico'
+                            : subjectInfo?.temaGenerador || 'Tema de clase programado';
                         const firstColLabel = subjectInfo?.firstColumnLabel || 'Tema Generador';
                         const todayActCount = subjectInfo?.todayActivitiesCount ?? 0;
                         const nextActCount = subjectInfo?.nextActivitiesCount ?? 0;
@@ -365,7 +367,7 @@ export default function SubjectScheduleSection({
                                           }
                                         : undefined
                                 }
-                                className={`snap-start flex-shrink-0 w-[calc((100%-48px)/5)] min-w-[190px] min-h-[160px] p-3.5 rounded-2xl border-2 transition-all flex flex-col justify-between ${
+                                className={`w-full min-h-[96px] min-[700px]:snap-start min-[700px]:flex-shrink-0 min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[190px] min-[700px]:min-h-[160px] p-3.5 rounded-2xl border-2 transition-all flex flex-col justify-between ${
                                     isClickable ? 'cursor-pointer hover:ring-2 hover:ring-indigo-400 hover:shadow-xs' : ''
                                 } ${
                                     isCurrent
@@ -427,11 +429,17 @@ export default function SubjectScheduleSection({
                                 {/* Footer: Actividades y Aula (solo si está asignada) */}
                                 <div className="flex items-center justify-between border-t border-gray-100/80 pt-2 text-[10px] text-gray-500">
                                     <div className="flex items-center gap-1.5 font-bold">
-                                        <span className="text-indigo-600 bg-indigo-50 px-1 py-0.2 rounded">
-                                            Hoy: {isToday || isCurrent ? todayActCount : 0}
+                                        <span
+                                            className="text-indigo-600 bg-indigo-50 px-1 py-0.2 rounded"
+                                            title="Actividades que tocan en esta clase"
+                                        >
+                                            {isToday || isCurrent ? todayActCount : 0} hoy
                                         </span>
-                                        <span className="text-gray-500 bg-gray-100 px-1 py-0.2 rounded">
-                                            Próx: {nextActCount}
+                                        <span
+                                            className="text-gray-500 bg-gray-100 px-1 py-0.2 rounded"
+                                            title="Actividades que se dejaron en esta clase para otro día"
+                                        >
+                                            {nextActCount} después
                                         </span>
                                     </div>
                                     {hasClassroom && (

@@ -284,7 +284,7 @@ describe('Fase 3.5-C — Cierre de ciclo, prosecución y comparación', () => {
         expect(ana!.suggestedStatus).toBe('NO_PROMOVIDO');
     });
 
-    it('3. El admin edita la sugerencia → el resultado final respeta su decisión', async () => {
+    it('3. El admin edita la sugerencia → el resultado final respeta su decisión (con motivo)', async () => {
         await createStudentWithScores('Ana R', 'FEMENINO', [15, 15, 5]); // sugerido: con pendientes
         await createStudentWithScores('Luis M', 'MASCULINO', [5, 5, 5]); // sugerido: no promocionado
         await flushGrades();
@@ -293,13 +293,23 @@ describe('Fase 3.5-C — Cierre de ciclo, prosecución y comparación', () => {
         const luis = prepared.suggestions.find(s => s.name.startsWith('Luis'));
         const ana = prepared.suggestions.find(s => s.name.startsWith('Ana'));
 
+        // Distinto de lo sugerido sin decir por qué: no se cierra (CIERRE-*).
+        await expect(
+            confirmClose(
+                prisma,
+                { academicYearId: year.id, decisions: [{ studentId: luis!.studentId, finalResult: 'PROMOVIDO_CON_PENDIENTES' }], strategyKey: 'manual' },
+                'institute'
+            )
+        ).rejects.toMatchObject({ code: 'FALTA_EL_MOTIVO' });
+
         const confirmed = await confirmClose(
             prisma,
             {
                 academicYearId: year.id,
                 decisions: [
-                    { studentId: luis!.studentId, finalResult: 'PROMOVIDO_CON_PENDIENTES' }, // el admin lo promueve igual
-                    { studentId: ana!.studentId, finalResult: 'PROMOVIDO' },
+                    // el admin lo promueve igual
+                    { studentId: luis!.studentId, finalResult: 'PROMOVIDO_CON_PENDIENTES', motivo: 'Enfermedad certificada en el 3er lapso' },
+                    { studentId: ana!.studentId, finalResult: 'PROMOVIDO', motivo: 'Aprobó la materia en el plan de recuperación' },
                 ],
                 strategyKey: 'manual',
             },
@@ -311,6 +321,8 @@ describe('Fase 3.5-C — Cierre de ciclo, prosecución y comparación', () => {
 
         const dbRecord = await prisma.academicRecord.findFirst({ where: { studentId: luis!.studentId } });
         expect(dbRecord!.finalResult).toBe('PROMOVIDO_CON_PENDIENTES');
+        expect(dbRecord!.condicionSugerida).toBe('NO_PROMOVIDO');
+        expect(dbRecord!.motivo).toBe('Enfermedad certificada en el 3er lapso');
     });
 
     it('4. Las 4 estrategias de asignación de sección producen sugerencias razonables', async () => {
@@ -503,5 +515,47 @@ describe('Fase 3.5-C — Cierre de ciclo, prosecución y comparación', () => {
         );
         expect(retry.closed).toBe(true);
         expect(await prisma.academicRecord.count({ where: { academicYearId: year.id } })).toBe(2);
+    });
+    it('9. "Retirar y eliminar" deja al alumno y sus notas en la papelera, no los borra para siempre', async () => {
+        await createStudentWithScores('Pedro X', 'MASCULINO', [12, 14, 9]);
+        await createStudentWithScores('Ana R', 'FEMENINO', [15, 15, 15]);
+        await flushGrades();
+
+        const prepared = await prepareClose(prisma, year.id, 'institute');
+        const pedro = prepared.suggestions.find(s => s.name.startsWith('Pedro'))!;
+        const ana = prepared.suggestions.find(s => s.name.startsWith('Ana'))!;
+        const notasDePedro = await prisma.grade.count({ where: { studentId: pedro.studentId } });
+        expect(notasDePedro).toBeGreaterThan(0);
+
+        await confirmClose(
+            prisma,
+            {
+                academicYearId: year.id,
+                decisions: [
+                    { studentId: pedro.studentId, finalResult: 'NO_PROMOVIDO', action: 'RETIRE_DELETE' } as any,
+                    { studentId: ana.studentId, finalResult: 'PROMOVIDO', assignedClassroomId: nextSectionA.id },
+                ],
+                strategyKey: 'manual',
+            },
+            'institute',
+            { usuarioId: 'admin-del-cierre' }
+        );
+
+        expect(await prisma.user.findUnique({ where: { id: pedro.studentId } })).toBeNull();
+
+        const copiaDelAlumno = await prisma.registroBorrado.findFirst({
+            where: { tabla: 'user', registroId: pedro.studentId },
+        });
+        expect(copiaDelAlumno).not.toBeNull();
+        expect(copiaDelAlumno!.borradoPor).toBe('admin-del-cierre');
+
+        const copiasDeNotas = await prisma.registroBorrado.count({ where: { tabla: 'grade' } });
+        expect(copiasDeNotas).toBeGreaterThanOrEqual(notasDePedro);
+
+        // Y Ana, en el mismo cierre, promovida y matriculada como siempre.
+        const matricula = await prisma.studentClassroom.findFirst({
+            where: { studentId: ana.studentId, academicYearId: nextYear.id },
+        });
+        expect(matricula?.classroomId).toBe(nextSectionA.id);
     });
 });

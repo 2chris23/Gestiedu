@@ -11,8 +11,11 @@ import {
   getUserProfile,
   updateUserProfile,
   toggleUserStatus,
-  getUserStats
+  getUserStats,
+  cambiarCedula
 } from '../controllers/users.controller';
+import { listStudentTutors, assignStudentTutor, removeStudentTutor } from '../controllers/student-tutors.controller';
+import { getUserPhoto, putUserPhoto, deleteUserPhoto } from '../controllers/foto-de-perfil.controller';
 import { authenticate, requireAdmin, requireTeacher, requireSelfOrAdmin } from '../middleware/auth.middleware';
 import { validateBody, validateParams, validateQuery, validateCUID } from '../middleware/validation.middleware';
 import { createUserSchema as zCreateUserSchema, updateUserSchema as zUpdateUserSchema } from '../utils/validators';
@@ -35,6 +38,10 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
         birthDate: { type: 'string' },
         gender: { type: 'string', enum: ['MASCULINO', 'FEMENINO', 'OTRO'] },
         address: { type: 'string' },
+        nacionalidad: { type: 'string', enum: ['V', 'E', ''] },
+        lugarDeNacimiento: { type: 'string', maxLength: 120 },
+        entidadDeNacimiento: { type: 'string', maxLength: 40 },
+        tipoDeCedula: { type: 'string', enum: ['IDENTIDAD', 'ESCOLAR', ''] },
         isActive: { type: 'boolean', default: true }
       }
     },
@@ -75,7 +82,11 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
         phone: { type: 'string' },
         birthDate: { type: 'string', format: 'date' },
         gender: { type: 'string', enum: ['MASCULINO', 'FEMENINO', 'OTRO'] },
-        address: { type: 'string' }
+        address: { type: 'string' },
+        nacionalidad: { type: 'string', enum: ['V', 'E', ''] },
+        lugarDeNacimiento: { type: 'string', maxLength: 120 },
+        entidadDeNacimiento: { type: 'string', maxLength: 40 },
+        tipoDeCedula: { type: 'string', enum: ['IDENTIDAD', 'ESCOLAR', ''] }
       }
     }
   };
@@ -89,7 +100,9 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
         role: { type: 'string', enum: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
         search: { type: 'string' },
         isActive: { type: 'boolean' },
-        status: { type: 'string', enum: ['ACTIVE', 'ARCHIVED', 'ALL'] }
+        status: { type: 'string', enum: ['ACTIVE', 'ARCHIVED', 'ALL'] },
+        // Solo los alumnos a los que les falta un dato o un recaudo
+        faltan: { type: 'boolean' }
       }
     }
   };
@@ -142,6 +155,25 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
     schema: updateUserSchema,
     preHandler: [authenticate, requireAdmin, validateBody(zUpdateUserSchema)]
   }, updateUser as any);
+
+  // Cambiar la cédula (la escolar por la de identidad, o corregirla). Arrastra
+  // todo lo suyo y cierra sus sesiones (services/cambiar-cedula.service.ts).
+  fastify.put('/:id/cedula', {
+    schema: {
+      params: { type: 'object', required: ['id'], properties: { id: { type: 'string', minLength: 1, maxLength: 64 } } },
+      body: {
+        type: 'object',
+        required: ['nueva', 'confirmacion'],
+        additionalProperties: false,
+        properties: {
+          nueva: { type: 'string', minLength: 1, maxLength: 20 },
+          confirmacion: { type: 'string', minLength: 1, maxLength: 20 },
+          tipo: { type: 'string', enum: ['IDENTIDAD', 'ESCOLAR'] },
+        },
+      },
+    },
+    preHandler: [authenticate, requireAdmin]
+  }, cambiarCedula as any);
 
   fastify.delete('/:id', {
     schema: {
@@ -201,6 +233,72 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
     },
     preHandler: [authenticate, requireAdmin]
   }, toggleUserStatus as any);
+
+  // Representantes de un alumno. Solo el administrador: quien decide qué
+  // representante ve a qué alumno decide quién ve sus notas.
+  const paramsDelAlumno = {
+    type: 'object',
+    required: ['studentId'],
+    properties: { studentId: { type: 'string', minLength: 1, maxLength: 64 } },
+  };
+
+  fastify.get('/:studentId/tutors', {
+    schema: { params: paramsDelAlumno },
+    preHandler: [authenticate, requireAdmin]
+  }, listStudentTutors as any);
+
+  fastify.post('/:studentId/tutors', {
+    schema: {
+      params: paramsDelAlumno,
+      body: {
+        type: 'object',
+        required: ['tutorId', 'relationship'],
+        additionalProperties: false,
+        properties: {
+          tutorId: { type: 'string', minLength: 1, maxLength: 64 },
+          relationship: { type: 'string', minLength: 2, maxLength: 40 },
+        },
+      },
+    },
+    preHandler: [authenticate, requireAdmin]
+  }, assignStudentTutor as any);
+
+  fastify.delete('/:studentId/tutors/:tutorId', {
+    schema: {
+      params: {
+        type: 'object',
+        required: ['studentId', 'tutorId'],
+        properties: {
+          studentId: { type: 'string', minLength: 1, maxLength: 64 },
+          tutorId: { type: 'string', minLength: 1, maxLength: 64 },
+        },
+      },
+    },
+    preHandler: [authenticate, requireAdmin]
+  }, removeStudentTutor as any);
+
+  // Foto de perfil. Verla: quien puede ver a esa persona. Ponerla o quitarla:
+  // solo el admin. Ver controllers/foto-de-perfil.controller.ts.
+  const paramsDeLaFoto = {
+    type: 'object',
+    required: ['id'],
+    properties: { id: { type: 'string', minLength: 1, maxLength: 64 } },
+  };
+
+  fastify.get('/:id/photo', {
+    schema: { params: paramsDeLaFoto },
+    preHandler: [authenticate]
+  }, getUserPhoto as any);
+
+  fastify.put('/:id/photo', {
+    schema: { params: paramsDeLaFoto },
+    preHandler: [authenticate, requireAdmin]
+  }, putUserPhoto as any);
+
+  fastify.delete('/:id/photo', {
+    schema: { params: paramsDeLaFoto },
+    preHandler: [authenticate, requireAdmin]
+  }, deleteUserPhoto as any);
 
   // Rutas de perfil personal
   fastify.get('/profile/me', {

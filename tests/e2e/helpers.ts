@@ -49,15 +49,44 @@ export async function loginApi(
   const cacheKey = `${email}:${slug}`;
   const diskCache = readTokenCache();
 
+  /**
+   * LA LLAVE GUARDADA SE CAMBIA ANTES DE PRESTARLA
+   *
+   * El sistema cambia la llave de volver a entrar cada vez que se usa
+   * (rotación, ver `auth.service.refreshToken`). Guardar una en disco y
+   * repartirla a cinco pruebas significa repartir CINCO veces la misma llave de
+   * un solo uso: la primera la gasta y a las demás el servidor les dice, con
+   * razón, que no vale. La pantalla entonces cierra la sesión y rebota a
+   * entrar, y salían catorce pruebas en rojo por algo que el producto hace
+   * bien.
+   *
+   * Así que la guardada se cambia AQUÍ, por una nueva, antes de prestarla: es
+   * una petición barata que no cuenta para el límite de intentos de entrada
+   * —que es justo para lo que existe esta memoria—. Si esa llave ya no sirve,
+   * se entra de nuevo por la puerta.
+   */
   if (!forceNew && diskCache[cacheKey]) {
     const entry = diskCache[cacheKey];
     // Válido por 20 minutos
     if (Date.now() - entry.timestamp < 20 * 60 * 1000) {
-      return {
-        user: entry.user,
-        accessToken: entry.accessToken,
-        refreshToken: entry.refreshToken,
-      };
+      try {
+        const renovada = await axios.post(
+          `${API_BASE}/auth/refresh-token`,
+          { refreshToken: entry.refreshToken },
+          { headers: { 'Content-Type': 'application/json', 'X-Institute-Slug': slug } }
+        );
+        const recien: LoginResult = {
+          user: entry.user,
+          accessToken: renovada.data.accessToken,
+          refreshToken: renovada.data.refreshToken || entry.refreshToken,
+        };
+        const cacheAlDia = readTokenCache();
+        cacheAlDia[cacheKey] = { ...recien, timestamp: entry.timestamp };
+        writeTokenCache(cacheAlDia);
+        return recien;
+      } catch {
+        // La llave guardada ya no sirve: se entra de nuevo, más abajo.
+      }
     }
   }
 

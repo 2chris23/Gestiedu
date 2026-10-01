@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { Save, Bell, Mail, Smartphone, RefreshCw } from 'lucide-react';
 import { instituteService } from '@/services/institute.service';
 import { toast } from 'sonner';
+import { esPendiente } from '@/lib/por-enviar';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 interface NotificationConfig {
     channels: {
@@ -62,7 +64,7 @@ export function NotificationSettings() {
             }
         } catch (error) {
             console.error(error);
-            toast.error('Error al cargar la configuración');
+            if (!esQueNoContesta(error)) toast.error('Error al cargar la configuración');
         } finally {
             setLoading(false);
         }
@@ -88,13 +90,14 @@ export function NotificationSettings() {
             };
 
             // Enviamos al backend
-            await instituteService.updateConfig({
+            const r = await instituteService.updateConfig({
                 configuration: newConfigObj as any
                 // Type assertion needed because UpdateInstituteDto defines specific shape, 
                 // but we passing the whole specific object structure which matches the updated DTO
             });
 
-            toast.success('Preferencias de notificaciones guardadas');
+            if (esPendiente(r)) toast('Sin conexión: el cambio quedó pendiente ⏱ y se guarda solo al volver.', { id: 'pendiente' });
+            else toast.success('Preferencias de notificaciones guardadas');
         } catch (error) {
             console.error(error);
             toast.error('Error al guardar cambios');

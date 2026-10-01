@@ -12,6 +12,12 @@ export interface User {
     birthDate?: string | Date;
     gender?: Gender;
     avatar?: string;
+    // Lo que piden los documentos del Ministerio
+    nacionalidad?: 'V' | 'E' | null;
+    lugarDeNacimiento?: string | null;
+    entidadDeNacimiento?: string | null;
+    tipoDeCedula?: 'IDENTIDAD' | 'ESCOLAR' | null;
+    cedulaEscolar?: string | null;
     isActive: boolean;
     status?: 'ACTIVE' | 'ARCHIVED' | 'DELETED';
     archivedAt?: string | Date;
@@ -76,4 +82,8 @@ export interface CreateUserData {
     address?: string;
     gender?: Gender;
     birthDate?: string | Date;
+    nacionalidad?: 'V' | 'E' | '';
+    lugarDeNacimiento?: string;
+    entidadDeNacimiento?: string;
+    tipoDeCedula?: 'IDENTIDAD' | 'ESCOLAR' | '';
 }

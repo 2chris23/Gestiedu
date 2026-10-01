@@ -40,12 +40,25 @@ export async function createObservation(
       return reply.status(400).send({ error: 'Título y al menos un estudiante involucrado son requeridos' });
     }
 
-    // Solo se dejan observaciones de las clases propias
-    if (classroomId) {
+    // Solo se dejan observaciones de las clases propias, y a los alumnos de
+    // ESA sección. Antes, sin `classroomId` no se miraba nada, y con él no se
+    // miraba a quién: el profesor de 1.º A dejaba observaciones en el
+    // expediente de cualquier alumno del liceo (`quien-puede-que.test.ts`).
+    if (user?.role !== 'ADMIN') {
+      if (!classroomId) {
+        return reply.status(403).send({ error: 'Las observaciones se dejan desde una sección que llevas', code: 'FORBIDDEN' });
+      }
       await assertClassroomScope(prisma, user as any, classroomId, {
         subjectId,
         accion: 'dejar observaciones',
       });
+      const unicos = Array.from(new Set(studentIds));
+      const inscritos = await prisma.studentClassroom.count({
+        where: { classroomId, isActive: true, studentId: { in: unicos } },
+      });
+      if (inscritos !== unicos.length) {
+        return reply.status(403).send({ error: 'Solo a los alumnos de esa sección', code: 'FORBIDDEN' });
+      }
     }
 
     const zonaLiceo = await instituteTimezone(prisma);
@@ -256,11 +269,20 @@ export async function getStudentObservations(
       orderBy: { date: 'desc' },
     });
 
+    /**
+     * Los otros alumnos de una observación de grupo, solo para el personal.
+     *
+     * Al alumno y a su representante les llegaban el nombre, el código y la foto
+     * de cada compañero implicado. Lo suyo es suyo; lo de los demás, no.
+     */
+    const rolQueMira = (request.user as any)?.role;
+    const esPersonal = rolQueMira === 'ADMIN' || rolQueMira === 'TEACHER';
+
     // Enriquecer cada observación con otros involucrados si pertenece a un groupId
     const enriched = await Promise.all(
       observations.map(async (obs: any) => {
         let otherInvolved: any[] = [];
-        if (obs.groupId) {
+        if (obs.groupId && esPersonal) {
           const peers = await prisma.observation.findMany({
             where: {
               groupId: obs.groupId,

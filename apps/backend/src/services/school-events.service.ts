@@ -1,3 +1,4 @@
+import { borrarGuardandoCopia } from '../utils/papelera';
 import { randomUUID } from 'crypto';
 
 /**
@@ -259,37 +260,51 @@ export async function applyEventSuspensions(
         pairs.set(`${c.classroomId}|${c.subjectId}`, { classroomId: c.classroomId, subjectId: c.subjectId });
     }
 
-    let suspended = 0;
-    for (const { classroomId, subjectId } of pairs.values()) {
-        const existing = await tx.classSession.findFirst({
-            where: { classroomId, subjectId, date: { gte: day, lt: nextDay } },
-            select: { id: true, status: true, suspendedByEventId: true },
-        });
+    if (pairs.size === 0) return 0;
 
+    // De una vez, no clase a clase: un feriado toca todas las clases del
+    // liceo, y esto eran dos consultas por clase dentro de la transacción (ver
+    // `revertEventSuspensions`, más abajo, que tenía el mismo problema).
+    const existentes = await tx.classSession.findMany({
+        where: {
+            classroomId: { in: [...new Set([...pairs.values()].map((p) => p.classroomId))] },
+            date: { gte: day, lt: nextDay },
+        },
+        select: { id: true, classroomId: true, subjectId: true, status: true, suspendedByEventId: true },
+    });
+    const porPar = new Map<string, any>(existentes.map((e: any) => [`${e.classroomId}|${e.subjectId}`, e]));
+
+    const aSuspender: string[] = [];
+    const aCrear: any[] = [];
+    for (const [clave, { classroomId, subjectId }] of pairs) {
+        const existing = porPar.get(clave);
         if (existing) {
             const suspendedByTeacher = existing.status === 'SUSPENDED' && !existing.suspendedByEventId;
             if (suspendedByTeacher) continue;
-
-            await tx.classSession.update({
-                where: { id: existing.id },
-                data: { status: 'SUSPENDED', suspendedReason: reason, suspendedByEventId: event.id },
-            });
+            aSuspender.push(existing.id);
         } else {
-            await tx.classSession.create({
-                data: {
-                    publicId: randomUUID(),
-                    classroomId,
-                    subjectId,
-                    date: day,
-                    status: 'SUSPENDED',
-                    suspendedReason: reason,
-                    suspendedByEventId: event.id,
-                },
+            aCrear.push({
+                publicId: randomUUID(),
+                classroomId,
+                subjectId,
+                date: day,
+                status: 'SUSPENDED',
+                suspendedReason: reason,
+                suspendedByEventId: event.id,
             });
         }
-        suspended++;
     }
-    return suspended;
+
+    if (aSuspender.length > 0) {
+        await tx.classSession.updateMany({
+            where: { id: { in: aSuspender } },
+            data: { status: 'SUSPENDED', suspendedReason: reason, suspendedByEventId: event.id },
+        });
+    }
+    if (aCrear.length > 0) {
+        await tx.classSession.createMany({ data: aCrear });
+    }
+    return aSuspender.length + aCrear.length;
 }
 
 /**
@@ -307,26 +322,52 @@ export async function revertEventSuspensions(tx: any, eventId: string): Promise<
             id: true,
             topic: true,
             observations: true,
+            classroomId: true,
+            subjectId: true,
+            date: true,
             _count: { select: { attendanceRecords: true, activities: true, observationsList: true } },
         },
     });
+    if (sessions.length === 0) return 0;
 
-    for (const s of sessions) {
-        const isEmpty =
-            !s.topic?.trim() &&
-            !s.observations?.trim() &&
-            s._count.attendanceRecords === 0 &&
-            s._count.activities === 0 &&
-            s._count.observationsList === 0;
+    /**
+     * TODO DE UNA VEZ, NO SESIÓN A SESIÓN
+     *
+     * Un día feriado suspende todas las clases del liceo: cien secciones por
+     * seis horas son seiscientas sesiones. Esto iba sesión a sesión —buscarla
+     * otra vez, copiar y borrar su reemplazo, borrarla o reactivarla—, unas
+     * cinco consultas por sesión dentro de una transacción de cinco segundos.
+     * En un liceo grande, borrar o mover el feriado no terminaba nunca: la
+     * transacción se pasaba de tiempo y se deshacía entera.
+     */
+    const motivo = { motivo: `evento ${eventId} borrado o movido` };
+    const vacia = (s: any) =>
+        !s.topic?.trim() &&
+        !s.observations?.trim() &&
+        s._count.attendanceRecords === 0 &&
+        s._count.activities === 0 &&
+        s._count.observationsList === 0;
 
-        if (isEmpty) {
-            await tx.classSession.delete({ where: { id: s.id } });
-        } else {
-            await tx.classSession.update({
-                where: { id: s.id },
-                data: { status: 'ACTIVE', suspendedReason: null, suspendedByEventId: null },
-            });
-        }
+    // El reemplazo existía porque la clase no se daba. Si vuelve a darse, sobra.
+    await borrarGuardandoCopia(
+        tx,
+        'classReplacement',
+        { OR: sessions.map((s: any) => ({ classroomId: s.classroomId, suspendedSubjectId: s.subjectId, date: s.date })) },
+        motivo
+    );
+
+    const vacias = sessions.filter(vacia).map((s: any) => s.id);
+    const conAlgo = sessions.filter((s: any) => !vacia(s)).map((s: any) => s.id);
+
+    if (vacias.length > 0) {
+        // Vacías, pero con copia igual: la regla es para todo lo del liceo.
+        await borrarGuardandoCopia(tx, 'classSession', { id: { in: vacias } }, motivo);
+    }
+    if (conAlgo.length > 0) {
+        await tx.classSession.updateMany({
+            where: { id: { in: conAlgo } },
+            data: { status: 'ACTIVE', suspendedReason: null, suspendedByEventId: null },
+        });
     }
     return sessions.length;
 }

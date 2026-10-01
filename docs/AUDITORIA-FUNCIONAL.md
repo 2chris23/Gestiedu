@@ -3085,3 +3085,578 @@ y el sistema hacía bien en rechazar un identificador con formato inválido. Per
 durante meses hubo una causa inventada escrita en un documento, y eso **cerró la
 investigación**: nadie vuelve a mirar algo que ya tiene explicación. Un "no lo
 sé" honesto habría durado menos.
+
+## 55. Doscientos liceos, ningún dato perdido, cualquier aparato (septiembre 2026)
+
+El objetivo cambió: antes de las tiendas de aplicaciones, que el sistema aguante
+**200 liceos y 15.000 personas** sin ser él lo lento, que **no pierda ni invente
+un dato**, y que funcione **igual en cualquier aparato**. Lo que apareció al
+mirarlo con esos ojos, todo con su prueba y casi todo fallando antes con el
+código viejo:
+
+**Datos que se perdían sin que nadie se enterara**
+
+- Las notas de la clase en vivo se guardaban leyendo y reescribiendo el objeto
+  entero: dos guardados cruzados (el automático y otra pestaña) y el segundo
+  borraba lo del primero. Medido: se perdían **7 de 8** (NOPISA-01…04). Ahora
+  es una sola escritura atómica.
+- El plan de evaluación: el último que guardaba ganaba, y lo que no venía se
+  borraba. Ahora lleva versión: si otra pestaña guardó antes, **409 y no se
+  borra nada** (PLANV-01…05, PLANUI-01).
+- Dos borrados se saltaban la papelera («Retirar y eliminar» de la promoción y
+  quitar una materia de un año). Y una prueba vigila que no aparezca otro
+  (BORRA-01).
+- **La base de la plataforma no se respaldaba** —la que dice qué base es de qué
+  liceo y con qué llave—, y los respaldos no se hacían solos ni salían del
+  servidor. Ahora cada noche, la plataforma primero, y una copia a R2/S3
+  (RESP-01…07).
+- **El despliegue migraba la plataforma con las migraciones de los liceos**:
+  en un servidor nuevo no habría arrancado (PLAT-01…04).
+
+**Lo que hacía lento al sistema, no al servidor**
+
+- Con 200 liceos el proceso solo tenía sitio para 50, y veinte peticiones de
+  un liceo nuevo abrían veinte conexiones (CONN-10, CONN-11).
+- El panel del alumno hacía ~180 consultas; la lista de alumnos sin sección
+  calculaba alumno por alumno (y daba 0 de promedio a todos); la clase en vivo
+  pedía diez cosas una detrás de otra; la lista de usuarios recorría la tabla
+  entera en cada búsqueda.
+- El cupo de peticiones, el freno del doble clic y los logos vivían en la
+  memoria o el disco de UN proceso: con varios, no valían. Ahora en Redis y en
+  la base (CUPO, DOBLE, LOGO).
+- nginx le quitaba al tiempo real el `Host` y la dirección de quien llama.
+
+**Medido** en este PC (servidor, base y generador en la misma máquina, una
+conexión por liceo): **500 personas en 50 liceos, p95 124 ms, p99 277 ms, 0
+fallos**; ninguna ruta con p95 por encima de 211 ms. Antes del plan, con UN
+liceo, la cola llegaba a 9–20 s. La prueba en un servidor de verdad queda
+escrita en `docs/DESPLIEGUE.md` §10-bis.
+
+**Sin servidor, el teléfono sigue enseñando lo último** (APAGADO-01/02): la
+sesión ya no se cierra por un fallo de red, lo guardado no se borra al abrir y
+guardar avisa de que hace falta conexión.
+
+**Cualquier aparato**: la app instalada no giraba nunca (`portrait` en la ficha)
+y la APK no tenía el complemento de giro; la pantalla de «sin conexión» de la
+APK no se veía nunca (faltaba `errorPath`); el iPhone instalaba la app como
+«GestiEdu» y no con el nombre del liceo; sin `dvh` los diálogos se salían de la
+pantalla. Y ahora se mide también el teléfono tumbado, la tableta, el portátil
+y el escritorio (MOVIL-03).
+
+**Y que se compruebe solo**: `.github/` estaba en `.gitignore`, así que la
+integración continua y el despliegue automático no llegaron nunca a GitHub.
+Ahora `ci.yml` pasa tipos y pruebas en cada cambio, y el despliegue solo sale si
+eso está en verde.
+
+## 56. La APK en un teléfono de verdad: la franja negra y «sin conexión» (septiembre 2026)
+
+Probada en un Motorola G13, la app salía con **la franja del reloj negra** y,
+al quitar el wifi, **no enseñaba nada**. Reproducido en el emulador antes de
+tocar una línea, y eran cinco cosas:
+
+- **La franja negra.** Al irse la pantalla de arranque, Android repinta la
+  franja con lo que diga el tema de la app, y pisa lo que hubiera hecho el
+  código. El tema no decía nada: gris con el teléfono en claro, negra en modo
+  oscuro, con el reloj en blanco. Ahora lo dice el tema (blanco, reloj oscuro).
+- **La pantalla de error tapaba lo guardado.** Sin servidor, el ayudante sí
+  servía la app, pero Android avisaba de un error de red y Capacitor ponía
+  encima su pantalla de «No se llega al liceo». Ahora solo sale si de verdad
+  no hay nada que enseñar (y sale en 0,3 s, no el error de Android).
+- **La sesión se perdía al cerrar la app** si se cerraba en los 30 segundos
+  siguientes a entrar: Android no había escrito las cookies en el disco. Sin
+  sesión no hay nada guardado que enseñar. Ahora se escriben al salir.
+- **Una franja blanca del doble de alto** en Android 15 o más: la app y la web
+  apartaban las dos el hueco del reloj.
+- **«Error al cargar años escolares» en rojo** encima de los años que sí se
+  veían, guardados: el servicio envolvía el error y se perdía que era la
+  conexión. Lo mismo en otras diez pantallas.
+
+Y dos de la forma de probar, que explican por qué esto no se vio antes:
+
+- **Por la red de casa (`http://192.168.x.x`) la app no puede abrir sin
+  servidor**, haga lo que haga: Android solo deja funcionar al ayudante en
+  `https` o en `localhost`. En el liceo va por https. Para probarlo aquí,
+  `npm run telefono:usb` (el teléfono por el cable, `adb reverse`).
+- **`npm run telefono:compilado` no arrancaba nunca las pantallas**: el
+  `npm run start` que lanzaba se quedaba colgado sin abrir el puerto.
+
+Comprobado en el emulador (Android 17 y, con el tema de Android 14, lo que ve
+el Motorola; en claro y en oscuro): con servidor se entra y se navega; se
+corta el servidor, se cierra y se abre la app, y abre en el panel con lo
+último descargado y la franja «Sin conexión con el liceo»; Académico también.
+APAGADO-01/02 y SIN-01…03 en verde; 48 pruebas de la web en verde.
+
+## 57. Sin luz se sigue viendo todo, y la app se actualiza sola (septiembre 2026)
+
+Probada otra vez en el Motorola: se entró con wifi, se recorrió el sistema,
+se cerró la app, se quitó el wifi y al abrirla salía **«No hay conexión con
+el liceo»**. Lo que se pedía, en palabras del administrador: *se fue la luz;
+sé que no puedo cambiar nada, pero quiero ver el sistema tal como lo dejé*.
+Si a las 10:00 Carlos estaba presente y a las 10:30 el profesor lo marca
+ausente, el administrador sin conexión lo sigue viendo presente —es lo último
+que cargó— y al volver la conexión se pone al día solo.
+
+Qué fallaba, medido en el emulador antes de tocar nada:
+
+- **Las pantallas a las que se llegaba tocando no se guardaban.** Dentro de
+  la app Next no recarga la página: pide un trozo (`?_rsc=`). El ayudante
+  solo guardaba páginas enteras, así que «Académico», un ciclo o un perfil
+  no quedaban nunca guardados. Ahora la app le avisa de cada pantalla y él la
+  guarda entera (como mucho cada 10 min); al cerrar sesión se olvidan.
+- **El ciclo, los usuarios, un perfil y el calendario pedían sus datos a
+  mano**, fuera de la memoria que se guarda en el teléfono: sin conexión,
+  vacíos. Ahora van por la memoria y se ven tal como estaban.
+- **El perfil de un alumno sin notas inventaba un 16,5 de promedio.** Ahora
+  dice «—».
+
+Comprobado en el emulador con la APK, como un administrador: entrar, tocar
+Académico → el ciclo → bajar → Horarios → Usuarios → un alumno → Inicio;
+cortar el servidor, cerrar la app y abrirla. Abre en el panel con sus
+cifras, y el ciclo (tocando y recargando), Horarios, Usuarios y el perfil
+del alumno salen con los datos de antes y el aviso de sin conexión.
+
+**El aviso** ya no es una franja que tapa la cabecera: es un icono pequeño
+que late arriba a la derecha y, al tocarlo, dice de cuándo es lo que se ve.
+
+**La pantalla del ciclo, más corta.** Cinco tarjetas de 110 px, un selector
+de ciclo y tres filas de botones se comían el teléfono entero antes de
+llegar a los años. Ahora las cinco cifras van en un bloque de 119 px, el
+selector de ciclo se fue (se vuelve atrás y se entra en otro), y «Editar» y
+«Finalizar el ciclo escolar» están en el menú de los tres puntos: finalizar
+un ciclo es de una vez al año y no puede estar en rojo a un toque sin querer.
+
+**La barra de abajo**: cinco botones para el personal (el admin: Académico,
+Usuarios, Inicio, Horarios, Pagos), tres para alumno y representante (con
+«Mi cuenta»). Al bajar se esconde entera: la casita de Inicio se quedaba
+asomando.
+
+**La app se actualiza desde dentro.** Lo que cambia en la web se ve sin
+instalar nada, pero lo de dentro de la APK (la franja del reloj, la sesión al
+cerrar) obligaba a bajarla otra vez a mano. Ahora, al abrirse, pregunta al
+servidor si hay una versión nueva y la ofrece: la baja con su barra,
+comprueba su huella y abre el instalador de Android, que exige la misma
+firma. Probado en el emulador de principio a fin (versión 2 instalada, 3
+publicada): ventana, permiso de Android, descarga, instalador; y al cancelar
+el instalador, vuelve a ofrecerla. Dos avisos:
+
+- La app que ya está en los teléfonos **no sabe preguntar**: se cambia una
+  vez a mano y de ahí en adelante llegan solas.
+- **Google Play no lo permite**: la que se publique allí se actualiza por
+  Play, sin el permiso de instalar.
+
+No probado: la instalación en el Motorola (no se usó el teléfono) y el
+aviso de Google Play Protect más allá de verlo aparecer.
+
+## 58. La asistencia por QR, y cinco cosas del teléfono (septiembre 2026)
+
+**Asistencia por QR, entera.** El profesor abre el QR en su clase y lo deja
+sobre la mesa; cada alumno, desde su clase en la app, pulsa «Escanear
+asistencia» y queda presente. O al revés: el alumno enseña «Mi QR» y lo
+escanea el profesor. Todo lo que se decidió con el dueño
+(`docs/PROXIMAS-FUNCIONES.md` §1):
+
+- El QR **cambia cada 10 s**: la foto por WhatsApp no sirve.
+- **Un teléfono por alumno** (el primero desde el que escanea) y **un teléfono,
+  un alumno por clase**: cerrar sesión y entrar con la cuenta del amigo ya no
+  cuela, y el intento le sale al profesor en la lista. El admin desbloquea el
+  teléfono desde el perfil del alumno, y queda anotado.
+- **El faro**: el alumno tiene que estar cerca del teléfono del profesor
+  (150 m por defecto). Sin GPS, entra «por confirmar» y el profesor lo aprueba
+  de un toque. Una ubicación falsa (Android lo dice) se rechaza.
+- Debajo del QR van entrando los nombres en vivo, con su foto y su hora; el
+  profesor quita a quien no está de un toque. Arriba, «18 de 32». Al terminar
+  ve quién queda ausente antes de cerrar, y puede marcar «estaba».
+- Pasado el tiempo (2 min por defecto, desde el primer pase de esa clase),
+  entra como **tarde**.
+- **Corregir un día pasado** con el mismo QR («Corregir con QR»), hasta los días
+  que diga el liceo y nunca pasado el cierre del lapso.
+- Todo configurable en Configuración → Asistencia por QR.
+
+Probado: 14 pruebas del servidor, una por trampa (QR-01…14); y en el
+navegador, un alumno con una **cámara de mentira** que enseña el QR del
+profesor (Chrome le pasa un vídeo con el QR dibujado) queda presente, y su
+nombre aparece en la pantalla del profesor sin recargar (QRE-01/02). En el
+emulador, dentro de la APK: el aviso de permiso de ubicación, el QR, que
+cambia a los 10 s y que la pantalla no se apaga.
+
+Cuatro fallos que salieron probando, antes de que llegaran a nadie:
+- **La cámara no abría** si a la vez se pedía la ubicación: Android enseñaba
+  un aviso de permiso y el otro se perdía. Ahora se pide uno y luego el otro.
+- **Guardar las reglas de promoción borraba la escala de notas y el horario**
+  del liceo (`updateAcademicConfig` escribía solo sus campos). Ya no.
+- **El Inicio del alumno medía 1188 px de ancho** en un teléfono de 412: la
+  etiqueta escondida del tema (`sr-only`, que va `absolute`) se salía del
+  carril de «Hoy» y ensanchaba la página entera. El teléfono la enseñaba
+  alejada y el botón «Escanear asistencia» no se podía pulsar (QRE-01 en
+  rojo). El carril lleva ahora `relative`; medido: 412 px.
+- **Abrir un pase avisaba a todo el liceo** de que algo había cambiado, y las
+  pantallas de todos los alumnos se recargaban. Abrir no cambia la asistencia
+  de nadie: ahora solo se entera el personal de esa sección.
+
+**Cinco cosas del teléfono que pidió el dueño:**
+
+1. **Tumbado, la barra de abajo, no la lateral.** El Motorola de lado mide
+   1075 px de ancho y el corte era solo por ancho. Ahora la barra lateral es de
+   tableta u ordenador (ancho y además alto, o ratón).
+2. **Las cifras con barra**, como la ocupación: el promedio en la escala del
+   liceo con una rayita donde se aprueba, el riesgo como parte de los alumnos,
+   la asistencia con la rayita del mínimo. Crecen al aparecer.
+3. **La sección, sin caja gris propia** (se veía un rectángulo de otro gris), y
+   el horario de hoy **de lado otra vez**, como antes, pero más apretado: dos
+   fichas y media a la vista.
+4. **Los alumnos de la sección, una fila cada uno** (56 px en vez de 330): nombre,
+   cédula, riesgo (solo el número), promedio y asistencia.
+5. **El editor de horario**: al entrar se pone de lado y a pantalla completa,
+   con lo que falta a la izquierda y la semana entera a la derecha. Arrastrar
+   con el dedo no funcionaba nunca (el dedo movía la página); ahora se mantiene
+   pulsado y se arrastra, o se toca la materia y luego el hueco.
+
+Medido al cerrar: 14 pruebas del servidor del QR, QRE-01/02, MOVIL-01…04,
+APAGADO-01/02 y `npm run movil -- --exigir` (31 pantallas, 4 roles, 0 con algo
+que arreglar). En el emulador, la APK entera: permisos, QR que cambia, pantalla
+encendida, la cámara del alumno (720×1280, en marcha) y «Mi QR».
+
+No probado: nada en el Motorola del dueño —estaba bloqueado con su clave, y no
+se toca—. La versión 1.5 de la app quedó instalada en él. Tampoco dos teléfonos
+de verdad uno frente al otro: la cámara se probó con una de mentira (Chrome) y
+la del emulador; y el GPS del emulador no se deja mover, así que el faro del
+profesor se probó en el servidor (QR-06, QR-14).
+
+## 59. Lo que pidió el dueño probando en el teléfono (25 y 26 de septiembre de 2026)
+
+Cada cosa que pidió, con lo que le pasaba al liceo y cómo quedó.
+
+**Lo que se veía roto**
+
+- **La pestaña enseñaba el birrete azul de la plataforma**, no el logo del
+  liceo, aunque Configuración dijera «Guardado». El armazón declaraba
+  `/favicon.svg` y el navegador lo prefería. Ahora `/icono-de-pestana` sirve el
+  del liceo desde la primera pintada (FAV-01/02).
+- **El horario en vivo del perfil de un profesor salía sin tema ni contadores**
+  («—» y 0): se pedía el resumen de una sola sección. Ahora de cada sección del
+  día.
+- **Tocar una clase en el horario del alumno abría una ventanita**, no la
+  clase. Ahora el alumno y su representante van a **Mi clase**: el plan de
+  evaluación, sus actividades con su nota y sus observaciones, nada de los
+  compañeros (MICLASE-01…06, ALUM-UI-01/03). El personal va a la clase en vivo.
+- De paso, **una fuga**: en las observaciones de grupo el alumno y su
+  representante recibían el nombre, el código y la foto de los compañeros
+  implicados (OBS-GRUPO-01).
+- **El horario en vivo no se arrastraba suave**, y tras pasar a «Semana» y
+  volver a «Hoy» ya no se movía con el ratón. Ahora usa el mismo carril que el
+  resto de la app (CARRIL-01).
+- **Quedaban listas con la ventana negra de Android** (promoción y eventos).
+
+**Lo nuevo**
+
+- **El horario del liceo, por turno y a prueba de errores.** Solo se podía
+  poner la hora de inicio de la mañana; la tarde empezaba a las 13:00 fijas.
+  Ahora mañana y tarde con inicio, fin, duración y recreos, y no se guarda lo
+  que no cuadra: «horas de 40 min hasta las 12:30» dice cuánto sobra y a qué
+  hora acabar (FRANJA-01…07, HORARIO-API-01…06, HORARIO-CFG-01).
+- **Cuándo empieza el plan en cada lapso**, libre, con las semanas de antes
+  («Diagnóstico»). Y una sola cuenta de semanas: la clase en vivo contaba desde
+  el inicio del año y la rejilla desde el del lapso, así que en el 2º y 3er
+  lapso la «Semana N» no coincidía (SEMANA-01…05, PLANINI-01…06).
+- **Evaluar a un alumno de otra forma** (cuaderno en vez de deporte): cuenta
+  igual y queda el método a la vista de él y su representante (OTRA-01…05,
+  OTRA-UI-01).
+- **Los datos oficiales del plantel** (código DEA, estadístico, dependencia,
+  zona, entidad, municipio, parroquia) y **un solo membrete** en la boleta, la
+  constancia, el resumen final, el plan y el acta de compromiso, que no decía
+  de qué liceo era (PLANTEL-01…04, MEMB-UI-01/02). Lo que falta para Venezuela,
+  para decidir: `docs/VENEZUELA-LO-QUE-FALTA.md`.
+- **El representante sin representados** veía su Inicio en blanco. Ahora se le
+  dice que el liceo aún no se los asignó.
+
+**Seguridad**
+
+- **Las pantallas se podían meter dentro de otra página** (la API tenía sus
+  cabeceras, las pantallas ninguna): alguien podía poner el login del liceo en
+  un marco invisible. Ahora ninguna pantalla se deja enmarcar (SEG-WEB-01/02).
+- **Cualquier profesor encontraba a cualquier alumno del liceo** (nombre,
+  cédula, foto, sección) con escribir una letra en «involucrar alumno». Ahora
+  solo a los de sus secciones; `quien-puede-que.test.ts` ya no tiene huecos
+  abiertos.
+
+**Carga diferida**
+
+Medido con la web compilada, en un navegador limpio (CARGA-01), el javascript
+que el teléfono tiene que leer la primera vez:
+
+| Pantalla | Antes | Después |
+|---|---|---|
+| Portada | 900 KB | 762 KB (−15 %) |
+| Login del liceo | 805 KB | 647 KB (−20 %) |
+| Inicio (admin, profesor, representante) | 1455 KB | 981 KB (−33 %) |
+| Usuarios | 1095 KB | 942 KB (−14 %) |
+| Sección | 1194 KB | 1013 KB (−15 %) |
+| Clase en vivo | 1016 KB | 922 KB (−9 %) |
+| Inicio (alumno) | 1455 KB | 1402 KB (−4 %) |
+
+Por la red (comprimido), el Inicio del personal pasó de 448 a 311 KB. El del
+alumno apenas baja porque su gráfica sí se ve: son ~400 KB de recharts para
+tres puntos. Cambiarla por un dibujo propio ya no es carga diferida; queda
+propuesto.
+
+Sin señal se sigue viendo lo último, como pidió el dueño (ver, no hacer): lo
+diferido que se abrió con internet queda guardado; lo que no, lo dice sin
+romper la pantalla (APAGADO-03). Salió un fallo al medirlo: con el cliente del
+tiempo real bajando aparte, si el servidor se iba antes de bajarlo, el aviso
+de «sin conexión» no salía (APAGADO-02 en rojo). Ahora, si no baja, se
+pregunta al servidor.
+
+**Tres fallos míos que salieron al pasar las pruebas de navegador**, antes de
+llegar a nadie:
+
+- **Tocar una clase del horario en vivo no abría nada**, ni para el alumno ni
+  para el personal. Al pasar el horario al carril suave (C4), entró en un
+  freno de clics que el carril ya tenía: marcaba «arrastrando» en cualquier
+  pulsación y se comía el toque. Embla ya anula por sí mismo el clic tras un
+  arrastre; el freno propio se quitó (ALUM-UI-01, CARRIL-01).
+- **El alumno se quedó sin «Escanear asistencia»**: los botones del QR solo
+  estaban en la ventanita de la clase, que se quitó al hacer Mi clase. Ahora
+  están arriba en Mi clase (QRE-01/02).
+- **Información General perdía lo escrito** si se escribía antes de que llegara
+  la configuración: el formulario salía vacío un instante y luego se rellenaba
+  encima. Ahora empieza en «Cargando» (MEMB-UI-01).
+
+Y cinco pruebas que medían mal o dependían del sembrado: la cifra
+«Observaciones» ya no va en mayúsculas (TR-03); el representante ya no tiene
+«Ir a» desde que se quitó el calendario (DISENO-04/05); el medidor de textos
+pisados contaba las líneas que `line-clamp` esconde (DISENO-03); y dos pruebas
+buscaban un profesor y un alumno concretos del sembrado (ASIS-DOS-01,
+BOL-UI-*/CONS-UI-*). El enlace «Inicio» de Materias medía 35×20 en tableta y
+teléfono tumbado: ahora 44 px (MOVIL-03).
+
+La revisión del teléfono encontró el selector de lapso a 36 px de alto (del
+día 25) en cinco pantallas: ahora 44.
+
+**Medido al cerrar:** servidor, 1043 de 1043 (127 archivos, 5 saltadas: las
+que piden un Redis de verdad); web, 60 de 60; navegador, **254 de 254** (3
+saltadas: las de servidor apagado, que piden la web compilada, y con ella
+APAGADO-01/02/03 en verde); `npm run movil -- --exigir`: 27 pantallas, 4
+roles, 0 con algo que arreglar (eran 31: las del calendario se fueron con él).
+
+**No probado:** nada en un teléfono de verdad hoy. El prestado nunca terminó de
+vincularse y el Motorola del dueño se desconectó; todo lo del teléfono se midió
+con Chrome haciendo de teléfono.
+
+**No reproducido:** `redis-caido.test.ts` falló una vez el 25 con la máquina
+cargada (la tanda completa y el teléfono por cable a la vez). Siete veces
+seguidas en verde, una dentro de la tanda completa (1043 de 1043); no se toca
+sin un fallo que mirar.
+
+## 60. Todo el plantel en el sistema: el año escolar venezolano (26 y 27 de septiembre de 2026)
+
+Lo que pidió el dueño: que el liceo haga en Gestiedu todo lo que hoy hace en
+papel, con las planillas del MPPE como punto de partida y cada liceo pudiendo
+cambiarlas. **Nada se envía al Ministerio**: el papel sale en su formato y el
+liceo lo entrega. Siete partes, un commit cada una:
+
+| | Qué | Commit | Pruebas |
+| :--- | :--- | :--- | :--- |
+| F1 | Datos del alumno (nacionalidad, lugar y entidad de nacimiento), cédula escolar y cambiarla por la de identidad sin perder nada | b6392a2 | CED-UI-01 |
+| F2 | Áreas con apreciación, fuera de todo promedio y de la condición | 2596009 | CUALI-* |
+| F7 | El calendario del MPPE al crear el año (Pascua incluida) | 966a5f3 | CAL-MPPE-01…03 |
+| F3 | El fin del año por pasos: faltantes, revisión, decisiones, año siguiente, expedientes, corrección | eeeb559 | CIERRE-* |
+| F4 | La materia pendiente: por momentos, con el profesor de la materia y acta de compromiso | 9da2b9b | PEND-* |
+| F6 | La labor social: admin y profesor guía; cuenta para egresar según el liceo | 5a72d19 | LABOR-01…07 |
+| F5 | Resumen final del MPPE (final, revisión, pendiente), certificación de 1.º a 5.º, constancias con texto del liceo | 1cd7e31 | DOC-01…08, DOC-UI-01…03 |
+
+Reglas de cálculo en `MAPA_DE_CALCULOS.md` §1b, §8c, §8d y §8e; índice de
+todo en `docs/VENEZUELA-LO-QUE-FALTA.md`.
+
+**Lo que se encontró por el camino:**
+
+- **El cierre tomaba las notas de «la inscripción activa»**, y al cerrar el
+  alumno tiene dos (la del año que acaba y la del siguiente): CIERRE-10 salía
+  en rojo una de cada tantas. Ahora se toman los lapsos del año que se cierra.
+- **Editar el ciclo pisaba las fechas guardadas** con las del calendario del
+  MPPE (F7): el modo «como el MPPE» nacía activo y en la misma pasada ganaba
+  a las fechas del ciclo. Lo vio PLANINI-UI-01; ahora comprueba también que
+  al editar salen las fechas guardadas.
+- **Las abreviaturas del resumen salían todas «MT»**: el código interno de la
+  materia («MT-12») no es una abreviatura. Ahora la del plan de estudio del
+  MPPE (CA, MA, FI…), el código si es de 2–5 letras, o las iniciales.
+- **El resumen final no cabía en un teléfono** (veinte y tantas columnas, letra
+  de 11 px): de pie, cada alumno es una ficha con sus notas; la planilla
+  entera, al imprimir y en pantallas anchas.
+- **Los errores propios salían como «petición incorrecta»**: el manejador
+  global cambia los 4xx; `utils/error-claro.ts` deja pasar el código y el
+  mensaje.
+- **PostgreSQL corta los nombres a 63 letras**: un índice nuevo salía como
+  diferencia entre la base y el esquema. `src/scripts/deriva-del-esquema.ts`
+  lo compara; queda una diferencia VIEJA, no de esta tanda (`institutes.email`
+  opcional, `users.status`/`archivedAt`), sin tocar.
+
+**Supuestos a confirmar con cada liceo** (todos se cambian sin código): 60
+horas de labor social y que solo avisan para egresar; el orden de la cédula
+escolar; si Orientación y Convivencia va con apreciación.
+
+**Medido al cerrar:** servidor, 1095 de 1095 (135 archivos; las de Redis de
+verdad, CUPO/DOBLE, 12 de 12 aparte con `REDIS_PRUEBAS_URL`); web, 66 de 66;
+navegador, 263 de 264 en la tanda y PLANINI-UI-01 en verde tras el arreglo (3 saltadas: las de servidor apagado, en verde contra la
+web compilada); `npm run movil -- --exigir`: **35 pantallas** (8 nuevas: fin
+del año, resumen final, pendientes, labor social, certificación, constancia),
+0 con algo que arreglar.
+
+**No probado:** nada en un teléfono de verdad; ni impreso en papel oficio.
+
+## 61. Lo que el liceo hace en el plantel, las actividades del plan y los papeles limpios (27 y 28 de septiembre de 2026)
+
+Dos tandas. La primera, lo que faltaba del plantel (P1–P10); la segunda, lo que
+trajo el dueño con el plan de Física de su padre: no podía crear actividades,
+los documentos salían «sucios» y quería los instrumentos de evaluación.
+
+| | Qué | Commit | Pruebas |
+| :--- | :--- | :--- | :--- |
+| P1 | Crear una cuenta con lo mínimo; lo demás y los recaudos, en la ficha | 835c428 | |
+| P2 | Avisos: campana, tiempo real, Web Push y FCM (espera Firebase) | f3a69e5 | |
+| P3 | Panel de observaciones y citar al representante | 3e10634 | |
+| P4 | Traslado y retiro, en papel y en archivo firmado (Ed25519) | c3e8616 | |
+| P5 | Estadística de matrícula | 11bb164 | |
+| P6 | Graduandos y título | b39517d | |
+| P7 | Consejo de sección | 55fdccf | |
+| P8 | Carga horaria y constancia de trabajo | f05088f | |
+| P9 | Carnet estudiantil | 790bfae | |
+| A1-A2 | Las actividades salen en su clase y suman a su evaluación del plan | a405d90 | ACTDIA-01…06, SEMEVAL-01…07, CLASE-UI-06/07 |
+| A3 | Documentos limpios, también desde la APK (`ImprimirPlugin.java`) | 8f177d7 | DOC-LIMPIO-01…08 |
+| P10 | Comedor (PAE) | 3d9e458 | PAE-01…04, PAE-UI-01 |
+| B | Instrumentos de evaluación (cotejo, escala, rúbrica, puntos), acta de socialización, instrumentos del lapso | e94422a | INSTR-01…10, INSTR-WEB-01, MICLASE-07, PAPEL-01/02, INSTR-UI-01…03 |
+
+Reglas de cálculo en `MAPA_DE_CALCULOS.md` §1a y §1a-bis.
+
+**Lo que se encontró por el camino:**
+
+- **«No puedo crear actividades»**: el servidor SÍ las guardaba (201), pero
+  un día sin asistencia guardada no tenía sesión, la actividad quedaba fechada
+  por su creación en UTC y no salía en ninguna lista. El aviso «Actividad
+  añadida» salía igual, y por eso el dueño la creó dos veces. Ninguna prueba
+  pulsaba «Nueva Actividad»: la e2e la creaba por la API con una fecha que la
+  ventana real no manda nunca.
+- **Una evaluación unida a varias semanas solo recogía las actividades de la
+  primera**; las demás caían en una fila de 0 puntos y no contaban. Y guardar
+  el plan podía borrar filas con notas sin avisar (ahora 409).
+- **La cuenta que preguntó el dueño estaba bien**: 4 actividades con 20 en una
+  evaluación de 4 puntos dan 4 puntos. Es el promedio, no la suma.
+- **Documentos sucios**: el corte `lateral:` se mide contra el ancho del
+  papel, así que en carta se imprimía la versión de teléfono del armazón
+  (cabecera y barra de abajo en cada hoja). Y en la APK `window.print()` no
+  hacía nada.
+- **La tanda completa sacó cuatro pruebas viejas en rojo** por lo nuevo:
+  BORRA-01 y MEZCLA-08 (las suscripciones de avisos, excepciones justificadas),
+  LISTA-02 y PANEL-01 (una consulta más por las notas traídas: va ahora en
+  paralelo). Y en el navegador, TR-03 (el menú nuevo «Observaciones» se
+  confundía con el panel) y DISENO-07 («1RA HORA» cortada en días de clase).
+- **La auditoría del teléfono** pilló la barra de gestos destapada en las
+  hojas (sin barra de abajo, nada la tapaba) y el plan y el acta saliéndose de
+  ancho; ahora se deslizan de lado en pantalla y salen enteros en el papel.
+
+**Supuestos a confirmar con el dueño:** la semana de una actividad «para la
+próxima clase» con fecha de entrega es la de su entrega.
+
+**No probado:** los avisos con la app cerrada en la APK (esperan el proyecto de
+Firebase del dueño); imprimir desde la APK en un teléfono de verdad.
+
+**Medido al cerrar:** servidor, 1158 de 1158 (147 archivos, con
+`REDIS_PRUEBAS_URL`); web, 89 de 89; navegador, 283 de 289 en la tanda
+completa (2 saltadas) y las 4 en rojo en verde tras el arreglo o al repetir
+(CARRIL-01 y PAGOS-UI-01 son inestables, no de esta tanda); `npm run movil --
+--exigir`: **51 pantallas**, 0 con algo que arreglar. Deriva del esquema: solo
+la vieja.
+
+## 62. Sin señal se trabaja, como en WhatsApp (30 de septiembre de 2026)
+
+El dueño abrió la app fuera de casa para enseñarla y **se quedó en blanco**.
+Pidió que funcione como WhatsApp: que no se quede nunca en blanco, que se baje
+sola (también lo que no se ha abierto), que se ponga al día sola y que se pueda
+**trabajar sin conexión**, dejando lo hecho pendiente hasta que vuelva.
+
+**Por qué salía en blanco (medido en su Motorola):** la página de entrada
+guardada era de una compilación anterior y su javascript ya no existía. Y la
+APK de pruebas apunta a `localhost` por `adb reverse`: fuera de casa no hay
+servidor ninguno.
+
+Lo hecho, en seis partes (3dc8b60, 867d7d5, 1d1234d, 48b4803, 5a1374a):
+
+- **Nunca en blanco**: el ayudante busca primero en su propia caja, guarda cada
+  pantalla CON sus archivos, sin señal manda la entrada al Inicio guardado, y un
+  guardián en `<head>` lleva a la pantalla de sin conexión si la app no arranca.
+  El dueño no quiso la pantalla con la lista de lo guardado: la app abre normal
+  con el icono pequeño arriba, y lo no guardado lo dice un aviso.
+- **Se baja sola y se pone al día sola**: lo de cada rol cada 30 min, al volver
+  a la app y al volver la conexión; la compilación nueva se baja en segundo
+  plano; la APK nueva, con wifi, y pide un toque para instalarse.
+- **Lo hecho sin conexión queda pendiente (⏱)** y sube solo: la clase, el plan,
+  instrumentos, observaciones, citaciones, configuración y eventos. Al subir:
+  plan → crear → cambiar → borrar al final; nada se aplica dos veces
+  (`X-Cambio`).
+- **Los choques, como decidió el dueño**: la misma nota o asistencia → se
+  pregunta al que llega segundo; borrar con notas nuevas → «¿aún quieres
+  borrarla?»; notas a una actividad ya borrada → decide quien la borró
+  (recuperarla con sus notas); instrumento cambiado mientras se calificaba →
+  decide el admin. La configuración se compara **campo a campo**: lo no tocado
+  no pisa, lo que otro cambió se pregunta.
+- **Lo que la misma persona cambió mientras tanto no es «otra persona»** (la
+  clase que se guardó sola al salir, otra pestaña): salía una pregunta absurda.
+
+**Encontrado de paso:** VIVO-01/02/10 tomaban «hoy» en UTC y fallaban de 20:00
+a medianoche (desde SINCON-09 un día que no ha llegado no se guarda); y borrar
+a mano en la base no avisa a la memoria rápida del servidor: una prueba que lo
+hacía veía lo de antes y el servidor —bien— preguntaba.
+
+**No probado:** en el teléfono del dueño la parte de trabajar sin conexión (la
+depuración inalámbrica se cayó a mitad; lo de abrir sin señal sí se vio en su
+Motorola). La descarga con la app cerrada del todo espera a Firebase.
+
+**Medido al cerrar:** servidor, 1184 de 1184 (149 archivos, con
+`REDIS_PRUEBAS_URL`; 4 en rojo arreglados y repetidos); web, 100 de 100;
+navegador, 302 de 303 en la tanda completa y la que falló en verde tras el
+arreglo (37 de 37 en su tramo); `npm run movil -- --exigir`: 51 pantallas, 0
+con algo que arreglar. Deriva del esquema: solo la vieja.
+
+## 63. Las finanzas del liceo y una app que dice qué hace cada cosa (1 de octubre de 2026)
+
+Lo pidió el dueño mirando Pagos: ver los ciclos pasados, un diseño «más como un
+calendario», y usar Pagos para TODAS las finanzas del liceo (fondos, lo que
+deben los estudiantes, la nómina de profesores y del otro personal, con
+vacaciones, y los gastos sueltos). Y un escaneo a fondo de la pantalla con la
+skill `ui-ux-pro-max` para «que sepa qué hace cada cosa». De las ideas
+propuestas eligió tres: recordar y reportar pagos, becas/descuentos/mora, y
+facturas con reporte mensual.
+
+Lo hecho, en siete partes (d44f24b, fc3b103, a7c75df, 0c27b1d, 27fdce6, a881f25):
+
+- **Escaneo UI/UX** (`docs/UI-UX-ESCANEO.md`): cada pantalla dice para qué
+  sirve, «¿Cómo funciona?» en las complejas, lo del admin ya no se le enseña al
+  profesor, configuración en tarjetas con su pista. Nueva regla `--claridad` en
+  `npm run movil`.
+- **Cada ciclo con su configuración de pagos.** Fallo de fondo encontrado: una
+  sola configuración para todo; subir la cuota recalculaba los ciclos pasados y
+  salían «debiendo». Ciclo cerrado: se ve, no se toca (409).
+- **Pagos como calendario**: los 12 meses, el mes en días, las cuotas del
+  alumno en baldosas que se tocan para cobrar.
+- **Finanzas**: fondos disponibles, gastos con foto de la factura, nómina
+  (mensual, quincenal, único; vacaciones y bono por persona o del liceo;
+  «guardar para los próximos ciclos»), y «Mis pagos» para el profesor, que no
+  ve nada más.
+- **Becas, hermanos y mora**: el mayor descuento, no la suma; la mora una vez
+  por cuota y nunca al exonerado.
+- **El representante reporta su pago** con la captura; el admin confirma (se
+  cobra con la misma cuenta, y dos confirmaciones a la vez cobran una sola) o
+  rechaza con motivo. Aviso N días antes del vencimiento, uno por cuota.
+- **Reporte del mes** para imprimir, con membrete y firmas.
+
+**Encontrado de paso:** un saldo negativo se escribía «$-110,00» y la prueba lo
+leía como positivo; tres pruebas de navegador dependían del día o de la hora
+(EVENTO-UI-01 contaba con estar en septiembre; QRE-01 y CARRIL-01 con dónde
+deja el carril la clase en curso).
+
+**Medido al cerrar:** servidor, 1217 de 1217 (154 archivos, con
+`REDIS_PRUEBAS_URL`); web, 106 de 106; navegador, 306 de 309 en la tanda
+completa y las 3 en verde tras el arreglo; `npm run movil -- --exigir`: 55
+pantallas, 0 con algo que arreglar. Deriva del esquema: solo la vieja.
+
+**Sin conexión** en finanzas solo se anotan fondos y gastos (sin la foto de la
+factura): pagar al personal y confirmar pagos piden servidor.

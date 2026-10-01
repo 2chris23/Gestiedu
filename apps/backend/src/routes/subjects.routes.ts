@@ -24,7 +24,8 @@ const subjectsRoutes: FastifyPluginAsync = async (fastify) => {
       required: ['name'],
       properties: {
         name: { type: 'string', minLength: 3, maxLength: 100 },
-        color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' }
+        color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
+        evaluacion: { type: 'string', enum: ['NUMERICA', 'CUALITATIVA'] }
       }
     },
     response: {
@@ -58,7 +59,8 @@ const subjectsRoutes: FastifyPluginAsync = async (fastify) => {
       type: 'object',
       properties: {
         name: { type: 'string', minLength: 3, maxLength: 100 },
-        color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' }
+        color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
+        evaluacion: { type: 'string', enum: ['NUMERICA', 'CUALITATIVA'] }
       }
     }
   };

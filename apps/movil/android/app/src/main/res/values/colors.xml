@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        LA FRANJA DEL RELOJ VA DEL COLOR DE LA APP
+
+        Arriba, donde están el reloj, el wifi y la batería, no llega la web:
+        llega el fondo de la ventana de la app. Si no se dice nada, es negro, y
+        se ve una banda negra pegada a una cabecera blanca.
+
+        Las apps que la gente usa todos los días no hacen eso: Facebook y
+        WhatsApp pintan esa franja del MISMO color que su cabecera —blanco— y
+        ponen el reloj en oscuro encima. Parece parte de la app, no un borde.
+
+        Aquí es blanco porque la cabecera de Gestiedu es blanca. El color del
+        liceo sigue siendo el suyo en el icono y en la pantalla de arranque,
+        que es donde identifica; encima de una cabecera blanca solo haría una
+        raya de otro color.
+    -->
+    <color name="color_de_la_barra_de_estado">#FFFFFF</color>
+
+    <!-- El color del liceo, para la pantalla de arranque y lo que haga falta.
+         Lo reescribe `scripts/preparar-liceo.mjs`. -->
+    <color name="color_del_liceo">#2563EB</color>
+</resources>

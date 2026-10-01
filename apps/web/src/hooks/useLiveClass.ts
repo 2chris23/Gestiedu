@@ -1,8 +1,19 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import { toast } from 'sonner';
 import type { PlanColumnDef } from '@/components/evaluation/planColumns';
-import { recordarPendiente, olvidarPendiente } from '@/lib/guardado-optimista';
+import { dejarPendiente } from '@/lib/por-enviar';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
+
+/**
+ * SIN CONEXIÓN, LO DE LA CLASE QUEDA PENDIENTE (2026-09-30)
+ *
+ * Pasar lista, poner notas, crear o borrar una actividad: si no hay conexión,
+ * en vez de fallar se deja en la cola del teléfono (`lib/por-enviar.ts`) y se
+ * envía solo al volver. Con conexión, todo sigue igual que siempre.
+ */
+export const PENDIENTE = { pendiente: true } as const;
+const sinConexion = (e: unknown) => esQueNoContesta(e);
 
 export interface LiveClassStudent {
     id: string;
@@ -23,6 +34,12 @@ export interface LiveClassPlanContent {
     indicators: Array<{ id: string; indicadores?: string }>;
 }
 
+/** Cómo se le evalúa a un alumno en una actividad cuando no es como a los demás. */
+export interface OtraFormaDeEvaluar {
+    metodo: string;
+    motivo?: string | null;
+}
+
 export interface ClassActivity {
     id: string;
     title: string;
@@ -33,6 +50,12 @@ export interface ClassActivity {
     dueDate?: string | null;
     maxScore?: number;
     scores?: Record<string, number | null> | null;
+    /** Alumnos evaluados de otra forma (p. ej. con el cuaderno): su nota cuenta igual. */
+    evaluadoDeOtraForma?: Record<string, OtraFormaDeEvaluar> | null;
+    /** El instrumento con que se califica (el de su evaluación del plan). */
+    instrumento?: import('@/lib/instrumentos').Instrumento | null;
+    /** Las marcas de cada alumno y su total. */
+    detalleDelInstrumento?: Record<string, { marcas: import('@/lib/instrumentos').Marcas; total: number | null }> | null;
     isDone: boolean;
     carriedOver: boolean;
     planRowId?: string | null;
@@ -46,6 +69,8 @@ export interface ClassActivity {
 }
 
 export interface LiveClassDetail {
+    /** La sección donde se da la clase, con su turno (mañana / tarde). */
+    classroom?: { id: string; name: string; shift?: string; grade?: number; section?: string } | null;
     session: {
         id: string;
         topic?: string;
@@ -59,9 +84,17 @@ export interface LiveClassDetail {
     teacher: { id: string; firstName: string; lastName: string } | null;
     students: LiveClassStudent[];
     weekNumber?: number;
+    /** Antes de que empiece el plan del lapso: semanas de diagnóstico (o como las llame el liceo). */
+    antesDelPlan?: boolean;
+    nombreAntesDelPlan?: string;
+    /** "YYYY-MM-DD" */
+    inicioDelPlan?: string | null;
     planContent?: LiveClassPlanContent;
     planColumns?: PlanColumnDef[] | null;
     planLapso?: string;
+    /** Las evaluaciones del plan que cubren este día. */
+    evaluacionesDeLaSemana?: Array<{ id: string; actividad: string; puntos: number; semana: number; instrumentos: string | null }>;
+    planConPuntos?: boolean;
     weekRow?: {
         id: string;
         title: string;
@@ -89,7 +122,12 @@ export interface SaveLiveClassPayload {
     involvedStudentIds?: string[];
     startTime?: string;
     endTime?: string;
-    attendances?: Array<{ studentId: string; status: string; comments?: string }>;
+    /**
+     * Solo lo que esta pantalla cambió, y los alumnos que aún no tienen
+     * asistencia ese día con `soloSiNoHay` (se crean como están, pero no pisan
+     * lo que otra pantalla haya guardado mientras tanto). Ver ASIS-DOS-01.
+     */
+    attendances?: Array<{ studentId: string; status: string; comments?: string; soloSiNoHay?: boolean }>;
 }
 
 export function useLiveClassDetail(classroomId: string, subjectId: string, date: string) {
@@ -106,6 +144,21 @@ export function useLiveClassDetail(classroomId: string, subjectId: string, date:
     });
 }
 
+/** Una actividad tal y como la ve quien mira el horario de ese día. */
+export interface ActividadDelDia {
+    id: string;
+    title: string;
+    type: string;
+    tag?: string | null;
+    target: string;
+    dueDate: string | null;
+    maxScore: number | null;
+    /** Se puso en esa clase para otro día (el contador «Próx.»). */
+    paraOtroDia: boolean;
+    /** Solo llega cuando quien pregunta es el alumno (o su representante). */
+    miNota?: number | null;
+}
+
 export interface LiveOverviewSubject {
     subjectName: string;
     color?: string;
@@ -115,20 +168,60 @@ export interface LiveOverviewSubject {
     activitiesCount?: number;
     todayActivitiesCount?: number;
     nextActivitiesCount?: number;
+    suspendida?: boolean;
+    /** Antes de que empiece el plan del lapso (semanas de diagnóstico). */
+    antesDelPlan?: boolean;
+    nombreAntesDelPlan?: string;
+    actividades?: ActividadDelDia[];
 }
 
-export function useLiveOverview(classroomId: string, date: string) {
+/**
+ * El contenido del horario de una sección en un día.
+ *
+ * Lo pide también el alumno para SU sección y el representante para la de su
+ * representado: el servidor decide quién puede (`assertCanSeeClassroom`) y, si
+ * es un alumno, le manda solo SU nota.
+ */
+export function useLiveOverview(classroomId: string, date: string, studentId?: string) {
     return useQuery({
-        queryKey: ['liveOverview', classroomId, date],
+        queryKey: ['liveOverview', classroomId, date, studentId ?? ''],
         queryFn: async () => {
             if (!classroomId || !date) return null;
             const { data } = await api.get('/sessions/live-overview', {
-                params: { classroomId, date },
+                params: { classroomId, date, ...(studentId ? { studentId } : {}) },
             });
-            return data as { overview: Record<string, LiveOverviewSubject> };
+            return data as { overview: Record<string, LiveOverviewSubject>; shift?: 'MANANA' | 'TARDE' | 'INTEGRAL' };
         },
         enabled: !!classroomId && !!date,
+        // Que un alumno no pueda ver una sección no es un fallo que reintentar.
+        retry: false,
     });
+}
+
+/**
+ * El resumen de VARIAS secciones el mismo día: el horario de un profesor da
+ * clase en varias, y el resumen se pide por sección. Con una sola (la del
+ * perfil), el horario del profesor salía con «—» y «Hoy: 0 · Próx: 0».
+ * Comparte memoria con `useLiveOverview` (misma clave).
+ */
+export function useLiveOverviews(classroomIds: string[], date: string) {
+    const unicas = Array.from(new Set(classroomIds.filter(Boolean))).sort();
+    const resultados = useQueries({
+        queries: unicas.map((classroomId) => ({
+            queryKey: ['liveOverview', classroomId, date, ''],
+            queryFn: async () => {
+                const { data } = await api.get('/sessions/live-overview', { params: { classroomId, date } });
+                return data as { overview: Record<string, LiveOverviewSubject>; shift?: 'MANANA' | 'TARDE' | 'INTEGRAL' };
+            },
+            enabled: Boolean(date),
+            retry: false,
+        })),
+    });
+    const porSeccion: Record<string, { overview: Record<string, LiveOverviewSubject>; shift?: 'MANANA' | 'TARDE' | 'INTEGRAL' } | undefined> = {};
+    unicas.forEach((id, i) => {
+        porSeccion[id] = resultados[i]?.data ?? undefined;
+    });
+    return porSeccion;
 }
 
 export function useClassActivities(classroomId?: string, subjectId?: string) {
@@ -145,14 +238,44 @@ export function useClassActivities(classroomId?: string, subjectId?: string) {
     });
 }
 
+/** Lo que acompaña a la clase si hay que dejarla pendiente (no se envía). */
+export interface ParaLaCola {
+    resumen: string;
+    nombres?: Record<string, string>;
+    /** La asistencia de cada alumno cuando se abrió la clase: lo que se vio. */
+    antes?: Record<string, string | null>;
+}
+
 export function useSaveLiveClass() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (payload: SaveLiveClassPayload) => {
-            const { data } = await api.post('/sessions/live-save', payload);
-            return data;
+        mutationFn: async ({ paraLaCola, ...payload }: SaveLiveClassPayload & { paraLaCola?: ParaLaCola }) => {
+            try {
+                const { data } = await api.post('/sessions/live-save', payload);
+                return data;
+            } catch (e) {
+                if (!sinConexion(e) || !paraLaCola) throw e;
+                await dejarPendiente({
+                    tipo: 'asistencia',
+                    grupo: 3,
+                    metodo: 'post',
+                    url: '/sessions/live-save',
+                    objeto: `clase|${payload.classroomId}|${payload.subjectId}|${payload.date}`,
+                    resumen: paraLaCola.resumen,
+                    nombres: paraLaCola.nombres,
+                    datos: {
+                        ...payload,
+                        // Lo que se vio: si al llegar otro lo cambió, se pregunta.
+                        attendances: (payload.attendances ?? []).map((a) =>
+                            a.soloSiNoHay || !paraLaCola.antes ? a : { ...a, antes: paraLaCola.antes[a.studentId] ?? null }
+                        ),
+                    },
+                });
+                return PENDIENTE;
+            }
         },
-        onSuccess: (_, variables) => {
+        onSuccess: (datos: any, variables) => {
+            if (datos?.pendiente) return;
             queryClient.invalidateQueries({
                 queryKey: ['liveClassDetail', variables.classroomId, variables.subjectId, variables.date],
             });
@@ -180,11 +303,31 @@ export function useCreateClassActivity() {
             maxScore?: number;
             planRowId?: string;
             classSessionId?: string;
+            /** El día de la clase que se ve: ahí nace la actividad. */
+            date?: string;
         }) => {
-            const { data } = await api.post('/sessions/activities', payload);
-            return data;
+            try {
+                const { data } = await api.post('/sessions/activities', payload);
+                return data;
+            } catch (e) {
+                if (!sinConexion(e)) throw e;
+                // El id lo pone el teléfono: así sus notas, también sin
+                // conexión, ya saben a qué actividad van.
+                const id = crypto.randomUUID();
+                await dejarPendiente({
+                    tipo: 'crear-actividad',
+                    grupo: 2,
+                    metodo: 'post',
+                    url: '/sessions/activities',
+                    objeto: `actividad|${id}`,
+                    resumen: `Nueva actividad «${payload.title}»`,
+                    datos: { ...payload, id },
+                });
+                return { ...PENDIENTE, activity: { ...payload, id, scores: {} }, dondeSale: payload.target === 'NEXT' ? 'PROXIMA' : 'HOY' };
+            }
         },
-        onSuccess: (_, variables) => {
+        onSuccess: (datos: any, variables) => {
+            if (datos?.pendiente) return;
             queryClient.invalidateQueries({
                 queryKey: ['liveClassDetail', variables.classroomId, variables.subjectId],
             });
@@ -245,6 +388,31 @@ export function useUpdateClassActivity() {
  *
  * Ver `lib/guardado-optimista.ts`.
  */
+/**
+ * Evaluar a un alumno de otra forma en una actividad (o quitarlo: `metodo`
+ * vacío). La nota se sigue poniendo igual y cuenta igual.
+ */
+export function useEvaluarDeOtraForma() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ activityId, studentId, metodo, motivo }: { activityId: string; studentId: string; metodo: string; motivo?: string }) => {
+            const url = `/sessions/activities/${encodeURIComponent(activityId)}/otra-forma/${encodeURIComponent(studentId)}`;
+            const { data } = metodo.trim()
+                ? await api.put(url, { metodo: metodo.trim(), motivo: motivo?.trim() || undefined })
+                : await api.delete(url);
+            return data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['liveClassDetail'] });
+            queryClient.invalidateQueries({ queryKey: ['classActivities'] });
+            toast.success('Guardado cómo se le evalúa');
+        },
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.error || 'No se pudo guardar cómo se le evalúa');
+        },
+    });
+}
+
 export function useSaveActivityGrades() {
     const queryClient = useQueryClient();
 
@@ -252,14 +420,32 @@ export function useSaveActivityGrades() {
         mutationFn: async ({
             activityId,
             scores,
-            maxScore
+            maxScore,
+            paraLaCola,
         }: {
             activityId: string;
             scores: Record<string, number | null>;
             maxScore?: number;
+            /** Si hay que dejarlas pendientes: qué nota tenía cada uno (lo que se vio). */
+            paraLaCola?: { resumen: string; nombres?: Record<string, string>; antes: Record<string, number | null> };
         }) => {
-            const { data } = await api.post(`/sessions/activities/${activityId}/grades`, { scores, maxScore });
-            return data;
+            try {
+                const { data } = await api.post(`/sessions/activities/${activityId}/grades`, { scores, maxScore });
+                return data;
+            } catch (e) {
+                if (!sinConexion(e) || !paraLaCola) throw e;
+                await dejarPendiente({
+                    tipo: 'notas',
+                    grupo: 3,
+                    metodo: 'post',
+                    url: `/sessions/activities/${activityId}/grades`,
+                    objeto: `actividad|${activityId}`,
+                    resumen: paraLaCola.resumen,
+                    nombres: paraLaCola.nombres,
+                    datos: { scores, maxScore, antes: paraLaCola.antes },
+                });
+                return PENDIENTE;
+            }
         },
 
         onMutate: async ({ activityId, scores }) => {
@@ -293,25 +479,24 @@ export function useSaveActivityGrades() {
                 queryClient.setQueryData(clave, datos);
             });
 
-            // 2. Las notas NO se pierden.
-            recordarPendiente({
-                id: `notas:${variables.activityId}`,
-                que: 'Calificaciones de una actividad',
-                ruta: `/sessions/activities/${variables.activityId}/grades`,
-                carga: { scores: variables.scores, maxScore: variables.maxScore },
-                cuando: Date.now(),
-                motivo: error?.response?.data?.message || error?.message,
-            });
+            // Una nota que el servidor rechaza por su valor (25 sobre 20, una
+            // letra…) no se apunta para reintentar: volvería a rechazarse
+            // siempre. Se dice qué tiene de malo y se corrige ahí mismo.
+            if (error?.response?.status === 400) {
+                toast.error(error?.response?.data?.error || 'Hay una nota que no es válida.');
+                return;
+            }
 
-            // 3. Se avisa, y el aviso no se va solo.
-            toast.error(
-                'No se pudieron guardar las calificaciones. Quedaron apuntadas en este dispositivo: no hace falta volver a escribirlas.',
-                { duration: Infinity }
-            );
+            // 2. Se dice por qué, y el aviso no se va solo: lo escrito sigue en
+            // la pantalla (y sin conexión no llega aquí: queda pendiente).
+            toast.error(error?.response?.data?.error || 'No se pudieron guardar las calificaciones.', { duration: Infinity });
         },
 
-        onSuccess: (_datos, variables) => {
-            olvidarPendiente(`notas:${variables.activityId}`);
+        onSuccess: (datos: any) => {
+            if (datos?.pendiente) {
+                toast('Sin conexión: las notas quedaron pendientes ⏱ y se envían solas al volver.', { id: 'pendiente' });
+                return;
+            }
             toast.success('Calificaciones guardadas');
         },
 
@@ -327,10 +512,34 @@ export function useDeleteClassActivity() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async (activityId: string) => {
-            const { data } = await api.delete(`/sessions/activities/${activityId}`);
-            return data;
+            try {
+                const { data } = await api.delete(`/sessions/activities/${activityId}`);
+                return data;
+            } catch (e) {
+                if (!sinConexion(e)) throw e;
+                // Cuántas notas se vieron: si al llegar tiene más, se pregunta.
+                let vistas = 0;
+                let titulo = 'una actividad';
+                for (const [, d] of queryClient.getQueriesData<any>({ queryKey: ['liveClassDetail'] })) {
+                    const a = d?.activities?.find((x: any) => x.id === activityId);
+                    if (!a) continue;
+                    titulo = `«${a.title}»`;
+                    vistas = Object.values(a.scores || {}).filter((v) => v !== null && v !== undefined && v !== '').length;
+                }
+                await dejarPendiente({
+                    tipo: 'borrar-actividad',
+                    grupo: 4,
+                    metodo: 'delete',
+                    url: `/sessions/activities/${activityId}`,
+                    params: { notasVistas: String(vistas) },
+                    objeto: `actividad|${activityId}`,
+                    resumen: `Borrar ${titulo}`,
+                });
+                return PENDIENTE;
+            }
         },
-        onSuccess: () => {
+        onSuccess: (datos: any) => {
+            if (datos?.pendiente) return;
             queryClient.invalidateQueries({ queryKey: ['liveClassDetail'] });
         },
         onError: (error: Error) => {
@@ -342,19 +551,26 @@ export function useDeleteClassActivity() {
 export function useSuspendClass() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (payload: { classroomId: string; subjectId: string; date: string; reason?: string }) => {
+        mutationFn: async (payload: {
+            classroomId: string;
+            subjectId: string;
+            date: string;
+            reason?: string;
+            /** Otra materia de la sección que entra en ese hueco (solo admin). */
+            replacementSubjectId?: string;
+        }) => {
             const { data } = await api.post('/sessions/suspend', payload);
             return data;
         },
         onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['classReplacements'] });
             queryClient.invalidateQueries({
                 queryKey: ['liveClassDetail', variables.classroomId, variables.subjectId],
             });
             queryClient.invalidateQueries({ queryKey: ['classroomHistory'] });
         },
-        onError: (error: Error) => {
-            toast.error(error.message || 'Error al suspender la clase');
-        },
+        // Sin aviso aquí: el diálogo de suspender enseña el motivo del servidor
+        // ("Beto no está libre: tiene Historia en 1er B…") donde se decide.
     });
 }
 

@@ -41,6 +41,7 @@ import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { Client } from 'pg';
 import { platformPrisma } from '../config/database';
+import { guardarMedicion } from './guardar-medicion';
 
 const PUERTO = Number(process.env.PUERTO_MEDIDA || 3007);
 const API = `http://localhost:${PUERTO}/api`;
@@ -334,6 +335,22 @@ async function main() {
             console.log('');
         }
 
+        guardarMedicion('aguante', {
+            liceo: SLUG,
+            parametros: { MINUTOS, GENTE, PAUSA_MS },
+            minutos: minutos.map((m) => ({
+                hechas: m.hechas,
+                fallos: m.fallos,
+                p50: percentil(m.tiempos, 50),
+                p95: percentil(m.tiempos, 95),
+                peor: Math.max(...m.tiempos, 0),
+            })),
+            hechas,
+            fallos,
+            p95PrimerMinuto: primero,
+            p95UltimoMinuto: ultimo,
+            aguanta: fallos === 0 && !seArrastra,
+        });
         await platformPrisma.$disconnect();
         process.exit(fallos === 0 && !seArrastra ? 0 : 1);
     } finally {
