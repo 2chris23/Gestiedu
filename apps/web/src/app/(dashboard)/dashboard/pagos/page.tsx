@@ -4,7 +4,10 @@ import { Button } from '@/components/ui/button';
 import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import * as React from 'react';
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, Lock, Search, Wallet } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, GraduationCap, Loader2, Lock, Search, ShoppingCart, Users, Wallet } from 'lucide-react';
+import { VistaResumen } from '@/components/finanzas/VistaResumen';
+import { VistaDelPersonal } from '@/components/finanzas/VistaDelPersonal';
+import { VistaDeGastosYFondos } from '@/components/finanzas/GastosYFondos';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AyudaDeLaPantalla } from '@/components/common/AyudaDeLaPantalla';
 import { CalendarioDelCiclo } from '@/components/pagos/CalendarioDelCiclo';
@@ -14,7 +17,7 @@ import { mesesDelCiclo, mesDe } from '@/lib/calendario-del-ciclo';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { FichaDePagos } from '@/components/pagos/FichaDePagos';
-import { AlumnoEnResumen, dinero, ESTADO_DEL_ALUMNO, EstadoDelAlumno, useCiclosDePagos, useFichaDePagos, usePagosActivos, useResumenDePagos } from '@/hooks/usePagos';
+import { AlumnoEnResumen, dinero, ESTADO_DEL_ALUMNO, EstadoDelAlumno, useCiclosDePagos, useFichaDePagos, usePagosActivos, useResumenDePagos, type Moneda } from '@/hooks/usePagos';
 import { cn } from '@/lib/utils';
 
 /**
@@ -31,44 +34,18 @@ import { cn } from '@/lib/utils';
 const ANOS = ['1er Año', '2do Año', '3er Año', '4to Año', '5to Año', '6to Año'];
 type Filtro = 'TODOS' | EstadoDelAlumno;
 
-export default function PagosPage() {
-    const { data: ajustes, isLoading: cargandoAjustes } = usePagosActivos();
-    const activo = Boolean(ajustes?.enabled);
-    // El ciclo va en la dirección (`?ciclo=`): se puede volver atrás y compartir.
-    const router = useRouter();
-    const ciclo = useSearchParams().get('ciclo');
-    const { data: ciclos = [] } = useCiclosDePagos(activo);
-    const { data, isLoading, error } = useResumenDePagos(activo, ciclo);
+function VistaDeEstudiantes({ ciclo }: { ciclo: string | null }) {
+    const { data, isLoading, error } = useResumenDePagos(true, ciclo);
     const [busqueda, setBusqueda] = React.useState('');
     const [filtro, setFiltro] = React.useState<Filtro>('TODOS');
     const [abierto, setAbierto] = React.useState<string | null>(null);
     const [mes, setMes] = React.useState<string | null>(null);
     React.useEffect(() => setMes(null), [ciclo]);
-    const cambiarCiclo = (id: string | null) => router.replace(id ? `/dashboard/pagos?ciclo=${encodeURIComponent(id)}` : '/dashboard/pagos', { scroll: false });
 
-    if (cargandoAjustes || (activo && isLoading)) {
+    if (isLoading) {
         return (
-            <div className="flex min-h-[60vh] items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-            </div>
-        );
-    }
-
-    if (!activo) {
-        // La misma cabecera que las demás pantallas, y el aviso debajo como un
-        // estado vacío que dice qué hacer. Antes el título de la pantalla ERA el
-        // aviso, centrado: al entrar desde el menú no parecía la misma aplicación.
-        return (
-            <div className="space-y-6">
-                <EncabezadoDePantalla titulo="Pagos" descripcion="Cuotas, abonos y deudas de cada estudiante" />
-                <div className="mx-auto max-w-xl rounded-2xl border border-dashed border-gray-300 bg-white p-8 text-center">
-                    <Wallet className="mx-auto h-10 w-10 text-gray-500" aria-hidden />
-                    <h2 className="mt-3 text-lg font-bold text-gray-900">El control de pagos está apagado</h2>
-                    <p className="mt-2 text-gray-700">Se activa en Configuración → Pagos.</p>
-                    <Button asChild className="mt-4">
-                        <Link href="/dashboard/configuracion">Ir a Configuración</Link>
-                    </Button>
-                </div>
+            <div className="flex min-h-[40vh] items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-indigo-600" aria-label="Cargando los pagos" />
             </div>
         );
     }
@@ -125,38 +102,6 @@ export default function PagosPage() {
         <div className="space-y-6">
             <div>
                 <div>
-                    <EncabezadoDePantalla
-                        titulo="Pagos"
-                        descripcion="Lo que paga cada estudiante, mes a mes. Toca un mes para verlo por días; toca un estudiante para cobrarle."
-                        acciones={
-                            <>
-                                {ciclos.length > 0 && <SelectorDeCiclo ciclos={ciclos} valor={ciclo} alCambiar={cambiarCiclo} />}
-                                <AyudaDeLaPantalla
-                                    titulo="Cómo funcionan los pagos"
-                                    pasos={[
-                                        {
-                                            titulo: 'Elige el ciclo',
-                                            texto: 'Arriba, «Ciclo». Se abre en el que está en curso; los ciclos cerrados se ven, pero ya no se cobra ni se anula en ellos.',
-                                        },
-                                        {
-                                            titulo: 'Mira el año de un vistazo',
-                                            texto: 'Cada mes dice cuánto se ha cobrado de lo esperado y cuántos deben. Toca un mes: sale en días, con lo que vence y lo que se cobró cada día, y la lista de quienes deben de ese mes.',
-                                        },
-                                        {
-                                            titulo: 'Cobra a un estudiante',
-                                            texto: 'Tócalo en la lista (o en el mes). En su ficha, toca las cuotas que paga, pon el monto, la fecha y el método, y «Registrar pago». Si paga menos, queda como abono.',
-                                        },
-                                        {
-                                            titulo: 'Comprobantes y errores',
-                                            texto: 'Cada pago tiene su comprobante (imagen o PDF). Un pago mal registrado no se borra: se anula con un motivo, y queda a la vista.',
-                                        },
-                                    ]}
-                                    nota="Las cuotas, la moneda y los métodos de pago se ajustan en Configuración → Pagos."
-                                />
-                            </>
-                        }
-                    />
-                    <p className="mt-2 text-sm font-semibold text-gray-700">Ciclo escolar {data.academicYear.name}</p>
                     {data.closed && (
                         <p className="mt-3 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800">
                             <Lock className="h-4 w-4 shrink-0 text-gray-600" aria-hidden />
@@ -168,7 +113,7 @@ export default function PagosPage() {
                         <button
                             type="button"
                             onClick={() => setFiltro('DEBE')}
-                            className="mt-5 flex w-full items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-left hover:bg-red-100"
+                            className="mt-1 flex w-full items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-left hover:bg-red-100"
                         >
                             <AlertTriangle className="h-6 w-6 shrink-0 text-red-700" />
                             <span className="text-red-900">
@@ -179,7 +124,7 @@ export default function PagosPage() {
                             </span>
                         </button>
                     ) : (
-                        <div className="mt-5 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900">
+                        <div className="mt-1 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900">
                             <CheckCircle2 className="h-6 w-6 text-emerald-700" />
                             <strong>Nadie tiene cuotas vencidas</strong>
                         </div>
@@ -320,5 +265,143 @@ function DialogoDeFicha({ studentId, ciclo, alCerrar }: { studentId: string | nu
                 )}
             </DialogContent>
         </Dialog>
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FINANZAS: la página (2026-10-01)
+// ════════════════════════════════════════════════════════════════════════════
+
+type Vista = 'resumen' | 'estudiantes' | 'personal' | 'gastos';
+const VISTAS: Array<{ id: Vista; nombre: string; pista: string; icono: typeof Wallet }> = [
+    { id: 'resumen', nombre: 'Resumen', pista: 'Fondos y el ciclo mes a mes', icono: Wallet },
+    { id: 'estudiantes', nombre: 'Estudiantes', pista: 'Cuotas, cobros y quién debe', icono: GraduationCap },
+    { id: 'personal', nombre: 'Personal', pista: 'Sueldos, vacaciones y recibos', icono: Users },
+    { id: 'gastos', nombre: 'Gastos y fondos', pista: 'Compras, reparaciones, ingresos', icono: ShoppingCart },
+];
+
+/**
+ * FINANZAS DEL LICEO
+ *
+ * Cristian: «hacer aquí en pagos controlar también los pagos a los profesores,
+ * al personal y gastos extras… que sea para manejar sus finanzas». La misma
+ * dirección de siempre (`/dashboard/pagos`), con cuatro pestañas y el ciclo
+ * que se mira arriba; los dos van en la dirección (`?vista=&ciclo=`), así que
+ * volver atrás y compartir el enlace llevan al mismo sitio.
+ */
+export default function FinanzasPage() {
+    const { data: ajustes, isLoading: cargandoAjustes } = usePagosActivos();
+    const activo = Boolean(ajustes?.enabled);
+    const router = useRouter();
+    const buscar = useSearchParams();
+    const ciclo = buscar.get('ciclo');
+    const vista = (VISTAS.some((v) => v.id === buscar.get('vista')) ? buscar.get('vista') : 'resumen') as Vista;
+    const { data: ciclos = [] } = useCiclosDePagos(activo);
+    const ir = (cambios: { ciclo?: string | null; vista?: Vista }) => {
+        const q = new URLSearchParams();
+        const c = cambios.ciclo !== undefined ? cambios.ciclo : ciclo;
+        const v = cambios.vista ?? vista;
+        if (v !== 'resumen') q.set('vista', v);
+        if (c) q.set('ciclo', c);
+        router.replace(`/dashboard/pagos${q.size ? `?${q}` : ''}`, { scroll: false });
+    };
+
+    if (cargandoAjustes) {
+        return (
+            <div className="flex min-h-[60vh] items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-indigo-600" aria-label="Cargando" />
+            </div>
+        );
+    }
+
+    if (!activo) {
+        // La misma cabecera que las demás pantallas, y debajo qué hacer.
+        return (
+            <div className="space-y-6">
+                <EncabezadoDePantalla titulo="Finanzas" descripcion="Cuotas de los estudiantes, pagos al personal, gastos y fondos del liceo" />
+                <div className="mx-auto max-w-xl rounded-2xl border border-dashed border-gray-300 bg-white p-8 text-center">
+                    <Wallet className="mx-auto h-10 w-10 text-gray-500" aria-hidden />
+                    <h2 className="mt-3 text-lg font-bold text-gray-900">Las finanzas están apagadas</h2>
+                    <p className="mt-2 text-gray-700">Se encienden en Configuración → Pagos.</p>
+                    <Button asChild className="mt-4">
+                        <Link href="/dashboard/configuracion">Ir a Configuración</Link>
+                    </Button>
+                </div>
+            </div>
+        );
+    }
+
+    const elCiclo = ciclo ? ciclos.find((c) => c.id === ciclo) : ciclos.find((c) => c.status === 'ACTIVE');
+    const base = (ajustes?.baseCurrency ?? 'USD') as Moneda;
+    const monedas = { base, aceptadas: (ajustes?.acceptedCurrencies === 'BOTH' || !ajustes?.acceptedCurrencies ? ['USD', 'VES'] : [ajustes.acceptedCurrencies]) as Moneda[] };
+
+    return (
+        <div className="space-y-5">
+            <EncabezadoDePantalla
+                titulo="Finanzas"
+                descripcion="Lo que tiene el liceo, lo que le deben, lo que paga y lo que gasta. Elige una pestaña; los meses se tocan para verlos por días."
+                acciones={
+                    <>
+                        {ciclos.length > 0 && <SelectorDeCiclo ciclos={ciclos} valor={ciclo} alCambiar={(c) => ir({ ciclo: c })} />}
+                        <AyudaDeLaPantalla
+                            titulo="Cómo funcionan las finanzas"
+                            pasos={[
+                                {
+                                    titulo: 'Empieza por el saldo',
+                                    texto: 'En «Resumen», «Poner el saldo inicial»: lo que el liceo tiene hoy. Desde ahí, los fondos disponibles se calculan solos: entra lo cobrado y lo agregado; sale lo pagado al personal y lo gastado.',
+                                },
+                                {
+                                    titulo: 'Cobra a los estudiantes',
+                                    texto: 'En «Estudiantes»: el ciclo mes a mes y la lista. Toca a un estudiante, toca las cuotas que paga y «Registrar pago».',
+                                },
+                                {
+                                    titulo: 'Paga al personal',
+                                    texto: 'En «Personal»: los profesores aparecen solos; agrega al resto. Ponle a cada uno su sueldo (o a varios de una vez), su día de pago y sus vacaciones. Para pagar, toca a la persona y los pagos que le haces: sale su recibo.',
+                                },
+                                {
+                                    titulo: 'Anota gastos y fondos',
+                                    texto: 'En «Gastos y fondos»: lo que se compra o se repara, con la foto de la factura, y lo que entra que no es cuota (una donación).',
+                                },
+                            ]}
+                            nota="Nada se borra: lo que se anotó mal se anula con un motivo, y queda a la vista. Elige otro ciclo arriba para ver los anteriores."
+                        />
+                    </>
+                }
+            />
+            {elCiclo && ciclos.length === 0 && <p className="-mt-2 text-sm font-semibold text-gray-700">Ciclo escolar {elCiclo.name}{elCiclo.closed ? ' · cerrado' : ''}</p>}
+
+            <nav className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Partes de las finanzas">
+                {VISTAS.map((v) => {
+                    const Icono = v.icono;
+                    const activa = vista === v.id;
+                    return (
+                        <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => ir({ vista: v.id })}
+                            aria-current={activa ? 'page' : undefined}
+                            aria-describedby={`pista-${v.id}`}
+                            className={cn(
+                                'flex min-h-[44px] items-start gap-2 rounded-xl border p-3 text-left transition-colors',
+                                activa ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-gray-200 bg-white text-gray-800 hover:bg-gray-50'
+                            )}
+                        >
+                            <Icono className={cn('mt-0.5 h-5 w-5 shrink-0', activa ? 'text-indigo-600' : 'text-gray-500')} aria-hidden />
+                            <span className="min-w-0">
+                                <span className="block text-sm font-semibold leading-tight">{v.nombre}</span>
+                                <span id={`pista-${v.id}`} className={cn('mt-0.5 block text-xs leading-snug', activa ? 'text-indigo-700' : 'text-gray-600')}>
+                                    {v.pista}
+                                </span>
+                            </span>
+                        </button>
+                    );
+                })}
+            </nav>
+
+            {vista === 'resumen' && <VistaResumen ciclo={ciclo} monedas={monedas} irA={(v) => ir({ vista: v })} />}
+            {vista === 'estudiantes' && <VistaDeEstudiantes ciclo={ciclo} />}
+            {vista === 'personal' && <VistaDelPersonal ciclo={ciclo} />}
+            {vista === 'gastos' && <VistaDeGastosYFondos ciclo={ciclo} monedas={monedas} cerrado={Boolean(elCiclo?.closed)} />}
+        </div>
     );
 }

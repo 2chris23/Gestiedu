@@ -18,7 +18,7 @@ const NOMBRES: Array<[string, string]> = [
     ['/dashboard/configuracion', 'Configuración'],
     ['/dashboard/eventos', 'Eventos'],
     ['/dashboard/observaciones', 'Observaciones'],
-    ['/dashboard/pagos', 'Pagos'],
+    ['/dashboard/pagos', 'Finanzas'],
     ['/dashboard/materias', 'Materias'],
     ['/dashboard/plan-de-evaluacion', 'El plan de evaluación'],
     ['/dashboard', 'El inicio'],

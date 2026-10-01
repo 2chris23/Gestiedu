@@ -27,6 +27,11 @@ interface DatosDelComprobante {
     annulled: boolean;
     annulReason: string | null;
     allocations: Array<{ label: string; amount: string }>;
+    /** Para el recibo de un pago al personal (2026-10-01): lo que cambia del dibujo. */
+    titulo?: string;
+    rotuloPersona?: string;
+    cargo?: string | null;
+    rotuloMonto?: string;
 }
 
 const formato = (valor: string, moneda: 'USD' | 'VES') => {
@@ -75,7 +80,7 @@ async function dibujar(d: DatosDelComprobante): Promise<HTMLCanvasElement> {
     y += 50;
     ctx.fillStyle = '#4b5563';
     ctx.font = `500 24px ${familia}`;
-    ctx.fillText(`Comprobante de pago Nº ${String(d.receiptNumber).padStart(6, '0')}`, M, y);
+    ctx.fillText(`${d.titulo ?? 'Comprobante de pago'} Nº ${String(d.receiptNumber).padStart(6, '0')}`, M, y);
     y += 36;
     ctx.fillText(`Ciclo escolar ${d.academicYear}`, M, y);
     y += 60;
@@ -90,8 +95,9 @@ async function dibujar(d: DatosDelComprobante): Promise<HTMLCanvasElement> {
         y += 50;
     };
 
-    par('Estudiante', `${d.student.firstName} ${d.student.lastName}`);
-    par('Cédula', d.student.id);
+    par(d.rotuloPersona ?? 'Estudiante', `${d.student.firstName} ${d.student.lastName}`.trim());
+    if (d.student.id) par('Cédula', d.student.id);
+    if (d.cargo) par('Cargo', d.cargo);
     par('Fecha', fechaLarga(d.paidAt));
     par('Método', d.method);
     if (d.reference) par('Referencia', d.reference);
@@ -101,7 +107,7 @@ async function dibujar(d: DatosDelComprobante): Promise<HTMLCanvasElement> {
     ctx.fillRect(M, y, ANCHO - 2 * M, 120);
     ctx.fillStyle = '#3730a3';
     ctx.font = `500 22px ${familia}`;
-    ctx.fillText('Monto recibido', M + 30, y + 22);
+    ctx.fillText(d.rotuloMonto ?? 'Monto recibido', M + 30, y + 22);
     ctx.font = `700 48px ${familia}`;
     ctx.fillText(formato(d.amount, d.currency), M + 30, y + 54);
     if (d.currency !== d.baseCurrency && d.exchangeRate) {
@@ -166,6 +172,38 @@ export async function descargarComprobante(paymentId: string, formatoArchivo: 'p
     const aBlob = (tipo: string, q?: number) =>
         new Promise<Blob>((ok, mal) => lienzo.toBlob((b) => (b ? ok(b) : mal(new Error('No se pudo generar'))), tipo, q));
 
+    if (formatoArchivo === 'png') return entregarArchivo(await aBlob('image/png'), nombre);
+    const jpeg = new Uint8Array(await (await aBlob('image/jpeg', 0.92)).arrayBuffer());
+    return entregarArchivo(pdfConUnaImagen(jpeg, lienzo.width, lienzo.height), nombre);
+}
+
+/** El recibo de un pago al personal (2026-10-01): el mismo dibujo, con sus rótulos. */
+export async function descargarReciboDelPersonal(pagoId: string, formatoArchivo: 'png' | 'pdf') {
+    const { data: r } = await api.get(`/finanzas/pagos-al-personal/${pagoId}/recibo`);
+    const lienzo = await dibujar({
+        institute: r.institute,
+        receiptNumber: r.numero,
+        student: { id: r.persona.cedula ?? '', firstName: r.persona.nombre, lastName: '' },
+        academicYear: r.ciclo,
+        paidAt: r.fecha,
+        method: r.metodo,
+        reference: r.referencia,
+        currency: r.moneda,
+        amount: r.monto,
+        exchangeRate: r.tasa,
+        baseCurrency: r.monedaBase,
+        amountBase: r.montoBase,
+        annulled: r.anulado,
+        annulReason: r.motivoAnulacion,
+        allocations: r.asignaciones.map((a: any) => ({ label: a.etiqueta, amount: a.monto })),
+        titulo: 'Recibo de pago al personal',
+        rotuloPersona: 'Pagado a',
+        cargo: r.persona.cargo,
+        rotuloMonto: 'Monto pagado',
+    });
+    const nombre = `recibo-personal-${String(r.numero).padStart(6, '0')}.${formatoArchivo}`;
+    const aBlob = (tipo: string, q?: number) =>
+        new Promise<Blob>((ok, mal) => lienzo.toBlob((b) => (b ? ok(b) : mal(new Error('No se pudo generar'))), tipo, q));
     if (formatoArchivo === 'png') return entregarArchivo(await aBlob('image/png'), nombre);
     const jpeg = new Uint8Array(await (await aBlob('image/jpeg', 0.92)).arrayBuffer());
     return entregarArchivo(pdfConUnaImagen(jpeg, lienzo.width, lienzo.height), nombre);

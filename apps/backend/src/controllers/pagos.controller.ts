@@ -40,12 +40,12 @@ function responderError(reply: FastifyReply, error: any, porDefecto: string) {
     return reply.status(500).send({ error: porDefecto });
 }
 
-async function leerConfiguracion(prisma: any): Promise<Configuracion> {
+export async function leerConfiguracion(prisma: any): Promise<Configuracion> {
     return configuracionDe(await prisma.paymentSettings.findUnique({ where: { id: 'liceo' } }));
 }
 
 /** Corta si el módulo está apagado. */
-async function moduloActivo(request: FastifyRequest, reply: FastifyReply): Promise<Configuracion | null> {
+export async function moduloActivo(request: FastifyRequest, reply: FastifyReply): Promise<Configuracion | null> {
     const config = await leerConfiguracion(request.tenantPrisma);
     if (!config.enabled) {
         reply.status(403).send({ error: 'El control de pagos no está activado', code: 'PAYMENTS_DISABLED' });
@@ -54,7 +54,7 @@ async function moduloActivo(request: FastifyRequest, reply: FastifyReply): Promi
     return config;
 }
 
-async function cicloActivo(prisma: any, academicYearId?: string) {
+export async function cicloActivo(prisma: any, academicYearId?: string) {
     const ciclo = academicYearId
         ? await prisma.academicYear.findUnique({ where: { id: academicYearId }, include: { periods: true } })
         : await prisma.academicYear.findFirst({ where: { status: 'ACTIVE' }, include: { periods: true }, orderBy: { startDate: 'desc' } });
@@ -69,7 +69,7 @@ async function cicloActivo(prisma: any, academicYearId?: string) {
  * pasados con la cuota nueva y salían «debiendo» (PAGOS-CICLO-01).
  * `enabled` es siempre el del liceo: el módulo se enciende o se apaga entero.
  */
-async function configuracionDelCiclo(prisma: any, cicloId: string, liceo?: Configuracion): Promise<Configuracion> {
+export async function configuracionDelCiclo(prisma: any, cicloId: string, liceo?: Configuracion): Promise<Configuracion> {
     const delLiceo = liceo ?? (await leerConfiguracion(prisma));
     const fila = await prisma.ajustesDePagosDelCiclo.findUnique({ where: { academicYearId: cicloId } });
     return fila ? { ...configuracionDe(fila), enabled: delLiceo.enabled } : delLiceo;
@@ -108,11 +108,11 @@ async function congelarConfiguracion(tx: any, cicloId: string, config: Configura
 }
 
 /** Un ciclo cerrado se ve, no se toca: lo cobrado y lo anulado quedan como estaban. */
-const estaCerrado = (ciclo: any) => ciclo?.status === 'COMPLETED';
-const CICLO_CERRADO = { error: 'Ese ciclo escolar ya está cerrado: sus pagos se pueden ver, no cambiar', code: 'CICLO_CERRADO' };
+export const estaCerrado = (ciclo: any) => ciclo?.status === 'COMPLETED';
+export const CICLO_CERRADO = { error: 'Ese ciclo escolar ya está cerrado: sus pagos se pueden ver, no cambiar', code: 'CICLO_CERRADO' };
 
 /** Lo pagado (no anulado) por alumno y cuota en un ciclo, en céntimos. Una consulta. */
-async function pagadoEnElCiclo(prisma: any, academicYearId: string, studentIds?: string[]) {
+export async function pagadoEnElCiclo(prisma: any, academicYearId: string, studentIds?: string[]) {
     const filas: Array<{ studentId: string; installmentKey: string; total: Prisma.Decimal }> = await prisma.$queryRaw`
         SELECT p."studentId", a."installmentKey", SUM(a."amountBase") AS total
         FROM payment_allocations a
@@ -129,7 +129,7 @@ async function pagadoEnElCiclo(prisma: any, academicYearId: string, studentIds?:
     return porAlumno;
 }
 
-function resumenDe(
+export function resumenDe(
     config: Configuracion,
     ciclo: any,
     plan: { dueDay: number | null; exempt: boolean } | undefined,
@@ -154,7 +154,7 @@ const dineroDe = (r: ResumenDelAlumno) => ({
     total: deCentimos(r.totalCents),
 });
 
-async function hoyDelLiceo(prisma: any) {
+export async function hoyDelLiceo(prisma: any) {
     return todayInTimezone(await instituteTimezone(prisma));
 }
 

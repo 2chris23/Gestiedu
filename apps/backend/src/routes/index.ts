@@ -18,6 +18,7 @@ import { teachersRoutes } from './teachers.routes';
 import { attendanceRoutes } from './attendance.routes';
 import { classReplacementsRoutes } from './class-replacements.routes';
 import { pagosRoutes } from './pagos.routes';
+import { finanzasRoutes } from './finanzas.routes';
 import { cycleStatisticsRoutes } from './cycle-statistics.routes';
 import { classroomSubjectsRoutes } from './classroomSubjects.routes';
 import { scheduleBlocksRoutes } from './scheduleBlocks.routes';
@@ -90,6 +91,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(classSessionsRoutes, { prefix: '/api/sessions' });
   await fastify.register(classReplacementsRoutes, { prefix: '/api/class-replacements' });
   await fastify.register(pagosRoutes, { prefix: '/api/payments' });
+  // Las finanzas del liceo (fondos, gastos, nómina): van con el módulo de pagos.
+  await fastify.register(finanzasRoutes, { prefix: '/api/finanzas' });
   await fastify.register(observationsRoutes, { prefix: '/api/observations' });
 
   // Rutas por roles específicos

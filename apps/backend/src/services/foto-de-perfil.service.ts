@@ -71,6 +71,35 @@ export async function comprimirFoto(original: Buffer): Promise<{ data: Buffer; v
     return { data, version, size: data.length };
 }
 
+/**
+ * UNA FOTO DE UN PAPEL DE DINERO (2026-10-01): la factura de un gasto, la
+ * captura de un pago móvil. Igual que la foto de perfil —se redibuja, sin
+ * metadatos ni nada escondido— pero sin recortar (hay que leerla entera) y
+ * hasta 1600 px de lado, que es lo que hace falta para leer una factura.
+ */
+export async function comprimirComprobante(original: Buffer): Promise<{ data: Buffer; size: number }> {
+    if (!original?.length) throw new FotoNoValida('No llegó ninguna imagen');
+    if (original.length > PESO_MAXIMO_DE_SUBIDA) throw new FotoNoValida('La imagen pesa más de 5 MB');
+    let formato: string | undefined;
+    try {
+        formato = (await sharp(original, { limitInputPixels: PIXELES_MAXIMOS }).metadata()).format;
+    } catch {
+        throw new FotoNoValida('El archivo no es una imagen que se pueda abrir');
+    }
+    if (!formato || !FORMATOS_DE_FOTO.has(formato)) throw new FotoNoValida('Solo se aceptan fotos JPG, PNG, WebP o HEIC');
+    try {
+        const data = await sharp(original, { limitInputPixels: PIXELES_MAXIMOS, failOn: 'error' })
+            .rotate()
+            .resize(1600, 1600, { fit: 'inside', withoutEnlargement: true })
+            .flatten({ background: '#ffffff' })
+            .webp({ quality: 78, effort: 4 })
+            .toBuffer();
+        return { data, size: data.length };
+    } catch {
+        throw new FotoNoValida('La imagen está dañada o es demasiado grande');
+    }
+}
+
 /** Lo que va en `User.avatar`: la dirección con la huella, para que el navegador no enseñe la vieja. */
 export const direccionDeLaFoto = (userId: string, version: string) =>
     `/users/${encodeURIComponent(userId)}/photo?v=${version}`;

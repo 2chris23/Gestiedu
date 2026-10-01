@@ -207,6 +207,23 @@ Todo el dinero se cuenta en **céntimos enteros**. Implementación: `apps/backen
 
 ---
 
+## 8g. Las finanzas del liceo (fondos, gastos y nómina)
+
+Implementación: `apps/backend/src/services/finanzas.service.ts` (cuentas puras) y `controllers/finanzas.controller.ts`. Tests: `src/tests/services/finanzas.service.test.ts` (NOMINA-C-01…06), `tests/integration/finanzas.test.ts` (FIN-01…04, NOMINA-01…06), `tests/e2e/finanzas.spec.ts`. Todo en céntimos y en la moneda base del liceo; nada se borra: se anula con motivo.
+
+| Métrica | Regla | Notas |
+|---|---|---|
+| Fondos disponibles | Σ fondos agregados + Σ cuotas cobradas − Σ pagos al personal − Σ gastos, **desde siempre**, sin anulados. | El saldo con que el liceo empieza va como fondo `SALDO_INICIAL`. |
+| Pagos que se le deben a una persona | **Mensual:** uno por mes del ciclo, su día (o el del liceo; un día que el mes no tiene = el último). **Quincenal:** el 15 y el último día. **Único:** uno, en su fecha. El monto es el de CADA pago. | Lo que la persona no tiene propio lo toma del liceo (`ajustes_de_nomina`). |
+| Vacaciones | Los meses que el liceo marca (agosto por defecto). Si no cobra en vacaciones (suyo o del liceo), esos meses no tienen pago. | |
+| Bono vacacional | Un pago más si hay monto (suyo o del liceo), en su fecha, la del liceo o el día 1 del primer mes de vacaciones. | Sin meses de vacaciones ni fecha, no hay bono. |
+| Atrasado | hoy > fecha del pago y falta algo. | |
+| Pagar | Se reparte de lo más viejo a lo más nuevo; lo que no completa el último queda como abono. Rechaza: pagado ya, monto de más, sin acuerdo, fecha futura, ciclo cerrado. Candado por persona (`pg_advisory_xact_lock`). | Cambiar la frecuencia con pagos hechos en el ciclo: 409. |
+| Ciclo nuevo | Al abrir su nómina sin acuerdos, se copian los del ciclo anterior de quien tiene «guardar para los próximos ciclos» (menos los pagos únicos y las fechas de bono). Sin duplicar. | Los profesores con cuenta aparecen solos, sin sueldo. |
+| Mes a mes | Entra = cuotas cobradas (por `paidAt`) + fondos (por fecha); sale = pagos al personal + gastos (por fecha). | |
+
+---
+
 ## 8c. El fin del año escolar (cierre)
 
 **Rehecho el 2026-09-26** (`services/promotion/close-cycle.service.ts`, `services/fin-de-ano.service.ts`,

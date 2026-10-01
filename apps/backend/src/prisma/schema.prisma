@@ -260,6 +260,7 @@ model User {
   photo                  UserPhoto?
   paymentPlans           StudentPaymentPlan[]
   payments               Payment[]               @relation("PaymentStudent")
+  fichaDePersonal        Personal?               @relation("PersonalConCuenta")
 
   // Como Estudiante
   studentClassrooms   StudentClassroom[]
@@ -406,6 +407,9 @@ model AcademicYear {
   subjectResources      SubjectResource[]
   paymentPlans          StudentPaymentPlan[]
   ajustesDePagos        AjustesDePagosDelCiclo?
+  ajustesDeNomina       AjustesDeNomina?
+  acuerdosDePago        AcuerdoDePago[]
+  pagosAlPersonal       PagoAlPersonal[]
   payments              Payment[]
   schoolEvents          SchoolEvent[]
   notasDeRevision       NotaDeRevision[]
@@ -1840,6 +1844,9 @@ model PaymentSettings {
   /// Métodos de pago que ofrece el liceo (lista de textos).
   methods Json @default("[\"Efectivo\", \"Pago Móvil\", \"Transferencia\", \"Zelle\"]")
 
+  /// Las categorías con que se anotan los gastos (lista de textos, editable).
+  categoriasDeGasto Json @default("[\"Mantenimiento\", \"Reparación\", \"Compras\", \"Servicios\", \"Otro\"]")
+
   /// Lo que lleva un ciclo nuevo (ver `AjustesDePagosDelCiclo`).
   descuentoHermanosPct  Int     @default(0)
   moraTipo              String  @default("NINGUNA")
@@ -2259,4 +2266,200 @@ model CambioEnEspera {
   @@index([decideId, resuelto])
   @@index([autorId, resuelto])
   @@map("cambios_en_espera")
+}
+
+// =====================================================
+// FINANZAS DEL LICEO (2026-10-01)
+// =====================================================
+//
+// Cristian: «que sea para manejar sus finanzas»: los fondos del liceo, lo que
+// deben los alumnos, lo que se paga a profesores y personal (con vacaciones) y
+// los gastos sueltos. Todo el dinero en la moneda base del liceo, como Pagos;
+// nada se borra: se anula con motivo.
+
+/// Lo que entra que no es una cuota: el saldo con que el liceo empieza a usar
+/// el sistema, una donación, otro ingreso.
+model FondoDelLiceo {
+  id          String   @id @default(cuid())
+  fecha       DateTime @db.Date
+  /// SALDO_INICIAL | DONACION | OTRO
+  concepto    String
+  descripcion String?
+  moneda      String
+  monto       Decimal  @db.Decimal(12, 2)
+  tasa        Decimal? @db.Decimal(14, 4)
+  /// El mismo monto en la moneda base del liceo.
+  montoBase   Decimal  @db.Decimal(12, 2)
+
+  creadoPorId     String?
+  anuladoEn       DateTime?
+  anuladoPorId    String?
+  motivoAnulacion String?
+  createdAt       DateTime  @default(now())
+
+  @@index([fecha])
+  @@map("fondos_del_liceo")
+}
+
+/// Un gasto suelto: un tablero de básquet, una reparación, el internet.
+model Gasto {
+  id        String   @id @default(cuid())
+  fecha     DateTime @db.Date
+  concepto  String
+  categoria String
+  proveedor String?
+  notas     String?
+  moneda    String
+  monto     Decimal  @db.Decimal(12, 2)
+  tasa      Decimal? @db.Decimal(14, 4)
+  montoBase Decimal  @db.Decimal(12, 2)
+
+  /// La foto de la factura (redibujada a WebP en el servidor).
+  comprobanteId String?
+  comprobante   Comprobante? @relation(fields: [comprobanteId], references: [id], onDelete: SetNull)
+
+  creadoPorId     String?
+  anuladoEn       DateTime?
+  anuladoPorId    String?
+  motivoAnulacion String?
+  createdAt       DateTime  @default(now())
+
+  @@index([fecha])
+  @@map("gastos")
+}
+
+/// Una imagen de un papel de dinero: la factura de un gasto, la captura de un
+/// pago móvil. Nunca la que se subió: el servidor la redibuja (sin metadatos,
+/// sin nada escondido) a WebP de 1600 px como mucho.
+model Comprobante {
+  id          String   @id @default(cuid())
+  data        Bytes
+  tipo        String   @default("image/webp")
+  tamano      Int
+  subidoPorId String?
+  createdAt   DateTime @default(now())
+
+  gastos Gasto[]
+
+  @@map("comprobantes")
+}
+
+/// Una persona a la que el liceo le paga: un profesor (con cuenta) u otro
+/// personal (sin cuenta: la señora de la limpieza, el vigilante…).
+model Personal {
+  id     String  @id @default(cuid())
+  /// Si tiene cuenta en el sistema (profesor o admin).
+  userId String? @unique
+  user   User?   @relation("PersonalConCuenta", fields: [userId], references: [id], onDelete: SetNull)
+  /// Si no tiene cuenta, su nombre.
+  nombre String?
+  cedula String?
+  cargo  String
+  activo Boolean @default(true)
+  /// Se trae solo al ciclo siguiente, con su mismo acuerdo.
+  seQuedaParaProximosCiclos Boolean @default(true)
+  notas  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  acuerdos AcuerdoDePago[]
+  pagos    PagoAlPersonal[]
+
+  @@map("personal")
+}
+
+/// Lo acordado con una persona en un ciclo: cuánto, cada cuánto, qué día y sus
+/// vacaciones. Lo que queda en null toma el valor del liceo (`AjustesDeNomina`).
+model AcuerdoDePago {
+  id             String       @id @default(cuid())
+  personalId     String
+  personal       Personal     @relation(fields: [personalId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  /// Lo de CADA pago (en quincenal, cada quincena).
+  monto      Decimal   @db.Decimal(12, 2)
+  /// UNICO | MENSUAL | QUINCENAL
+  frecuencia String    @default("MENSUAL")
+  /// Día del mes (1–31; más que el mes = el último). Null = el del liceo.
+  diaDePago  Int?
+  /// Para el pago único.
+  fechaUnica DateTime? @db.Date
+
+  /// Null = lo que diga el liceo.
+  cobraEnVacaciones Boolean?
+  bonoVacacional    Decimal?  @db.Decimal(12, 2)
+  fechaBono         DateTime? @db.Date
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([personalId, academicYearId])
+  @@index([academicYearId])
+  @@map("acuerdos_de_pago")
+}
+
+/// Lo del liceo para la nómina de un ciclo: el día de pago de todos, los meses
+/// de vacaciones y el bono vacacional.
+model AjustesDeNomina {
+  academicYearId String       @id
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  /// Día del mes del pago mensual (31 = el último día del mes).
+  diaDePago         Int      @default(31)
+  /// Meses de vacaciones, como «AAAA-MM».
+  mesesDeVacaciones Json     @default("[]")
+  cobraEnVacaciones Boolean  @default(true)
+  bonoVacacional    Decimal  @default(0) @db.Decimal(12, 2)
+  fechaBono         DateTime? @db.Date
+
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("ajustes_de_nomina")
+}
+
+/// Un pago hecho a una persona. No se borra: se anula con motivo.
+model PagoAlPersonal {
+  id             String       @id @default(cuid())
+  /// Número correlativo del recibo.
+  numero         Int          @unique @default(autoincrement())
+  personalId     String
+  personal       Personal     @relation(fields: [personalId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  fecha      DateTime @db.Date
+  metodo     String
+  referencia String?
+  notas      String?
+  moneda     String
+  monto      Decimal  @db.Decimal(12, 2)
+  tasa       Decimal? @db.Decimal(14, 4)
+  montoBase  Decimal  @db.Decimal(12, 2)
+
+  creadoPorId     String?
+  anuladoEn       DateTime?
+  anuladoPorId    String?
+  motivoAnulacion String?
+  createdAt       DateTime  @default(now())
+
+  asignaciones AsignacionAlPersonal[]
+
+  @@index([personalId, academicYearId])
+  @@index([fecha])
+  @@map("pagos_al_personal")
+}
+
+/// A qué pagos del acuerdo va cada pago al personal («S:2026-10», «B»…).
+model AsignacionAlPersonal {
+  id        String         @id @default(cuid())
+  pagoId    String
+  pago      PagoAlPersonal @relation(fields: [pagoId], references: [id], onDelete: Cascade)
+  clave     String
+  montoBase Decimal        @db.Decimal(12, 2)
+
+  @@index([pagoId])
+  @@map("asignaciones_al_personal")
 }

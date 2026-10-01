@@ -98,11 +98,25 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = fa
         ...(conPagos
             ? [
                   {
-                      name: 'Pagos',
+                      // «Finanzas» desde 2026-10-01: además de las cuotas, el personal,
+                      // los gastos y los fondos del liceo. La dirección es la de siempre.
+                      name: 'Finanzas',
                       href: '/dashboard/pagos',
                       icon: Wallet,
                       roles: ['ADMIN'],
-                      pista: 'Cobros y solvencia',
+                      pista: 'Cuotas, personal, gastos y fondos',
+                  },
+              ]
+            : []),
+        // El profesor: lo que el liceo le paga, solo lo suyo (2026-10-01).
+        ...(conPagos
+            ? [
+                  {
+                      name: 'Mis pagos',
+                      href: '/dashboard/mis-pagos',
+                      icon: Wallet,
+                      roles: ['TEACHER'],
+                      pista: 'Lo que el liceo te paga y tus recibos',
                   },
               ]
             : []),

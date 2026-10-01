@@ -93,7 +93,7 @@ test.describe.serial('Pagos', () => {
             await page.getByRole('button', { name: 'Guardar' }).click();
             await expect(page.getByText(/Pagos configurados/)).toBeVisible({ timeout: 15000 });
 
-            await expect(page.getByRole('link', { name: 'Pagos' })).toBeVisible({ timeout: 15000 });
+            await expect(page.getByRole('link', { name: /Finanzas/ }).first()).toBeVisible({ timeout: 15000 });
         } catch (error) {
             await captureEvidence(testInfo, page, 'PAGOS-UI-01', 'Activar pagos', error);
             throw error;
@@ -103,7 +103,7 @@ test.describe.serial('Pagos', () => {
     test('PAGOS-UI-02: avisa cuántos deben, se cobra, se baja el comprobante y se anula', async ({ page }, testInfo) => {
         try {
             await loginViaUI(page, 'admin@testing.edu.ve', '123456');
-            await page.goto(`${WEB_BASE}/dashboard/pagos`);
+            await page.goto(`${WEB_BASE}/dashboard/pagos?vista=estudiantes`);
             await expect(page.getByText(/estudiantes? deben?/).first()).toBeVisible({ timeout: 30000 });
             await page.screenshot({ path: path.join(EVIDENCIA, 'pagos-resumen.png') });
 

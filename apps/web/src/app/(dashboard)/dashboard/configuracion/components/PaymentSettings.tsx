@@ -80,7 +80,7 @@ export function PaymentSettings() {
                 feeAmount: c.feeAmount === '' ? 0 : c.feeAmount,
                 enrollmentAmount: c.enrollmentAmount === '' ? 0 : c.enrollmentAmount,
             });
-            toast.success(c.enabled ? 'Pagos configurados. "Pagos" ya está en el menú.' : 'Configuración de pagos guardada');
+            toast.success(c.enabled ? 'Pagos configurados. «Finanzas» ya está en el menú.' : 'Configuración de pagos guardada');
         } catch (e) {
             toast.error(errorDe(e, 'No se pudo guardar'));
         }
