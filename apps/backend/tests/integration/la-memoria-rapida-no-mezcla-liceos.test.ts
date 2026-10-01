@@ -312,6 +312,8 @@ describe('La memoria rápida no mezcla liceos', () => {
                 'son palabras del castellano («y», «de»...) que no cuentan en una abreviatura, no datos de nadie',
             'src/services/avisos.service.ts|pendientes':
                 'los envíos al teléfono que aún van en camino (promesas), para esperarlos en las pruebas: no guarda datos de nadie',
+            'src/utils/lo-que-se-vio.ts|PROHIBIDOS':
+                'son tres nombres de propiedad (__proto__, prototype, constructor) que no se recorren, no datos de nadie',
             'src/scripts/medir-concurrencia.ts|credenciales':
                 'guion de medición, no corre en el servidor',
         };

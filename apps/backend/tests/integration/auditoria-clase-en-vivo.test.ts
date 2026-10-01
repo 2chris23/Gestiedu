@@ -26,7 +26,9 @@ import {
  */
 
 const SLUG = 'test-institute';
-const HOY = new Date().toISOString().slice(0, 10);
+// «Hoy» del liceo (Caracas), no el de UTC: de 20:00 a medianoche, en UTC ya es
+// mañana, y una clase de un día que no ha llegado no se guarda (SINCON-09).
+const HOY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Caracas' }).format(new Date());
 const gId = () => {
     // Siempre la 'c' delante: ver la nota de `tests/helpers.ts`.
     return `c${createId()}`;
