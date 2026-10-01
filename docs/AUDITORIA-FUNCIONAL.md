@@ -3565,3 +3565,53 @@ completa (2 saltadas) y las 4 en rojo en verde tras el arreglo o al repetir
 (CARRIL-01 y PAGOS-UI-01 son inestables, no de esta tanda); `npm run movil --
 --exigir`: **51 pantallas**, 0 con algo que arreglar. Deriva del esquema: solo
 la vieja.
+
+## 62. Sin señal se trabaja, como en WhatsApp (30 de septiembre de 2026)
+
+El dueño abrió la app fuera de casa para enseñarla y **se quedó en blanco**.
+Pidió que funcione como WhatsApp: que no se quede nunca en blanco, que se baje
+sola (también lo que no se ha abierto), que se ponga al día sola y que se pueda
+**trabajar sin conexión**, dejando lo hecho pendiente hasta que vuelva.
+
+**Por qué salía en blanco (medido en su Motorola):** la página de entrada
+guardada era de una compilación anterior y su javascript ya no existía. Y la
+APK de pruebas apunta a `localhost` por `adb reverse`: fuera de casa no hay
+servidor ninguno.
+
+Lo hecho, en seis partes (3dc8b60, 867d7d5, 1d1234d, 48b4803, 5a1374a):
+
+- **Nunca en blanco**: el ayudante busca primero en su propia caja, guarda cada
+  pantalla CON sus archivos, sin señal manda la entrada al Inicio guardado, y un
+  guardián en `<head>` lleva a la pantalla de sin conexión si la app no arranca.
+  El dueño no quiso la pantalla con la lista de lo guardado: la app abre normal
+  con el icono pequeño arriba, y lo no guardado lo dice un aviso.
+- **Se baja sola y se pone al día sola**: lo de cada rol cada 30 min, al volver
+  a la app y al volver la conexión; la compilación nueva se baja en segundo
+  plano; la APK nueva, con wifi, y pide un toque para instalarse.
+- **Lo hecho sin conexión queda pendiente (⏱)** y sube solo: la clase, el plan,
+  instrumentos, observaciones, citaciones, configuración y eventos. Al subir:
+  plan → crear → cambiar → borrar al final; nada se aplica dos veces
+  (`X-Cambio`).
+- **Los choques, como decidió el dueño**: la misma nota o asistencia → se
+  pregunta al que llega segundo; borrar con notas nuevas → «¿aún quieres
+  borrarla?»; notas a una actividad ya borrada → decide quien la borró
+  (recuperarla con sus notas); instrumento cambiado mientras se calificaba →
+  decide el admin. La configuración se compara **campo a campo**: lo no tocado
+  no pisa, lo que otro cambió se pregunta.
+- **Lo que la misma persona cambió mientras tanto no es «otra persona»** (la
+  clase que se guardó sola al salir, otra pestaña): salía una pregunta absurda.
+
+**Encontrado de paso:** VIVO-01/02/10 tomaban «hoy» en UTC y fallaban de 20:00
+a medianoche (desde SINCON-09 un día que no ha llegado no se guarda); y borrar
+a mano en la base no avisa a la memoria rápida del servidor: una prueba que lo
+hacía veía lo de antes y el servidor —bien— preguntaba.
+
+**No probado:** en el teléfono del dueño la parte de trabajar sin conexión (la
+depuración inalámbrica se cayó a mitad; lo de abrir sin señal sí se vio en su
+Motorola). La descarga con la app cerrada del todo espera a Firebase.
+
+**Medido al cerrar:** servidor, 1184 de 1184 (149 archivos, con
+`REDIS_PRUEBAS_URL`; 4 en rojo arreglados y repetidos); web, 100 de 100;
+navegador, 302 de 303 en la tanda completa y la que falló en verde tras el
+arreglo (37 de 37 en su tramo); `npm run movil -- --exigir`: 51 pantallas, 0
+con algo que arreglar. Deriva del esquema: solo la vieja.
