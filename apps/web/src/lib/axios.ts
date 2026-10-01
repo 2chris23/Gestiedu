@@ -28,16 +28,15 @@ const api = axios.create({
 
 
 /**
- * SIN CONEXIÓN SE MIRA, NO SE TOCA
+ * SIN CONEXIÓN, UNA ESCRITURA NO SALE: SE CORTA AQUÍ
  *
  * El teléfono guarda lo último que se descargó y sin señal la app lo enseña
- * (`providers/MemoriaDelTelefono.tsx`). Mirar, sí. Cambiar, no: poner una nota,
- * pasar asistencia o cobrar un pago necesitan hablar con el servidor.
- *
- * Y se corta AQUÍ, en el acto, en vez de dejarlo «pendiente de enviar». Una
- * cola de cambios que se mandan solos media hora después, sobre datos que
- * mientras tanto ha tocado otro profesor, es la forma más rápida de perder una
- * nota sin que nadie se entere. Mejor decirlo cuando la persona está delante.
+ * (`providers/MemoriaDelTelefono.tsx`). Una escritura sin conexión se corta
+ * aquí con `SinConexion`, en el acto. Lo que PUEDE esperar (la clase, el plan,
+ * observaciones, configuración, eventos…) lo recoge quien llama con
+ * `hacerODejarPendiente` (`lib/por-enviar.ts`): queda pendiente (⏱), con lo que
+ * se vio, y sube solo al volver; si otro lo cambió mientras tanto, se
+ * pregunta. Lo demás (pagos, entrar…) dice que necesita conexión.
  *
  * `navigator.onLine` no es una verdad absoluta —dice si hay red, no si el
  * servidor contesta—, pero cuando dice que NO, no hay. Cuando dice que sí y no

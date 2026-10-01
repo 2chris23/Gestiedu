@@ -21,12 +21,9 @@ import { olvidarLasRespuestas, olvidarLasRespuestasDeOtros } from '@/lib/respues
  *
  * ─── LO QUE NO HACE ─────────────────────────────────────────────────────────
  *
- * **No guarda nada para enviarlo luego.** Poner una nota, pasar asistencia o
- * cobrar un pago necesitan internet, y sin él se dice en el acto en vez de
- * dejarlo «pendiente»: una cola de cambios que se envían solos media hora
- * después, sobre datos que mientras tanto ha cambiado otro, es la forma más
- * rápida de perder una nota sin que nadie se entere. Eso se corta en
- * `lib/axios.ts`.
+ * **No guarda nada para enviarlo luego.** Eso es de `lib/por-enviar.ts`: lo
+ * hecho sin conexión queda pendiente con lo que se vio, y si otro lo cambió
+ * mientras tanto se pregunta en vez de pisarlo (`EnviarLoPendiente`).
  *
  * ─── DE QUIÉN ES LO GUARDADO ────────────────────────────────────────────────
  *

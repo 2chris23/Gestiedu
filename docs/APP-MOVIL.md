@@ -13,7 +13,7 @@ web. No compiten: la segunda se apoya en la primera.
 | Bajar un comprobante | Como en el navegador | Va a «Descargas» del teléfono |
 | Google Play | No | Sí |
 | Hay que actualizarla | Nunca (es la web) | Solo si cambia el envoltorio |
-| Sin señal, enseña lo último descargado | Sí | Sí |
+| Sin señal se sigue trabajando y sube al volver | Sí | Sí |
 | Entrar con la huella | No | Sí |
 
 **Las dos enseñan la web que vive en el servidor del liceo.** Eso es a propósito:
@@ -24,13 +24,29 @@ nada desde una tienda.
 
 ## Sin señal
 
-**Se mira, no se toca.** El teléfono guarda lo último que se descargó y sin
-conexión lo enseña, con un aviso arriba de que es lo de antes. Guardar,
-corregir o borrar siguen necesitando internet, y se dice en el acto.
+**Se trabaja, como en WhatsApp** (cambió el 2026-09-30; antes era «se mira,
+no se toca»). La app no se queda nunca en blanco: abre con lo último
+descargado y un icono pequeño arriba. Lo que se hace sin conexión —pasar
+lista, poner notas, crear actividades, el plan, observaciones, citaciones, la
+configuración, los eventos— queda **pendiente (⏱)** en el teléfono y sube solo
+al volver, en orden (lo que borra, al final). Si otro cambió lo mismo mientras
+tanto, no se pisa: se pregunta («N por decidir» arriba). Las reglas, en
+`CLAUDE.md` («Sin señal se trabaja») y en `lib/por-enviar.ts`.
 
-No se deja nada «pendiente de enviar». Suena bien y no lo es: media hora
-después se mandaría una nota sobre datos que mientras tanto ha tocado otro
-profesor, y nadie se entera.
+- **Se baja solo** lo de cada rol, también lo que no se ha abierto
+  (`lib/lo-que-se-baja-solo.ts`): al entrar, cada 30 min, al volver a la app y
+  al volver la conexión. **Con la app cerrada del todo** todavía no: hace falta
+  el aviso de Firebase (APK) para despertarla.
+- **Se pone al día sola**: el ayudante mira `/version-de-la-web` y baja la
+  compilación nueva en segundo plano; la APK nueva se baja sola con wifi y
+  avisa «Actualización lista — Instalar» (Android pide ese toque fuera de
+  Google Play).
+- **Fuera de casa con la APK de pruebas sale vieja, o en blanco antes de esto**:
+  apunta a `localhost` por `adb reverse`, y sin el ordenador no hay servidor.
+  Para usarla fuera con datos al día hace falta el servidor de verdad
+  (`docs/DESPLIEGUE.md`).
+- **Lo pendiente es de quien lo hizo** y solo se envía con su sesión. Cerrar
+  sesión con pendientes avisa; otra persona que entra en el teléfono no los ve.
 
 - **Los datos**, en `lib/lo-guardado-en-el-telefono.ts` (IndexedDB). La llave
   lleva **el liceo y la cédula** de quien los descargó: un teléfono que se

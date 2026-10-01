@@ -9,9 +9,8 @@
  *
  * ─── LAS TRES REGLAS ────────────────────────────────────────────────────────
  *
- *  1. **Se mira, no se toca.** Guardar, corregir o borrar cualquier cosa sigue
- *     necesitando internet: eso se corta en `lib/axios.ts`, no aquí. Nada se
- *     queda «pendiente de enviar» a espaldas de nadie.
+ *  1. **Aquí solo se guarda lo descargado.** Lo hecho sin conexión que espera
+ *     para subir vive aparte, en `lib/por-enviar.ts`, y no caduca.
  *  2. **Lo guardado es de QUIEN lo descargó.** La llave lleva el liceo y la
  *     cédula: si entra otra persona, o la misma en otro liceo, lo de antes no
  *     se abre — se borra y se empieza de cero. Sin esto, un teléfono

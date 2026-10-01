@@ -601,15 +601,39 @@ Y tres cosas más que ya estaban y siguen valiendo:
     rejilla: las columnas las pone el profesor y una celda abarca varias
     semanas, así que es **una sucesión de bloques de trabajo en el tiempo**.
 
-## Sin señal se mira, no se toca
+## Sin señal se trabaja (como WhatsApp)
 
-El teléfono guarda lo último que se descargó y sin conexión lo enseña, con un
-aviso de que es lo de antes. Guardar, corregir o borrar siguen necesitando
-internet, y se dice en el acto: se corta en `lib/axios.ts` antes de salir.
+Cambió el 2026-09-30 (antes era «sin señal se mira, no se toca»): en Venezuela
+se va la luz y el liceo se queda sin internet. **La app no se queda nunca en
+blanco**, **se baja sola** lo de cada rol (también lo que no se ha abierto,
+`lib/lo-que-se-baja-solo.ts`, cada 30 min y al volver la conexión) y **se
+pone al día sola** (el ayudante baja la compilación nueva en segundo plano; la
+APK nueva se baja sola con wifi y pide un toque para instalarse).
 
-**No se deja nada «pendiente de enviar»** —que es lo que hace React Query por
-defecto— porque media hora después se mandaría una nota sobre datos que
-mientras tanto ha tocado otro profesor, y nadie se entera.
+**Lo hecho sin conexión queda pendiente (⏱) y sube solo al volver**
+(`lib/por-enviar.ts`, `providers/EnviarLoPendiente.tsx`): la clase (asistencia,
+notas, actividades, instrumento), el plan de evaluación, observaciones,
+citaciones, la configuración y los eventos. Arriba, «N sin enviar»; al tocarlo,
+la lista. Lo que necesita al servidor en el momento (entrar, pagos, el QR,
+cierre del año, subir archivos, crear cuentas…) sigue pidiendo conexión.
+
+Las reglas (decididas por Cristian):
+
+- **Orden al subir**: plan → crear → cambiar → **borrar al final**.
+- **Nada se aplica dos veces**: cada cambio lleva su número (`X-Cambio`,
+  `plugins/cambios-sin-conexion.ts`, tabla `cambios_recibidos`).
+- **Cada cambio lleva lo que se vio** (`antes`, `notasVistas`, `__visto` por
+  campo en la configuración, `utils/lo-que-se-vio.ts`). Si otro lo cambió
+  mientras tanto, no se pisa: **se le pregunta al que llega segundo** (409
+  `CAMBIO_MIENTRAS_TANTO`).
+- **Borrar una actividad a la que otro puso notas**: «¿aún quieres borrarla?».
+- **Notas a una actividad ya borrada**: decide quien la borró (recuperarla con
+  esas notas o no; `cambios_en_espera`, pantalla «Por decidir»).
+- **El instrumento cambió mientras el profesor calificaba**: decide el admin
+  («¿aún quieres la escala?»: sí borra esas notas a la papelera y avisa al
+  profesor; no, se queda la lista de cotejo con sus notas).
+
+Pruebas: SINCON-01…12 (servidor), SINCON-UI-01/06/07, DESCARGA-*, NUNCA-BLANCO-*.
 
 **Lo guardado es de quien lo descargó.** La llave lleva el liceo y la cédula
 (`lib/lo-guardado-en-el-telefono.ts`): un teléfono que se presta no enseña lo
