@@ -11,9 +11,12 @@ import {
     FichaDePagos as Ficha,
     Moneda,
     PagoRegistrado,
+    PagoReportadoEnFicha,
+    subirCaptura,
     useAnularPago,
     useGuardarPlanDePago,
     useRegistrarPago,
+    useReportarPago,
 } from '@/hooks/usePagos';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
 import { descargarComprobante } from '@/lib/comprobante-de-pago';
@@ -25,15 +28,21 @@ import { cn } from '@/lib/utils';
  * `editable` = el admin: registra pagos, exonera y anula. Sin `editable` = el
  * representante: ve lo mismo y descarga sus comprobantes, nada más. El servidor
  * lo exige igual; esto solo evita enseñar botones que responderían 403.
+ *
+ * `reportar` = el representante puede decir «ya pagué» (2026-10-01): elige las
+ * cuotas igual que el admin, pone el monto y la captura, y el liceo lo confirma.
+ * Mientras tanto no cuenta para nada.
  */
 
 const campo = 'mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100';
 const fechaCorta = (ymd: string) => ymd.split('-').reverse().join('/');
 const aCent = (v: string | number) => Math.round(Number(v) * 100);
 
-export function FichaDePagos({ ficha, editable: puedeEditar }: { ficha: Ficha; editable: boolean }) {
+export function FichaDePagos({ ficha, editable: puedeEditar, reportar = false }: { ficha: Ficha; editable: boolean; reportar?: boolean }) {
     // Un ciclo cerrado se ve, no se toca (el servidor responde 409 CICLO_CERRADO).
     const editable = puedeEditar && !ficha.closed;
+    const reporta = reportar && !puedeEditar && !ficha.closed;
+    const eligeCuotas = editable || reporta;
     const base = ficha.currency;
     const estado = ESTADO_DEL_ALUMNO[ficha.summary.state];
     const [elegidas, setElegidas] = React.useState<Set<string>>(new Set());
@@ -111,13 +120,15 @@ export function FichaDePagos({ ficha, editable: puedeEditar }: { ficha: Ficha; e
                 {/* Un calendario de baldosas, una por cuota (2026-10-01): Cristian pidió
                     los pagos «más como un calendario». Cada baldosa dice su estado con
                     palabra e icono, no solo con color; al tocar una, se elige para cobrar. */}
-                {editable && pendientes.length > 0 && (
-                    <p className="mb-2 text-xs text-gray-600">Toca las cuotas que paga para elegirlas.</p>
+                {eligeCuotas && pendientes.length > 0 && (
+                    <p className="mb-2 text-xs text-gray-600">
+                        {reporta ? '¿Ya pagaste? Toca las cuotas que pagaste para avisar al liceo.' : 'Toca las cuotas que paga para elegirlas.'}
+                    </p>
                 )}
                 <ol className="grid grid-cols-3 gap-2 sm:grid-cols-4" aria-label="Cuotas del ciclo">
                     {ficha.installments.map((c) => {
                         const e = ESTADO_DE_CUOTA[c.state];
-                        const sePuede = editable && aCent(c.pending) > 0 && c.state !== 'EXONERADA';
+                        const sePuede = eligeCuotas && aCent(c.pending) > 0 && c.state !== 'EXONERADA';
                         const elegida = elegidas.has(c.key);
                         const Icono = c.state === 'PAGADA' ? CheckCircle2 : c.state === 'VENCIDA' ? AlertTriangle : c.state === 'EXONERADA' ? Check : Clock3;
                         const abono = c.state === 'ABONADA' || (c.state === 'VENCIDA' && aCent(c.paid) > 0);
@@ -169,6 +180,11 @@ export function FichaDePagos({ ficha, editable: puedeEditar }: { ficha: Ficha; e
             {editable && elegidas.size > 0 && (
                 <RegistrarPago ficha={ficha} elegidas={[...elegidas]} alTerminar={() => setElegidas(new Set())} />
             )}
+            {reporta && elegidas.size > 0 && (
+                <RegistrarPago ficha={ficha} elegidas={[...elegidas]} alTerminar={() => setElegidas(new Set())} reportar />
+            )}
+
+            {(ficha.reports?.length ?? 0) > 0 && <PagosReportados reportes={ficha.reports!} />}
 
             <section>
                 <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-gray-700">Historial de pagos</h3>
@@ -188,10 +204,13 @@ export function FichaDePagos({ ficha, editable: puedeEditar }: { ficha: Ficha; e
     );
 }
 
-function RegistrarPago({ ficha, elegidas, alTerminar }: { ficha: Ficha; elegidas: string[]; alTerminar: () => void }) {
+function RegistrarPago({ ficha, elegidas, alTerminar, reportar = false }: { ficha: Ficha; elegidas: string[]; alTerminar: () => void; reportar?: boolean }) {
     const hoy = useSchoolToday();
     const base = ficha.currency;
     const registrar = useRegistrarPago(ficha.student.id);
+    const reporte = useReportarPago(ficha.student.id);
+    const [captura, setCaptura] = React.useState<File | null>(null);
+    const ocupado = registrar.isPending || reporte.isPending;
     const monedas: Moneda[] = ficha.acceptedCurrencies === 'BOTH' ? ['USD', 'VES'] : [ficha.acceptedCurrencies];
     const pendienteCent = ficha.installments.filter((c) => elegidas.includes(c.key)).reduce((s, c) => s + aCent(c.pending), 0);
 
@@ -216,6 +235,22 @@ function RegistrarPago({ ficha, elegidas, alTerminar }: { ficha: Ficha; elegidas
         e.preventDefault();
         setProblema(null);
         try {
+            if (reportar) {
+                const comprobanteId = captura ? await subirCaptura(captura) : null;
+                await reporte.mutateAsync({
+                    installmentKeys: elegidas,
+                    amount: monto,
+                    currency: moneda,
+                    exchangeRate: moneda === base ? null : tasa,
+                    method: metodo,
+                    reference: referencia || null,
+                    paidAt: fecha,
+                    comprobanteId,
+                });
+                toast.success('Pago reportado: el liceo lo revisará y te avisará');
+                alTerminar();
+                return;
+            }
             const pago = await registrar.mutateAsync({
                 academicYearId: ficha.academicYear.id,
                 installmentKeys: elegidas,
@@ -231,12 +266,17 @@ function RegistrarPago({ ficha, elegidas, alTerminar }: { ficha: Ficha; elegidas
             });
             alTerminar();
         } catch (err) {
-            setProblema(errorDe(err, 'No se pudo registrar el pago'));
+            setProblema(errorDe(err, reportar ? 'No se pudo enviar el reporte' : 'No se pudo registrar el pago'));
         }
     };
 
     return (
-        <form onSubmit={enviar} className="space-y-4 rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
+        <form onSubmit={enviar} className="space-y-4 rounded-xl border border-indigo-200 bg-indigo-50/40 p-4" aria-label={reportar ? 'Reportar un pago' : 'Registrar un pago'}>
+            {reportar && (
+                <p className="text-sm text-gray-800">
+                    <strong>Avisa al liceo de un pago que ya hiciste.</strong> No cuenta hasta que el liceo lo confirme; te llegará un aviso.
+                </p>
+            )}
             <p className="text-sm text-gray-800">
                 {elegidas.length} {elegidas.length === 1 ? 'cuota elegida' : 'cuotas elegidas'} · falta <strong>{dinero(pendienteCent / 100, base)}</strong>
             </p>
@@ -298,6 +338,19 @@ function RegistrarPago({ ficha, elegidas, alTerminar }: { ficha: Ficha; elegidas
                 </div>
             </div>
 
+            {reportar && (
+                <label className="block text-sm font-medium text-gray-800">
+                    Captura del pago (recomendado)
+                    <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={(e) => setCaptura(e.target.files?.[0] ?? null)}
+                        className="mt-1 block min-h-[44px] w-full text-sm text-gray-800 file:mr-3 file:min-h-[44px] file:rounded-lg file:border-0 file:bg-indigo-100 file:px-4 file:text-sm file:font-semibold file:text-indigo-800"
+                    />
+                    <span className="mt-1 block text-xs text-gray-600">La foto o captura del pago móvil o la transferencia. Así el liceo lo confirma más rápido.</span>
+                </label>
+            )}
+
             {problema && (
                 <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
                     {problema}
@@ -307,11 +360,11 @@ function RegistrarPago({ ficha, elegidas, alTerminar }: { ficha: Ficha; elegidas
             <div className="flex justify-end">
                 <button
                     type="submit"
-                    disabled={registrar.isPending || !metodo || !monto}
-                    className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                    disabled={ocupado || !metodo || !monto}
+                    className="flex min-h-[44px] items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
                 >
-                    {registrar.isPending ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                    Registrar pago
+                    {ocupado ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                    {reportar ? 'Enviar al liceo' : 'Registrar pago'}
                 </button>
             </div>
         </form>
@@ -465,5 +518,41 @@ function PlanDelAlumno({ ficha }: { ficha: Ficha }) {
                 </button>
             </div>
         </form>
+    );
+}
+
+const ESTADO_DEL_REPORTE: Record<PagoReportadoEnFicha['estado'], { texto: string; clases: string }> = {
+    PENDIENTE: { texto: 'Por confirmar', clases: 'bg-amber-50 text-amber-900 border-amber-200' },
+    CONFIRMANDO: { texto: 'Por confirmar', clases: 'bg-amber-50 text-amber-900 border-amber-200' },
+    CONFIRMADO: { texto: 'Confirmado', clases: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+    RECHAZADO: { texto: 'No confirmado', clases: 'bg-red-50 text-red-800 border-red-200' },
+};
+
+/** Lo que el representante reportó y cómo va. Lo ven él y el admin. */
+function PagosReportados({ reportes }: { reportes: PagoReportadoEnFicha[] }) {
+    return (
+        <section>
+            <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-gray-700">Pagos reportados</h3>
+            <ul className="space-y-2">
+                {reportes.map((r) => {
+                    const e = ESTADO_DEL_REPORTE[r.estado];
+                    return (
+                        <li key={r.id} className="rounded-xl border border-gray-200 p-3 text-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-semibold text-gray-900">
+                                    {dinero(r.monto, r.moneda)} · {r.metodo}
+                                    {r.referencia && <span className="font-normal text-gray-700"> · Ref. {r.referencia}</span>}
+                                </span>
+                                <span className={cn('rounded-full border px-2.5 py-0.5 text-xs font-semibold', e.clases)}>{e.texto}</span>
+                            </div>
+                            <p className="mt-1 text-gray-700">
+                                Pagado el {fechaCorta(r.fechaDePago)} · {r.cuotas.join(', ')}
+                            </p>
+                            {r.estado === 'RECHAZADO' && r.motivoRechazo && <p className="mt-1 text-red-800">Motivo: {r.motivoRechazo}</p>}
+                        </li>
+                    );
+                })}
+            </ul>
+        </section>
     );
 }

@@ -140,6 +140,36 @@ export interface FichaDePagos {
     summary: ResumenDinero;
     installments: Cuota[];
     payments: PagoRegistrado[];
+    /** Lo que el representante dijo que pagó (con la captura), y cómo va. */
+    reports?: PagoReportadoEnFicha[];
+}
+
+export interface PagoReportadoEnFicha {
+    id: string;
+    estado: 'PENDIENTE' | 'CONFIRMANDO' | 'CONFIRMADO' | 'RECHAZADO';
+    monto: string;
+    moneda: Moneda;
+    metodo: string;
+    referencia: string | null;
+    fechaDePago: string;
+    cuotas: string[];
+    motivoRechazo: string | null;
+    conCaptura: boolean;
+}
+
+export interface PagoPorConfirmar {
+    id: string;
+    alumno: { id: string; nombre: string };
+    representante: string;
+    monto: string;
+    moneda: Moneda;
+    tasa: string | null;
+    metodo: string;
+    referencia: string | null;
+    fechaDePago: string;
+    installmentKeys: string[];
+    conCaptura: boolean;
+    createdAt: string;
 }
 
 export const errorDe = (e: any, porDefecto: string) => e?.response?.data?.error || porDefecto;
@@ -271,3 +301,66 @@ export const ESTADO_DE_CUOTA: Record<EstadoDeCuota, { texto: string; clases: str
     PENDIENTE: { texto: 'Por vencer', clases: 'bg-gray-100 text-gray-700' },
     EXONERADA: { texto: 'Exonerada', clases: 'bg-amber-50 text-amber-900' },
 };
+
+// ─── Reportar y confirmar (2026-10-01) ───────────────────────────────────────
+
+/** Sube la captura del pago (el representante o el admin); devuelve su id. */
+export async function subirCaptura(archivo: File): Promise<string> {
+    const datos = new FormData();
+    datos.append('file', archivo);
+    const r = await api.post('/payments/comprobantes', datos, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data.comprobante.id as string;
+}
+
+/** Abre la captura de un pago reportado en otra pestaña (va con la sesión, no por enlace). */
+export async function verCaptura(reporteId: string) {
+    const r = await api.get(`/payments/reportes/${encodeURIComponent(reporteId)}/captura`, { responseType: 'blob' });
+    window.open(URL.createObjectURL(r.data as Blob), '_blank', 'noopener');
+}
+
+export function useReportarPago(studentId: string) {
+    const invalidar = useInvalidarPagos();
+    return useMutation({
+        mutationFn: async (datos: {
+            installmentKeys: string[];
+            amount: string;
+            currency: Moneda;
+            exchangeRate?: string | null;
+            method: string;
+            reference?: string | null;
+            paidAt: string;
+            comprobanteId?: string | null;
+        }) => (await api.post(`/payments/students/${encodeURIComponent(studentId)}/reportes`, datos)).data.reporte as { id: string },
+        onSuccess: invalidar,
+    });
+}
+
+export function usePagosPorConfirmar(activo: boolean) {
+    return useQuery({
+        queryKey: ['pagos', 'reportes'],
+        queryFn: async () => (await api.get('/payments/reportes')).data.reportes as PagoPorConfirmar[],
+        enabled: activo,
+    });
+}
+
+export function useConfirmarReporte() {
+    const cola = useQueryClient();
+    return useMutation({
+        mutationFn: async (id: string) => (await api.post(`/payments/reportes/${encodeURIComponent(id)}/confirmar`, {})).data.payment as { id: string; receiptNumber: number },
+        onSuccess: () => {
+            cola.invalidateQueries({ queryKey: ['pagos'] });
+            cola.invalidateQueries({ queryKey: ['finanzas'] });
+        },
+    });
+}
+
+export function useRechazarReporte() {
+    const cola = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ id, motivo }: { id: string; motivo: string }) => (await api.post(`/payments/reportes/${encodeURIComponent(id)}/rechazar`, { motivo })).data,
+        onSuccess: () => {
+            cola.invalidateQueries({ queryKey: ['pagos'] });
+            cola.invalidateQueries({ queryKey: ['finanzas'] });
+        },
+    });
+}

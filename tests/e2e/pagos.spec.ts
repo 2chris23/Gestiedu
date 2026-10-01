@@ -11,6 +11,8 @@ import { WEB_BASE, loginViaUI, captureEvidence, queryTenantDb } from './helpers'
  * 3. Abre a un alumno, elige las cuotas vencidas, cobra, baja el comprobante.
  * 4. Lo anula con motivo.
  * 5. El representante de ese alumno lo ve en su Inicio.
+ * 6. El representante reporta un pago con su captura y el admin lo confirma
+ *    (PAGOS-UI-04, 2026-10-01).
  *
  * Al terminar deja el liceo de pruebas como estaba (módulo apagado, sin pagos).
  */
@@ -55,6 +57,7 @@ test.describe.serial('Pagos', () => {
     test.afterAll(async () => {
         await queryTenantDb(`DELETE FROM student_tutors WHERE id = 'e2e-pagos'`);
         if (!caso) return;
+        await queryTenantDb(`DELETE FROM pagos_reportados WHERE "studentId" = $1`, [caso.student_id]);
         await queryTenantDb(`DELETE FROM payments WHERE "studentId" = $1`, [caso.student_id]);
         await queryTenantDb(`DELETE FROM payment_settings`);
         for (const fila of configuracionAntes) {
@@ -165,6 +168,47 @@ test.describe.serial('Pagos', () => {
             await expect(page).not.toHaveURL(/\/dashboard\/pagos$/);
         } catch (error) {
             await captureEvidence(testInfo, page, 'PAGOS-UI-03', 'Vista del representante', error);
+            throw error;
+        }
+    });
+
+    test('PAGOS-UI-04: el representante reporta un pago con la captura y el admin lo confirma', async ({ page }, testInfo) => {
+        // Una imagen de 8×8 de verdad (PNG): el servidor la redibuja a WebP.
+        const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVQImWMwTjuDFTEMLQkAuYZZQQ0kCIcAAAAASUVORK5CYII=', 'base64');
+        try {
+            await loginViaUI(page, caso.tutor_email, '123456');
+            await page.goto(`${WEB_BASE}/dashboard`);
+            const seccion = page.getByRole('region', { name: 'Pagos' });
+            await expect(seccion).toBeVisible({ timeout: 30000 });
+            await seccion.getByRole('button', { name: new RegExp(caso.first_name) }).first().click();
+            await seccion.getByRole('button', { name: /Tocar para elegirla/ }).first().click();
+            const formulario = seccion.getByRole('form', { name: 'Reportar un pago' });
+            await expect(formulario).toBeVisible();
+            await formulario.getByLabel(/Referencia/).fill('E2E-777');
+            await formulario.getByLabel(/Captura del pago/).setInputFiles({ name: 'captura.png', mimeType: 'image/png', buffer: PNG });
+            await formulario.getByRole('button', { name: 'Enviar al liceo' }).click();
+            await expect(seccion.getByRole('heading', { name: 'Pagos reportados' })).toBeVisible({ timeout: 15000 });
+            await expect(seccion.getByText('Por confirmar').first()).toBeVisible();
+            await page.screenshot({ path: path.join(EVIDENCIA, 'pagos-reportar.png'), fullPage: true });
+
+            // El admin lo ve arriba, abre la captura y lo confirma.
+            await page.context().clearCookies();
+            await loginViaUI(page, 'admin@testing.edu.ve', '123456');
+            await page.goto(`${WEB_BASE}/dashboard/pagos?vista=estudiantes`);
+            const porConfirmar = page.getByRole('region', { name: /por confirmar/ });
+            await expect(porConfirmar).toBeVisible({ timeout: 30000 });
+            const fila = porConfirmar.getByRole('listitem').filter({ hasText: caso.first_name });
+            await expect(fila.getByRole('button', { name: 'Ver captura' })).toBeVisible();
+            await page.screenshot({ path: path.join(EVIDENCIA, 'pagos-por-confirmar.png'), fullPage: true });
+            await fila.getByRole('button', { name: 'Confirmar' }).click();
+            await expect(page.getByText(/Pago confirmado/)).toBeVisible({ timeout: 15000 });
+            await expect(porConfirmar).toHaveCount(0);
+
+            const [r] = await queryTenantDb(`SELECT estado, "paymentId" FROM pagos_reportados WHERE "studentId" = $1 AND referencia = 'E2E-777'`, [caso.student_id]);
+            expect(r.estado).toBe('CONFIRMADO');
+            expect(r.paymentId).toBeTruthy();
+        } catch (error) {
+            await captureEvidence(testInfo, page, 'PAGOS-UI-04', 'Reportar y confirmar', error);
             throw error;
         }
     });

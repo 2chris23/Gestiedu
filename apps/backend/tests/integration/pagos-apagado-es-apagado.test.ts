@@ -41,6 +41,8 @@ const CUERPO: Record<string, Record<string, unknown>> = {
     'POST /api/payments/students/:studentId/payments': { installmentKeys: ['2026-09'], amount: 30, currency: 'USD', method: 'CASH', paidAt: '2026-09-15' },
     'PUT /api/payments/students/:studentId/plan': { exempt: false },
     'POST /api/payments/:paymentId/annul': { reason: 'Error al cobrar' },
+    'POST /api/payments/students/:studentId/reportes': { installmentKeys: ['2026-09'], amount: 30, currency: 'USD', method: 'CASH', paidAt: '2026-09-15' },
+    'POST /api/payments/reportes/:id/rechazar': { motivo: 'No llegó' },
 };
 
 describe('Pagos apagado es apagado', () => {

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { AlertTriangle, ArrowDownLeft, ArrowUpRight, CalendarClock, Loader2, PiggyBank, ShoppingCart, Users, Wallet, X } from 'lucide-react';
+import { AlertTriangle, ArrowDownLeft, BellRing, ArrowUpRight, CalendarClock, Loader2, PiggyBank, ShoppingCart, Users, Wallet, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FormularioDeFondo, FormularioDeGasto, type Monedas } from '@/components/finanzas/GastosYFondos';
 import { useGastos, useMesDeFinanzas, useResumenDeFinanzas } from '@/hooks/useFinanzas';
@@ -47,6 +47,18 @@ export function VistaResumen({
 
     return (
         <div className="space-y-6">
+            {data.pagosPorConfirmar > 0 && !data.closed && (
+                <button
+                    type="button"
+                    onClick={() => irA('estudiantes')}
+                    className="flex min-h-[44px] w-full items-center gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-left text-sm font-semibold text-amber-950 hover:bg-amber-100"
+                >
+                    <BellRing className="h-5 w-5 shrink-0" aria-hidden />
+                    {data.pagosPorConfirmar === 1
+                        ? 'Un representante reportó un pago: revísalo y confírmalo'
+                        : `${data.pagosPorConfirmar} pagos reportados por representantes: revísalos y confírmalos`}
+                </button>
+            )}
             <section className="grid gap-3 lg:grid-cols-[1.3fr_1fr]">
                 <div className={cn('rounded-2xl border p-5', disponibles < 0 ? 'border-red-200 bg-red-50' : 'border-indigo-200 bg-indigo-50')}>
                     <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-indigo-900">

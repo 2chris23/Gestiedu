@@ -4,6 +4,12 @@ import {
     annulPayment,
     getMyChildrenPayments,
     getPaymentCycles,
+    subirCaptura,
+    getCaptura,
+    reportarPago,
+    getReportes,
+    confirmarReporte,
+    rechazarReporte,
     getPaymentsMonth,
     getPaymentReceipt,
     getPaymentSettings,
@@ -162,5 +168,47 @@ export async function pagosRoutes(fastify: FastifyInstance) {
         '/:paymentId/receipt',
         { schema: { params: { type: 'object', required: ['paymentId'], properties: { paymentId: id } } }, preHandler: [authenticate] },
         getPaymentReceipt as any
+    );
+
+    // ─── El representante reporta su pago; el admin confirma o rechaza ───
+    fastify.post('/comprobantes', { preHandler: [authenticate] }, subirCaptura as any);
+    fastify.post(
+        '/students/:studentId/reportes',
+        {
+            schema: {
+                params: { type: 'object', required: ['studentId'], properties: { studentId: id } },
+                body: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['installmentKeys', 'amount', 'currency', 'method', 'paidAt'],
+                    properties: {
+                        installmentKeys: { type: 'array', minItems: 1, maxItems: 60, items: { type: 'string', maxLength: 40 } },
+                        amount: { type: ['number', 'string'] },
+                        currency: { type: 'string', enum: ['USD', 'VES'] },
+                        exchangeRate: { type: ['number', 'string', 'null'] },
+                        method: { type: 'string', maxLength: 30 },
+                        reference: { type: ['string', 'null'], maxLength: 60 },
+                        paidAt: { type: 'string', maxLength: 10 },
+                        comprobanteId: { type: ['string', 'null'], maxLength: 64 },
+                    },
+                },
+            },
+            preHandler: [authenticate],
+        },
+        reportarPago as any
+    );
+    fastify.get('/reportes', { schema: { querystring: { type: 'object', properties: { estado: { type: 'string', maxLength: 20 } } } }, preHandler: [authenticate, requireAdmin] }, getReportes as any);
+    fastify.get('/reportes/:id/captura', { schema: { params: { type: 'object', required: ['id'], properties: { id } } }, preHandler: [authenticate] }, getCaptura as any);
+    fastify.post('/reportes/:id/confirmar', { schema: { params: { type: 'object', required: ['id'], properties: { id } } }, preHandler: [authenticate, requireAdmin] }, confirmarReporte as any);
+    fastify.post(
+        '/reportes/:id/rechazar',
+        {
+            schema: {
+                params: { type: 'object', required: ['id'], properties: { id } },
+                body: { type: 'object', additionalProperties: false, required: ['motivo'], properties: { motivo: { type: 'string', maxLength: 200 } } },
+            },
+            preHandler: [authenticate, requireAdmin],
+        },
+        rechazarReporte as any
     );
 }

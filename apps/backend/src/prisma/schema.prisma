@@ -2466,3 +2466,46 @@ model AsignacionAlPersonal {
   @@index([pagoId])
   @@map("asignaciones_al_personal")
 }
+
+/// Un recordatorio de cuota ya enviado: una sola vez por alumno, ciclo y cuota,
+/// aunque corran varios procesos a la vez (la clave única lo garantiza).
+model RecordatorioDeCuota {
+  id             String   @id @default(cuid())
+  studentId      String
+  academicYearId String
+  installmentKey String
+  enviadoEn      DateTime @default(now())
+
+  @@unique([studentId, academicYearId, installmentKey])
+  @@map("recordatorios_de_cuota")
+}
+
+/// Un pago que el representante dice que hizo (con la captura del pago móvil).
+/// El admin lo confirma —y entonces es un `Payment` de verdad— o lo rechaza con
+/// motivo. Mientras tanto no cuenta para nada.
+model PagoReportado {
+  id              String    @id @default(cuid())
+  studentId       String
+  academicYearId  String
+  reportadoPorId  String
+  installmentKeys Json
+  moneda          String
+  monto           Decimal   @db.Decimal(12, 2)
+  tasa            Decimal?  @db.Decimal(14, 4)
+  metodo          String
+  referencia      String?
+  fechaDePago     DateTime  @db.Date
+  comprobanteId   String?
+  /// PENDIENTE | CONFIRMADO | RECHAZADO
+  estado          String    @default("PENDIENTE")
+  motivoRechazo   String?
+  paymentId       String?
+  revisadoPorId   String?
+  revisadoEn      DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([estado])
+  @@index([studentId])
+  @@map("pagos_reportados")
+}
+

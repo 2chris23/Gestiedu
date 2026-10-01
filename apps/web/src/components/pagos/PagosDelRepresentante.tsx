@@ -10,7 +10,8 @@ import { cn } from '@/lib/utils';
  * LO QUE VE EL REPRESENTANTE
  *
  * El estado de pago de cada alumno que representa, sus cuotas y sus
- * comprobantes. Solo lectura: registrar y anular es del liceo.
+ * comprobantes. Registrar y anular es del liceo; él puede REPORTAR un pago ya
+ * hecho, con la captura, y el liceo lo confirma (2026-10-01).
  */
 export function PagosDelRepresentante() {
     const { data: ajustes } = usePagosActivos();
@@ -51,7 +52,7 @@ export function PagosDelRepresentante() {
                             </button>
                             {esta && (
                                 <div className="border-t border-gray-100 p-4">
-                                    <FichaDePagos ficha={h} editable={false} />
+                                    <FichaDePagos ficha={h} editable={false} reportar />
                                 </div>
                             )}
                         </li>

@@ -17,6 +17,7 @@ import { mesesDelCiclo, mesDe } from '@/lib/calendario-del-ciclo';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { FichaDePagos } from '@/components/pagos/FichaDePagos';
+import { PagosPorConfirmar } from '@/components/pagos/PagosPorConfirmar';
 import { AlumnoEnResumen, dinero, ESTADO_DEL_ALUMNO, EstadoDelAlumno, useCiclosDePagos, useFichaDePagos, usePagosActivos, useResumenDePagos, type Moneda } from '@/hooks/usePagos';
 import { cn } from '@/lib/utils';
 
@@ -100,6 +101,7 @@ function VistaDeEstudiantes({ ciclo }: { ciclo: string | null }) {
         // empezaba 32 px más adentro que en las demás pantallas) y un segundo
         // `<main>` dentro del primero, que confunde al lector de pantalla.
         <div className="space-y-6">
+            {!data.closed && <PagosPorConfirmar />}
             <div>
                 <div>
                     {data.closed && (
