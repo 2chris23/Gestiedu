@@ -56,7 +56,7 @@ async function loQueSobra(page: Page): Promise<string[]> {
 
 const hojasDelPdf = (pdf: Buffer) => (pdf.toString('latin1').match(/\/Type\s*\/Page(?!s)/g) || []).length;
 
-const PAPELES: Array<{ id: string; nombre: string; ruta: () => string; listo: string; hojas?: number }> = [
+const PAPELES: Array<{ id: string; nombre: string; ruta: () => string; listo: string; hojas?: number; antes?: () => Promise<unknown> }> = [
     { id: 'DOC-LIMPIO-01', nombre: 'Carga horaria', ruta: () => `/dashboard/carga-horaria/${encodeURIComponent(d.profe)}`, listo: 'article[aria-label="Carga horaria"] table', hojas: 1 },
     { id: 'DOC-LIMPIO-02', nombre: 'Constancia de estudio', ruta: () => `/dashboard/constancia/${encodeURIComponent(d.alumno)}`, listo: 'article p', hojas: 1 },
     { id: 'DOC-LIMPIO-03', nombre: 'Constancia de trabajo', ruta: () => `/dashboard/constancia-de-trabajo/${encodeURIComponent(d.profe)}`, listo: 'article p', hojas: 1 },
@@ -65,6 +65,14 @@ const PAPELES: Array<{ id: string; nombre: string; ruta: () => string; listo: st
     { id: 'DOC-LIMPIO-06', nombre: 'Plan de evaluación', ruta: () => `/dashboard/plan-de-evaluacion/${d.seccion}/${d.materia}?lapso=1`, listo: 'table[aria-label="Plan de evaluación"], table[aria-label="Plan del lapso"]' },
     { id: 'DOC-LIMPIO-07', nombre: 'Resumen final', ruta: () => `/dashboard/resumen-final/${d.seccion}`, listo: 'article' },
     { id: 'DOC-LIMPIO-08', nombre: 'Carnets', ruta: () => `/dashboard/carnets?seccion=${d.seccion}`, listo: 'ul[aria-label="Carnets"] li' },
+    {
+        id: 'DOC-LIMPIO-09',
+        nombre: 'Reporte financiero del mes',
+        ruta: () => `/dashboard/pagos/reporte?mes=${new Date().toISOString().slice(0, 7)}`,
+        listo: 'table[aria-label="Resumen del mes"]',
+        // Va con el módulo de pagos: apagado, el servidor responde 403.
+        antes: () => queryTenantDb(`INSERT INTO payment_settings (id, enabled, "updatedAt") VALUES ('liceo', true, now()) ON CONFLICT (id) DO UPDATE SET enabled = true`),
+    },
 ];
 
 test.describe('Los documentos salen limpios', () => {
@@ -74,6 +82,7 @@ test.describe('Los documentos salen limpios', () => {
     for (const p of PAPELES) {
         test(`${p.id}: ${p.nombre} sin nada de la app al imprimir`, async ({ page }, testInfo) => {
             try {
+                await p.antes?.();
                 await comoAdmin(page);
                 await page.goto(`${WEB_BASE}${p.ruta()}`);
                 await expect(page.locator(p.listo).first()).toBeVisible({ timeout: 60000 });

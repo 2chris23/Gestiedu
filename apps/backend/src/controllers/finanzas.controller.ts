@@ -436,6 +436,99 @@ export async function getMes(request: FastifyRequest<{ Querystring: { academicYe
     }
 }
 
+/**
+ * GET /api/finanzas/reporte?mes=AAAA-MM — EL REPORTE DEL MES (2026-10-01)
+ *
+ * Lo que eligió Cristian: una hoja por mes para la junta o la dirección.
+ * Con qué se empezó el mes, lo que entró (cobros por método y fondos), lo que
+ * salió (personal y gastos por categoría), con qué se acabó y lo que deben los
+ * estudiantes al cierre del mes. Las mismas cuentas que el Resumen: el saldo
+ * es TODO lo que entró menos TODO lo que salió, sin lo anulado.
+ */
+export async function getReporteDelMes(request: FastifyRequest<{ Querystring: { academicYearId?: string; mes?: string } }>, reply: FastifyReply) {
+    try {
+        const delLiceo = await moduloActivo(request, reply);
+        if (!delLiceo) return;
+        const mes = String(request.query?.mes ?? '');
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) return reply.status(400).send({ error: 'Mes inválido (AAAA-MM)', code: 'MES_INVALIDO' });
+        const prisma = prismaDe(request);
+        const ciclo = await elCiclo(request);
+        const config = await configuracionDelCiclo(prisma, ciclo.id, delLiceo);
+        const hoy = await hoyDelLiceo(prisma);
+        const desde = fechaDB(`${mes}-01`);
+        const hasta = new Date(Date.UTC(desde.getUTCFullYear(), desde.getUTCMonth() + 1, 1));
+        const ultimoDia = ymd(new Date(hasta.getTime() - 86_400_000))!;
+
+        const [[antes], cobros, fondos, personal, gastos, inscritos, planes, pagado] = await Promise.all([
+            prisma.$queryRaw`
+                SELECT
+                  (SELECT COALESCE(SUM("montoBase"),0) FROM fondos_del_liceo WHERE "anuladoEn" IS NULL AND fecha < ${desde}) AS fondos,
+                  (SELECT COALESCE(SUM("amountBase"),0) FROM payments WHERE "annulledAt" IS NULL AND "paidAt" < ${desde}) AS cobros,
+                  (SELECT COALESCE(SUM("montoBase"),0) FROM pagos_al_personal WHERE "anuladoEn" IS NULL AND fecha < ${desde}) AS personal,
+                  (SELECT COALESCE(SUM("montoBase"),0) FROM gastos WHERE "anuladoEn" IS NULL AND fecha < ${desde}) AS gastos`,
+            prisma.$queryRaw`
+                SELECT method AS metodo, COUNT(*)::int AS cuantos, COALESCE(SUM("amountBase"),0) AS total
+                FROM payments WHERE "annulledAt" IS NULL AND "paidAt" >= ${desde} AND "paidAt" < ${hasta}
+                GROUP BY method ORDER BY total DESC`,
+            prisma.fondoDelLiceo.findMany({ where: { anuladoEn: null, fecha: { gte: desde, lt: hasta } }, orderBy: { fecha: 'asc' } }),
+            prisma.pagoAlPersonal.findMany({
+                where: { anuladoEn: null, fecha: { gte: desde, lt: hasta } },
+                include: { personal: { include: { user: { select: { firstName: true, lastName: true } } } } },
+                orderBy: { fecha: 'asc' },
+            }),
+            prisma.gasto.findMany({ where: { anuladoEn: null, fecha: { gte: desde, lt: hasta } }, orderBy: { fecha: 'asc' } }),
+            prisma.studentClassroom.findMany({ where: { academicYearId: ciclo.id, isActive: true, student: { status: 'ACTIVE' } }, select: { studentId: true } }),
+            prisma.studentPaymentPlan.findMany({ where: { academicYearId: ciclo.id }, select: { studentId: true, dueDay: true, exempt: true, descuentoPct: true } }),
+            pagadoEnElCiclo(prisma, ciclo.id),
+        ]);
+
+        const inicioCents = aCentimos(antes.fondos) + aCentimos(antes.cobros) - aCentimos(antes.personal) - aCentimos(antes.gastos);
+        const cobrosCents = cobros.reduce((t: number, c: any) => t + aCentimos(c.total), 0);
+        const fondosCents = fondos.reduce((t: number, f: any) => t + aCentimos(f.montoBase), 0);
+        const personalCents = personal.reduce((t: number, p: any) => t + aCentimos(p.montoBase), 0);
+        const gastosCents = gastos.reduce((t: number, g: any) => t + aCentimos(g.montoBase), 0);
+        const porCategoria = new Map<string, number>();
+        for (const g of gastos) porCategoria.set(g.categoria, (porCategoria.get(g.categoria) ?? 0) + aCentimos(g.montoBase));
+
+        // Lo que deben al cierre del mes (o hoy, si el mes no ha terminado).
+        const corte = ultimoDia < hoy ? ultimoDia : hoy;
+        const planDe = new Map<string, any>(planes.map((p: any) => [p.studentId, p]));
+        let deben = 0;
+        let deudores = 0;
+        for (const id of new Set<string>(inscritos.map((i: any) => i.studentId))) {
+            const r = resumenDe(config, ciclo, planDe.get(id), pagado, id, corte);
+            deben += r.owedCents;
+            if (r.state === 'DEBE') deudores++;
+        }
+
+        return reply.send({
+            month: mes,
+            academicYear: { id: ciclo.id, name: ciclo.name },
+            currency: config.baseCurrency,
+            corte,
+            saldoInicial: deCentimos(inicioCents),
+            entradas: {
+                total: deCentimos(cobrosCents + fondosCents),
+                cobros: deCentimos(cobrosCents),
+                cobrosPorMetodo: cobros.map((c: any) => ({ metodo: c.metodo, cuantos: c.cuantos, monto: deCentimos(aCentimos(c.total)) })),
+                fondos: fondos.map((f: any) => ({ fecha: ymd(f.fecha), concepto: f.concepto, descripcion: f.descripcion, monto: deCentimos(aCentimos(f.montoBase)) })),
+            },
+            salidas: {
+                total: deCentimos(personalCents + gastosCents),
+                personal: deCentimos(personalCents),
+                pagosAlPersonal: personal.map((p: any) => ({ fecha: ymd(p.fecha), numero: p.numero, persona: nombreDePersona(p.personal), monto: deCentimos(aCentimos(p.montoBase)) })),
+                gastos: deCentimos(gastosCents),
+                gastosPorCategoria: [...porCategoria.entries()].sort((a, b) => b[1] - a[1]).map(([categoria, c]) => ({ categoria, monto: deCentimos(c) })),
+                listaDeGastos: gastos.map((g: any) => ({ fecha: ymd(g.fecha), concepto: g.concepto, categoria: g.categoria, proveedor: g.proveedor, monto: deCentimos(aCentimos(g.montoBase)) })),
+            },
+            saldoFinal: deCentimos(inicioCents + cobrosCents + fondosCents - personalCents - gastosCents),
+            alumnos: { deben: deCentimos(deben), deudores },
+        });
+    } catch (error) {
+        return responder(reply, error, 'Error al preparar el reporte del mes');
+    }
+}
+
 // ─── Fondos ─────────────────────────────────────────────────────────────────
 
 const CONCEPTOS_DE_FONDO = ['SALDO_INICIAL', 'DONACION', 'OTRO'];

@@ -193,6 +193,39 @@ export function useMesDeFinanzas(ciclo: string | null, mes: string | null) {
     });
 }
 
+export interface ReporteDelMes {
+    month: string;
+    academicYear: { id: string; name: string };
+    currency: Moneda;
+    corte: string;
+    saldoInicial: string;
+    entradas: {
+        total: string;
+        cobros: string;
+        cobrosPorMetodo: Array<{ metodo: string; cuantos: number; monto: string }>;
+        fondos: Array<{ fecha: string; concepto: string; descripcion: string | null; monto: string }>;
+    };
+    salidas: {
+        total: string;
+        personal: string;
+        pagosAlPersonal: Array<{ fecha: string; numero: number; persona: string; monto: string }>;
+        gastos: string;
+        gastosPorCategoria: Array<{ categoria: string; monto: string }>;
+        listaDeGastos: Array<{ fecha: string; concepto: string; categoria: string; proveedor: string | null; monto: string }>;
+    };
+    saldoFinal: string;
+    alumnos: { deben: string; deudores: number };
+}
+
+/** El reporte de un mes, para imprimir (`mes` = AAAA-MM). */
+export function useReporteDelMes(ciclo: string | null, mes: string | null) {
+    return useQuery({
+        queryKey: ['finanzas', 'reporte', ciclo ?? 'actual', mes],
+        queryFn: async () => (await api.get('/finanzas/reporte', { params: { ...delCiclo(ciclo), mes } })).data as ReporteDelMes,
+        enabled: !!mes,
+    });
+}
+
 export function usePersonal(activo: boolean, ciclo: string | null) {
     return useQuery({
         queryKey: ['finanzas', 'personal', ciclo ?? 'actual'],

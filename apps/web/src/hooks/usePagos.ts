@@ -282,8 +282,11 @@ export function useGuardarPlanDePago(studentId: string, ciclo?: string | null) {
 /** "1234.5" + USD → "$1.234,50";  VES → "Bs 1.234,50" */
 export function dinero(valor: string | number, moneda: Moneda): string {
     const n = Number(valor);
-    const texto = new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number.isFinite(n) ? n : 0);
-    return moneda === 'USD' ? `$${texto}` : `Bs ${texto}`;
+    const v = Number.isFinite(n) ? n : 0;
+    const texto = new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(v));
+    // El signo delante del símbolo: «-$180,00», no «$-180,00» (los fondos pueden quedar en rojo).
+    const signo = v < 0 && texto !== '0,00' ? '-' : '';
+    return moneda === 'USD' ? `${signo}$${texto}` : `${signo}Bs ${texto}`;
 }
 
 export const ESTADO_DEL_ALUMNO: Record<EstadoDelAlumno, { texto: string; clases: string }> = {

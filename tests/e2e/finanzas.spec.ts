@@ -8,7 +8,8 @@ import { WEB_BASE, captureEvidence, loginViaUI, queryTenantDb } from './helpers'
  * profesor y le paga: el profesor lo ve en «Mis pagos», y nada de nadie más.
  */
 
-const dineroDe = (t: string) => Number(t.replace(/[^\d,]/g, '').replace(',', '.'));
+// Con su signo: con el liceo de pruebas en rojo, «-$180» se leía 180 y la cuenta salía al revés.
+const dineroDe = (t: string) => (/[-−]/.test(t) ? -1 : 1) * Number(t.replace(/[^\d,]/g, '').replace(',', '.'));
 
 test.describe.serial('Finanzas', () => {
     let profe: { email: string; id: string; nombre: string };
@@ -26,7 +27,7 @@ test.describe.serial('Finanzas', () => {
         try {
             await loginViaUI(page, 'admin@testing.edu.ve', '123456');
             await page.goto(`${WEB_BASE}/dashboard/pagos`);
-            const saldo = page.locator('p', { hasText: /^\$/ }).first();
+            const saldo = page.locator('p', { hasText: /^-?\$/ }).first();
             await expect(page.getByText('Fondos disponibles')).toBeVisible({ timeout: 30000 });
             const antes = dineroDe(await saldo.innerText());
 
@@ -75,6 +76,27 @@ test.describe.serial('Finanzas', () => {
             expect(Number(pago.montoBase)).toBe(250);
         } catch (e) {
             await captureEvidence(testInfo, page, 'FIN-UI-02', 'Pagar al profesor', e);
+            throw e;
+        }
+    });
+
+    test('REPORTE-UI-01: del mes en el calendario a su reporte para imprimir, que cuadra', async ({ page }, testInfo) => {
+        try {
+            await loginViaUI(page, 'admin@testing.edu.ve', '123456');
+            await page.goto(`${WEB_BASE}/dashboard/pagos`);
+            await expect(page.getByText('Fondos disponibles')).toBeVisible({ timeout: 30000 });
+            const disponibles = await page.locator('p', { hasText: /^-?\$/ }).first().innerText();
+            await page.getByRole('button', { name: /Ver el mes en días/ }).filter({ hasText: 'Este mes' }).click();
+            await page.getByRole('link', { name: 'Reporte del mes' }).click();
+            await expect(page).toHaveURL(/\/dashboard\/pagos\/reporte\?mes=\d{4}-\d{2}/);
+            const resumen = page.getByRole('table', { name: 'Resumen del mes' });
+            await expect(resumen).toBeVisible({ timeout: 30000 });
+            // El saldo al terminar el mes en curso es lo que hay hoy.
+            await expect(resumen.getByRole('row', { name: /Saldo al terminar el mes/ })).toContainText(disponibles);
+            await expect(page.getByRole('navigation', { name: 'Navegación principal' })).toHaveCount(0);
+            await page.screenshot({ path: 'test-results/evidencia/reporte-del-mes.png', fullPage: true });
+        } catch (e) {
+            await captureEvidence(testInfo, page, 'REPORTE-UI-01', 'Reporte del mes', e);
             throw e;
         }
     });

@@ -21,6 +21,7 @@ const RUTAS_DE_PAPEL: RegExp[] = [
     /^\/dashboard\/academico\/[^/]+\/(graduandos|matricula)$/,
     /^\/dashboard\/(plan-de-evaluacion|acta-de-socializacion|instrumentos-de-evaluacion)\/[^/]+\/[^/]+$/,
     /^\/dashboard\/comedor\/resumen$/,
+    /^\/dashboard\/pagos\/reporte$/,
 ];
 
 export function esDocumento(pathname: string | null | undefined): boolean {

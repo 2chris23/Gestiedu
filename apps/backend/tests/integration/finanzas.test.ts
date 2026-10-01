@@ -73,7 +73,7 @@ describe('Finanzas del liceo', () => {
     });
 
     it('FIN-01: con el módulo de pagos apagado, las finanzas tampoco responden', async () => {
-        for (const url of ['/api/finanzas/resumen', '/api/finanzas/personal', '/api/finanzas/gastos', '/api/finanzas/mis-pagos']) {
+        for (const url of ['/api/finanzas/resumen', '/api/finanzas/personal', '/api/finanzas/gastos', '/api/finanzas/mis-pagos', '/api/finanzas/reporte?mes=2026-10']) {
             const r = await get(tk.admin, url);
             expect([r.status, r.body.code]).toEqual([403, 'PAYMENTS_DISABLED']);
         }
@@ -207,6 +207,25 @@ describe('Finanzas del liceo', () => {
         const antes = await disponibles();
         expect((await post(tk.admin, `/api/finanzas/pagos-al-personal/${pago1}/anular`, { motivo: 'Se pagó dos veces' })).status).toBe(200);
         expect(await disponibles()).toBe(antes + 300);
+    }, 60000);
+
+    it('REPORTE-01: el reporte del mes cuadra con el resumen; solo el admin', async () => {
+        const mes = HOY.slice(0, 7);
+        const r = await get(tk.admin, `/api/finanzas/reporte?mes=${mes}`);
+        expect(r.status).toBe(200);
+        const n = (x: string) => Math.round(Number(x) * 100);
+        // Inicio + entró − salió = final; y el final del mes en curso es lo que hay hoy.
+        expect(n(r.body.saldoFinal)).toBe(n(r.body.saldoInicial) + n(r.body.entradas.total) - n(r.body.salidas.total));
+        expect(Number(r.body.saldoFinal)).toBe(await disponibles());
+        expect(n(r.body.entradas.total)).toBe(n(r.body.entradas.cobros) + r.body.entradas.fondos.reduce((t: number, f: any) => t + n(f.monto), 0));
+        expect(n(r.body.salidas.gastos)).toBe(r.body.salidas.gastosPorCategoria.reduce((t: number, g: any) => t + n(g.monto), 0));
+        // El mes anterior empieza en lo que había antes de todo esto.
+        const [a, m] = mes.split('-').map(Number);
+        const previo = m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, '0')}`;
+        expect((await get(tk.admin, `/api/finanzas/reporte?mes=${previo}`)).body.saldoFinal).toBe(r.body.saldoInicial);
+
+        expect((await get(tk.admin, '/api/finanzas/reporte?mes=2026-13')).body.code).toBe('MES_INVALIDO');
+        for (const t of [tk.profe1, tk.madre, tk.alumno]) expect([401, 403]).toContain((await get(t, `/api/finanzas/reporte?mes=${mes}`)).status);
     }, 60000);
 
     it('NOMINA-06: el ciclo nuevo trae a quien se queda, sin duplicar; el ciclo viejo, cerrado', async () => {

@@ -1,7 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { AlertTriangle, ArrowDownLeft, BellRing, ArrowUpRight, CalendarClock, Loader2, PiggyBank, ShoppingCart, Users, Wallet, X } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, ArrowDownLeft, BellRing, ArrowUpRight, CalendarClock, FileText, Loader2, PiggyBank, ShoppingCart, Users, Wallet, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FormularioDeFondo, FormularioDeGasto, type Monedas } from '@/components/finanzas/GastosYFondos';
 import { useGastos, useMesDeFinanzas, useResumenDeFinanzas } from '@/hooks/useFinanzas';
@@ -200,10 +201,20 @@ function MesDeFinanzas({ ciclo, mes, fmt, alCerrar }: { ciclo: string | null; me
                 <h3 id="mes-de-finanzas" className="text-lg font-bold text-gray-900">
                     {nombreDelMes(mes)}
                 </h3>
-                <button type="button" onClick={alCerrar} className="inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold text-gray-700 hover:bg-gray-100">
-                    <X className="h-4 w-4" aria-hidden />
-                    Cerrar el mes
-                </button>
+                <div className="flex flex-wrap items-center gap-1">
+                    {/* La hoja del mes para la junta o la dirección (2026-10-01). */}
+                    <Link
+                        href={`/dashboard/pagos/reporte?mes=${mes}${ciclo ? `&ciclo=${ciclo}` : ''}`}
+                        className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-indigo-200 px-3 text-sm font-semibold text-indigo-800 hover:bg-indigo-50"
+                    >
+                        <FileText className="h-4 w-4" aria-hidden />
+                        Reporte del mes
+                    </Link>
+                    <button type="button" onClick={alCerrar} className="inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold text-gray-700 hover:bg-gray-100">
+                        <X className="h-4 w-4" aria-hidden />
+                        Cerrar el mes
+                    </button>
+                </div>
             </div>
             <p className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-700">
                 <span className="inline-flex items-center gap-1">

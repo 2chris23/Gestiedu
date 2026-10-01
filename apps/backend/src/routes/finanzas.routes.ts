@@ -13,6 +13,7 @@ import {
     getFondos,
     getGastos,
     getMes,
+    getReporteDelMes,
     getMisPagos,
     getPersona,
     getPersonal,
@@ -45,6 +46,7 @@ export async function finanzasRoutes(fastify: FastifyInstance) {
 
     fastify.get('/resumen', { ...admin, schema: { querystring: delCiclo } }, getResumen as any);
     fastify.get('/mes', { ...admin, schema: { querystring: { type: 'object', properties: { academicYearId: id, mes: { type: 'string', maxLength: 7 } } } } }, getMes as any);
+    fastify.get('/reporte', { ...admin, schema: { querystring: { type: 'object', properties: { academicYearId: id, mes: { type: 'string', maxLength: 7 } } } } }, getReporteDelMes as any);
 
     fastify.get('/fondos', { ...admin, schema: { querystring: delCiclo } }, getFondos as any);
     fastify.post(
