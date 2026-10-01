@@ -41,6 +41,7 @@ const CAMPO =
     'w-full px-4 py-2 min-h-[44px] border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent';
 import { instituteService, type InstituteConfig } from '@/services/institute.service';
 import { toast } from 'sonner';
+import { esPendiente } from '@/lib/por-enviar';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
 
 export function GeneralSettings() {
@@ -100,7 +101,12 @@ export function GeneralSettings() {
             setSaving(true);
             // Los datos del plantel van con los de los documentos; el servidor
             // los mezcla con los de la firma (que se guardan en Académico).
-            await instituteService.updateConfig({ ...formData, configuration: { documentos: plantel } } as any);
+            const r = await instituteService.updateConfig({ ...formData, configuration: { documentos: plantel } } as any);
+            if (esPendiente(r)) {
+                // Lo escrito se queda en el formulario: es lo que va a subir.
+                toast('Sin conexión: el cambio quedó pendiente ⏱ y se guarda solo al volver.', { id: 'pendiente' });
+                return;
+            }
             // Las hojas que se imprimen (boleta, plan…) leen el membrete de nuevo.
             queryClient.invalidateQueries({ queryKey: membreteKey });
             queryClient.invalidateQueries({ queryKey: instituteKeys.all });

@@ -16,6 +16,8 @@ import { RedisCache } from '../../src/config/redis';
 import { plantillaDe } from '../../src/utils/instrumentos';
 import { choquesDeNotas, huellaDelInstrumento } from '../../src/services/cambios-sin-conexion.service';
 import { cierraElCambio } from '../../src/plugins/cambios-sin-conexion';
+import { revisarLoVisto, igual } from '../../src/utils/lo-que-se-vio';
+import { platformPrisma } from '../../src/config/database';
 
 /**
  * LO HECHO SIN CONEXIÓN, QUE LLEGA TARDE (SINCON-*, 2026-09-30)
@@ -33,6 +35,8 @@ import { cierraElCambio } from '../../src/plugins/cambios-sin-conexion';
  *   SINCON-08  asistencia cambiada por otro mientras tanto → se pregunta; «solo si no hay» no choca
  *   SINCON-09  una clase de un día que no ha llegado no se guarda
  *   SINCON-10  el alumno no escribe nada, venga como venga
+ *   SINCON-11  la configuración, campo a campo: lo no tocado no pisa; lo que otro cambió se pregunta
+ *   SINCON-12  un evento hecho sin conexión que llega dos veces es UN evento
  */
 
 const SLUG = 'test-institute';
@@ -43,11 +47,22 @@ describe('Sin conexión: las cuentas (SINCON)', () => {
         const choques = choquesDeNotas(ahora, { ana: { usuarioId: 'admin' } }, { ana: 18, beto: 14, caro: 18 }, { ana: null, beto: 12, caro: null });
         expect(choques).toEqual([{ studentId: 'ana', antes: null, ahora: 15, tuya: 18, quien: 'admin', cuando: null }]);
         expect(choquesDeNotas(ahora, null, { ana: 18 }, undefined)).toEqual([]); // en línea, como siempre
+        // Lo que él mismo puso mientras tanto (otra pestaña, otro teléfono) no es «de otro».
+        expect(choquesDeNotas(ahora, { ana: { usuarioId: 'admin' } }, { ana: 18 }, { ana: null }, 'admin')).toEqual([]);
     });
 
     it('el instrumento se reconoce por su contenido, no por el orden de sus llaves', () => {
         expect(huellaDelInstrumento({ tipo: 'COTEJO', criterios: [{ id: 'a', puntos: 2 }] })).toBe(huellaDelInstrumento({ criterios: [{ puntos: 2, id: 'a' }], tipo: 'COTEJO' }));
         expect(huellaDelInstrumento(plantillaDe('COTEJO'))).not.toBe(huellaDelInstrumento(plantillaDe('ESCALA')));
+    });
+
+    it('lo visto: vacío y ausente son lo mismo; un campo raro no se recorre', async () => {
+        expect(igual('', null)).toBe(true);
+        expect(igual({ a: 1, b: 2 }, { b: 2, a: 1 })).toBe(true);
+        const cuerpo: any = { configuration: {}, __visto: [{ campo: '__proto__.toString', antes: 1, nuevo: 1 }, { campo: 'configuration.constructor', antes: 1, nuevo: 1 }] };
+        expect(await revisarLoVisto(cuerpo, async () => ({}))).toEqual([]);
+        expect(typeof Object.prototype.toString).toBe('function');
+        expect(cuerpo.__visto).toBeUndefined();
     });
 
     it('lo que queda por decidir no cierra el cambio', () => {
@@ -301,5 +316,92 @@ describe('Sin conexión: contra el servidor (SINCON-01…10)', () => {
         await notas(a.id, { scores: { [ana.id]: 20 } }, ana, UserRole.STUDENT, 'cambio-diez-0001').expect(403);
         await api().get('/api/cambios-en-espera').set(cab(ana, UserRole.STUDENT)).expect(403);
         expect(await prisma.cambioRecibido.count()).toBe(0);
+    });
+});
+
+describe('Sin conexión: la configuración y los eventos (SINCON-11, 12)', () => {
+    let server: FastifyInstance;
+    let prisma: PrismaClient;
+    let admin: any;
+    let original: any;
+    const cab = () => ({ Authorization: `Bearer ${generateTestToken(admin.id, UserRole.ADMIN, 'institute')}`, 'X-Institute-Slug': SLUG });
+    const api = () => request(server.server);
+    const liceo = () => platformPrisma.institute.findUnique({ where: { id: 'institute' }, select: { name: true, phone: true, address: true, academicConfig: true } });
+
+    beforeAll(async () => {
+        server = await createTestServer();
+        prisma = await createTestPrismaClient();
+        original = await liceo();
+    }, 120000);
+    afterAll(async () => {
+        // La plataforma es compartida: se deja como estaba.
+        await platformPrisma.institute.update({ where: { id: 'institute' }, data: { name: original.name, phone: original.phone, address: original.address, academicConfig: original.academicConfig ?? {} } });
+        await prisma.$disconnect();
+        await server.close();
+    });
+    beforeEach(async () => {
+        await prisma.cambioRecibido.deleteMany();
+        await cleanTestDatabase(prisma);
+        await RedisCache.clearPattern('*').catch(() => undefined);
+        admin = (await createTestUser(prisma, UserRole.ADMIN)).user;
+    });
+
+    it('SINCON-11: la configuración, campo a campo', async () => {
+        const nombre = original.name;
+        await platformPrisma.institute.update({
+            where: { id: 'institute' },
+            data: { phone: '0212-1111111', address: 'Calle 1', academicConfig: { ...(original.academicConfig ?? {}), documentos: { municipio: 'Libertador' } } },
+        });
+        // Lo que vio el admin sin conexión es lo de arriba. Mientras tanto,
+        // otro cambia el teléfono y el nombre.
+        await platformPrisma.institute.update({ where: { id: 'institute' }, data: { phone: '0212-2222222', name: 'Otro nombre del liceo' } });
+
+        const cuerpo = () => ({
+            name: nombre,
+            phone: '0212-3333333',
+            address: 'Calle 9',
+            configuration: { documentos: { municipio: 'Libertador', parroquia: 'Altagracia' } },
+            __visto: [
+                { campo: 'name', antes: nombre, nuevo: nombre },
+                { campo: 'phone', antes: '0212-1111111', nuevo: '0212-3333333' },
+                { campo: 'address', antes: 'Calle 1', nuevo: 'Calle 9' },
+                { campo: 'configuration.documentos.municipio', antes: 'Libertador', nuevo: 'Libertador' },
+                { campo: 'configuration.documentos.parroquia', antes: null, nuevo: 'Altagracia' },
+            ],
+        });
+
+        // El teléfono lo tocaron los dos: se pregunta, y no se aplica nada.
+        const r = await api().put('/api/institutes/current/config').set(cab()).set('X-Cambio', 'config-once-0001').send(cuerpo()).expect(409);
+        expect(r.body).toMatchObject({ code: 'CAMBIO_MIENTRAS_TANTO', que: 'CAMPOS' });
+        expect(r.body.campos).toEqual([{ campo: 'phone', antes: '0212-1111111', ahora: '0212-2222222', tuyo: '0212-3333333' }]);
+        expect((await liceo())!.address).toBe('Calle 1');
+
+        // «Lo del otro» en el teléfono: el campo sale del cambio y el resto entra.
+        const sinTelefono: any = cuerpo();
+        delete sinTelefono.phone;
+        sinTelefono.__visto = sinTelefono.__visto.filter((v: any) => v.campo !== 'phone');
+        await api().put('/api/institutes/current/config').set(cab()).set('X-Cambio', 'config-once-0001').send(sinTelefono).expect(200);
+        let ahora: any = await liceo();
+        expect(ahora.phone).toBe('0212-2222222');
+        expect(ahora.address).toBe('Calle 9');
+        // El nombre no lo tocó: no pisa el que puso el otro.
+        expect(ahora.name).toBe('Otro nombre del liceo');
+        expect(ahora.academicConfig.documentos).toMatchObject({ municipio: 'Libertador', parroquia: 'Altagracia' });
+
+        // «Lo mío»: se pone el suyo.
+        await api().put('/api/institutes/current/config').set(cab()).set('X-Cambio', 'config-once-0002').send({ ...cuerpo(), __decision: 'lo-mio' }).expect(200);
+        ahora = await liceo();
+        expect(ahora.phone).toBe('0212-3333333');
+    });
+
+    it('SINCON-12: un evento hecho sin conexión que llega dos veces es UN evento', async () => {
+        const year = await createTestAcademicYear(prisma, 'institute');
+        const evento = { title: 'Acto sin conexión', date: '2026-10-05', startTime: '00:00', endTime: '23:59', scope: 'INSTITUTE', academicYearId: year.id };
+        const a = await api().post('/api/events').set(cab()).set('X-Cambio', 'evento-doce-0001').send(evento);
+        expect(a.status).toBe(201);
+        const b = await api().post('/api/events').set(cab()).set('X-Cambio', 'evento-doce-0001').send(evento);
+        expect(b.status).toBe(201);
+        expect(b.headers['x-cambio']).toBe('repetido');
+        expect(await prisma.schoolEvent.count({ where: { title: 'Acto sin conexión' } })).toBe(1);
     });
 });

@@ -314,7 +314,7 @@ export async function calificarConInstrumento(
         // La misma nota tocada por dos: se compara y se escribe de una vez.
         if (antes) {
             const [fila] = await tx.$queryRaw`SELECT scores, "notasPuestasPor" FROM class_activities WHERE id = ${activityId} FOR UPDATE`;
-            const hay = choquesDeNotas(fila?.scores, fila?.notasPuestasPor, { ...notas, ...Object.fromEntries(quitar.map((q) => [q, null])) }, antes);
+            const hay = choquesDeNotas(fila?.scores, fila?.notasPuestasPor, { ...notas, ...Object.fromEntries(quitar.map((q) => [q, null])) }, antes, user?.userId ?? user?.id);
             if (hay.length) return hay;
         }
         await tx.$executeRaw`

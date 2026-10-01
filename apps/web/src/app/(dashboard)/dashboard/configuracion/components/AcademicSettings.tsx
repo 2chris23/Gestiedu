@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Save, GraduationCap, Globe, Calendar, Clock, FileText } from 'lucide-react';
 import { instituteService, type InstituteConfig } from '@/services/institute.service';
 import { toast } from 'sonner';
+import { esPendiente } from '@/lib/por-enviar';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
 import { useConfirm } from '@/hooks/useConfirm';
 import { calcularTurno, erroresDelHorario, turnosDeLaConfig, type HorarioDelLiceo } from '@/lib/franjas-del-horario';
@@ -122,7 +123,10 @@ export function AcademicSettings() {
         try {
             setSaving(true);
             try {
-                await guardar();
+                if (esPendiente(await guardar())) {
+                    toast('Sin conexión: el cambio quedó pendiente ⏱ y se guarda solo al volver.', { id: 'pendiente' });
+                    return;
+                }
             } catch (error: any) {
                 // Clases puestas que dejarían de caer en una hora del día: se
                 // pregunta antes de dejarlas fuera de la rejilla.

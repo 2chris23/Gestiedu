@@ -8,6 +8,7 @@ import { EVENTO_ENCOLADO, actualizarCambio, quitarCambio, type CambioPendiente }
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { nombreDelCampo, sinLosCampos, valorLegible } from '@/lib/lo-que-se-vio';
 
 /**
  * «3 SIN ENVIAR»: LO HECHO SIN CONEXIÓN, A LA VISTA
@@ -90,6 +91,51 @@ function ElegirCualQueda({ c }: { c: CambioPendiente }) {
     );
 }
 
+/** La configuración: campo a campo, lo de quien llegó antes o lo de uno. */
+function ElegirCampos({ c }: { c: CambioPendiente }) {
+    const campos: { campo: string; ahora: unknown; tuyo: unknown }[] = c.choque?.campos ?? [];
+    const [suyos, setSuyos] = React.useState<Set<string>>(new Set());
+
+    const enviar = async () => {
+        const datos = { ...sinLosCampos(c.datos ?? {}, [...suyos]), __decision: 'lo-mio' };
+        await actualizarCambio(c.id, { datos, estado: 'pendiente', choque: undefined, motivo: undefined, noAntesDe: undefined });
+        reintentar();
+    };
+
+    return (
+        <div className="space-y-2">
+            <ul className="space-y-1.5">
+                {campos.map((ch) => {
+                    const elSuyo = suyos.has(ch.campo);
+                    const nombre = nombreDelCampo(ch.campo);
+                    return (
+                        <li key={ch.campo} className="rounded-xl bg-white p-2.5 text-sm ring-1 ring-gray-200">
+                            <p className="text-gray-800">
+                                <b>{nombre}</b>: otra persona puso <b>{valorLegible(ch.ahora)}</b> mientras tanto; tú, <b>{valorLegible(ch.tuyo)}</b>.
+                            </p>
+                            <div className="mt-1.5 flex gap-2" role="group" aria-label={`Qué queda en ${nombre}`}>
+                                <Button
+                                    variant={elSuyo ? 'contorno' : 'solido'}
+                                    aria-pressed={!elSuyo}
+                                    onClick={() => setSuyos((s) => { const n = new Set(s); n.delete(ch.campo); return n; })}
+                                >
+                                    Lo mío
+                                </Button>
+                                <Button variant={elSuyo ? 'solido' : 'contorno'} aria-pressed={elSuyo} onClick={() => setSuyos((s) => new Set(s).add(ch.campo))}>
+                                    Lo del otro
+                                </Button>
+                            </div>
+                        </li>
+                    );
+                })}
+            </ul>
+            <Button className="w-full" onClick={() => void enviar()}>
+                Listo, enviar
+            </Button>
+        </div>
+    );
+}
+
 function Decidir({ c }: { c: CambioPendiente }) {
     const que = c.choque?.que;
     if (que === 'NOTAS' || que === 'ASISTENCIA') return <ElegirCualQueda c={c} />;
@@ -137,6 +183,33 @@ function Decidir({ c }: { c: CambioPendiente }) {
                         }}
                     >
                         Lo mío
+                    </Button>
+                </div>
+            </div>
+        );
+    }
+
+    if (que === 'CAMPOS') return <ElegirCampos c={c} />;
+
+    if (que === 'CONFIRMAR') {
+        return (
+            <div className="space-y-2">
+                <p className="text-sm text-gray-700">
+                    Esas clases no se borran, pero ninguna pantalla las enseñará hasta que se muevan a una hora del nuevo horario.
+                </p>
+                <div className="flex gap-2">
+                    <Button variant="contorno" className="flex-1" onClick={() => void quitarCambio(c.id)}>
+                        No cambiarlo
+                    </Button>
+                    <Button
+                        className="flex-1"
+                        onClick={async () => {
+                            const datos = { ...c.datos, configuration: { ...(c.datos?.configuration ?? {}), confirmarClasesFuera: true } };
+                            await actualizarCambio(c.id, { datos, estado: 'pendiente', choque: undefined, motivo: undefined });
+                            reintentar();
+                        }}
+                    >
+                        Cambiarlo igual
                     </Button>
                 </div>
             </div>

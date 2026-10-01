@@ -4,6 +4,7 @@ import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarOff, ChevronLeft, ChevronRight, Coffee, Loader2, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { esPendiente } from '@/lib/por-enviar';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
 import { useSchedulePeriods } from '@/hooks/useSchedulePeriods';
@@ -126,6 +127,11 @@ export default function EventosPage() {
     }) => {
         try {
             const res = await createEvent.mutateAsync({ ...payload, date: selectedDate });
+            if (esPendiente(res)) {
+                toast('Sin conexión: el evento quedó pendiente ⏱ y se crea solo al volver.', { id: 'pendiente' });
+                cerrarVentana();
+                return;
+            }
             toast.success(
                 res.suspendedSessions > 0
                     ? `Evento creado. Se suspendieron ${res.suspendedSessions} clases.`
@@ -146,6 +152,10 @@ export default function EventosPage() {
         if (!ok) return;
         try {
             const res = await deleteEvent.mutateAsync(event.id);
+            if (esPendiente(res)) {
+                toast('Sin conexión: el evento se borrará al volver la conexión (⏱).', { id: 'pendiente' });
+                return;
+            }
             toast.success(`Evento eliminado. Se reactivaron ${res.revertedSessions} clases.`);
         } catch (error: any) {
             toast.error(error?.response?.data?.error || 'No se pudo eliminar el evento');

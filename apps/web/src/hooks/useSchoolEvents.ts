@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/axios';
+import { hacerODejarPendiente } from '@/lib/por-enviar';
 import { toLocalYMD } from '@/utils/date.utils';
 
 export type EventScope = 'INSTITUTE' | 'GRADES' | 'CLASSROOMS';
@@ -126,10 +127,18 @@ function useInvalidateEvents() {
 export function useCreateEvent() {
     const invalidate = useInvalidateEvents();
     return useMutation({
-        mutationFn: async (payload: EventPayload) => {
-            const res = await api.post(`/events`, payload);
-            return res.data as { event: SchoolEvent; affectedClasses: number; suspendedSessions: number };
-        },
+        mutationFn: async (payload: EventPayload) =>
+            // Sin conexión queda pendiente (⏱) y se crea al volver; el
+            // servidor no lo crea dos veces aunque llegue repetido (X-Cambio).
+            hacerODejarPendiente(async () => (await api.post(`/events`, payload)).data as { event: SchoolEvent; affectedClasses: number; suspendedSessions: number }, {
+                tipo: 'evento',
+                grupo: 2,
+                metodo: 'post',
+                url: '/events',
+                objeto: `evento|${crypto.randomUUID()}`,
+                resumen: `Evento «${payload.title}» (${payload.date})`,
+                datos: payload,
+            }),
         onSuccess: invalidate,
     });
 }
@@ -137,10 +146,15 @@ export function useCreateEvent() {
 export function useDeleteEvent() {
     const invalidate = useInvalidateEvents();
     return useMutation({
-        mutationFn: async (id: string) => {
-            const res = await api.delete(`/events/${id}`);
-            return res.data as { revertedSessions: number };
-        },
+        mutationFn: async (id: string) =>
+            hacerODejarPendiente(async () => (await api.delete(`/events/${id}`)).data as { revertedSessions: number }, {
+                tipo: 'evento',
+                grupo: 4,
+                metodo: 'delete',
+                url: `/events/${id}`,
+                objeto: `evento|${id}`,
+                resumen: 'Borrar un evento',
+            }),
         onSuccess: invalidate,
     });
 }

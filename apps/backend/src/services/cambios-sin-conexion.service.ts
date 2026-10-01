@@ -53,7 +53,9 @@ export function choquesDeNotas(
     ahora: Record<string, unknown> | null | undefined,
     puestasPor: Record<string, { usuarioId?: string; en?: string }> | null | undefined,
     nuevas: Record<string, number | null>,
-    antes: Record<string, number | null> | null | undefined
+    antes: Record<string, number | null> | null | undefined,
+    /** Quien envía: lo que él mismo cambió mientras tanto (otra pestaña, otro teléfono) no es «de otro». */
+    yo?: string | null
 ): ChoqueDeNota[] {
     if (!antes) return [];
     const choques: ChoqueDeNota[] = [];
@@ -63,6 +65,7 @@ export function choquesDeNotas(
         const hay = comoNota(ahora?.[studentId]);
         if (hay === vio || hay === comoNota(tuya)) continue;
         const p = puestasPor?.[studentId];
+        if (yo && p?.usuarioId === yo) continue;
         choques.push({ studentId, antes: vio, ahora: hay, tuya: comoNota(tuya), quien: p?.usuarioId ?? null, cuando: p?.en ?? null });
     }
     return choques;
@@ -110,7 +113,7 @@ export async function ponerNotasMirandoAntes(
         const [fila] = await tx.$queryRaw`SELECT scores, "notasPuestasPor" FROM class_activities WHERE id = ${activityId} FOR UPDATE`;
         await arreglarNotasGuardadasComoTexto(tx, activityId, fila?.scores);
         const ahora = typeof fila?.scores === 'string' ? JSON.parse(fila.scores) : fila?.scores;
-        const choques = choquesDeNotas(ahora, fila?.notasPuestasPor, notas, antes);
+        const choques = choquesDeNotas(ahora, fila?.notasPuestasPor, notas, antes, usuarioId);
         if (choques.length) return { choques };
         await sumarNotas(tx, activityId, notas, maxScore);
         await apuntarQuienPuso(tx, activityId, Object.keys(notas), usuarioId);

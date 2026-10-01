@@ -1,6 +1,7 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import net from 'net';
-import { TENANT_SLUG, captureEvidence, queryTenantDb } from './helpers';
+import axios from 'axios';
+import { TENANT_SLUG, captureEvidence, loginApi, queryTenantDb } from './helpers';
 
 /**
  * SE TRABAJA SIN CONEXIÓN, COMO EN WHATSAPP (2026-09-30)
@@ -157,5 +158,46 @@ test('SINCON-UI-06: una observación hecha sin servidor queda pendiente y llega 
     } finally {
         await puerta.cerrar().catch(() => undefined);
         await context.unroute(`${API}/**`).catch(() => undefined);
+    }
+});
+
+test('SINCON-UI-07: el admin cambia la configuración sin servidor; queda pendiente y llega sola', async ({ page, context }, testInfo) => {
+    test.setTimeout(240_000);
+    test.skip(!(await compilada()), 'Necesita la web COMPILADA (WEB_DESTINO)');
+    const admin = await loginApi('admin@testing.edu.ve', '123456');
+    const cab = { Authorization: `Bearer ${admin.accessToken}`, 'X-Institute-Slug': TENANT_SLUG };
+    const leer = async () => (await axios.get(`${API}/api/institutes/current/config`, { headers: cab })).data.data;
+    const antes = await leer();
+    const direccion = `Calle sin conexión ${Date.now()}`;
+    let puerta = await abrirPuerta(PUERTO, DESTINO);
+    try {
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await entrar(page, 'admin@testing.edu.ve');
+        await page.goto(`${WEB}/dashboard/configuracion`);
+        const campo = page.locator('input[name="address"], textarea[name="address"]');
+        await expect(campo).toBeVisible({ timeout: 60_000 });
+        await page.waitForTimeout(3000); // que lo abierto quede guardado en el teléfono
+
+        await puerta.cerrar();
+        await apagarLaApi(context);
+        await campo.fill(direccion);
+        await page.getByRole('button', { name: 'Guardar Cambios' }).click();
+        await expect(page.getByText(/el cambio quedó pendiente/)).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByRole('button', { name: /sin enviar: tocar para ver/ })).toBeVisible();
+
+        puerta = await abrirPuerta(PUERTO, DESTINO);
+        await context.unroute(`${API}/**`);
+        await expect(page.getByRole('button', { name: /sin enviar: tocar para ver/ })).toHaveCount(0, { timeout: 60_000 });
+        const ahora = await leer();
+        expect(ahora.address).toBe(direccion);
+        // Lo que no tocó sigue igual.
+        expect(ahora.name).toBe(antes.name);
+    } catch (e) {
+        await captureEvidence(testInfo, page, 'SINCON-UI-07', 'La configuración sin conexión no quedó pendiente o no llegó', e);
+        throw e;
+    } finally {
+        await puerta.cerrar().catch(() => undefined);
+        await context.unroute(`${API}/**`).catch(() => undefined);
+        await axios.put(`${API}/api/institutes/current/config`, { address: antes.address ?? '' }, { headers: cab }).catch(() => undefined);
     }
 });

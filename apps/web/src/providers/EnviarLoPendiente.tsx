@@ -65,6 +65,12 @@ async function mandar(c: CambioPendiente): Promise<Resultado> {
             await actualizarCambio(c.id, { estado: 'hay-que-decidir', motivo: data?.error, choque: { ...data, que: 'VERSION' } });
             return 'ok';
         }
+        // Lo que en línea se confirma con una pregunta (el horario nuevo deja
+        // clases fuera de la rejilla) se pregunta igual al llegar.
+        if (status === 409 && data?.code === 'HORARIO_DEJA_CLASES_FUERA') {
+            await actualizarCambio(c.id, { estado: 'hay-que-decidir', motivo: data?.error, choque: { ...data, que: 'CONFIRMAR' } });
+            return 'ok';
+        }
         if (status === 409 && data?.code === 'CAMBIO_MIENTRAS_TANTO') {
             await actualizarCambio(c.id, { estado: 'hay-que-decidir', motivo: data?.error, choque: data });
             return 'ok';

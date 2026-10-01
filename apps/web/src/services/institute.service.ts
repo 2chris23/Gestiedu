@@ -1,4 +1,7 @@
 import api from '@/lib/axios';
+import { esQueNoContesta } from '@/lib/estado-del-servidor';
+import { dejarPendiente } from '@/lib/por-enviar';
+import { camposVistos } from '@/lib/lo-que-se-vio';
 
 export interface InstituteConfig {
     id: string;
@@ -107,9 +110,31 @@ export const instituteService = {
     /**
      * Actualizar configuración del instituto
      */
-    updateConfig: async (data: UpdateInstituteDto): Promise<InstituteConfig> => {
-        const response = await api.put('/institutes/current/config', data);
-        return response.data.data;
+    updateConfig: async (data: UpdateInstituteDto): Promise<InstituteConfig & { pendiente?: true }> => {
+        try {
+            const response = await api.put('/institutes/current/config', data);
+            return response.data.data;
+        } catch (e) {
+            if (!esQueNoContesta(e)) throw e;
+            // Sin conexión queda pendiente (⏱), con lo que se veía de cada
+            // campo: al llegar no pisa lo que otro cambió (`lib/lo-que-se-vio.ts`).
+            // Sin servidor, esta lectura devuelve la última descargada.
+            const base = await api
+                .get('/institutes/current/config')
+                .then((r) => r.data?.data)
+                .catch(() => null);
+            const id = await dejarPendiente({
+                tipo: 'config',
+                grupo: 3,
+                metodo: 'put',
+                url: '/institutes/current/config',
+                objeto: 'config|liceo',
+                resumen: 'Configuración del liceo',
+                datos: { ...data, __visto: camposVistos(data as Record<string, any>, base) },
+            });
+            if (!id) throw e;
+            return { pendiente: true } as InstituteConfig & { pendiente: true };
+        }
     },
 
     /**

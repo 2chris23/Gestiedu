@@ -7,6 +7,7 @@ import { RedisCache } from '../config/redis';
 import { conLiceo } from '../config/ambito-del-liceo';
 import { platformPrisma } from '../config/database';
 import { revisarImagen } from '../utils/archivos-que-se-aceptan';
+import { revisarLoVisto } from '../utils/lo-que-se-vio';
 import { guardarArchivoDelLiceo } from '../services/archivos-del-liceo.service';
 import { limpiarDatosDeDocumentos } from '../services/constancias.service';
 import { revisarDatosDelPlantel, membreteDelLiceo } from '../services/datos-del-plantel.service';
@@ -80,6 +81,25 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
     const data = request.body as any;
     const userId = request.user?.userId!;
     const instituteId = getInstId(request);
+
+    // Hecho sin conexión: lo que el admin no tocó no pisa lo de ahora, y lo que
+    // otro cambió mientras tanto se pregunta (`utils/lo-que-se-vio.ts`).
+    const choques = await revisarLoVisto(data, async () => {
+      const ahora = await platformPrisma.institute.findUnique({
+        where: { id: instituteId },
+        select: { name: true, code: true, email: true, phone: true, address: true, timezone: true, academicConfig: true },
+      });
+      const { academicConfig, ...resto } = (ahora ?? {}) as any;
+      return { ...resto, configuration: academicConfig ?? {} };
+    });
+    if (choques.length) {
+      return reply.status(409).send({
+        error: 'Mientras estabas sin conexión, otra persona cambió lo mismo en la configuración.',
+        code: 'CAMBIO_MIENTRAS_TANTO',
+        que: 'CAMPOS',
+        campos: choques,
+      });
+    }
 
     // Validar formato seguro para logo si se envía (mitigación path traversal)
     let sanitizedLogo = data.logo;

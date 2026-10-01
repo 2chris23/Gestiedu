@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { instituteService, InstituteConfig, UpdateInstituteDto } from '@/services/institute.service';
 import { toast } from 'sonner';
+import { esPendiente } from '@/lib/por-enviar';
 import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
 
 function getActiveTenantSlug(): string | null {
@@ -57,7 +58,11 @@ export function useUpdateInstituteConfig() {
 
     return useMutation({
         mutationFn: (data: UpdateInstituteDto) => instituteService.updateConfig(data),
-        onSuccess: () => {
+        onSuccess: (r) => {
+            if (esPendiente(r)) {
+                toast('Sin conexión: el cambio quedó pendiente ⏱ y se guarda solo al volver.', { id: 'pendiente' });
+                return;
+            }
             // `config()` a secas es la del liceo «none»: no coincidía con la de ningún
             // liceo y, tras «Guardado», nada se volvía a pedir hasta recargar.
             queryClient.invalidateQueries({ queryKey: instituteKeys.configs() });

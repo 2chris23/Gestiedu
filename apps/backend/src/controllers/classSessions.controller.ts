@@ -875,6 +875,9 @@ export async function saveLiveClassSession(
                             const hay = porAlumno.get(a.studentId);
                             const ahora = hay?.status ?? null;
                             if (ahora === (a.antes ?? null) || ahora === a.status) return null;
+                            // Lo que él mismo marcó mientras tanto (otra pestaña, la clase
+                            // que se guardó sola al salir) no es «otra persona».
+                            if (user?.userId && (hay?.modificadoPorId ?? hay?.teacherId) === user.userId) return null;
                             return { studentId: a.studentId, antes: a.antes ?? null, ahora, tuya: a.status, quien: hay?.modificadoPorId ?? hay?.teacherId ?? null };
                         })
                         .filter(Boolean);
