@@ -333,6 +333,15 @@ export async function disconnectAll(): Promise<void> {
   // Desconectar platform DB
   await platformPrisma.$disconnect();
 
+  // Y el singleton de monitoreo, si se llegó a abrir. Sin esto quedaba
+  // conectado al cerrar el servidor: Jest acababa con «did not exit» y código
+  // 1 aunque todas las pruebas pasaran (FALT-18/19 lo abren), y el CI en rojo.
+  if (_prisma) {
+    const abierto = _prisma;
+    _prisma = null;
+    await abierto.$disconnect().catch(() => undefined);
+  }
+
   // Desconectar todos los tenants
   const disconnectPromises = Array.from(tenantConnections.values()).map(
     (connection) => connection.prisma.$disconnect()

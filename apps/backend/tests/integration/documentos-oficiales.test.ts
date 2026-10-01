@@ -173,7 +173,7 @@ describe('Los documentos oficiales (DOC-01…08)', () => {
         expect(c.parrafos[0]).toBe(
             `Quien suscribe, Carmen Páez, titular de la cédula de identidad V-9876543, en su carácter de Directora de U.E.N. Liceo de Prueba, hace constar por medio de la presente que el (la) estudiante Ana Rivas, titular de la cédula de identidad ${ana.id}, cursa estudios de Educación Media General en esta institución, en el 2do año, sección «A», turno de la mañana, durante el año escolar 2026-2027.`
         );
-        expect(c.parrafos[1]).toMatch(/^Constancia que se expide a petición de la parte interesada en Valencia, a los \d+ días del mes de \w+ de \d{4}\.$/);
+        expect(c.parrafos[1]).toMatch(/^Constancia que se expide a petición de la parte interesada en Valencia, a (?:los \d+ días|un día) del mes de \w+ de \d{4}\.$/);
     }, 60000);
 
     it('DOC-02: el liceo edita la plantilla; un marcador que no existe se rechaza', async () => {
