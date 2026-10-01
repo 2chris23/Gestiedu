@@ -3,6 +3,8 @@ import { authenticate, requireAdmin } from '../middleware/auth.middleware';
 import {
     annulPayment,
     getMyChildrenPayments,
+    getPaymentCycles,
+    getPaymentsMonth,
     getPaymentReceipt,
     getPaymentSettings,
     getPaymentsOverview,
@@ -41,6 +43,12 @@ export async function pagosRoutes(fastify: FastifyInstance) {
                         enrollmentEnabled: { type: 'boolean' },
                         enrollmentAmount: { type: ['number', 'string'] },
                         methods: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 30 } },
+                        // Lo nuevo (2026-10-01): descuento por hermanos, mora y recordatorio.
+                        descuentoHermanosPct: { type: 'integer', minimum: 0, maximum: 100 },
+                        moraTipo: { type: 'string', enum: ['NINGUNA', 'FIJA', 'PORCENTAJE'] },
+                        moraValor: { type: ['number', 'string'] },
+                        moraDiasDespues: { type: 'integer', minimum: 0, maximum: 90 },
+                        recordatorioDiasAntes: { type: 'integer', minimum: 0, maximum: 15 },
                     },
                 },
             },
@@ -59,9 +67,32 @@ export async function pagosRoutes(fastify: FastifyInstance) {
     // (solo devuelve los vínculos del que llama; cualquier otro rol recibe lista vacía).
     fastify.get('/my-children', { preHandler: [authenticate] }, getMyChildrenPayments as any);
 
+    // Los ciclos, para elegir cuál mirar (también los pasados).
+    fastify.get('/cycles', { preHandler: [authenticate, requireAdmin] }, getPaymentCycles as any);
+
+    // El mes en días, para el calendario (qué vence y quién pagó cada día).
+    fastify.get(
+        '/month',
+        {
+            schema: {
+                // El mes se revisa en el controlador, DESPUÉS de mirar si el
+                // módulo está encendido: apagado, todo responde 403 (PAGOS-APAGADO-01).
+                querystring: { type: 'object', properties: { academicYearId: id, month: { type: 'string', maxLength: 7 } } },
+            },
+            preHandler: [authenticate, requireAdmin],
+        },
+        getPaymentsMonth as any
+    );
+
     fastify.get(
         '/students/:studentId',
-        { schema: { params: { type: 'object', required: ['studentId'], properties: { studentId: id } } }, preHandler: [authenticate] },
+        {
+            schema: {
+                params: { type: 'object', required: ['studentId'], properties: { studentId: id } },
+                querystring: { type: 'object', properties: { academicYearId: id } },
+            },
+            preHandler: [authenticate],
+        },
         getStudentPayments as any
     );
 
@@ -70,6 +101,7 @@ export async function pagosRoutes(fastify: FastifyInstance) {
         {
             schema: {
                 params: { type: 'object', required: ['studentId'], properties: { studentId: id } },
+                querystring: { type: 'object', properties: { academicYearId: id } },
                 body: {
                     type: 'object',
                     additionalProperties: false,
@@ -103,6 +135,7 @@ export async function pagosRoutes(fastify: FastifyInstance) {
                         reference: { type: ['string', 'null'], maxLength: 60 },
                         notes: { type: ['string', 'null'], maxLength: 200 },
                         paidAt: { type: 'string', maxLength: 10 },
+                        academicYearId: id,
                     },
                 },
             },

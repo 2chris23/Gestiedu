@@ -20,6 +20,14 @@ export interface ConfiguracionDePagos {
     enrollmentEnabled: boolean;
     enrollmentAmount: string;
     methods: string[];
+    /** Descuento automático desde el 2.º hijo del mismo representante (0–100). */
+    descuentoHermanosPct?: number;
+    moraTipo?: 'NINGUNA' | 'FIJA' | 'PORCENTAJE';
+    moraValor?: string;
+    moraDiasDespues?: number;
+    recordatorioDiasAntes?: number;
+    /** El ciclo cuya configuración se ve y se edita (el que está en curso). */
+    cicloEnCurso?: { id: string; name: string } | null;
 }
 
 export interface ResumenDinero {
@@ -35,14 +43,56 @@ export interface AlumnoEnResumen extends ResumenDinero {
     firstName: string;
     lastName: string;
     avatar: string | null;
+    /** Sus cuotas sin pagar, con su estado: para «quién debe este mes». */
+    cuotas?: Record<string, EstadoDeCuota>;
+}
+
+/** Un mes del ciclo: lo esperado, lo cobrado y cuántos deben. */
+export interface MesDelCiclo {
+    month: string;
+    expected: string;
+    collected: string;
+    overdue: number;
+    upcoming: number;
+    debtors: number;
 }
 
 export interface ResumenDePagos {
-    academicYear: { id: string; name: string };
+    academicYear: { id: string; name: string; startDate: string; endDate: string; status?: string };
+    closed?: boolean;
     today: string;
     currency: Moneda;
     summary: { students: number; debtors: number; owed: string; collected: string };
+    installments?: Array<{ key: string; label: string; dueDate: string; amount: string }>;
+    months?: MesDelCiclo[];
     classrooms: Array<{ id: string; name: string; grade: number; section: string; debtors: number; students: AlumnoEnResumen[] }>;
+}
+
+export interface CicloDePagos {
+    id: string;
+    name: string;
+    status: 'ACTIVE' | 'COMPLETED' | 'UPCOMING';
+    startDate: string;
+    endDate: string;
+    closed: boolean;
+    payments: number;
+}
+
+/** Un mes en días: qué vence cada día y quién pagó. */
+export interface DiaDePagos {
+    date: string;
+    due: number;
+    pendingOfDue: string;
+    debtors: Array<{ id: string; nombre: string; falta: string }>;
+    payments: Array<{ id: string; receiptNumber: number; method: string; amount: string; student: { id: string; nombre: string } }>;
+    collected: string;
+}
+export interface MesDePagos {
+    academicYear: { id: string; name: string };
+    currency: Moneda;
+    month: string;
+    today: string;
+    days: DiaDePagos[];
 }
 
 export interface Cuota {
@@ -76,6 +126,8 @@ export interface PagoRegistrado {
 export interface FichaDePagos {
     student: { id: string; firstName: string; lastName: string; avatar: string | null; classroom: { id: string; name: string } | null };
     academicYear: { id: string; name: string };
+    /** Ciclo cerrado: se ve, no se toca (el servidor responde 409 CICLO_CERRADO). */
+    closed?: boolean;
     currency: Moneda;
     acceptedCurrencies: Moneda | 'BOTH';
     dueMode: 'SAME_DAY' | 'PER_STUDENT';
@@ -105,18 +157,41 @@ export function useGuardarConfiguracionDePagos() {
     });
 }
 
-export function useResumenDePagos(activo: boolean) {
+/** `ciclo` vacío = el que está en curso. */
+const delCiclo = (ciclo?: string | null) => (ciclo ? { academicYearId: ciclo } : undefined);
+
+export function useResumenDePagos(activo: boolean, ciclo?: string | null) {
     return useQuery({
-        queryKey: ['pagos', 'overview'],
-        queryFn: async () => (await api.get('/payments/overview')).data as ResumenDePagos,
+        queryKey: ['pagos', 'overview', ciclo ?? 'actual'],
+        queryFn: async () => (await api.get('/payments/overview', { params: delCiclo(ciclo) })).data as ResumenDePagos,
         enabled: activo,
     });
 }
 
-export function useFichaDePagos(studentId: string | null) {
+/** Los ciclos escolares, para elegir cuál mirar (también los ya cerrados). */
+export function useCiclosDePagos(activo: boolean) {
     return useQuery({
-        queryKey: ['pagos', 'alumno', studentId],
-        queryFn: async () => (await api.get(`/payments/students/${encodeURIComponent(studentId!)}`)).data as FichaDePagos,
+        queryKey: ['pagos', 'ciclos'],
+        queryFn: async () => (await api.get('/payments/cycles')).data.cycles as CicloDePagos[],
+        enabled: activo,
+        staleTime: 5 * 60_000,
+    });
+}
+
+/** Un mes en días (`mes` = AAAA-MM). */
+export function useMesDePagos(ciclo: string | null | undefined, mes: string | null) {
+    return useQuery({
+        queryKey: ['pagos', 'mes', ciclo ?? 'actual', mes],
+        queryFn: async () => (await api.get('/payments/month', { params: { ...delCiclo(ciclo), month: mes } })).data as MesDePagos,
+        enabled: !!mes,
+    });
+}
+
+export function useFichaDePagos(studentId: string | null, ciclo?: string | null) {
+    return useQuery({
+        queryKey: ['pagos', 'alumno', studentId, ciclo ?? 'actual'],
+        queryFn: async () =>
+            (await api.get(`/payments/students/${encodeURIComponent(studentId!)}`, { params: delCiclo(ciclo) })).data as FichaDePagos,
         enabled: !!studentId,
     });
 }
@@ -146,6 +221,7 @@ export function useRegistrarPago(studentId: string) {
             reference?: string | null;
             notes?: string | null;
             paidAt: string;
+            academicYearId?: string;
         }) => (await api.post(`/payments/students/${encodeURIComponent(studentId)}/payments`, datos)).data.payment as { id: string; receiptNumber: number },
         onSuccess: invalidar,
     });
@@ -160,11 +236,11 @@ export function useAnularPago() {
     });
 }
 
-export function useGuardarPlanDePago(studentId: string) {
+export function useGuardarPlanDePago(studentId: string, ciclo?: string | null) {
     const invalidar = useInvalidarPagos();
     return useMutation({
         mutationFn: async (datos: { dueDay: number | null; exempt: boolean; exemptReason: string | null }) =>
-            (await api.put(`/payments/students/${encodeURIComponent(studentId)}/plan`, datos)).data,
+            (await api.put(`/payments/students/${encodeURIComponent(studentId)}/plan`, datos, { params: delCiclo(ciclo) })).data,
         onSuccess: invalidar,
     });
 }

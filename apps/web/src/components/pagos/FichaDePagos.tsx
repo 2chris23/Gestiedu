@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { toast } from 'sonner';
-import { Ban, CheckCircle2, Download, FileText, Loader2, Receipt, Save } from 'lucide-react';
+import { AlertTriangle, Ban, Check, CheckCircle2, Clock3, Download, FileText, Loader2, Lock, Receipt, Save } from 'lucide-react';
 import {
     dinero,
     errorDe,
@@ -31,7 +31,9 @@ const campo = 'mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 
 const fechaCorta = (ymd: string) => ymd.split('-').reverse().join('/');
 const aCent = (v: string | number) => Math.round(Number(v) * 100);
 
-export function FichaDePagos({ ficha, editable }: { ficha: Ficha; editable: boolean }) {
+export function FichaDePagos({ ficha, editable: puedeEditar }: { ficha: Ficha; editable: boolean }) {
+    // Un ciclo cerrado se ve, no se toca (el servidor responde 409 CICLO_CERRADO).
+    const editable = puedeEditar && !ficha.closed;
     const base = ficha.currency;
     const estado = ESTADO_DEL_ALUMNO[ficha.summary.state];
     const [elegidas, setElegidas] = React.useState<Set<string>>(new Set());
@@ -63,6 +65,13 @@ export function FichaDePagos({ ficha, editable }: { ficha: Ficha; editable: bool
                 )}
             </div>
 
+            {puedeEditar && ficha.closed && (
+                <p className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
+                    <Lock className="h-4 w-4 shrink-0 text-gray-600" aria-hidden />
+                    El ciclo {ficha.academicYear.name} está cerrado: sus pagos se ven, no se cambian.
+                </p>
+            )}
+
             {ficha.plan.exempt && (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                     Exonerado: {ficha.plan.exemptReason}
@@ -91,40 +100,58 @@ export function FichaDePagos({ ficha, editable }: { ficha: Ficha; editable: bool
                         </div>
                     )}
                 </div>
-                <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+                {/* Un calendario de baldosas, una por cuota (2026-10-01): Cristian pidió
+                    los pagos «más como un calendario». Cada baldosa dice su estado con
+                    palabra e icono, no solo con color; al tocar una, se elige para cobrar. */}
+                {editable && pendientes.length > 0 && (
+                    <p className="mb-2 text-xs text-gray-600">Toca las cuotas que paga para elegirlas.</p>
+                )}
+                <ol className="grid grid-cols-3 gap-2 sm:grid-cols-4" aria-label="Cuotas del ciclo">
                     {ficha.installments.map((c) => {
                         const e = ESTADO_DE_CUOTA[c.state];
                         const sePuede = editable && aCent(c.pending) > 0 && c.state !== 'EXONERADA';
+                        const elegida = elegidas.has(c.key);
+                        const Icono = c.state === 'PAGADA' ? CheckCircle2 : c.state === 'VENCIDA' ? AlertTriangle : c.state === 'EXONERADA' ? Check : Clock3;
+                        const abono = c.state === 'ABONADA' || (c.state === 'VENCIDA' && aCent(c.paid) > 0);
+                        const contenido = (
+                            <>
+                                <span className="flex items-start justify-between gap-1">
+                                    <span className="min-w-0 break-words text-sm font-bold leading-tight text-gray-900">{c.label}</span>
+                                    {elegida && <Check className="h-4 w-4 shrink-0 text-indigo-700" aria-hidden />}
+                                </span>
+                                <span className="text-sm font-semibold tabular-nums text-gray-900">{dinero(c.amount, base)}</span>
+                                <span className={cn('inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold', e.clases)}>
+                                    <Icono className="h-3.5 w-3.5" aria-hidden />
+                                    {e.texto}
+                                </span>
+                                <span className="text-xs text-gray-600">{abono ? `Abonó ${dinero(c.paid, base)}` : `Vence ${fechaCorta(c.dueDate)}`}</span>
+                            </>
+                        );
+                        const clases = cn(
+                            'flex h-full min-h-[44px] w-full flex-col gap-1 rounded-xl border p-2 text-left',
+                            elegida ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200' : 'border-gray-200 bg-white',
+                            sePuede && !elegida && 'hover:bg-gray-50'
+                        );
                         return (
                             <li key={c.key}>
-                                <label className={cn('flex items-center gap-3 px-3 py-2.5', sePuede ? 'cursor-pointer hover:bg-gray-50' : '')}>
-                                    {editable && (
-                                        <input
-                                            type="checkbox"
-                                            disabled={!sePuede}
-                                            checked={elegidas.has(c.key)}
-                                            onChange={() => alternar(c.key)}
-                                            className="h-4 w-4 accent-indigo-600 disabled:opacity-40"
-                                            aria-label={`Elegir ${c.label}`}
-                                        />
-                                    )}
-                                    <span className="min-w-0 flex-1">
-                                        <span className="block truncate text-sm font-medium text-gray-900">{c.label}</span>
-                                        <span className="block text-xs text-gray-600">Vence {fechaCorta(c.dueDate)}</span>
-                                    </span>
-                                    <span className="text-right text-sm">
-                                        <span className="block font-semibold text-gray-900">{dinero(c.amount, base)}</span>
-                                        {c.state === 'ABONADA' || (c.state === 'VENCIDA' && aCent(c.paid) > 0) ? (
-                                            <span className="block text-xs text-gray-600">Abonó {dinero(c.paid, base)}</span>
-                                        ) : null}
-                                    </span>
-                                    <span className={cn('w-20 shrink-0 rounded-md px-2 py-0.5 text-center text-xs font-semibold', e.clases)}>{e.texto}</span>
-                                </label>
+                                {sePuede ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => alternar(c.key)}
+                                        aria-pressed={elegida}
+                                        aria-label={`${c.label}, ${e.texto}, ${dinero(c.pending, base)} por pagar. ${elegida ? 'Elegida' : 'Tocar para elegirla'}`}
+                                        className={clases}
+                                    >
+                                        {contenido}
+                                    </button>
+                                ) : (
+                                    <div className={cn(clases, 'bg-gray-50/60')}>{contenido}</div>
+                                )}
                             </li>
                         );
                     })}
-                    {ficha.installments.length === 0 && <li className="px-3 py-4 text-sm text-gray-600">Sin cuotas configuradas.</li>}
-                </ul>
+                </ol>
+                {ficha.installments.length === 0 && <p className="px-3 py-4 text-sm text-gray-600">Sin cuotas configuradas.</p>}
             </section>
 
             {editable && elegidas.size > 0 && (
@@ -178,6 +205,7 @@ function RegistrarPago({ ficha, elegidas, alTerminar }: { ficha: Ficha; elegidas
         setProblema(null);
         try {
             const pago = await registrar.mutateAsync({
+                academicYearId: ficha.academicYear.id,
                 installmentKeys: elegidas,
                 amount: monto,
                 currency: moneda,
@@ -358,7 +386,7 @@ function PagoEnHistorial({ pago, base, editable }: { pago: PagoRegistrado; base:
 }
 
 function PlanDelAlumno({ ficha }: { ficha: Ficha }) {
-    const guardar = useGuardarPlanDePago(ficha.student.id);
+    const guardar = useGuardarPlanDePago(ficha.student.id, ficha.academicYear.id);
     const [dia, setDia] = React.useState<string>(ficha.plan.dueDay?.toString() ?? '');
     const [exento, setExento] = React.useState(ficha.plan.exempt);
     const [motivo, setMotivo] = React.useState(ficha.plan.exemptReason ?? '');

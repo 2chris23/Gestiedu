@@ -4,19 +4,28 @@ import { Button } from '@/components/ui/button';
 import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import * as React from 'react';
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, Search, Wallet } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, Lock, Search, Wallet } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { AyudaDeLaPantalla } from '@/components/common/AyudaDeLaPantalla';
+import { CalendarioDelCiclo } from '@/components/pagos/CalendarioDelCiclo';
+import { MesEnDias, type DeudorDelMes } from '@/components/pagos/MesEnDias';
+import { SelectorDeCiclo } from '@/components/pagos/SelectorDeCiclo';
+import { mesesDelCiclo, mesDe } from '@/lib/calendario-del-ciclo';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { FichaDePagos } from '@/components/pagos/FichaDePagos';
-import { AlumnoEnResumen, dinero, ESTADO_DEL_ALUMNO, EstadoDelAlumno, useFichaDePagos, usePagosActivos, useResumenDePagos } from '@/hooks/usePagos';
+import { AlumnoEnResumen, dinero, ESTADO_DEL_ALUMNO, EstadoDelAlumno, useCiclosDePagos, useFichaDePagos, usePagosActivos, useResumenDePagos } from '@/hooks/usePagos';
 import { cn } from '@/lib/utils';
 
 /**
- * PAGOS DEL CICLO ACTUAL
+ * PAGOS, CICLO A CICLO Y COMO CALENDARIO (2026-10-01)
  *
- * Misma forma que la pantalla del ciclo escolar —por año y por sección—, pero
- * de cada estudiante solo el nombre y cómo va con los pagos. Arriba, el aviso
- * que importa: cuántos deben.
+ * Cristian: «se debe elegir por ciclo escolar para ver pagos pasados» y «me
+ * gustaría que fuera más como un calendario». Arriba, el ciclo que se mira (los
+ * cerrados se ven, no se tocan) y el aviso que importa: cuántos deben. Luego
+ * los 12 meses del ciclo; al tocar uno, ese mes en días: qué vence y quién pagó
+ * cada día, y quién debe de ese mes. Abajo, por año y por sección, cada
+ * estudiante y cómo va; al tocarlo, su ficha para cobrarle.
  */
 
 const ANOS = ['1er Año', '2do Año', '3er Año', '4to Año', '5to Año', '6to Año'];
@@ -25,10 +34,17 @@ type Filtro = 'TODOS' | EstadoDelAlumno;
 export default function PagosPage() {
     const { data: ajustes, isLoading: cargandoAjustes } = usePagosActivos();
     const activo = Boolean(ajustes?.enabled);
-    const { data, isLoading, error } = useResumenDePagos(activo);
+    // El ciclo va en la dirección (`?ciclo=`): se puede volver atrás y compartir.
+    const router = useRouter();
+    const ciclo = useSearchParams().get('ciclo');
+    const { data: ciclos = [] } = useCiclosDePagos(activo);
+    const { data, isLoading, error } = useResumenDePagos(activo, ciclo);
     const [busqueda, setBusqueda] = React.useState('');
     const [filtro, setFiltro] = React.useState<Filtro>('TODOS');
     const [abierto, setAbierto] = React.useState<string | null>(null);
+    const [mes, setMes] = React.useState<string | null>(null);
+    React.useEffect(() => setMes(null), [ciclo]);
+    const cambiarCiclo = (id: string | null) => router.replace(id ? `/dashboard/pagos?ciclo=${encodeURIComponent(id)}` : '/dashboard/pagos', { scroll: false });
 
     if (cargandoAjustes || (activo && isLoading)) {
         return (
@@ -78,6 +94,28 @@ export default function PagosPage() {
 
     const { summary } = data;
     const moneda = data.currency;
+    const fmt = (n: number | string) => dinero(n, moneda);
+
+    // Los 12 meses del ciclo, aunque alguno no tenga cuotas (se ve vacío).
+    const porMesDelServidor = new Map((data.months ?? []).map((m) => [m.month, m]));
+    const meses = mesesDelCiclo(String(data.academicYear.startDate).slice(0, 10), String(data.academicYear.endDate).slice(0, 10)).map((m) => {
+        const x = porMesDelServidor.get(m);
+        return { mes: m, esperado: Number(x?.expected ?? 0), cobrado: Number(x?.collected ?? 0), deben: x?.debtors ?? 0 };
+    });
+
+    // Quién debe del mes elegido: los que tienen vencida una cuota que vence ese mes.
+    const deudoresDelMes: DeudorDelMes[] = [];
+    if (mes) {
+        const claves = new Set((data.installments ?? []).filter((c) => mesDe(c.dueDate) === mes).map((c) => c.key));
+        for (const s of data.classrooms) {
+            for (const a of s.students) {
+                if (Object.entries(a.cuotas ?? {}).some(([k, e]) => claves.has(k) && e === 'VENCIDA')) {
+                    deudoresDelMes.push({ id: a.id, nombre: `${a.lastName}, ${a.firstName}`, seccion: s.name });
+                }
+            }
+        }
+        deudoresDelMes.sort((x, y) => x.nombre.localeCompare(y.nombre, 'es'));
+    }
 
     return (
         // Era una página suelta metida dentro de otra: su propio fondo, su propia
@@ -87,7 +125,44 @@ export default function PagosPage() {
         <div className="space-y-6">
             <div>
                 <div>
-                    <EncabezadoDePantalla titulo="Pagos" descripcion={`Ciclo escolar ${data.academicYear.name}`} />
+                    <EncabezadoDePantalla
+                        titulo="Pagos"
+                        descripcion="Lo que paga cada estudiante, mes a mes. Toca un mes para verlo por días; toca un estudiante para cobrarle."
+                        acciones={
+                            <>
+                                {ciclos.length > 0 && <SelectorDeCiclo ciclos={ciclos} valor={ciclo} alCambiar={cambiarCiclo} />}
+                                <AyudaDeLaPantalla
+                                    titulo="Cómo funcionan los pagos"
+                                    pasos={[
+                                        {
+                                            titulo: 'Elige el ciclo',
+                                            texto: 'Arriba, «Ciclo». Se abre en el que está en curso; los ciclos cerrados se ven, pero ya no se cobra ni se anula en ellos.',
+                                        },
+                                        {
+                                            titulo: 'Mira el año de un vistazo',
+                                            texto: 'Cada mes dice cuánto se ha cobrado de lo esperado y cuántos deben. Toca un mes: sale en días, con lo que vence y lo que se cobró cada día, y la lista de quienes deben de ese mes.',
+                                        },
+                                        {
+                                            titulo: 'Cobra a un estudiante',
+                                            texto: 'Tócalo en la lista (o en el mes). En su ficha, toca las cuotas que paga, pon el monto, la fecha y el método, y «Registrar pago». Si paga menos, queda como abono.',
+                                        },
+                                        {
+                                            titulo: 'Comprobantes y errores',
+                                            texto: 'Cada pago tiene su comprobante (imagen o PDF). Un pago mal registrado no se borra: se anula con un motivo, y queda a la vista.',
+                                        },
+                                    ]}
+                                    nota="Las cuotas, la moneda y los métodos de pago se ajustan en Configuración → Pagos."
+                                />
+                            </>
+                        }
+                    />
+                    <p className="mt-2 text-sm font-semibold text-gray-700">Ciclo escolar {data.academicYear.name}</p>
+                    {data.closed && (
+                        <p className="mt-3 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800">
+                            <Lock className="h-4 w-4 shrink-0 text-gray-600" aria-hidden />
+                            Este ciclo está cerrado: sus pagos se ven, ya no se cambian.
+                        </p>
+                    )}
 
                     {summary.debtors > 0 ? (
                         <button
@@ -126,11 +201,23 @@ export default function PagosPage() {
                 </div>
             </div>
 
+            <section aria-labelledby="titulo-del-calendario" className="space-y-3">
+                <h2 id="titulo-del-calendario" className="text-lg font-bold text-gray-900">
+                    El ciclo, mes a mes
+                </h2>
+                <CalendarioDelCiclo meses={meses} hoy={data.today} elegido={mes} alElegir={(m) => setMes(m === mes ? null : m)} dinero={fmt} />
+                {mes && (
+                    <MesEnDias ciclo={ciclo} mes={mes} dinero={fmt} deudores={deudoresDelMes} alAbrirAlumno={setAbierto} alCerrar={() => setMes(null)} />
+                )}
+            </section>
+
             <div className="space-y-4">
                 <div className="flex flex-wrap items-center gap-2">
                     <div className="relative min-w-[14rem] flex-1">
                         <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                         <input
+                            type="search"
+                            aria-label="Buscar estudiante"
                             value={busqueda}
                             onChange={(e) => setBusqueda(e.target.value)}
                             placeholder="Buscar estudiante o cédula"
@@ -144,7 +231,7 @@ export default function PagosPage() {
                             onClick={() => setFiltro(f)}
                             aria-pressed={filtro === f}
                             className={cn(
-                                'rounded-full border px-3 py-1.5 text-sm font-medium',
+                                'min-h-[44px] rounded-full border px-3 text-sm font-medium',
                                 filtro === f ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
                             )}
                         >
@@ -171,7 +258,8 @@ export default function PagosPage() {
                                                 <li key={a.id}>
                                                     <button type="button" onClick={() => setAbierto(a.id)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-50">
                                                         <UserAvatar name={`${a.firstName} ${a.lastName}`} src={a.avatar} className="h-8 w-8" initialsClassName="text-xs" />
-                                                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">
+                                                        {/* Sin cortar: «González, Cristóbal» salía «González, Cr…» y no había forma de leerlo. */}
+                                                        <span className="min-w-0 flex-1 break-words text-sm font-medium text-gray-900">
                                                             {a.lastName}, {a.firstName}
                                                         </span>
                                                         <span className={cn('shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold', e.clases)}>
@@ -190,7 +278,7 @@ export default function PagosPage() {
                 ))}
             </div>
 
-            <DialogoDeFicha studentId={abierto} alCerrar={() => setAbierto(null)} />
+            <DialogoDeFicha studentId={abierto} ciclo={ciclo} alCerrar={() => setAbierto(null)} />
         </div>
     );
 }
@@ -214,8 +302,8 @@ function AcordeonDeAno({ nombre, deudores, abiertoAlEmpezar, children }: { nombr
     );
 }
 
-function DialogoDeFicha({ studentId, alCerrar }: { studentId: string | null; alCerrar: () => void }) {
-    const { data, isLoading } = useFichaDePagos(studentId);
+function DialogoDeFicha({ studentId, ciclo, alCerrar }: { studentId: string | null; ciclo: string | null; alCerrar: () => void }) {
+    const { data, isLoading } = useFichaDePagos(studentId, ciclo);
     return (
         <Dialog open={!!studentId} onOpenChange={(v) => !v && alCerrar()}>
             <DialogContent className="max-h-[92dvh] max-w-2xl overflow-y-auto">

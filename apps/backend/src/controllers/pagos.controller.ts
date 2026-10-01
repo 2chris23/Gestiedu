@@ -61,6 +61,56 @@ async function cicloActivo(prisma: any, academicYearId?: string) {
     return ciclo;
 }
 
+/**
+ * LA CONFIGURACIÓN DE UN CICLO (2026-10-01)
+ *
+ * La suya si ya la tiene (`ajustes_de_pagos_del_ciclo`); si no, la del liceo.
+ * Antes había una sola para todo: subir la cuota recalculaba los ciclos
+ * pasados con la cuota nueva y salían «debiendo» (PAGOS-CICLO-01).
+ * `enabled` es siempre el del liceo: el módulo se enciende o se apaga entero.
+ */
+async function configuracionDelCiclo(prisma: any, cicloId: string, liceo?: Configuracion): Promise<Configuracion> {
+    const delLiceo = liceo ?? (await leerConfiguracion(prisma));
+    const fila = await prisma.ajustesDePagosDelCiclo.findUnique({ where: { academicYearId: cicloId } });
+    return fila ? { ...configuracionDe(fila), enabled: delLiceo.enabled } : delLiceo;
+}
+
+/** La configuración como fila de `ajustes_de_pagos_del_ciclo`. */
+function filaDeAjustes(c: Configuracion) {
+    return {
+        frequency: c.frequency,
+        dueMode: c.dueMode,
+        dueDay: c.dueDay,
+        graceDays: c.graceDays,
+        baseCurrency: c.baseCurrency,
+        acceptedCurrencies: c.acceptedCurrencies,
+        feeAmount: deCentimos(c.feeCents),
+        enrollmentEnabled: c.enrollmentEnabled,
+        enrollmentAmount: deCentimos(c.enrollmentCents),
+        methods: c.methods,
+        descuentoHermanosPct: c.descuentoHermanosPct,
+        moraTipo: c.moraTipo,
+        moraValor: deCentimos(c.moraValorCents),
+        moraDiasDespues: c.moraDiasDespues,
+        recordatorioDiasAntes: c.recordatorioDiasAntes,
+    };
+}
+
+/**
+ * Desde el primer pago, el ciclo se queda con su configuración aunque cambie la
+ * del liceo. `skipDuplicates`: dos cobros a la vez no chocan por congelarla.
+ */
+async function congelarConfiguracion(tx: any, cicloId: string, config: Configuracion, quien: string | undefined) {
+    await tx.ajustesDePagosDelCiclo.createMany({
+        data: [{ academicYearId: cicloId, ...filaDeAjustes(config), updatedById: quien ?? null }],
+        skipDuplicates: true,
+    });
+}
+
+/** Un ciclo cerrado se ve, no se toca: lo cobrado y lo anulado quedan como estaban. */
+const estaCerrado = (ciclo: any) => ciclo?.status === 'COMPLETED';
+const CICLO_CERRADO = { error: 'Ese ciclo escolar ya está cerrado: sus pagos se pueden ver, no cambiar', code: 'CICLO_CERRADO' };
+
 /** Lo pagado (no anulado) por alumno y cuota en un ciclo, en céntimos. Una consulta. */
 async function pagadoEnElCiclo(prisma: any, academicYearId: string, studentIds?: string[]) {
     const filas: Array<{ studentId: string; installmentKey: string; total: Prisma.Decimal }> = await prisma.$queryRaw`
@@ -113,14 +163,22 @@ async function hoyDelLiceo(prisma: any) {
 /** GET /api/payments/settings — cualquiera con sesión ve si está activo; el admin, todo. */
 export async function getPaymentSettings(request: FastifyRequest, reply: FastifyReply) {
     try {
-        const config = await leerConfiguracion(request.tenantPrisma);
-        if (rolDe(request) !== UserRole.ADMIN) return reply.send({ enabled: config.enabled });
+        const prisma = request.tenantPrisma as any;
+        const delLiceo = await leerConfiguracion(prisma);
+        if (rolDe(request) !== UserRole.ADMIN) return reply.send({ enabled: delLiceo.enabled });
+        // Lo que se ve y se edita es lo del ciclo en curso (que es lo que se
+        // cobra ahora); al guardar, vale también para los ciclos que vengan.
+        const ciclo = await cicloActivo(prisma);
+        const config = ciclo ? await configuracionDelCiclo(prisma, ciclo.id, delLiceo) : delLiceo;
         return reply.send({
             ...config,
             feeAmount: deCentimos(config.feeCents),
             enrollmentAmount: deCentimos(config.enrollmentCents),
+            moraValor: deCentimos(config.moraValorCents),
             feeCents: undefined,
             enrollmentCents: undefined,
+            moraValorCents: undefined,
+            cicloEnCurso: ciclo ? { id: ciclo.id, name: ciclo.name } : null,
         });
     } catch (error) {
         return responderError(reply, error, 'Error al leer la configuración de pagos');
@@ -132,12 +190,12 @@ export async function updatePaymentSettings(request: FastifyRequest<{ Body: any 
     try {
         const datos = validarConfiguracion(request.body);
         const prisma = request.tenantPrisma as any;
-        const antes = await leerConfiguracion(prisma);
+        const ciclo = await cicloActivo(prisma);
+        const antes = ciclo ? await configuracionDelCiclo(prisma, ciclo.id) : await leerConfiguracion(prisma);
 
         // Cambiar la frecuencia con pagos ya registrados en el ciclo dejaría esos
         // pagos repartidos en cuotas que ya no existen: nadie sabría qué se pagó.
         if (datos.frequency !== antes.frequency) {
-            const ciclo = await cicloActivo(prisma);
             const hayPagos = ciclo
                 ? await prisma.payment.count({ where: { academicYearId: ciclo.id, annulledAt: null } })
                 : 0;
@@ -154,6 +212,16 @@ export async function updatePaymentSettings(request: FastifyRequest<{ Body: any 
             create: { id: 'liceo', ...datos, updatedById: idDe(request) },
             update: { ...datos, updatedById: idDe(request) },
         });
+        // Y el ciclo en curso, que es lo que se está cobrando. Los ciclos
+        // cerrados se quedan con la suya.
+        if (ciclo && !estaCerrado(ciclo)) {
+            const { enabled: _encendido, ...delCiclo } = datos;
+            await prisma.ajustesDePagosDelCiclo.upsert({
+                where: { academicYearId: ciclo.id },
+                create: { academicYearId: ciclo.id, ...delCiclo, updatedById: idDe(request) },
+                update: { ...delCiclo, updatedById: idDe(request) },
+            });
+        }
 
         await prisma.auditLog
             .create({
@@ -184,11 +252,12 @@ export async function getPaymentsOverview(
     reply: FastifyReply
 ) {
     try {
-        const config = await moduloActivo(request, reply);
-        if (!config) return;
+        const delLiceo = await moduloActivo(request, reply);
+        if (!delLiceo) return;
         const prisma = request.tenantPrisma as any;
         const ciclo = await cicloActivo(prisma, request.query?.academicYearId);
         if (!ciclo) return reply.status(404).send({ error: 'No hay un ciclo escolar activo', code: 'NO_ACTIVE_YEAR' });
+        const config = await configuracionDelCiclo(prisma, ciclo.id, delLiceo);
 
         const [inscritos, planes, pagado, hoy] = await Promise.all([
             prisma.studentClassroom.findMany({
@@ -208,6 +277,16 @@ export async function getPaymentsOverview(
         let deudaTotal = 0;
         let cobrado = 0;
         const secciones = new Map<string, any>();
+        /**
+         * EL CICLO MES A MES (2026-10-01): lo que se esperaba cobrar, lo
+         * cobrado y cuántos deben, por el mes en que vence cada cuota. Es lo
+         * que pinta el calendario de 12 meses de Finanzas.
+         */
+        const meses = new Map<string, { esperado: number; cobrado: number; vencidas: number; porVencer: number; deben: Set<string> }>();
+        const delMes = (clave: string) => {
+            if (!meses.has(clave)) meses.set(clave, { esperado: 0, cobrado: 0, vencidas: 0, porVencer: 0, deben: new Set() });
+            return meses.get(clave)!;
+        };
 
         // Un alumno con dos inscripciones activas en el mismo ciclo (dato mal
         // cargado) contaría doble como deudor: se cuenta una vez.
@@ -219,6 +298,18 @@ export async function getPaymentsOverview(
             if (r.state === 'DEBE') deudores++;
             deudaTotal += r.owedCents;
             cobrado += r.paidCents;
+            // Cada cuota que no está pagada, con su estado: para «quién debe este mes».
+            const cuotas: Record<string, string> = {};
+            for (const c of r.cuotas) {
+                const m = delMes(c.dueDate.slice(0, 7));
+                if (c.state !== 'EXONERADA') m.esperado += c.amountCents;
+                m.cobrado += c.paidCents;
+                if (c.state === 'VENCIDA') {
+                    m.vencidas++;
+                    m.deben.add(i.student.id);
+                } else if (c.state === 'PENDIENTE' || c.state === 'ABONADA') m.porVencer++;
+                if (c.state === 'VENCIDA' || c.state === 'ABONADA' || c.state === 'PENDIENTE') cuotas[c.key] = c.state;
+            }
 
             if (!secciones.has(i.classroom.id)) secciones.set(i.classroom.id, { ...i.classroom, students: [], debtors: 0 });
             const s = secciones.get(i.classroom.id);
@@ -229,6 +320,7 @@ export async function getPaymentsOverview(
                 lastName: i.student.lastName,
                 avatar: i.student.avatar,
                 ...dineroDe(r),
+                cuotas,
             });
         }
 
@@ -240,7 +332,8 @@ export async function getPaymentsOverview(
             .sort((a, b) => a.grade - b.grade || String(a.section).localeCompare(String(b.section)));
 
         return reply.send({
-            academicYear: { id: ciclo.id, name: ciclo.name, startDate: ciclo.startDate, endDate: ciclo.endDate },
+            academicYear: { id: ciclo.id, name: ciclo.name, startDate: ciclo.startDate, endDate: ciclo.endDate, status: ciclo.status },
+            closed: estaCerrado(ciclo),
             today: hoy,
             currency: config.baseCurrency,
             summary: {
@@ -249,6 +342,24 @@ export async function getPaymentsOverview(
                 owed: deCentimos(deudaTotal),
                 collected: deCentimos(cobrado),
             },
+            // Las cuotas del ciclo (de una persona cualquiera: son iguales para
+            // todos salvo el día propio), para saber en qué mes cae cada una.
+            installments: cuotasDelCiclo({ config, inicio: ciclo.startDate, cierre: ciclo.endDate, lapsos: ciclo.periods }).map((c) => ({
+                key: c.key,
+                label: c.label,
+                dueDate: c.dueDate,
+                amount: deCentimos(c.amountCents),
+            })),
+            months: [...meses.entries()]
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([mes, m]) => ({
+                    month: mes,
+                    expected: deCentimos(m.esperado),
+                    collected: deCentimos(m.cobrado),
+                    overdue: m.vencidas,
+                    upcoming: m.porVencer,
+                    debtors: m.deben.size,
+                })),
             classrooms: listado,
         });
     } catch (error) {
@@ -351,21 +462,31 @@ async function fichaDelAlumno(prisma: any, config: Configuracion, ciclo: any, st
 }
 
 /** GET /api/payments/students/:studentId */
-export async function getStudentPayments(request: FastifyRequest<{ Params: { studentId: string } }>, reply: FastifyReply) {
+export async function getStudentPayments(
+    request: FastifyRequest<{ Params: { studentId: string }; Querystring: { academicYearId?: string } }>,
+    reply: FastifyReply
+) {
     try {
-        const config = await moduloActivo(request, reply);
-        if (!config) return;
+        const delLiceo = await moduloActivo(request, reply);
+        if (!delLiceo) return;
         const { studentId } = request.params;
         // Misma respuesta para "no existe" y "no es tuyo".
         if (!(await puedeVerPagosDe(request, studentId))) return reply.status(404).send({ error: 'Estudiante no encontrado' });
 
         const prisma = request.tenantPrisma as any;
-        const ciclo = await cicloActivo(prisma);
+        const ciclo = await cicloActivo(prisma, request.query?.academicYearId);
         if (!ciclo) return reply.status(404).send({ error: 'No hay un ciclo escolar activo', code: 'NO_ACTIVE_YEAR' });
+        const config = await configuracionDelCiclo(prisma, ciclo.id, delLiceo);
 
         const ficha = await fichaDelAlumno(prisma, config, ciclo, studentId, await hoyDelLiceo(prisma), rolDe(request) === UserRole.ADMIN);
         if (!ficha) return reply.status(404).send({ error: 'Estudiante no encontrado' });
-        return reply.send({ ...ficha, methods: rolDe(request) === UserRole.ADMIN ? config.methods : undefined, acceptedCurrencies: config.acceptedCurrencies, dueMode: config.dueMode });
+        return reply.send({
+            ...ficha,
+            closed: estaCerrado(ciclo),
+            methods: rolDe(request) === UserRole.ADMIN ? config.methods : undefined,
+            acceptedCurrencies: config.acceptedCurrencies,
+            dueMode: config.dueMode,
+        });
     } catch (error) {
         return responderError(reply, error, 'Error al obtener los pagos del estudiante');
     }
@@ -374,11 +495,12 @@ export async function getStudentPayments(request: FastifyRequest<{ Params: { stu
 /** GET /api/payments/my-children — el representante, sus representados. */
 export async function getMyChildrenPayments(request: FastifyRequest, reply: FastifyReply) {
     try {
-        const config = await moduloActivo(request, reply);
-        if (!config) return;
+        const delLiceo = await moduloActivo(request, reply);
+        if (!delLiceo) return;
         const prisma = request.tenantPrisma as any;
         const ciclo = await cicloActivo(prisma);
         if (!ciclo) return reply.send({ children: [] });
+        const config = await configuracionDelCiclo(prisma, ciclo.id, delLiceo);
 
         const vinculos = await prisma.studentTutor.findMany({ where: { tutorId: idDe(request) }, select: { studentId: true } });
         const hoy = await hoyDelLiceo(prisma);
@@ -395,7 +517,11 @@ export async function getMyChildrenPayments(request: FastifyRequest, reply: Fast
 
 /** PUT /api/payments/students/:studentId/plan — día de pago propio y exoneración. */
 export async function updateStudentPlan(
-    request: FastifyRequest<{ Params: { studentId: string }; Body: { dueDay?: number | null; exempt?: boolean; exemptReason?: string | null } }>,
+    request: FastifyRequest<{
+        Params: { studentId: string };
+        Querystring: { academicYearId?: string };
+        Body: { dueDay?: number | null; exempt?: boolean; exemptReason?: string | null };
+    }>,
     reply: FastifyReply
 ) {
     try {
@@ -413,10 +539,11 @@ export async function updateStudentPlan(
             return reply.status(400).send({ error: 'Indica el motivo de la exoneración', code: 'EXEMPT_REASON_REQUIRED' });
         }
 
-        const ciclo = await cicloActivo(prisma);
+        const ciclo = await cicloActivo(prisma, request.query?.academicYearId);
         if (!ciclo) return reply.status(404).send({ error: 'No hay un ciclo escolar activo', code: 'NO_ACTIVE_YEAR' });
+        if (estaCerrado(ciclo)) return reply.status(409).send(CICLO_CERRADO);
         const inscrito = await prisma.studentClassroom.count({ where: { studentId, academicYearId: ciclo.id, isActive: true } });
-        if (!inscrito) return reply.status(404).send({ error: 'El estudiante no está inscrito en el ciclo actual' });
+        if (!inscrito) return reply.status(404).send({ error: 'El estudiante no está inscrito en ese ciclo' });
 
         await prisma.studentPaymentPlan.upsert({
             where: { studentId_academicYearId: { studentId, academicYearId: ciclo.id } },
@@ -441,6 +568,8 @@ interface PagoNuevo {
     reference?: string | null;
     notes?: string | null;
     paidAt: string;
+    /** El ciclo al que va (por defecto, el que está en curso). */
+    academicYearId?: string;
 }
 
 /** POST /api/payments/students/:studentId/payments */
@@ -449,11 +578,15 @@ export async function registerPayment(
     reply: FastifyReply
 ) {
     try {
-        const config = await moduloActivo(request, reply);
-        if (!config) return;
+        const delLiceo = await moduloActivo(request, reply);
+        if (!delLiceo) return;
         const prisma = request.tenantPrisma as any;
         const { studentId } = request.params;
         const b = request.body;
+        const ciclo = await cicloActivo(prisma, b?.academicYearId);
+        if (!ciclo) return reply.status(404).send({ error: 'No hay un ciclo escolar activo', code: 'NO_ACTIVE_YEAR' });
+        if (estaCerrado(ciclo)) return reply.status(409).send(CICLO_CERRADO);
+        const config = await configuracionDelCiclo(prisma, ciclo.id, delLiceo);
 
         const hoy = await hoyDelLiceo(prisma);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(String(b.paidAt)) || b.paidAt > hoy) {
@@ -477,9 +610,6 @@ export async function registerPayment(
         const claves = [...new Set((b.installmentKeys ?? []).map(String))];
         if (claves.length === 0) return reply.status(400).send({ error: 'Elige al menos una cuota' });
 
-        const ciclo = await cicloActivo(prisma);
-        if (!ciclo) return reply.status(404).send({ error: 'No hay un ciclo escolar activo', code: 'NO_ACTIVE_YEAR' });
-
         const limpio = (t: unknown, max: number) => (t ? String(t).replace(/[<>]/g, '').trim().slice(0, max) || null : null);
 
         const pago = await prisma.$transaction(async (tx: any) => {
@@ -487,6 +617,8 @@ export async function registerPayment(
             // veces la misma cuota. Este candado hace que la segunda espere a
             // la primera y vea lo ya pagado.
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pagos:${studentId}`}))`;
+            // Desde el primer pago, el ciclo se queda con esta configuración.
+            await congelarConfiguracion(tx, ciclo.id, config, idDe(request));
 
             // SEGURIDAD: Prevenir pagos duplicados idénticos enviados simultáneamente (payments-missing-idempotency-race-condition)
             const refLimpia = limpio(b.reference, 60);
@@ -587,11 +719,12 @@ export async function annulPayment(
         // Verificar que el pago existe antes de adquirir bloqueo
         const paymentInfo = await prisma.payment.findUnique({
             where: { id: request.params.paymentId },
-            select: { id: true, studentId: true, annulledAt: true },
+            select: { id: true, studentId: true, annulledAt: true, academicYear: { select: { status: true } } },
         });
         if (!paymentInfo || paymentInfo.annulledAt) {
             return reply.status(404).send({ error: 'Pago no encontrado o ya anulado' });
         }
+        if (estaCerrado(paymentInfo.academicYear)) return reply.status(409).send(CICLO_CERRADO);
 
         // SEGURIDAD: Serializar la anulación con el candado del estudiante para evitar condiciones de carrera con nuevos cobros
         const hecho = await prisma.$transaction(async (tx: any) => {
@@ -628,8 +761,8 @@ export async function annulPayment(
 /** GET /api/payments/:paymentId/receipt — admin o representante del alumno. */
 export async function getPaymentReceipt(request: FastifyRequest<{ Params: { paymentId: string } }>, reply: FastifyReply) {
     try {
-        const config = await moduloActivo(request, reply);
-        if (!config) return;
+        const delLiceo = await moduloActivo(request, reply);
+        if (!delLiceo) return;
         const prisma = request.tenantPrisma as any;
         const pago = await prisma.payment.findUnique({
             where: { id: request.params.paymentId },
@@ -644,6 +777,7 @@ export async function getPaymentReceipt(request: FastifyRequest<{ Params: { paym
         const plan = await prisma.studentPaymentPlan.findUnique({
             where: { studentId_academicYearId: { studentId: pago.studentId, academicYearId: pago.academicYearId } },
         });
+        const config = await configuracionDelCiclo(prisma, pago.academicYearId, delLiceo);
         const cuotas = cuotasDelCiclo({
             config,
             inicio: pago.academicYear.startDate,
@@ -672,5 +806,125 @@ export async function getPaymentReceipt(request: FastifyRequest<{ Params: { paym
         });
     } catch (error) {
         return responderError(reply, error, 'Error al obtener el comprobante');
+    }
+}
+
+/**
+ * GET /api/payments/cycles — los ciclos escolares, para elegir cuál mirar.
+ * El de en curso primero; los cerrados se ven, no se tocan.
+ */
+export async function getPaymentCycles(request: FastifyRequest, reply: FastifyReply) {
+    try {
+        const delLiceo = await moduloActivo(request, reply);
+        if (!delLiceo) return;
+        const prisma = request.tenantPrisma as any;
+        const ciclos = await prisma.academicYear.findMany({
+            orderBy: { startDate: 'desc' },
+            select: { id: true, name: true, status: true, startDate: true, endDate: true, _count: { select: { payments: true } } },
+        });
+        return reply.send({
+            cycles: ciclos.map((c: any) => ({
+                id: c.id,
+                name: c.name,
+                status: c.status,
+                startDate: c.startDate,
+                endDate: c.endDate,
+                closed: estaCerrado(c),
+                payments: c._count.payments,
+            })),
+        });
+    } catch (error) {
+        return responderError(reply, error, 'Error al leer los ciclos');
+    }
+}
+
+/**
+ * GET /api/payments/month?academicYearId=&month=YYYY-MM — el mes en días, para
+ * el calendario: qué cuotas vencen cada día (cuántas y cuánto falta de ellas) y
+ * quién pagó cada día. Solo el admin.
+ */
+export async function getPaymentsMonth(
+    request: FastifyRequest<{ Querystring: { academicYearId?: string; month: string } }>,
+    reply: FastifyReply
+) {
+    try {
+        const delLiceo = await moduloActivo(request, reply);
+        if (!delLiceo) return;
+        const mes = String(request.query?.month ?? '');
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) return reply.status(400).send({ error: 'Mes inválido (AAAA-MM)', code: 'MES_INVALIDO' });
+        const prisma = request.tenantPrisma as any;
+        const ciclo = await cicloActivo(prisma, request.query?.academicYearId);
+        if (!ciclo) return reply.status(404).send({ error: 'No hay un ciclo escolar activo', code: 'NO_ACTIVE_YEAR' });
+        const config = await configuracionDelCiclo(prisma, ciclo.id, delLiceo);
+
+        const desde = new Date(`${mes}-01T00:00:00Z`);
+        const hasta = new Date(Date.UTC(desde.getUTCFullYear(), desde.getUTCMonth() + 1, 1));
+        const [inscritos, planes, pagado, hoy, pagos] = await Promise.all([
+            prisma.studentClassroom.findMany({
+                where: { academicYearId: ciclo.id, isActive: true, student: { status: 'ACTIVE' } },
+                select: { student: { select: { id: true, firstName: true, lastName: true } } },
+            }),
+            prisma.studentPaymentPlan.findMany({ where: { academicYearId: ciclo.id }, select: { studentId: true, dueDay: true, exempt: true } }),
+            pagadoEnElCiclo(prisma, ciclo.id),
+            hoyDelLiceo(prisma),
+            prisma.payment.findMany({
+                where: { academicYearId: ciclo.id, annulledAt: null, paidAt: { gte: desde, lt: hasta } },
+                orderBy: [{ paidAt: 'asc' }, { receiptNumber: 'asc' }],
+                select: {
+                    id: true,
+                    receiptNumber: true,
+                    paidAt: true,
+                    method: true,
+                    amountBase: true,
+                    student: { select: { id: true, firstName: true, lastName: true } },
+                },
+            }),
+        ]);
+        const planDe = new Map<string, any>(planes.map((p: any) => [p.studentId, p]));
+        const dias = new Map<string, { vencen: number; faltaDeLoQueVence: number; deben: Array<{ id: string; nombre: string; falta: string }>; cobros: any[] }>();
+        const delDia = (d: string) => {
+            if (!dias.has(d)) dias.set(d, { vencen: 0, faltaDeLoQueVence: 0, deben: [], cobros: [] });
+            return dias.get(d)!;
+        };
+        const vistos = new Set<string>();
+        for (const i of inscritos) {
+            if (vistos.has(i.student.id)) continue;
+            vistos.add(i.student.id);
+            const r = resumenDe(config, ciclo, planDe.get(i.student.id), pagado.get(i.student.id), hoy);
+            for (const c of r.cuotas) {
+                if (!c.dueDate.startsWith(mes) || c.state === 'EXONERADA') continue;
+                const d = delDia(c.dueDate);
+                d.vencen++;
+                d.faltaDeLoQueVence += c.pendingCents;
+                if (c.pendingCents > 0) d.deben.push({ id: i.student.id, nombre: `${i.student.lastName}, ${i.student.firstName}`, falta: deCentimos(c.pendingCents) });
+            }
+        }
+        for (const p of pagos) {
+            delDia(p.paidAt.toISOString().slice(0, 10)).cobros.push({
+                id: p.id,
+                receiptNumber: p.receiptNumber,
+                method: p.method,
+                amount: p.amountBase.toString(),
+                student: { id: p.student.id, nombre: `${p.student.lastName}, ${p.student.firstName}` },
+            });
+        }
+        return reply.send({
+            academicYear: { id: ciclo.id, name: ciclo.name },
+            currency: config.baseCurrency,
+            month: mes,
+            today: hoy,
+            days: [...dias.entries()]
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([fecha, d]) => ({
+                    date: fecha,
+                    due: d.vencen,
+                    pendingOfDue: deCentimos(d.faltaDeLoQueVence),
+                    debtors: d.deben.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+                    payments: d.cobros,
+                    collected: deCentimos(d.cobros.reduce((t, c) => t + aCentimos(c.amount), 0)),
+                })),
+        });
+    } catch (error) {
+        return responderError(reply, error, 'Error al leer el mes');
     }
 }

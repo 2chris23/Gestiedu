@@ -46,7 +46,18 @@ export interface Configuracion {
     enrollmentEnabled: boolean;
     enrollmentCents: number;
     methods: string[];
+    /** Descuento automático desde el 2.º hijo del mismo representante (0–100). */
+    descuentoHermanosPct: number;
+    /** Recargo por cuota vencida (una vez por cuota). */
+    moraTipo: TipoDeMora;
+    /** FIJA: céntimos. PORCENTAJE: centésimas de punto (500 = 5 %). */
+    moraValorCents: number;
+    moraDiasDespues: number;
+    /** Días antes del vencimiento en que se le recuerda al representante (0 = no). */
+    recordatorioDiasAntes: number;
 }
+
+export type TipoDeMora = 'NINGUNA' | 'FIJA' | 'PORCENTAJE';
 
 export interface Cuota {
     key: string;
@@ -231,8 +242,32 @@ export function configuracionDe(fila: any | null): Configuracion {
         enrollmentEnabled: Boolean(fila?.enrollmentEnabled),
         enrollmentCents: aCentimos(fila?.enrollmentAmount),
         methods,
+        descuentoHermanosPct: Math.min(100, Math.max(0, Number(fila?.descuentoHermanosPct ?? 0) || 0)),
+        moraTipo: (['FIJA', 'PORCENTAJE'].includes(fila?.moraTipo) ? fila.moraTipo : 'NINGUNA') as TipoDeMora,
+        moraValorCents: aCentimos(fila?.moraValor),
+        moraDiasDespues: Math.max(0, Number(fila?.moraDiasDespues ?? 0) || 0),
+        recordatorioDiasAntes: Math.max(0, Number(fila?.recordatorioDiasAntes ?? 3) || 0),
     };
 }
+
+/** Lo que de la configuración se congela en cada ciclo (`ajustes_de_pagos_del_ciclo`). */
+export const CAMPOS_DEL_CICLO = [
+    'frequency',
+    'dueMode',
+    'dueDay',
+    'graceDays',
+    'baseCurrency',
+    'acceptedCurrencies',
+    'feeAmount',
+    'enrollmentEnabled',
+    'enrollmentAmount',
+    'methods',
+    'descuentoHermanosPct',
+    'moraTipo',
+    'moraValor',
+    'moraDiasDespues',
+    'recordatorioDiasAntes',
+] as const;
 
 const MONTO_MAXIMO = 1_000_000_000; // 10 millones en céntimos: más es un error de tecleo
 
@@ -262,6 +297,20 @@ export function validarConfiguracion(e: any) {
         : [];
     if (metodos.length === 0 || metodos.length > 12) mal('Indica entre 1 y 12 métodos de pago');
 
+    // Lo nuevo (2026-10-01) es opcional: quien no lo manda deja el valor de siempre.
+    const hermanos = e.descuentoHermanosPct ?? 0;
+    if (!Number.isInteger(hermanos) || hermanos < 0 || hermanos > 100) mal('El descuento por hermanos es un porcentaje entre 0 y 100');
+    const moraTipo = e.moraTipo ?? 'NINGUNA';
+    if (!['NINGUNA', 'FIJA', 'PORCENTAJE'].includes(moraTipo)) mal('Tipo de recargo por mora inválido');
+    const moraValor = Math.round(Number(e.moraValor ?? 0) * 100);
+    if (!Number.isFinite(moraValor) || moraValor < 0 || moraValor > MONTO_MAXIMO) mal('Monto del recargo por mora inválido');
+    if (moraTipo === 'PORCENTAJE' && moraValor > 10000) mal('El recargo por mora no puede pasar del 100 %');
+    if (moraTipo !== 'NINGUNA' && moraValor === 0) mal('Indica cuánto es el recargo por mora');
+    const moraDias = e.moraDiasDespues ?? 0;
+    if (!Number.isInteger(moraDias) || moraDias < 0 || moraDias > 90) mal('Los días para el recargo deben estar entre 0 y 90');
+    const recordar = e.recordatorioDiasAntes ?? 3;
+    if (!Number.isInteger(recordar) || recordar < 0 || recordar > 15) mal('El recordatorio va de 0 (no recordar) a 15 días antes');
+
     return {
         enabled: e.enabled,
         frequency: e.frequency,
@@ -274,6 +323,11 @@ export function validarConfiguracion(e: any) {
         enrollmentEnabled: e.enrollmentEnabled,
         enrollmentAmount: deCentimos(inscripcion),
         methods: metodos as string[],
+        descuentoHermanosPct: hermanos,
+        moraTipo,
+        moraValor: deCentimos(moraValor),
+        moraDiasDespues: moraDias,
+        recordatorioDiasAntes: recordar,
     };
 }
 

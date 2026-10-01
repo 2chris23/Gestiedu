@@ -405,6 +405,7 @@ model AcademicYear {
   enrollments           StudentClassroom[]
   subjectResources      SubjectResource[]
   paymentPlans          StudentPaymentPlan[]
+  ajustesDePagos        AjustesDePagosDelCiclo?
   payments              Payment[]
   schoolEvents          SchoolEvent[]
   notasDeRevision       NotaDeRevision[]
@@ -1839,11 +1840,57 @@ model PaymentSettings {
   /// Métodos de pago que ofrece el liceo (lista de textos).
   methods Json @default("[\"Efectivo\", \"Pago Móvil\", \"Transferencia\", \"Zelle\"]")
 
+  /// Lo que lleva un ciclo nuevo (ver `AjustesDePagosDelCiclo`).
+  descuentoHermanosPct  Int     @default(0)
+  moraTipo              String  @default("NINGUNA")
+  moraValor             Decimal @default(0) @db.Decimal(12, 2)
+  moraDiasDespues       Int     @default(0)
+  recordatorioDiasAntes Int     @default(3)
+
   updatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@map("payment_settings")
+}
+
+/// LA CONFIGURACIÓN DE PAGOS DE UN CICLO (2026-10-01)
+///
+/// `PaymentSettings` es una sola fila para todo el liceo. Con solo eso, subir la
+/// cuota el año que viene recalculaba los ciclos pasados con la cuota nueva y
+/// salían «debiendo». Cada ciclo guarda aquí SU configuración: la del liceo se
+/// copia al primer pago del ciclo (o al guardar la configuración con él en
+/// curso), y desde entonces ese ciclo no cambia aunque cambie la del liceo.
+model AjustesDePagosDelCiclo {
+  academicYearId String       @id
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  frequency          String  @default("MONTHLY")
+  dueMode            String  @default("SAME_DAY")
+  dueDay             Int     @default(5)
+  graceDays          Int     @default(0)
+  baseCurrency       String  @default("USD")
+  acceptedCurrencies String  @default("BOTH")
+  feeAmount          Decimal @default(0) @db.Decimal(12, 2)
+  enrollmentEnabled  Boolean @default(false)
+  enrollmentAmount   Decimal @default(0) @db.Decimal(12, 2)
+  methods            Json    @default("[\"Efectivo\", \"Pago Móvil\", \"Transferencia\", \"Zelle\"]")
+
+  /// Descuento automático desde el 2.º hijo del mismo representante (0–100).
+  descuentoHermanosPct Int     @default(0)
+  /// Recargo por cuota vencida: NINGUNA | FIJA | PORCENTAJE. Una vez por cuota.
+  moraTipo             String  @default("NINGUNA")
+  moraValor            Decimal @default(0) @db.Decimal(12, 2)
+  /// Días después de la gracia en que se cobra el recargo.
+  moraDiasDespues      Int     @default(0)
+  /// Cuántos días antes del vencimiento se le recuerda al representante (0 = no).
+  recordatorioDiasAntes Int    @default(3)
+
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("ajustes_de_pagos_del_ciclo")
 }
 
 /// Lo particular de un alumno en un ciclo: su día de pago (si cada uno tiene el
