@@ -153,4 +153,28 @@ describe('Pagos por ciclo (PAGOS-CICLO)', () => {
         // El representante ve lo de su hija también en un ciclo pasado.
         expect((await get(tkMadre, `/api/payments/students/${ana.id}?academicYearId=${viejo.id}`)).status).toBe(200);
     }, 60000);
+
+    it('BECA-05: hermanos con descuento automático desde el 2.º; la beca propia gana si es mayor; sin motivo no se guarda', async () => {
+        // Un hermano de Ana en el ciclo nuevo, con la misma madre.
+        const beto = (await createTestUser(prisma, UserRole.STUDENT, { firstName: 'Beto', lastName: 'Arias' })).user;
+        const seccion = await prisma.classroom.findFirst({ where: { academicYearId: nuevo.id } });
+        await prisma.studentClassroom.create({ data: { studentId: beto.id, classroomId: seccion!.id, academicYearId: nuevo.id, isActive: true } });
+        await prisma.studentTutor.create({ data: { studentId: beto.id, tutorId: madre.id, relationship: 'Madre' } });
+        expect((await put(tkAdmin, '/api/payments/settings', { ...CONFIG, feeAmount: 50, descuentoHermanosPct: 50 })).status).toBe(200);
+
+        const [primero, segundo] = [ana, beto].sort((a, b) => a.id.localeCompare(b.id));
+        const f1 = await get(tkAdmin, `/api/payments/students/${primero.id}`);
+        const f2 = await get(tkAdmin, `/api/payments/students/${segundo.id}`);
+        expect(f1.body.installments[1].amount).toBe('50.00');
+        expect(f2.body.installments[1]).toMatchObject({ amount: '25.00', fullAmount: '50.00' });
+        expect(f2.body.plan.hermano).toBe(50);
+
+        expect((await put(tkAdmin, `/api/payments/students/${primero.id}/plan`, { descuentoPct: 80 })).body.code).toBe('DESCUENTO_SIN_MOTIVO');
+        const beca = await put(tkAdmin, `/api/payments/students/${segundo.id}/plan`, { descuentoPct: 80, descuentoMotivo: 'Beca deportiva' });
+        expect(beca.status).toBe(200);
+        expect(beca.body.installments[1].amount).toBe('10.00');
+        // Sin la beca, vuelve el de hermanos (no se suman).
+        const sin = await put(tkAdmin, `/api/payments/students/${segundo.id}/plan`, { descuentoPct: 10, descuentoMotivo: 'Otro' });
+        expect(sin.body.installments[1].amount).toBe('25.00');
+    }, 60000);
 });

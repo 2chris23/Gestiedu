@@ -65,6 +65,10 @@ export interface Cuota {
     dueDate: string;
     amountCents: number;
     kind: 'INSCRIPCION' | 'CUOTA';
+    /** Lo que valía antes del descuento (beca o hermanos), si lo hubo. */
+    fullCents?: number;
+    /** Recargo por mora sumado a esta cuota (ya incluido en `amountCents`). */
+    lateFeeCents?: number;
 }
 
 export type EstadoDeCuota = 'PAGADA' | 'ABONADA' | 'VENCIDA' | 'PENDIENTE' | 'EXONERADA';
@@ -93,6 +97,21 @@ const encerrar = (f: string, desde: string, hasta: string) => (f < desde ? desde
 // ─── Cuotas del ciclo ────────────────────────────────────────────────────────
 
 export function cuotasDelCiclo(opciones: {
+    config: Pick<Configuracion, 'frequency' | 'dueDay' | 'feeCents' | 'enrollmentEnabled' | 'enrollmentCents'>;
+    inicio: Date | string;
+    cierre: Date | string;
+    lapsos?: Array<{ id: string; name: string; startDate: Date | string }>;
+    diaDelAlumno?: number | null;
+    /** Beca o descuento por hermanos (0–100): baja el monto de cada cuota. */
+    descuentoPct?: number;
+}): Cuota[] {
+    const cuotas = cuotasSinDescuento(opciones);
+    const pct = Math.min(100, Math.max(0, opciones.descuentoPct ?? 0));
+    if (!pct) return cuotas;
+    return cuotas.map((c) => ({ ...c, fullCents: c.amountCents, amountCents: Math.round((c.amountCents * (100 - pct)) / 100) }));
+}
+
+function cuotasSinDescuento(opciones: {
     config: Pick<Configuracion, 'frequency' | 'dueDay' | 'feeCents' | 'enrollmentEnabled' | 'enrollmentCents'>;
     inicio: Date | string;
     cierre: Date | string;
@@ -169,8 +188,24 @@ export function estadoDelAlumno(opciones: {
     hoy: string;
     graceDays: number;
     exento: boolean;
+    /**
+     * Recargo por mora (2026-10-01): una vez por cuota, si a la fecha de la mora
+     * (vencimiento + gracia + días) no estaba completa. La paga quien la
+     * completó tarde; no quien la pagó a tiempo. Al exonerado, nunca.
+     */
+    mora?: { tipo: 'FIJA' | 'PORCENTAJE' | 'NINGUNA'; valorCents: number; diasDespues: number; ultimoPago: Map<string, string> };
 }): ResumenDelAlumno {
-    const { cuotas, pagadoPorCuota, hoy, graceDays, exento } = opciones;
+    const { pagadoPorCuota, hoy, graceDays, exento, mora } = opciones;
+    const cuotas = opciones.cuotas.map((c) => {
+        if (!mora || mora.tipo === 'NINGUNA' || exento || mora.valorCents <= 0) return c;
+        const fechaDeMora = sumarDias(c.dueDate, graceDays + mora.diasDespues);
+        if (hoy <= fechaDeMora) return c;
+        const pagado = pagadoPorCuota.get(c.key) ?? 0;
+        const ultimo = mora.ultimoPago.get(c.key);
+        if (pagado >= c.amountCents && ultimo && ultimo <= fechaDeMora) return c; // pagada a tiempo
+        const recargo = mora.tipo === 'FIJA' ? mora.valorCents : Math.round((c.amountCents * mora.valorCents) / 10000);
+        return recargo > 0 ? { ...c, amountCents: c.amountCents + recargo, lateFeeCents: recargo } : c;
+    });
     let overdueCount = 0;
     let owedCents = 0;
     let paidCents = 0;

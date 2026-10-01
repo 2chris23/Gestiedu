@@ -25,6 +25,11 @@ const inicial: ConfiguracionDePagos = {
     enrollmentEnabled: false,
     enrollmentAmount: '0',
     methods: ['Efectivo', 'Pago Móvil', 'Transferencia', 'Zelle'],
+    descuentoHermanosPct: 0,
+    moraTipo: 'NINGUNA',
+    moraValor: '0',
+    moraDiasDespues: 0,
+    recordatorioDiasAntes: 3,
 };
 
 const campo = 'mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100';
@@ -79,6 +84,7 @@ export function PaymentSettings() {
                 ...c,
                 feeAmount: c.feeAmount === '' ? 0 : c.feeAmount,
                 enrollmentAmount: c.enrollmentAmount === '' ? 0 : c.enrollmentAmount,
+                moraValor: c.moraTipo === 'NINGUNA' || !c.moraValor ? '0' : c.moraValor,
             });
             toast.success(c.enabled ? 'Pagos configurados. «Finanzas» ya está en el menú.' : 'Configuración de pagos guardada');
         } catch (e) {
@@ -212,6 +218,63 @@ export function PaymentSettings() {
                             onChange={(e) => cambiar('enrollmentAmount', e.target.value)}
                             className={campo}
                         />
+                    </div>
+                </div>
+
+                {/* Becas, mora y recordatorio (2026-10-01): lo eligió Cristian. */}
+                <div className="space-y-4 rounded-xl border border-gray-200 p-4">
+                    <div>
+                        <label className={rotulo}>
+                            Descuento por hermanos (%)
+                            <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                value={c.descuentoHermanosPct ?? 0}
+                                onChange={(e) => cambiar('descuentoHermanosPct', Number(e.target.value))}
+                                className={cn(campo, 'max-w-[8rem]')}
+                            />
+                        </label>
+                        <p className={ayuda}>Desde el 2.º hijo del mismo representante. 0 = sin descuento. Las becas de cada estudiante se ponen en su ficha.</p>
+                    </div>
+                    <div>
+                        <span className={rotulo}>Recargo por mora</span>
+                        <Opciones
+                            valor={(c.moraTipo ?? 'NINGUNA') as 'NINGUNA' | 'FIJA' | 'PORCENTAJE'}
+                            opciones={[
+                                { valor: 'NINGUNA', texto: 'Sin recargo' },
+                                { valor: 'FIJA', texto: 'Un monto fijo' },
+                                { valor: 'PORCENTAJE', texto: 'Un porcentaje' },
+                            ]}
+                            alCambiar={(v) => cambiar('moraTipo', v)}
+                        />
+                        {c.moraTipo && c.moraTipo !== 'NINGUNA' && (
+                            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                                <label className={rotulo}>
+                                    {c.moraTipo === 'FIJA' ? `Cuánto (${simbolo})` : 'Qué porcentaje (%)'}
+                                    <input type="number" min={0} step="0.01" inputMode="decimal" value={c.moraValor ?? ''} onChange={(e) => cambiar('moraValor', e.target.value)} className={campo} />
+                                </label>
+                                <label className={rotulo}>
+                                    Días después del vencimiento
+                                    <input type="number" min={0} max={90} value={c.moraDiasDespues ?? 0} onChange={(e) => cambiar('moraDiasDespues', Number(e.target.value))} className={campo} />
+                                </label>
+                            </div>
+                        )}
+                        <p className={ayuda}>Se suma una vez a cada cuota que no se completó a tiempo (después de los días de gracia). Al exonerado, nunca.</p>
+                    </div>
+                    <div>
+                        <label className={rotulo}>
+                            Recordar al representante (días antes del vencimiento)
+                            <input
+                                type="number"
+                                min={0}
+                                max={15}
+                                value={c.recordatorioDiasAntes ?? 3}
+                                onChange={(e) => cambiar('recordatorioDiasAntes', Number(e.target.value))}
+                                className={cn(campo, 'max-w-[8rem]')}
+                            />
+                        </label>
+                        <p className={ayuda}>Le llega un aviso al teléfono. 0 = no recordar.</p>
                     </div>
                 </div>
 

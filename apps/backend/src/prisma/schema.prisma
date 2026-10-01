@@ -1914,6 +1914,9 @@ model StudentPaymentPlan {
   dueDay       Int?
   exempt       Boolean @default(false)
   exemptReason String?
+  /// Beca o descuento propio (0–100 %), con su motivo (2026-10-01).
+  descuentoPct    Int     @default(0)
+  descuentoMotivo String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

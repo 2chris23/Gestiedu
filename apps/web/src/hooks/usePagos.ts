@@ -102,6 +102,10 @@ export interface Cuota {
     dueDate: string;
     overdueFrom: string;
     amount: string;
+    /** Lo que valía antes de la beca o el descuento de hermanos. */
+    fullAmount?: string | null;
+    /** El recargo por mora, ya sumado en `amount`. */
+    lateFee?: string | null;
     paid: string;
     pending: string;
     state: EstadoDeCuota;
@@ -132,7 +136,7 @@ export interface FichaDePagos {
     acceptedCurrencies: Moneda | 'BOTH';
     dueMode: 'SAME_DAY' | 'PER_STUDENT';
     methods?: string[];
-    plan: { dueDay: number | null; exempt: boolean; exemptReason: string | null };
+    plan: { dueDay: number | null; exempt: boolean; exemptReason: string | null; descuentoPct: number; descuentoMotivo: string | null; hermano: number };
     summary: ResumenDinero;
     installments: Cuota[];
     payments: PagoRegistrado[];
@@ -239,7 +243,7 @@ export function useAnularPago() {
 export function useGuardarPlanDePago(studentId: string, ciclo?: string | null) {
     const invalidar = useInvalidarPagos();
     return useMutation({
-        mutationFn: async (datos: { dueDay: number | null; exempt: boolean; exemptReason: string | null }) =>
+        mutationFn: async (datos: { dueDay: number | null; exempt: boolean; exemptReason: string | null; descuentoPct?: number; descuentoMotivo?: string | null }) =>
             (await api.put(`/payments/students/${encodeURIComponent(studentId)}/plan`, datos, { params: delCiclo(ciclo) })).data,
         onSuccess: invalidar,
     });

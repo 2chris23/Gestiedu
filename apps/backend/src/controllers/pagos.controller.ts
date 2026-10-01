@@ -111,39 +111,86 @@ async function congelarConfiguracion(tx: any, cicloId: string, config: Configura
 export const estaCerrado = (ciclo: any) => ciclo?.status === 'COMPLETED';
 export const CICLO_CERRADO = { error: 'Ese ciclo escolar ya está cerrado: sus pagos se pueden ver, no cambiar', code: 'CICLO_CERRADO' };
 
-/** Lo pagado (no anulado) por alumno y cuota en un ciclo, en céntimos. Una consulta. */
-export async function pagadoEnElCiclo(prisma: any, academicYearId: string, studentIds?: string[]) {
-    const filas: Array<{ studentId: string; installmentKey: string; total: Prisma.Decimal }> = await prisma.$queryRaw`
-        SELECT p."studentId", a."installmentKey", SUM(a."amountBase") AS total
-        FROM payment_allocations a
-        JOIN payments p ON p.id = a."paymentId"
-        WHERE p."academicYearId" = ${academicYearId}
-          AND p."annulledAt" IS NULL
-          ${studentIds ? Prisma.sql`AND p."studentId" IN (${Prisma.join(studentIds)})` : Prisma.empty}
-        GROUP BY p."studentId", a."installmentKey"`;
+/**
+ * Lo pagado (no anulado) por alumno y cuota en un ciclo, en céntimos; la
+ * fecha del último pago de cada cuota (para la mora) y quiénes son hermanos
+ * (para su descuento). Dos consultas.
+ */
+export interface PagadoDelCiclo {
+    get(studentId: string): Map<string, number> | undefined;
+    ultimos: Map<string, Map<string, string>>;
+    hermanos: Set<string>;
+}
+export async function pagadoEnElCiclo(prisma: any, academicYearId: string, studentIds?: string[]): Promise<PagadoDelCiclo> {
+    const [filas, tutores]: [Array<{ studentId: string; installmentKey: string; total: Prisma.Decimal; ultimo: Date }>, Array<{ tutorId: string; studentId: string }>] =
+        await Promise.all([
+            prisma.$queryRaw`
+                SELECT p."studentId", a."installmentKey", SUM(a."amountBase") AS total, MAX(p."paidAt") AS ultimo
+                FROM payment_allocations a
+                JOIN payments p ON p.id = a."paymentId"
+                WHERE p."academicYearId" = ${academicYearId}
+                  AND p."annulledAt" IS NULL
+                  ${studentIds ? Prisma.sql`AND p."studentId" IN (${Prisma.join(studentIds)})` : Prisma.empty}
+                GROUP BY p."studentId", a."installmentKey"`,
+            // Hermanos: inscritos en el ciclo que comparten representante.
+            prisma.$queryRaw`
+                SELECT st."tutorId", st."studentId"
+                FROM student_tutors st
+                JOIN student_classrooms sc ON sc."studentId" = st."studentId" AND sc."academicYearId" = ${academicYearId} AND sc."isActive" = true
+                GROUP BY st."tutorId", st."studentId"`,
+        ]);
     const porAlumno = new Map<string, Map<string, number>>();
+    const ultimos = new Map<string, Map<string, string>>();
     for (const f of filas) {
         if (!porAlumno.has(f.studentId)) porAlumno.set(f.studentId, new Map());
         porAlumno.get(f.studentId)!.set(f.installmentKey, aCentimos(f.total));
+        if (!ultimos.has(f.studentId)) ultimos.set(f.studentId, new Map());
+        ultimos.get(f.studentId)!.set(f.installmentKey, new Date(f.ultimo).toISOString().slice(0, 10));
     }
-    return porAlumno;
+    // Desde el 2.º hijo del mismo representante (el primero por cédula paga entero).
+    const porTutor = new Map<string, string[]>();
+    for (const t of tutores) {
+        if (!porTutor.has(t.tutorId)) porTutor.set(t.tutorId, []);
+        porTutor.get(t.tutorId)!.push(t.studentId);
+    }
+    const hermanos = new Set<string>();
+    for (const hijos of porTutor.values()) [...new Set(hijos)].sort().slice(1).forEach((h) => hermanos.add(h));
+    return { get: (id: string) => porAlumno.get(id), ultimos, hermanos };
 }
 
+/**
+ * Cómo va un alumno en un ciclo. El descuento (2026-10-01): el suyo (beca) o
+ * el de hermanos del liceo, el mayor de los dos, sin sumarse. La mora: si la
+ * configuración del ciclo la tiene.
+ */
 export function resumenDe(
     config: Configuracion,
     ciclo: any,
-    plan: { dueDay: number | null; exempt: boolean } | undefined,
-    pagado: Map<string, number> | undefined,
+    plan: { dueDay: number | null; exempt: boolean; descuentoPct?: number | null } | undefined,
+    pagado: PagadoDelCiclo,
+    studentId: string,
     hoy: string
 ): ResumenDelAlumno {
+    const descuentoPct = Math.max(plan?.descuentoPct ?? 0, pagado.hermanos.has(studentId) ? config.descuentoHermanosPct : 0);
     const cuotas = cuotasDelCiclo({
         config,
         inicio: ciclo.startDate,
         cierre: ciclo.endDate,
         lapsos: ciclo.periods,
         diaDelAlumno: config.dueMode === 'PER_STUDENT' ? plan?.dueDay ?? null : null,
+        descuentoPct,
     });
-    return estadoDelAlumno({ cuotas, pagadoPorCuota: pagado ?? new Map(), hoy, graceDays: config.graceDays, exento: Boolean(plan?.exempt) });
+    return estadoDelAlumno({
+        cuotas,
+        pagadoPorCuota: pagado.get(studentId) ?? new Map(),
+        hoy,
+        graceDays: config.graceDays,
+        exento: Boolean(plan?.exempt),
+        mora:
+            config.moraTipo === 'NINGUNA'
+                ? undefined
+                : { tipo: config.moraTipo, valorCents: config.moraValorCents, diasDespues: config.moraDiasDespues, ultimoPago: pagado.ultimos.get(studentId) ?? new Map() },
+    });
 }
 
 const dineroDe = (r: ResumenDelAlumno) => ({
@@ -267,7 +314,7 @@ export async function getPaymentsOverview(
                     classroom: { select: { id: true, name: true, grade: true, section: true } },
                 },
             }),
-            prisma.studentPaymentPlan.findMany({ where: { academicYearId: ciclo.id }, select: { studentId: true, dueDay: true, exempt: true } }),
+            prisma.studentPaymentPlan.findMany({ where: { academicYearId: ciclo.id }, select: { studentId: true, dueDay: true, exempt: true, descuentoPct: true } }),
             pagadoEnElCiclo(prisma, ciclo.id),
             hoyDelLiceo(prisma),
         ]);
@@ -294,7 +341,7 @@ export async function getPaymentsOverview(
         for (const i of inscritos) {
             if (vistos.has(i.student.id)) continue;
             vistos.add(i.student.id);
-            const r = resumenDe(config, ciclo, planDe.get(i.student.id), pagado.get(i.student.id), hoy);
+            const r = resumenDe(config, ciclo, planDe.get(i.student.id), pagado, i.student.id, hoy);
             if (r.state === 'DEBE') deudores++;
             deudaTotal += r.owedCents;
             cobrado += r.paidCents;
@@ -419,7 +466,7 @@ async function fichaDelAlumno(prisma: any, config: Configuracion, ciclo: any, st
     ]);
     if (!alumno) return null;
 
-    const r = resumenDe(config, ciclo, plan ?? undefined, pagado.get(studentId), hoy);
+    const r = resumenDe(config, ciclo, plan ?? undefined, pagado, studentId, hoy);
     const nombreDeCuota = new Map(r.cuotas.map((c) => [c.key, c.label]));
 
     return {
@@ -433,7 +480,15 @@ async function fichaDelAlumno(prisma: any, config: Configuracion, ciclo: any, st
         },
         academicYear: { id: ciclo.id, name: ciclo.name },
         currency: config.baseCurrency,
-        plan: { dueDay: plan?.dueDay ?? null, exempt: plan?.exempt ?? false, exemptReason: plan?.exemptReason ?? null },
+        plan: {
+            dueDay: plan?.dueDay ?? null,
+            exempt: plan?.exempt ?? false,
+            exemptReason: plan?.exemptReason ?? null,
+            descuentoPct: plan?.descuentoPct ?? 0,
+            descuentoMotivo: plan?.descuentoMotivo ?? null,
+            // El de hermanos lo pone el liceo solo; se dice para que se entienda la cuota.
+            hermano: pagado.hermanos.has(studentId) && config.descuentoHermanosPct > 0 ? config.descuentoHermanosPct : 0,
+        },
         summary: dineroDe(r),
         installments: r.cuotas.map((c) => ({
             key: c.key,
@@ -442,6 +497,8 @@ async function fichaDelAlumno(prisma: any, config: Configuracion, ciclo: any, st
             dueDate: c.dueDate,
             overdueFrom: sumarDias(c.dueDate, config.graceDays + 1),
             amount: deCentimos(c.amountCents),
+            fullAmount: c.fullCents != null ? deCentimos(c.fullCents) : null,
+            lateFee: c.lateFeeCents ? deCentimos(c.lateFeeCents) : null,
             paid: deCentimos(c.paidCents),
             pending: deCentimos(c.pendingCents),
             state: c.state,
@@ -520,7 +577,7 @@ export async function updateStudentPlan(
     request: FastifyRequest<{
         Params: { studentId: string };
         Querystring: { academicYearId?: string };
-        Body: { dueDay?: number | null; exempt?: boolean; exemptReason?: string | null };
+        Body: { dueDay?: number | null; exempt?: boolean; exemptReason?: string | null; descuentoPct?: number; descuentoMotivo?: string | null };
     }>,
     reply: FastifyReply
 ) {
@@ -529,7 +586,15 @@ export async function updateStudentPlan(
         if (!config) return;
         const prisma = request.tenantPrisma as any;
         const { studentId } = request.params;
-        const { dueDay = null, exempt = false, exemptReason = null } = request.body ?? {};
+        const { dueDay = null, exempt = false, exemptReason = null, descuentoPct = 0, descuentoMotivo = null } = request.body ?? {};
+        // Beca o descuento propio (2026-10-01): un porcentaje entero, con su motivo.
+        if (!Number.isInteger(descuentoPct) || descuentoPct < 0 || descuentoPct > 100) {
+            return reply.status(400).send({ error: 'El descuento es un porcentaje entre 0 y 100', code: 'DESCUENTO_INVALIDO' });
+        }
+        const porQue = descuentoMotivo ? String(descuentoMotivo).replace(/[<>]/g, '').trim().slice(0, 200) : null;
+        if (descuentoPct > 0 && (!porQue || porQue.length < 3)) {
+            return reply.status(400).send({ error: 'Indica el motivo del descuento (beca, hijo de docente…)', code: 'DESCUENTO_SIN_MOTIVO' });
+        }
 
         if (dueDay !== null && (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 28)) {
             return reply.status(400).send({ error: 'El día de pago debe estar entre 1 y 28' });
@@ -547,8 +612,8 @@ export async function updateStudentPlan(
 
         await prisma.studentPaymentPlan.upsert({
             where: { studentId_academicYearId: { studentId, academicYearId: ciclo.id } },
-            create: { studentId, academicYearId: ciclo.id, dueDay, exempt, exemptReason: exempt ? motivo : null },
-            update: { dueDay, exempt, exemptReason: exempt ? motivo : null },
+            create: { studentId, academicYearId: ciclo.id, dueDay, exempt, exemptReason: exempt ? motivo : null, descuentoPct, descuentoMotivo: descuentoPct > 0 ? porQue : null },
+            update: { dueDay, exempt, exemptReason: exempt ? motivo : null, descuentoPct, descuentoMotivo: descuentoPct > 0 ? porQue : null },
         });
         request.aQuienAfecta = { studentIds: [studentId] };
         return getStudentPayments(request as any, reply);
@@ -648,7 +713,7 @@ export async function registerPayment(
             if (plan?.exempt) throw Object.assign(new Error('El estudiante está exonerado'), { statusCode: 409, code: 'STUDENT_EXEMPT' });
 
             const pagado = await pagadoEnElCiclo(tx, ciclo.id, [studentId]);
-            const r = resumenDe(config, ciclo, plan ?? undefined, pagado.get(studentId), hoy);
+            const r = resumenDe(config, ciclo, plan ?? undefined, pagado, studentId, hoy);
             const porClave = new Map(r.cuotas.map((c) => [c.key, c]));
             const elegidas = claves.map((k) => porClave.get(k));
             if (elegidas.some((c) => !c)) throw Object.assign(new Error('Alguna cuota elegida no existe'), { statusCode: 400, code: 'UNKNOWN_INSTALLMENT' });
@@ -864,7 +929,7 @@ export async function getPaymentsMonth(
                 where: { academicYearId: ciclo.id, isActive: true, student: { status: 'ACTIVE' } },
                 select: { student: { select: { id: true, firstName: true, lastName: true } } },
             }),
-            prisma.studentPaymentPlan.findMany({ where: { academicYearId: ciclo.id }, select: { studentId: true, dueDay: true, exempt: true } }),
+            prisma.studentPaymentPlan.findMany({ where: { academicYearId: ciclo.id }, select: { studentId: true, dueDay: true, exempt: true, descuentoPct: true } }),
             pagadoEnElCiclo(prisma, ciclo.id),
             hoyDelLiceo(prisma),
             prisma.payment.findMany({
@@ -890,7 +955,7 @@ export async function getPaymentsMonth(
         for (const i of inscritos) {
             if (vistos.has(i.student.id)) continue;
             vistos.add(i.student.id);
-            const r = resumenDe(config, ciclo, planDe.get(i.student.id), pagado.get(i.student.id), hoy);
+            const r = resumenDe(config, ciclo, planDe.get(i.student.id), pagado, i.student.id, hoy);
             for (const c of r.cuotas) {
                 if (!c.dueDate.startsWith(mes) || c.state === 'EXONERADA') continue;
                 const d = delDia(c.dueDate);

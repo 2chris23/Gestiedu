@@ -293,7 +293,7 @@ export async function getResumen(request: FastifyRequest<{ Querystring: { academ
                   (SELECT COALESCE(SUM("montoBase"),0) FROM pagos_al_personal WHERE "anuladoEn" IS NULL) AS personal,
                   (SELECT COALESCE(SUM("montoBase"),0) FROM gastos WHERE "anuladoEn" IS NULL) AS gastos`,
             prisma.studentClassroom.findMany({ where: { academicYearId: ciclo.id, isActive: true, student: { status: 'ACTIVE' } }, select: { studentId: true } }),
-            prisma.studentPaymentPlan.findMany({ where: { academicYearId: ciclo.id }, select: { studentId: true, dueDay: true, exempt: true } }),
+            prisma.studentPaymentPlan.findMany({ where: { academicYearId: ciclo.id }, select: { studentId: true, dueDay: true, exempt: true, descuentoPct: true } }),
             pagadoEnElCiclo(prisma, ciclo.id),
             prisma.payment.findMany({ where: { academicYearId: ciclo.id, annulledAt: null }, select: { paidAt: true, amountBase: true } }),
             prisma.fondoDelLiceo.findMany({ where: { anuladoEn: null, fecha: { gte: desde, lte: hasta } }, select: { fecha: true, montoBase: true } }),
@@ -313,7 +313,7 @@ export async function getResumen(request: FastifyRequest<{ Querystring: { academ
         for (const i of inscritos) {
             if (vistos.has(i.studentId)) continue;
             vistos.add(i.studentId);
-            const r = resumenDe(config, ciclo, planDe.get(i.studentId), pagadoAlumnos.get(i.studentId), hoy);
+            const r = resumenDe(config, ciclo, planDe.get(i.studentId), pagadoAlumnos, i.studentId, hoy);
             deudaAlumnos += r.owedCents;
             if (r.state === 'DEBE') deudores++;
             for (const c of r.cuotas) {

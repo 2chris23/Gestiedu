@@ -72,6 +72,14 @@ export function FichaDePagos({ ficha, editable: puedeEditar }: { ficha: Ficha; e
                 </p>
             )}
 
+            {!ficha.plan.exempt && (ficha.plan.descuentoPct > 0 || ficha.plan.hermano > 0) && (
+                <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                    {ficha.plan.descuentoPct >= ficha.plan.hermano
+                        ? `Descuento de ${ficha.plan.descuentoPct} %: ${ficha.plan.descuentoMotivo}`
+                        : `Descuento de hermanos: ${ficha.plan.hermano} %`}
+                </p>
+            )}
+
             {ficha.plan.exempt && (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                     Exonerado: {ficha.plan.exemptReason}
@@ -119,7 +127,11 @@ export function FichaDePagos({ ficha, editable: puedeEditar }: { ficha: Ficha; e
                                     <span className="min-w-0 break-words text-sm font-bold leading-tight text-gray-900">{c.label}</span>
                                     {elegida && <Check className="h-4 w-4 shrink-0 text-indigo-700" aria-hidden />}
                                 </span>
-                                <span className="text-sm font-semibold tabular-nums text-gray-900">{dinero(c.amount, base)}</span>
+                                <span className="text-sm font-semibold tabular-nums text-gray-900">
+                                    {dinero(c.amount, base)}
+                                    {c.fullAmount && <span className="ml-1 text-xs font-normal text-gray-500 line-through">{dinero(c.fullAmount, base)}</span>}
+                                </span>
+                                {c.lateFee && <span className="text-xs font-semibold text-red-800">Incluye mora de {dinero(c.lateFee, base)}</span>}
                                 <span className={cn('inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold', e.clases)}>
                                     <Icono className="h-3.5 w-3.5" aria-hidden />
                                     {e.texto}
@@ -390,6 +402,8 @@ function PlanDelAlumno({ ficha }: { ficha: Ficha }) {
     const [dia, setDia] = React.useState<string>(ficha.plan.dueDay?.toString() ?? '');
     const [exento, setExento] = React.useState(ficha.plan.exempt);
     const [motivo, setMotivo] = React.useState(ficha.plan.exemptReason ?? '');
+    const [descuento, setDescuento] = React.useState(String(ficha.plan.descuentoPct ?? 0));
+    const [porQue, setPorQue] = React.useState(ficha.plan.descuentoMotivo ?? '');
 
     React.useEffect(() => {
         setDia(ficha.plan.dueDay?.toString() ?? '');
@@ -400,7 +414,14 @@ function PlanDelAlumno({ ficha }: { ficha: Ficha }) {
     const enviar = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await guardar.mutateAsync({ dueDay: dia ? Number(dia) : null, exempt: exento, exemptReason: exento ? motivo : null });
+            const pct = Number(descuento) || 0;
+            await guardar.mutateAsync({
+                dueDay: dia ? Number(dia) : null,
+                exempt: exento,
+                exemptReason: exento ? motivo : null,
+                descuentoPct: pct,
+                descuentoMotivo: pct > 0 ? porQue : null,
+            });
             toast.success('Guardado');
         } catch (err) {
             toast.error(errorDe(err, 'No se pudo guardar'));
@@ -421,7 +442,21 @@ function PlanDelAlumno({ ficha }: { ficha: Ficha }) {
                 Exonerado o becado
             </label>
             {exento && (
-                <input required minLength={3} maxLength={200} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo (ej.: hijo de docente)" className={campo} />
+                <input required minLength={3} maxLength={200} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo (ej.: hijo de docente)" aria-label="Motivo de la exoneración" className={campo} />
+            )}
+            {!exento && (
+                <div className="grid gap-3 sm:grid-cols-[8rem_1fr]">
+                    <label className="text-sm font-medium text-gray-800">
+                        Beca (%)
+                        <input type="number" min={0} max={100} value={descuento} onChange={(e) => setDescuento(e.target.value)} className={campo} />
+                    </label>
+                    {Number(descuento) > 0 && (
+                        <label className="text-sm font-medium text-gray-800">
+                            Motivo
+                            <input required minLength={3} maxLength={200} value={porQue} onChange={(e) => setPorQue(e.target.value)} placeholder="Ej.: beca deportiva" className={campo} />
+                        </label>
+                    )}
+                </div>
             )}
             <div className="flex justify-end">
                 <button type="submit" disabled={guardar.isPending} className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-60">

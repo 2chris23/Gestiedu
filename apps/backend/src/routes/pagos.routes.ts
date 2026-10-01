@@ -109,6 +109,8 @@ export async function pagosRoutes(fastify: FastifyInstance) {
                         dueDay: { type: ['integer', 'null'], minimum: 1, maximum: 28 },
                         exempt: { type: 'boolean' },
                         exemptReason: { type: ['string', 'null'], maxLength: 200 },
+                        descuentoPct: { type: 'integer', minimum: 0, maximum: 100 },
+                        descuentoMotivo: { type: ['string', 'null'], maxLength: 200 },
                     },
                 },
             },
