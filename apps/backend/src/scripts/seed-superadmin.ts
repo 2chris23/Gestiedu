@@ -17,7 +17,12 @@ const prisma = new PlatformPrisma({
 
 async function main() {
     const email = process.env.SUPERADMIN_EMAIL || 'admin@tuapp.com';
-    const password = process.env.SUPERADMIN_PASSWORD || 'SuperAdmin2026!';
+    const password = process.env.SUPERADMIN_PASSWORD;
+
+    if (!password) {
+        throw new Error('La variable de entorno SUPERADMIN_PASSWORD es obligatoria y no debe tener un valor por defecto inseguro.');
+    }
+
     const name = 'Super Administrador';
 
     console.log('\n========================================');
@@ -25,7 +30,7 @@ async function main() {
     console.log('========================================\n');
     console.log(`  Platform DB: ${process.env.PLATFORM_DATABASE_URL?.replace(/:([^:@]+)@/, ':***@')}`);
     console.log(`  Email:       ${email}`);
-    console.log(`  Password:    ${password}`);
+    console.log(`  Password:    [CONFIGURADA EN ENTORNO]`);
     console.log('');
 
     // Verificar si ya existe

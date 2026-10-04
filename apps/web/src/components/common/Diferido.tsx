@@ -24,10 +24,10 @@ import { WifiOff } from 'lucide-react';
 
 export function Esqueleto({ alto = 160 }: { alto?: number }) {
     return (
-        <div className="w-full space-y-3 p-4" style={{ minHeight: alto }} aria-hidden data-esqueleto>
-            <div className="h-4 w-1/3 animate-pulse rounded bg-gray-100" />
-            <div className="h-4 w-full animate-pulse rounded bg-gray-100" />
-            <div className="h-4 w-5/6 animate-pulse rounded bg-gray-100" />
+        <div className="w-full space-y-3.5 p-4 rounded-xl border border-gray-100 bg-white" style={{ minHeight: alto }} aria-hidden data-esqueleto>
+            <div className="h-4 w-1/3 animate-latir-suave skeleton-shimmer rounded-full bg-slate-200/80" />
+            <div className="h-4 w-full animate-latir-suave skeleton-shimmer rounded-md bg-slate-200/60" />
+            <div className="h-4 w-5/6 animate-latir-suave skeleton-shimmer rounded-md bg-slate-200/40" />
         </div>
     );
 }

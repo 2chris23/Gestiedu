@@ -3,7 +3,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Button, Input, Card } from '@/components/ui';
+import { Button, Input, Card, SkeletonAuth } from '@/components/ui';
 import { useAuthStore } from '@/store/auth.store';
 import { guardarCredencial } from '@/lib/credencial-en-memoria';
 import { useRouter } from 'next/navigation';
@@ -51,38 +51,26 @@ export default function LoginPage() {
     const [logoError, setLogoError] = useState(false);
 
     useEffect(() => {
+        let isMounted = true;
         const sub = getSubdomainFromBrowser();
-        if (sub) {
-            setDetectedSlug(sub);
-            setIsCheckingScope(false);
-        } else if (typeof window !== 'undefined') {
+        let slug = sub;
+        if (!slug && typeof window !== 'undefined') {
             const params = new URLSearchParams(window.location.search);
-            const slugParam = params.get('slug') || params.get('instituto') || params.get('institute');
-            if (slugParam) {
-                setDetectedSlug(slugParam);
-                setIsCheckingScope(false);
-            } else {
-                // Sin subdominio ni parámetro: se prohíbe el acceso directo y se muestra 404
-                setDirectAccessForbidden(true);
-                setIsCheckingScope(false);
-            }
+            slug = params.get('slug') || params.get('instituto') || params.get('institute');
         }
-    }, []);
 
-    // Validar instituto contra la base de datos de la plataforma si viene de subdominio o parámetro
-    useEffect(() => {
-        if (!detectedSlug) {
-            setInstituteData(null);
-            setInstituteNotFound(false);
+        if (!slug) {
+            setDirectAccessForbidden(true);
+            setIsCheckingScope(false);
             return;
         }
 
-        let isMounted = true;
+        setDetectedSlug(slug);
         setValidatingInstitute(true);
         setInstituteNotFound(false);
         setLogoError(false);
 
-        fetch(`/api/instituto/${detectedSlug}/info`)
+        fetch(`/api/instituto/${encodeURIComponent(slug)}/info`)
             .then(async (res) => {
                 if (!isMounted) return;
                 if (res.ok) {
@@ -103,13 +91,16 @@ export default function LoginPage() {
                 }
             })
             .finally(() => {
-                if (isMounted) setValidatingInstitute(false);
+                if (isMounted) {
+                    setValidatingInstitute(false);
+                    setIsCheckingScope(false);
+                }
             });
 
         return () => {
             isMounted = false;
         };
-    }, [detectedSlug]);
+    }, []);
 
     /**
      * EL ICONITO DE LA PESTAÑA, EL DEL LICEO — Y SOLO EL NUESTRO
@@ -310,8 +301,8 @@ export default function LoginPage() {
         }
     };
 
-    if (isCheckingScope) {
-        return <div className="min-h-screen bg-slate-50" />;
+    if (isCheckingScope || validatingInstitute) {
+        return <SkeletonAuth />;
     }
 
     if (directAccessForbidden || !detectedSlug) {
@@ -324,30 +315,30 @@ export default function LoginPage() {
                 {/* El liceo: su escudo y su nombre. Quien entra tiene que
                     reconocer el sitio antes de escribir su contraseña. */}
                 <div className="mb-6 flex flex-col items-center text-center">
-                    {instituteData?.logo && !logoError ? (
-                        <Image
-                            src={getAssetUrl(instituteData.logo)}
-                            alt={displayName || 'Logo del Instituto'}
-                            width={84}
-                            height={84}
-                            className="max-h-20 w-auto object-contain drop-shadow-sm"
-                            unoptimized
-                            priority
-                            onError={() => setLogoError(true)}
-                        />
-                    ) : (
-                        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-primary-600">
-                            <BookOpen size={32} />
-                        </span>
-                    )}
+                    <div className="flex h-20 w-full items-center justify-center">
+                        {instituteData?.logo && !logoError ? (
+                            <Image
+                                src={getAssetUrl(instituteData.logo)}
+                                alt={displayName || 'Logo del Instituto'}
+                                width={80}
+                                height={80}
+                                className="max-h-20 w-auto object-contain drop-shadow-sm"
+                                unoptimized
+                                priority
+                                onError={() => setLogoError(true)}
+                            />
+                        ) : (
+                            <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-primary-600">
+                                <BookOpen size={32} />
+                            </span>
+                        )}
+                    </div>
 
                     <h1 className="mt-4 text-2xl font-extrabold leading-tight text-gray-900 sm:text-3xl">
                         {hasAutoSlug
-                            ? validatingInstitute
-                                ? 'Cargando...'
-                                : instituteNotFound
-                                  ? 'Instituto No Encontrado'
-                                  : displayName
+                            ? instituteNotFound
+                                ? 'Instituto No Encontrado'
+                                : displayName
                             : 'Gestión Escolar'}
                     </h1>
                     <p className="mt-1 text-sm text-gray-600">

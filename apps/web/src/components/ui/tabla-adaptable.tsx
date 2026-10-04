@@ -498,22 +498,52 @@ function FlechaDeOrden({ columna, orden }: { columna: string; orden?: OrdenDeTab
     );
 }
 
-/** Lo que se ve mientras llegan los datos: la forma, sin el contenido. */
+/** Lo que se ve mientras llegan los datos: la forma exacta de la lista con pulsacion suave. */
 function Fantasma({ columnas, filas }: { columnas: number; filas: number }) {
     return (
-        <div className="overflow-hidden rounded-lg border border-linea bg-tarjeta shadow-1">
+        <div className="overflow-hidden rounded-lg border border-linea bg-tarjeta shadow-1" aria-busy="true" aria-live="polite">
+            <span className="sr-only">Cargando registros...</span>
             {Array.from({ length: filas }).map((_, f) => (
                 <div
                     key={f}
-                    className="flex items-center gap-4 border-b border-linea/70 px-5 py-4 last:border-0"
+                    className="flex items-center gap-4 border-b border-linea/70 px-4 py-3.5 sm:px-5 sm:py-4 last:border-0"
                 >
-                    {Array.from({ length: columnas }).map((__, c) => (
+                    {/* Primera columna: avatar + dos lineas (nombre y cedula/codigo) */}
+                    <div className="flex flex-1 items-center gap-3 min-w-0">
                         <div
-                            key={c}
-                            className="h-4 flex-1 animate-latir rounded-xs bg-lienzo-hundido"
-                            style={{ animationDelay: `${(f * columnas + c) * 40}ms` }}
+                            className="h-9 w-9 shrink-0 animate-latir-suave skeleton-shimmer rounded-full bg-slate-200/70"
+                            style={{ animationDelay: `${f * 60}ms` }}
                         />
-                    ))}
+                        <div className="flex-1 space-y-1.5 min-w-0">
+                            <div
+                                className="h-3.5 w-36 max-w-[80%] animate-latir-suave skeleton-shimmer rounded-full bg-slate-200/80"
+                                style={{ animationDelay: `${f * 60 + 20}ms` }}
+                            />
+                            <div
+                                className="h-2.5 w-24 max-w-[60%] animate-latir-suave skeleton-shimmer rounded-full bg-slate-200/40"
+                                style={{ animationDelay: `${f * 60 + 40}ms` }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Columnas secundarias: pastillas de estado y valores */}
+                    {columnas > 2 && (
+                        <div
+                            className="hidden sm:block h-6 w-20 shrink-0 animate-latir-suave skeleton-shimmer rounded-full bg-slate-200/50"
+                            style={{ animationDelay: `${f * 60 + 50}ms` }}
+                        />
+                    )}
+                    {columnas > 3 && (
+                        <div
+                            className="hidden md:block h-3.5 w-16 shrink-0 animate-latir-suave skeleton-shimmer rounded-full bg-slate-200/40"
+                            style={{ animationDelay: `${f * 60 + 70}ms` }}
+                        />
+                    )}
+                    {/* Boton o icono de accion final */}
+                    <div
+                        className="h-7 w-7 shrink-0 animate-latir-suave skeleton-shimmer rounded-lg bg-slate-200/40"
+                        style={{ animationDelay: `${f * 60 + 90}ms` }}
+                    />
                 </div>
             ))}
         </div>

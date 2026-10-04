@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import SecureDeleteModal from './SecureDeleteModal';
 import { useState } from 'react';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
+import { SkeletonCard } from '@/components/ui/skeleton';
 
 interface AcademicTimelineProps {
     years: AcademicYear[];
@@ -34,10 +35,8 @@ export default function AcademicTimeline({ years, loading, onRefresh }: Academic
 
     if (loading) {
         return (
-            <div className="space-y-4 animate-pulse max-w-2xl mx-auto">
-                {[1, 2, 3].map(i => (
-                    <div key={i} className="h-24 bg-gray-100 rounded-lg"></div>
-                ))}
+            <div className="space-y-4 max-w-2xl mx-auto">
+                <SkeletonCard count={3} cardClassName="rounded-2xl" hasBottomPills={true} shimmer={true} />
             </div>
         );
     }

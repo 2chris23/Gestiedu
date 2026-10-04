@@ -26,6 +26,77 @@ export interface AdminDashboardDto {
         message: string;
         createdAt: string;
     }>;
+    todayAttendance?: {
+        total: number;
+        present: number;
+        absent: number;
+        late: number;
+        excused: number;
+        percentage: number;
+        dateLabel: string;
+    };
+    atRiskStudentsTop?: Array<{
+        id: string;
+        name: string;
+        classroomName: string;
+        failedCount: number;
+    }>;
+    gradeCapacity?: Array<{
+        grade: number;
+        name: string;
+        enrolled: number;
+        capacity: number;
+        percentage: number;
+    }>;
+    periodClosure?: {
+        periodName: string | null;
+        daysLeft: number | null;
+        endDate: string | null;
+    } | null;
+    upcomingEvents?: Array<{
+        id: string;
+        title: string;
+        description?: string | null;
+        date: string;
+        startTime?: string | null;
+        endTime?: string | null;
+        scope?: string | null;
+    }>;
+    studentHonorRanking?: Array<{
+        id: string;
+        name: string;
+        avatar?: string | null;
+        classroomName: string;
+        grade?: number | null;
+        section?: string | null;
+        averageScore: number;
+        attendancePercentage: number;
+        incidentsCount: number;
+        academicScore: number;
+        attendanceScore: number;
+        penaltyScore: number;
+        totalScore: number;
+        position: number;
+    }>;
+    eventsCalendar?: {
+        currentPeriod?: {
+            id: string;
+            name: string;
+            startDate: string;
+            endDate: string;
+            daysLeft: number | null;
+        } | null;
+        events: Array<{
+            id: string;
+            title: string;
+            description?: string | null;
+            date: string;
+            startTime?: string | null;
+            endTime?: string | null;
+            scope?: string | null;
+            isHoliday?: boolean;
+        }>;
+    };
 }
 
 export interface TeacherDashboardDto {

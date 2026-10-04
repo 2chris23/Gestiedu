@@ -221,7 +221,7 @@ export class DashboardService {
         }
         const activeYear = await db.academicYear.findFirst({
             where: { status: 'ACTIVE' },
-            select: { id: true, name: true }
+            select: { id: true, name: true, startDate: true, endDate: true }
         });
 
         // TODAS las queries en paralelo (incluyendo activity y alerts, que antes eran secuenciales)
@@ -231,6 +231,11 @@ export class DashboardService {
             totalClassrooms,
             attendanceStats,
             studentsAtRisk,
+            todayAttendance,
+            gradeCapacity,
+            eventsAndClosure,
+            studentHonorRanking,
+            eventsCalendar,
             pendingActivities,
             recentActivity,
             alerts
@@ -239,7 +244,7 @@ export class DashboardService {
             db.user.count({ where: { role: UserRole.TEACHER, isActive: true } }),
             db.classroom.count({ where: { isActive: true } }),
 
-            // Asistencia: UN solo groupBy por status en vez de dos counts separados
+            // Asistencia histórica de los últimos 30 días
             (async () => {
                 const thirtyDaysAgo = new Date();
                 thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -255,9 +260,9 @@ export class DashboardService {
                 return [{ avgAttendance: total > 0 ? (present * 100.0) / total : 0 }];
             })(),
 
-            // Estudiantes en riesgo: consistente con la vista de Ciclo Escolar (materias aplazadas < minPassing en el ciclo activo)
+            // Estudiantes en riesgo y radar de casos críticos (materias aplazadas < minPassing en el ciclo activo)
             (async () => {
-                if (!activeYear) return [{ count: 0 }];
+                if (!activeYear) return { count: 0, top: [] as Array<{ id: string; name: string; classroomName: string; failedCount: number }> };
                 const studentSubjectAverages = await db.grade.groupBy({
                     by: ['studentId', 'subjectId'],
                     where: {
@@ -271,7 +276,383 @@ export class DashboardService {
                     }
                 });
                 const uniqueStudents = new Set(studentSubjectAverages.map(s => s.studentId));
-                return [{ count: uniqueStudents.size }];
+
+                // Agrupamos materias aplazadas por estudiante
+                const failedMap = new Map<string, number>();
+                for (const item of studentSubjectAverages) {
+                    failedMap.set(item.studentId, (failedMap.get(item.studentId) || 0) + 1);
+                }
+                const sorted = Array.from(failedMap.entries())
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 4);
+
+                let top: Array<{ id: string; name: string; classroomName: string; failedCount: number }> = [];
+                if (sorted.length > 0) {
+                    const students = await db.user.findMany({
+                        where: { id: { in: sorted.map(s => s[0]) } },
+                        select: {
+                            id: true,
+                            firstName: true,
+                            lastName: true,
+                            studentClassrooms: {
+                                where: { isActive: true },
+                                select: { classroom: { select: { name: true } } },
+                                take: 1
+                            }
+                        }
+                    });
+                    top = sorted.map(([sId, count]) => {
+                        const st = students.find(s => s.id === sId);
+                        const cName = st?.studentClassrooms?.[0]?.classroom?.name || 'Sección activa';
+                        return {
+                            id: sId,
+                            name: st ? `${st.firstName} ${st.lastName}` : sId,
+                            classroomName: cName,
+                            failedCount: count
+                        };
+                    });
+                }
+
+                return { count: uniqueStudents.size, top };
+            })(),
+
+            // Monitoreo de asistencia del día (o de la jornada más reciente si hoy aún no abre pases)
+            (async () => {
+                const now = new Date();
+                const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+                const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+                let grouped: Array<{ status: string; _count: { _all: number } }> = await (db.dailyAttendance as any).groupBy({
+                    by: ['status'],
+                    where: { date: { gte: startOfToday, lte: endOfToday } },
+                    _count: { _all: true }
+                });
+                let dateLabel = 'Hoy';
+
+                let total = grouped.reduce((sum, g) => sum + g._count._all, 0);
+                if (total === 0) {
+                    const lastRecord = await db.dailyAttendance.findFirst({
+                        orderBy: { date: 'desc' },
+                        select: { date: true }
+                    });
+                    if (lastRecord?.date) {
+                        const d = lastRecord.date;
+                        const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+                        const end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+                        grouped = await (db.dailyAttendance as any).groupBy({
+                            by: ['status'],
+                            where: { date: { gte: start, lte: end } },
+                            _count: { _all: true }
+                        });
+                        total = grouped.reduce((sum, g) => sum + g._count._all, 0);
+                        dateLabel = 'Última jornada';
+                    }
+                }
+
+                const present = grouped.find(g => g.status === 'PRESENT')?._count._all || 0;
+                const late = grouped.find(g => g.status === 'LATE')?._count._all || 0;
+                const absent = grouped.find(g => g.status === 'ABSENT')?._count._all || 0;
+                const excused = grouped.find(g => g.status === 'EXCUSED')?._count._all || 0;
+                const effectivePresent = present + late;
+                const percentage = total > 0 ? Math.round((effectivePresent * 100) / total) : 100;
+
+                return {
+                    total,
+                    present: effectivePresent,
+                    absent,
+                    late,
+                    excused,
+                    percentage,
+                    dateLabel
+                };
+            })(),
+
+            // Ocupación y Capacidad por año (1° a 5° año)
+            (async () => {
+                const classrooms = await db.classroom.findMany({
+                    where: {
+                        isActive: true,
+                        ...(activeYear ? { academicYearId: activeYear.id } : {})
+                    },
+                    select: {
+                        grade: true,
+                        capacity: true,
+                        _count: {
+                            select: { studentClassrooms: { where: { isActive: true } } }
+                        }
+                    }
+                });
+
+                const gradeMap = new Map<number, { enrolled: number; capacity: number }>();
+                for (let g = 1; g <= 5; g++) {
+                    gradeMap.set(g, { enrolled: 0, capacity: 0 });
+                }
+
+                for (const c of classrooms) {
+                    const g = c.grade;
+                    if (g >= 1 && g <= 5) {
+                        const cur = gradeMap.get(g)!;
+                        const enrolled = c._count.studentClassrooms;
+                        const cap = c.capacity && c.capacity > 0 ? c.capacity : Math.max(35, enrolled);
+                        cur.enrolled += enrolled;
+                        cur.capacity += cap;
+                    }
+                }
+
+                return [1, 2, 3, 4, 5].map(g => {
+                    const item = gradeMap.get(g) || { enrolled: 0, capacity: 35 };
+                    const cap = item.capacity > 0 ? item.capacity : 35;
+                    const pct = Math.min(100, Math.round((item.enrolled * 100) / cap));
+                    return {
+                        grade: g,
+                        name: `${g}° Año`,
+                        enrolled: item.enrolled,
+                        capacity: cap,
+                        percentage: pct
+                    };
+                });
+            })(),
+
+            // Periodo en curso y eventos escolares
+            (async () => {
+                if (!activeYear) return { periodClosure: null, events: [] };
+                const periods = await db.period.findMany({
+                    where: { academicYearId: activeYear.id },
+                    orderBy: { startDate: 'asc' },
+                    select: { id: true, name: true, startDate: true, endDate: true, isActive: true }
+                });
+
+                const now = new Date();
+                const activePeriod = periods.find(p => p.isActive) ||
+                    periods.find(p => p.startDate <= now && now <= p.endDate) ||
+                    periods[0];
+
+                let periodClosure: { periodName: string | null; daysLeft: number | null; endDate: string | null } | null = null;
+                if (activePeriod?.endDate) {
+                    const diffMs = activePeriod.endDate.getTime() - now.getTime();
+                    const daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+                    periodClosure = {
+                        periodName: activePeriod.name,
+                        daysLeft,
+                        endDate: activePeriod.endDate.toISOString().split('T')[0]
+                    };
+                }
+
+                const rawEvents = await db.schoolEvent.findMany({
+                    where: {
+                        date: { gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()) },
+                        academicYearId: activeYear.id
+                    },
+                    take: 3,
+                    orderBy: { date: 'asc' },
+                    select: {
+                        id: true,
+                        title: true,
+                        description: true,
+                        date: true,
+                        startTime: true,
+                        endTime: true,
+                        scope: true
+                    }
+                });
+
+                const events = rawEvents.map(e => ({
+                    id: e.id,
+                    title: e.title,
+                    description: e.description,
+                    date: e.date.toISOString().split('T')[0],
+                    startTime: e.startTime,
+                    endTime: e.endTime,
+                    scope: e.scope
+                }));
+
+                return { periodClosure, events };
+            })(),
+
+            // Cuadro de Honor / Ranking de Alumnos del ciclo escolar actual
+            (async () => {
+                if (!activeYear) return [];
+                // 1. Obtener candidatos con mejores notas en el ciclo activo
+                const studentAverages = await db.grade.groupBy({
+                    by: ['studentId'],
+                    where: {
+                        period: { academicYearId: activeYear.id },
+                        score: { not: null },
+                        ...NOTAS_QUE_CUENTAN,
+                    },
+                    _avg: { score: true },
+                    having: {
+                        score: { _avg: { gte: 10 } }
+                    },
+                    orderBy: {
+                        _avg: { score: 'desc' }
+                    },
+                    take: 25
+                });
+
+                if (studentAverages.length === 0) return [];
+
+                const candidateIds = studentAverages.map(s => s.studentId);
+
+                // 2. Cargar datos del alumno y su sección activa
+                const [studentsInfo, attendanceData, observationsData] = await Promise.all([
+                    db.user.findMany({
+                        where: { id: { in: candidateIds } },
+                        select: {
+                            id: true,
+                            firstName: true,
+                            lastName: true,
+                            avatar: true,
+                            studentClassrooms: {
+                                where: { isActive: true },
+                                select: {
+                                    classroom: {
+                                        select: { name: true, grade: true, section: true }
+                                    }
+                                },
+                                take: 1
+                            }
+                        }
+                    }),
+                    // Asistencia agrupada
+                    (db.dailyAttendance as any).groupBy({
+                        by: ['studentId', 'status'],
+                        where: {
+                            studentId: { in: candidateIds }
+                        },
+                        _count: { _all: true }
+                    }),
+                    // Observaciones (incidentes negativos)
+                    db.observation.groupBy({
+                        by: ['studentId'],
+                        where: {
+                            studentId: { in: candidateIds }
+                        },
+                        _count: { _all: true }
+                    })
+                ]);
+
+                // Mapas rápidos
+                const studentMap = new Map(studentsInfo.map(s => [s.id, s]));
+
+                // Mapa de asistencia: { total, present }
+                const attMap = new Map<string, { total: number; present: number }>();
+                for (const att of (attendanceData as Array<{ studentId: string; status: string; _count: { _all: number } }>)) {
+                    const cur = attMap.get(att.studentId) || { total: 0, present: 0 };
+                    cur.total += att._count._all;
+                    if (att.status === 'PRESENT' || att.status === 'LATE') {
+                        cur.present += att._count._all;
+                    }
+                    attMap.set(att.studentId, cur);
+                }
+
+                // Mapa de incidentes (observaciones negativas)
+                const obsMap = new Map<string, number>();
+                for (const obs of observationsData) {
+                    obsMap.set(obs.studentId, obs._count._all);
+                }
+
+                // Calcular puntajes integrales: 80% Académico, 20% Asistencia, -5 pts por cada incidente
+                const rankedList = studentAverages.map(cand => {
+                    const st = studentMap.get(cand.studentId);
+                    const avg = Math.round((cand._avg.score || 0) * 10) / 10;
+                    const academicScore = Math.round(((avg / 20) * 80) * 10) / 10;
+
+                    const att = attMap.get(cand.studentId);
+                    const attPct = att && att.total > 0 ? Math.round((att.present * 100) / att.total) : 100;
+                    const attendanceScore = Math.round(((attPct / 100) * 20) * 10) / 10;
+
+                    const incidentsCount = obsMap.get(cand.studentId) || 0;
+                    const penaltyScore = incidentsCount * 5;
+
+                    const totalScore = Math.max(0, Math.round((academicScore + attendanceScore - penaltyScore) * 10) / 10);
+
+                    const cls = st?.studentClassrooms?.[0]?.classroom;
+
+                    return {
+                        id: cand.studentId,
+                        name: st ? `${st.firstName} ${st.lastName}` : cand.studentId,
+                        avatar: st?.avatar || null,
+                        classroomName: cls?.name || 'Sección activa',
+                        grade: cls?.grade || null,
+                        section: cls?.section || null,
+                        averageScore: avg,
+                        attendancePercentage: attPct,
+                        incidentsCount,
+                        academicScore,
+                        attendanceScore,
+                        penaltyScore,
+                        totalScore
+                    };
+                });
+
+                // Ordenar por puntaje total descendente y tomar Top 5
+                rankedList.sort((a, b) => b.totalScore - a.totalScore || b.averageScore - a.averageScore);
+
+                return rankedList.slice(0, 5).map((item, index) => ({
+                    ...item,
+                    position: index + 1
+                }));
+            })(),
+
+            // Calendario y actividades para el widget de agenda interactiva
+            (async () => {
+                if (!activeYear) return { currentPeriod: null, events: [] };
+                const periods = await db.period.findMany({
+                    where: { academicYearId: activeYear.id },
+                    orderBy: { startDate: 'asc' },
+                    select: { id: true, name: true, startDate: true, endDate: true, isActive: true }
+                });
+
+                const now = new Date();
+                const activePeriod = periods.find(p => p.isActive) ||
+                    periods.find(p => p.startDate <= now && now <= p.endDate) ||
+                    periods[0];
+
+                let currentPeriod = null;
+                if (activePeriod?.endDate) {
+                    const diffMs = activePeriod.endDate.getTime() - now.getTime();
+                    const daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+                    currentPeriod = {
+                        id: activePeriod.id,
+                        name: activePeriod.name,
+                        startDate: activePeriod.startDate.toISOString().split('T')[0],
+                        endDate: activePeriod.endDate.toISOString().split('T')[0],
+                        daysLeft
+                    };
+                }
+
+                // Eventos del ciclo escolar
+                const startOfCycle = activeYear.startDate || new Date(now.getFullYear(), 0, 1);
+                const rawEvents = await db.schoolEvent.findMany({
+                    where: {
+                        academicYearId: activeYear.id,
+                        date: { gte: startOfCycle }
+                    },
+                    orderBy: { date: 'asc' },
+                    select: {
+                        id: true,
+                        title: true,
+                        description: true,
+                        date: true,
+                        startTime: true,
+                        endTime: true,
+                        scope: true
+                    }
+                });
+
+                const events = rawEvents.map(e => ({
+                    id: e.id,
+                    title: e.title,
+                    description: e.description,
+                    date: e.date.toISOString().split('T')[0],
+                    startTime: e.startTime,
+                    endTime: e.endTime,
+                    scope: e.scope,
+                    isHoliday: e.scope === 'FERIADO' || e.title.toLowerCase().includes('feriado') || e.title.toLowerCase().includes('sin clases')
+                }));
+
+                return { currentPeriod, events };
             })(),
 
             db.activity.count({
@@ -304,7 +685,7 @@ export class DashboardService {
             },
             stats: {
                 averageAttendance: Math.round(attendanceStats[0]?.avgAttendance || 0),
-                studentsAtRisk: studentsAtRisk[0]?.count || 0,
+                studentsAtRisk: studentsAtRisk.count,
                 pendingActivities
             },
             recentActivity: recentActivity.map(a => ({
@@ -320,7 +701,14 @@ export class DashboardService {
                 severity: a.severity,
                 message: a.message,
                 createdAt: a.createdAt.toISOString()
-            }))
+            })),
+            todayAttendance,
+            atRiskStudentsTop: studentsAtRisk.top,
+            gradeCapacity,
+            periodClosure: eventsAndClosure.periodClosure,
+            upcomingEvents: eventsAndClosure.events,
+            studentHonorRanking,
+            eventsCalendar
         };
     }
 

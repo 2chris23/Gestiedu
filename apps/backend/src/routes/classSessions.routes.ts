@@ -7,17 +7,19 @@ import {
     createClassSession,
     getLiveClassDetail,
     saveLiveClassSession,
+    suspendClassSession,
+    getLiveOverview,
+    searchStudentsForSession,
+    savePlanWeekRow,
+} from '../controllers/classSessions.controller';
+import {
     getClassActivities,
     createClassActivity,
     updateClassActivity,
     deleteClassActivity,
     evaluarDeOtraForma,
     saveClassActivityGrades,
-    suspendClassSession,
-    getLiveOverview,
-    searchStudentsForSession,
-    savePlanWeekRow,
-} from '../controllers/classSessions.controller';
+} from '../controllers/classActivities.controller';
 import { calificarConInstrumento } from '../services/instrumentos.service';
 import { responderErrorClaro } from '../utils/error-claro';
 

@@ -21,10 +21,14 @@ import {
 } from '@/hooks/useEvaluationPlan';
 import api from '@/lib/axios';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_PLAN_COLUMNS, type PlanColumnDef } from './planColumns';
 import PlanPorBloques from './PlanPorBloques';
-import InstrumentosDelPlan from './InstrumentosDelPlan';
+const InstrumentosDelPlan = dynamic(() => import('./InstrumentosDelPlan'), {
+  ssr: false,
+  loading: () => <div className="p-4 text-center text-sm text-gray-500">Cargando instrumentos de evaluación...</div>,
+});
 import { MembreteOficial } from '@/components/documentos/MembreteOficial';
 import { type WeekRow, getWeekDates, buildEmptyWeekRows, dbRowsToWeekRows } from './planEnSemanas';
 import CamposDelPlan from './CamposDelPlan';
@@ -385,18 +389,18 @@ export default function EvaluationPlanSection({
   , [totalPuntos]);
 
   // ── Helpers: column mutations ─────────────────
-  const addColumn = () => {
+  const addColumn = useCallback(() => {
     const key = `custom_${Date.now()}`;
     setColumns(prev => [...prev, { key, label: 'Nueva Columna', mergeable: false, numeric: false }]);
-  };
+  }, []);
 
-  const removeColumn = (key: string) => {
+  const removeColumn = useCallback((key: string) => {
     setColumns(prev => prev.filter(c => c.key !== key));
-  };
+  }, []);
 
-  const renameColumn = (key: string, label: string) => {
+  const renameColumn = useCallback((key: string, label: string) => {
     setColumns(prev => prev.map(c => c.key === key ? { ...c, label } : c));
-  };
+  }, []);
 
   /**
    * ORDENAR LAS COLUMNAS
@@ -405,7 +409,7 @@ export default function EvaluationPlanSection({
    * ella (teclado) o, en el teléfono, con «subir/bajar» en «Campos del plan».
    * El orden se guarda con el plan (`customColumns`).
    */
-  const moverColumna = (desde: number, hasta: number) =>
+  const moverColumna = useCallback((desde: number, hasta: number) => {
     setColumns(prev => {
       if (desde === hasta || desde < 0 || hasta < 0 || desde >= prev.length || hasta >= prev.length) return prev;
       const nuevas = [...prev];
@@ -413,16 +417,17 @@ export default function EvaluationPlanSection({
       nuevas.splice(hasta, 0, movida);
       return nuevas;
     });
+  }, []);
   const [agarrada, setAgarrada] = useState<number | null>(null);
   const [encima, setEncima] = useState<number | null>(null);
-  const soltarColumna = () => {
+  const soltarColumna = useCallback(() => {
     setAgarrada(null);
     setEncima(null);
-  };
+  }, []);
 
-  const resetColumns = () => {
+  const resetColumns = useCallback(() => {
     setColumns([...DEFAULT_PLAN_COLUMNS]);
-  };
+  }, []);
 
   /**
    * SI UN CAMPO ABARCA VARIAS SEMANAS O ES DE CADA SEMANA
@@ -432,7 +437,7 @@ export default function EvaluationPlanSection({
    * abarcar nunca, y las dos de fábrica no podían dejar de hacerlo. Es una
    * decisión suya, no nuestra.
    */
-  const cambiarSiAbarca = (key: string, abarca: boolean) => {
+  const cambiarSiAbarca = useCallback((key: string, abarca: boolean) => {
     setColumns(prev => prev.map(c => (c.key === key ? { ...c, mergeable: abarca } : c)));
     if (!abarca) {
       // Deja de abarcar: se sueltan las semanas que tenía cogidas, o
@@ -445,7 +450,7 @@ export default function EvaluationPlanSection({
         })
       );
     }
-  };
+  }, []);
 
   // ── Helpers: cell mutation ────────────────────
   const setCell = useCallback((weekIdx: number, colKey: string, value: string | number) => {
@@ -519,7 +524,7 @@ export default function EvaluationPlanSection({
   );
 
   // ── Auto-distribute ───────────────────────────
-  const distributeEqually = () => {
+  const distributeEqually = useCallback(() => {
     const activeIdxs = weeks
       .map((w, i) => ({ w, i }))
       .filter(({ w }) => {
@@ -548,7 +553,7 @@ export default function EvaluationPlanSection({
       });
       return next;
     });
-  };
+  }, [weeks, columns]);
 
   // ── Save ──────────────────────────────────────
   const fotoDelEditor = () =>

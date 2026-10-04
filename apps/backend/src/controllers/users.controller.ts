@@ -11,6 +11,12 @@ import { fueModificadoPorOtro, versionVista, AVISO_MODIFICADO_POR_OTRO } from '.
 import { esCedulaEscolar } from '../utils/cedula-escolar';
 import { cambiarLaCedula } from '../services/cambiar-cedula.service';
 import { NOTAS_QUE_CUENTAN } from '../services/apreciaciones.service';
+import {
+  incrementStudentCount,
+  decrementStudentCount,
+  incrementTeacherCount,
+  decrementTeacherCount,
+} from '../middleware/plan-limits.middleware';
 
 /**
  * Lo que piden los documentos del Ministerio (nacionalidad, lugar y entidad de
@@ -228,6 +234,12 @@ export async function createUser(
     });
 
     logger.info('Nuevo usuario creado', { userId: user.id, role: user.role });
+
+    if (user.role === UserRole.STUDENT) {
+      incrementStudentCount(instituteId).catch(() => {});
+    } else if (user.role === UserRole.TEACHER) {
+      incrementTeacherCount(instituteId).catch(() => {});
+    }
 
     return reply.status(201).send({ user });
   } catch (error: any) {
@@ -919,11 +931,17 @@ export async function updateUserProfile(
       return reply.status(401).send({ error: 'No autenticado', code: 'UNAUTHORIZED' });
     }
 
-    const data = request.body || {};
+    const rawBody = (request.body || {}) as Record<string, unknown>;
+    const allowedData: { firstName?: string; lastName?: string; phone?: string; address?: string } = {};
+
+    if (typeof rawBody.firstName === 'string') allowedData.firstName = rawBody.firstName.trim();
+    if (typeof rawBody.lastName === 'string') allowedData.lastName = rawBody.lastName.trim();
+    if (typeof rawBody.phone === 'string') allowedData.phone = rawBody.phone.trim();
+    if (typeof rawBody.address === 'string') allowedData.address = rawBody.address.trim();
 
     const user = await request.tenantPrisma.user.update({
       where: { id: userId },
-      data,
+      data: allowedData,
       select: {
         id: true,
         firstName: true,
@@ -1109,6 +1127,7 @@ export async function updateUser(
 
     // 4. Eliminar campos que no deben actualizarse directamente o limpiar basura
     delete dataToUpdate.id;
+    delete dataToUpdate.instituteId;
     delete dataToUpdate.createdAt;
     delete dataToUpdate.updatedAt;
 
@@ -1606,6 +1625,12 @@ export async function deleteUser(
     }
 
     logger.info('Usuario eliminado con éxito', { userId: id });
+
+    if (existingUser.role === UserRole.STUDENT) {
+      decrementStudentCount(instituteId).catch(() => {});
+    } else if (existingUser.role === UserRole.TEACHER) {
+      decrementTeacherCount(instituteId).catch(() => {});
+    }
 
     // Invalidar caché de sesión del usuario eliminado
     await invalidateUserSession(

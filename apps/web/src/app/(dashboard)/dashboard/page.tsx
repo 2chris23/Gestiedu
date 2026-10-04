@@ -7,6 +7,7 @@ import { StatusBadge } from '@/components/dashboard/StatusBadge';
 import { diferido } from '@/components/common/Diferido';
 import { useAuthStore } from '@/store/auth.store';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
+import CargandoDashboard from './loading';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
 import { usePagosActivos } from '@/hooks/usePagos';
 import { useQuery } from '@tanstack/react-query';
@@ -32,6 +33,11 @@ import {
 // cuando se pinta, no con el Inicio de todos.
 const TrendChart = diferido(() => import('@/components/dashboard/TrendChart').then((m) => ({ default: m.TrendChart })), { alto: 250 });
 
+import {
+    CalendarioActividadesWidget,
+    CuadroDeHonorWidget,
+} from '@/components/dashboard/widgets';
+
 // Tipos para el dashboard de admin
 interface AdminDashboardData {
     kpis: {
@@ -45,6 +51,84 @@ interface AdminDashboardData {
         studentsAtRisk: number;
         pendingActivities: number;
     };
+    studentHonorRanking?: Array<{
+        id: string;
+        name: string;
+        avatar?: string | null;
+        classroomName: string;
+        grade?: number | null;
+        section?: string | null;
+        averageScore: number;
+        attendancePercentage: number;
+        incidentsCount: number;
+        academicScore: number;
+        attendanceScore: number;
+        penaltyScore: number;
+        totalScore: number;
+        position: number;
+    }>;
+    eventsCalendar?: {
+        currentPeriod?: {
+            id: string;
+            name: string;
+            startDate: string;
+            endDate: string;
+            daysLeft: number | null;
+        } | null;
+        events: Array<{
+            id: string;
+            title: string;
+            description?: string | null;
+            date: string;
+            startTime?: string | null;
+            endTime?: string | null;
+            scope?: string | null;
+            isHoliday?: boolean;
+        }>;
+    };
+    todayAttendance?: {
+        total: number;
+        present: number;
+        absent: number;
+        late: number;
+        excused: number;
+        percentage: number;
+        dateLabel: string;
+    };
+    atRiskStudentsTop?: Array<{
+        id: string;
+        name: string;
+        classroomName: string;
+        failedCount: number;
+    }>;
+    gradeCapacity?: Array<{
+        grade: number;
+        name: string;
+        enrolled: number;
+        capacity: number;
+        percentage: number;
+    }>;
+    periodClosure?: {
+        periodName: string | null;
+        daysLeft: number | null;
+        endDate: string | null;
+    } | null;
+    upcomingEvents?: Array<{
+        id: string;
+        title: string;
+        description?: string | null;
+        date: string;
+        startTime?: string | null;
+        endTime?: string | null;
+        scope?: string | null;
+    }>;
+    recentActivity?: Array<{
+        id: string;
+        action: string;
+        entity: string;
+        timestamp: string;
+        user: string | null;
+    }>;
 }
 
 // Tipos para el dashboard de estudiante
@@ -118,32 +202,20 @@ export default function DashboardPage() {
     const { user } = useAuthStore();
     // El rol lo dice el servidor: en la primera pintada el almacén del
     // navegador todavía está vacío y un alumno pasaba por personal.
-    const { yo } = useQuienSoy();
+    const { yo, cargando: cargandoYo } = useQuienSoy();
     const rol = yo?.role;
     const esFamilia = rol === 'STUDENT' || rol === 'TUTOR';
     const hoy = useSchoolToday();
     const { data: pagos } = usePagosActivos();
 
-    const { data: studentStats, isLoading: isLoadingStudent } = useQuery({
+    const { data: studentStats, isLoading: isLoadingStudent, isError: isErrorStudent } = useQuery({
         queryKey: ['studentDashboard'],
         queryFn: () => api.get<{ data: StudentDashboardData }>('/students/my-dashboard').then(res => res.data.data),
         enabled: rol === 'STUDENT',
         retry: false,
     });
 
-    /**
-     * CADA UNO PIDE LO SUYO
-     *
-     * Esta pantalla pedía `/dashboard/admin` también para el profesor, y el
-     * servidor —con razón— respondía 403: esos números son del liceo entero.
-     * No se veía porque el rol se leía del almacén del navegador y en la
-     * primera pintada estaba vacío, así que muchas veces la petición ni salía.
-     * Al preguntarle el rol al servidor (`useQuienSoy`), el 403 salió a la luz.
-     *
-     * El profesor tiene su propia ruta, con lo que sí es suyo: sus alumnos,
-     * sus secciones y lo que le falta por calificar.
-     */
-    const { data: adminData, isLoading: isLoadingAdmin } = useQuery({
+    const { data: adminData, isLoading: isLoadingAdmin, isError: isErrorAdmin } = useQuery({
         queryKey: ['adminDashboard'],
         queryFn: async () => {
             const response = await api.get<{ data: AdminDashboardData }>('/dashboard/admin');
@@ -153,7 +225,7 @@ export default function DashboardPage() {
         staleTime: 2 * 60 * 1000,
     });
 
-    const { data: teacherData, isLoading: isLoadingTeacher } = useQuery({
+    const { data: teacherData, isLoading: isLoadingTeacher, isError: isErrorTeacher } = useQuery({
         queryKey: ['teacherDashboard'],
         queryFn: async () => {
             const response = await api.get<{ data: TeacherDashboardData }>('/dashboard/teacher');
@@ -171,6 +243,24 @@ export default function DashboardPage() {
 
     const cargandoCifras =
         rol === 'STUDENT' ? isLoadingStudent : rol === 'TEACHER' ? isLoadingTeacher : isLoadingAdmin;
+
+    const tieneError =
+        (rol === 'ADMIN' && isErrorAdmin) ||
+        (rol === 'TEACHER' && isErrorTeacher) ||
+        (rol === 'STUDENT' && isErrorStudent);
+
+    const estaCargando =
+        !tieneError &&
+        (cargandoYo ||
+            !rol ||
+            cargandoCifras ||
+            (rol === 'ADMIN' && !adminData) ||
+            (rol === 'TEACHER' && !teacherData) ||
+            (rol === 'STUDENT' && !studentStats));
+
+    if (estaCargando) {
+        return <CargandoDashboard />;
+    }
 
     const cifras: Cifra[] = (() => {
         if (rol === 'STUDENT' && studentStats) {
@@ -298,11 +388,26 @@ export default function DashboardPage() {
             )}
 
             {/* Lo que antes estaba escondido en la cortina lateral. Al personal,
-                arriba: es por donde empieza su día. Al alumno y al representante
-                les queda un solo acceso (Calendario), y ponerlo delante de SU
-                horario y de SUS representados era hacerles bajar para ver lo
-                que vinieron a ver: va al final. */}
+                arriba: es por donde empieza su día (en el teléfono, sin barra
+                lateral, es el único camino a Configuración, Usuarios…). Al
+                alumno y al representante les queda un solo acceso (Calendario),
+                y ponerlo delante de SU horario y de SUS representados era
+                hacerles bajar para ver lo que vinieron a ver: va al final. */}
             {!esFamilia && <AccesosDelLiceo rol={rol} conPagos={Boolean(pagos?.enabled)} />}
+
+            {/* Panel Ejecutivo para Administradores: 2 Widgets al 50% */}
+            {rol === 'ADMIN' && adminData && (
+                <section aria-label="Supervisión Institucional" className="space-y-5">
+                    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 items-start">
+                        {/* WIDGET 1: Calendario y Actividades Escolares */}
+                        <CalendarioActividadesWidget data={adminData.eventsCalendar} />
+
+                        {/* WIDGET 2: Cuadro de Honor / Ranking de Alumnos */}
+                        <CuadroDeHonorWidget students={adminData.studentHonorRanking} />
+                    </div>
+                </section>
+            )}
+
 
             {/* El alumno: su horario de hoy y lo que le falta. */}
             {rol === 'STUDENT' && (

@@ -11,6 +11,7 @@ import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
 import { diferido } from '@/components/common/Diferido';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
+import CargandoAcademico from './loading';
 
 // Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
 const AcademicYearModal = diferido(() => import('@/components/academic/AcademicYearModal'), { sinEsqueleto: true });
@@ -35,6 +36,10 @@ export default function AcademicPage() {
     }, [error]);
 
     const loadYears = () => queryClient.invalidateQueries({ queryKey: ['academicYears'] });
+
+    if (loading && years.length === 0) {
+        return <CargandoAcademico />;
+    }
 
     return (
         <div className="space-y-6">

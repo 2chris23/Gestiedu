@@ -19,6 +19,7 @@ import { diferido } from '@/components/common/Diferido';
 
 // Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
 const UserForm = diferido(() => import('@/components/users/UserForm').then((m) => ({ default: m.UserForm })), { alto: 420 });
+import CargandoUsuarios from './loading';
 
 export default function UsersPage() {
     const queryClient = useQueryClient();
@@ -210,6 +211,10 @@ export default function UsersPage() {
     const handleViewUser = (user: User) => {
         router.push(`/dashboard/usuarios/${user.id}`);
     };
+
+    if (isLoading && !lista.data) {
+        return <CargandoUsuarios />;
+    }
 
     return (
         <div className="space-y-6">

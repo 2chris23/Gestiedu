@@ -3,6 +3,7 @@ import { UserRole, ActionType } from '../utils/prisma-enums';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { CreateUserInput, UpdateUserInput, UserFiltersInput, PaginationInput } from '../utils/validators';
 import { logger } from '../utils/logger';
+import { incrementTeacherCount, decrementTeacherCount } from '../middleware/plan-limits.middleware';
 
 interface CreateTeacherRequest {
   Body: CreateUserInput;
@@ -99,6 +100,11 @@ export async function createTeacher(
     });
 
     logger.info('Nuevo profesor creado', { teacherId: teacher.id });
+
+    const instituteId = (request as any).institute?.id ?? (request.user as any)?.instituteId;
+    if (instituteId) {
+      incrementTeacherCount(instituteId).catch(() => {});
+    }
 
     return reply.status(201).send({
       teacher: {
@@ -480,6 +486,11 @@ export async function deleteTeacher(
     });
 
     logger.info('Profesor desactivado', { teacherId: teacher.id });
+
+    const instituteId = (request as any).institute?.id ?? (request.user as any)?.instituteId;
+    if (instituteId) {
+      decrementTeacherCount(instituteId).catch(() => {});
+    }
 
     return reply.status(200).send({
       message: 'Profesor eliminado correctamente',

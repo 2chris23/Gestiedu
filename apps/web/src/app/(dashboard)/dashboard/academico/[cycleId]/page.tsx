@@ -28,6 +28,7 @@ import { diferido } from '@/components/common/Diferido';
 // Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
 const ClassroomModal = diferido(() => import('@/components/classrooms/ClassroomModal'), { sinEsqueleto: true });
 const AcademicYearModal = diferido(() => import('@/components/academic/AcademicYearModal'), { sinEsqueleto: true });
+import CargandoDetalleCiclo from './loading';
 
 export default function AcademicYearDashboard() {
     const confirmDialog = useConfirm();
@@ -215,11 +216,7 @@ export default function AcademicYearDashboard() {
     // Solo se espera si no hay NADA que enseñar: con lo guardado en el
     // teléfono, se pinta al instante aunque no haya conexión.
     if (ciclos.isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
-            </div>
-        );
+        return <CargandoDetalleCiclo />;
     }
 
     if (!year) {

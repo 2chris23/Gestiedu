@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef, use } from 'react';
+import { useState, useEffect, useRef, use, useMemo } from 'react';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { conseguirCredencial } from '@/lib/credencial-en-memoria';
@@ -39,6 +40,7 @@ const AssignSubjectModal = diferido(() => import('@/components/academic/AssignSu
 const EvaluationPlanSection = diferido(() => import('@/components/evaluation/EvaluationPlanSection'), { alto: 400 });
 const SectionObservationsTab = diferido(() => import('@/components/classroom/SectionObservationsTab'), { alto: 300 });
 const StudentObservationsModal = diferido(() => import('@/components/observations/StudentObservationsModal'), { sinEsqueleto: true });
+import CargandoSeccion from './loading';
 
 // Params refactored: year -> cycleId, slug -> sectionId
 export default function SectionPage({ params }: { params: Promise<{ cycleId: string, sectionId: string }> }) {
@@ -84,8 +86,9 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
 
     const targetYearId = classroom?.academicYearId || classroom?.academicYear?.id;
 
+    const debouncedSearchAvailable = useDebouncedValue(searchAvailableTerm, 350);
     const { data: availableStudentsData, isLoading: isLoadingAvailable } = useAvailableStudents(
-        searchAvailableTerm,
+        debouncedSearchAvailable,
         targetYearId
     );
 
@@ -99,16 +102,16 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     const { user } = useAuthStore();
     const { yo } = useQuienSoy();
 
-    const filteredStudents = students.filter((student: SectionStudent) => {
-        if (!searchTerm) return true;
+    const filteredStudents = useMemo(() => {
+        if (!searchTerm) return students;
         const search = searchTerm.toLowerCase();
-        return (
+        return students.filter((student: SectionStudent) => (
             student.firstName?.toLowerCase().includes(search) ||
             student.lastName?.toLowerCase().includes(search) ||
             student.id?.toLowerCase().includes(search) ||
             student.studentCode?.toLowerCase().includes(search)
-        );
-    });
+        ));
+    }, [students, searchTerm]);
 
     const sortedStudents = [...filteredStudents].sort((a: SectionStudent, b: SectionStudent) => {
         if (!sortColumn) return 0;
@@ -301,14 +304,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
 
     // Show loading state while classroom data is being fetched
     if (!classroom) {
-        return (
-            <div className="flex min-h-[60vh] items-center justify-center">
-                <div className="text-center">
-                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-                    <p className="mt-4 text-gray-600">Cargando sección...</p>
-                </div>
-            </div>
-        );
+        return <CargandoSeccion />;
     }
 
     return (

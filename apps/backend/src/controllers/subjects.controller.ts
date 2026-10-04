@@ -7,16 +7,18 @@ import { hasPermission } from '../utils/permissions';
 import { auditLog } from '../utils/audit';
 import { ScheduleConflictError } from '../services/schedule-conflicts.service';
 import { quienBorra } from '../utils/papelera';
+import { sendWithETag } from '../utils/etag';
+import { CreateSubjectInput, UpdateSubjectInput } from '../utils/validators';
 
 const subjectsService = new SubjectsService();
 
 export async function getAllSubjects(request: FastifyRequest, reply: FastifyReply) {
   try {
-    const query = request.query as any;
-    const prisma = (request as any).tenantPrisma;
+    const query = request.query as Record<string, unknown>;
+    const prisma = request.tenantPrisma;
     const userId = request.user?.userId;
 
-    if (!hasPermission(request.user as any, 'subjects:read')) {
+    if (!request.user || !hasPermission(request.user, 'subjects:read')) {
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
@@ -29,7 +31,7 @@ export async function getAllSubjects(request: FastifyRequest, reply: FastifyRepl
       details: 'Listado de asignaturas consultado'
     }, prisma);
 
-    return reply.status(200).send({
+    return sendWithETag(request, reply, {
       success: true,
       message: SUCCESS_MESSAGES.FETCH_SUCCESS,
       data: subjects
@@ -43,11 +45,11 @@ export async function getSubjectById(request: FastifyRequest, reply: FastifyRepl
   try {
     const { id } = request.params as { id: string };
     const { academicYearId: rawAcademicYearId, academicYearName, periodId } = request.query as { academicYearId?: string; academicYearName?: string; periodId?: string };
-    const prisma = (request as any).tenantPrisma;
+    const prisma = request.tenantPrisma;
     const userId = request.user?.userId;
-    const instituteId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
+    const instituteId = request.user?.instituteId ?? request.institute?.id;
 
-    if (!hasPermission(request.user as any, 'subjects:read')) {
+    if (!request.user || !hasPermission(request.user, 'subjects:read')) {
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
@@ -87,11 +89,11 @@ export async function getSubjectById(request: FastifyRequest, reply: FastifyRepl
 
 export async function createSubject(request: FastifyRequest, reply: FastifyReply) {
   try {
-    const data = request.body as any;
-    const prisma = (request as any).tenantPrisma;
+    const data = request.body as CreateSubjectInput;
+    const prisma = request.tenantPrisma;
     const userId = request.user?.userId;
 
-    if (!hasPermission(request.user as any, 'subjects:create')) {
+    if (!request.user || !hasPermission(request.user, 'subjects:create')) {
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
@@ -126,11 +128,11 @@ export async function createSubject(request: FastifyRequest, reply: FastifyReply
 export async function updateSubject(request: FastifyRequest, reply: FastifyReply) {
   try {
     const { id } = request.params as { id: string };
-    const data = request.body as any;
-    const prisma = (request as any).tenantPrisma;
+    const data = request.body as UpdateSubjectInput;
+    const prisma = request.tenantPrisma;
     const userId = request.user?.userId;
 
-    if (!hasPermission(request.user as any, 'subjects:update')) {
+    if (!request.user || !hasPermission(request.user, 'subjects:update')) {
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
@@ -159,14 +161,14 @@ export async function updateSubject(request: FastifyRequest, reply: FastifyReply
 export async function deleteSubject(request: FastifyRequest, reply: FastifyReply) {
   try {
     const { id } = request.params as { id: string };
-    const prisma = (request as any).tenantPrisma;
+    const prisma = request.tenantPrisma;
     const userId = request.user?.userId;
 
-    if (!hasPermission(request.user as any, 'subjects:delete')) {
+    if (!request.user || !hasPermission(request.user, 'subjects:delete')) {
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
-    await subjectsService.deleteSubject(id, prisma, quienBorra(request as any));
+    await subjectsService.deleteSubject(id, prisma, quienBorra(request));
 
     await auditLog({
       userId,
@@ -189,10 +191,10 @@ export async function getSubjectsByGrade(request: FastifyRequest, reply: Fastify
   try {
     const { grade } = request.params as { grade: string };
     const { academicYearId } = request.query as { academicYearId?: string };
-    const prisma = (request as any).tenantPrisma;
+    const prisma = request.tenantPrisma;
     const userId = request.user?.userId;
 
-    if (!hasPermission(request.user as any, 'subjects:read')) {
+    if (!request.user || !hasPermission(request.user, 'subjects:read')) {
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
@@ -218,10 +220,10 @@ export async function getSubjectsByGrade(request: FastifyRequest, reply: Fastify
 export async function getSubjectTeachers(request: FastifyRequest, reply: FastifyReply) {
   try {
     const { id } = request.params as { id: string };
-    const prisma = (request as any).tenantPrisma;
+    const prisma = request.tenantPrisma;
     const userId = request.user?.userId;
 
-    if (!hasPermission(request.user as any, 'subjects:read')) {
+    if (!request.user || !hasPermission(request.user, 'subjects:read')) {
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
@@ -249,10 +251,10 @@ export async function assignSubjectToGrade(request: FastifyRequest, reply: Fasti
   try {
     const { grade } = request.params as { grade: string };
     const { subjectId, teacherId, academicYearId } = request.body as { subjectId: string; teacherId: string; academicYearId?: string };
-    const prisma = (request as any).tenantPrisma;
+    const prisma = request.tenantPrisma;
     const userId = request.user?.userId;
 
-    if (!hasPermission(request.user as any, 'subjects:update')) {
+    if (!request.user || !hasPermission(request.user, 'subjects:update')) {
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
@@ -293,14 +295,14 @@ export async function removeSubjectFromGrade(request: FastifyRequest, reply: Fas
   try {
     const { grade, subjectId } = request.params as { grade: string; subjectId: string };
     const { academicYearId } = request.query as { academicYearId?: string };
-    const prisma = (request as any).tenantPrisma;
+    const prisma = request.tenantPrisma;
     const userId = request.user?.userId;
 
-    if (!hasPermission(request.user as any, 'subjects:update')) {
+    if (!request.user || !hasPermission(request.user, 'subjects:update')) {
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
-    await subjectsService.removeSubjectFromGrade(parseInt(grade), subjectId, prisma, academicYearId, quienBorra(request as any));
+    await subjectsService.removeSubjectFromGrade(parseInt(grade), subjectId, prisma, academicYearId, quienBorra(request));
 
     await auditLog({
       userId,
@@ -321,10 +323,10 @@ export async function removeSubjectFromGrade(request: FastifyRequest, reply: Fas
 export async function getSubjectStudents(request: FastifyRequest, reply: FastifyReply) {
   try {
     const { id } = request.params as { id: string };
-    const prisma = (request as any).tenantPrisma;
+    const prisma = request.tenantPrisma;
     const userId = request.user?.userId;
 
-    if (!hasPermission(request.user as any, 'subjects:read')) {
+    if (!request.user || !hasPermission(request.user, 'subjects:read')) {
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 
@@ -354,10 +356,10 @@ export async function getSubjectStudents(request: FastifyRequest, reply: Fastify
 
 export async function getSubjectStats(request: FastifyRequest, reply: FastifyReply) {
   try {
-    const prisma = (request as any).tenantPrisma;
+    const prisma = request.tenantPrisma;
     const userId = request.user?.userId;
 
-    if (!hasPermission(request.user as any, 'subjects:read')) {
+    if (!request.user || !hasPermission(request.user, 'subjects:read')) {
       throw createError(403, ERROR_MESSAGES.UNAUTHORIZED_ACCESS);
     }
 

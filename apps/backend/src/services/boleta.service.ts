@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { platformPrisma } from '../config/database';
-import { gradesService } from './grades.service';
+import { gradesService, redondearComoElMPPE } from './grades.service';
 import { getAcademicConfig } from './promotion/close-cycle.service';
 import { AppErrors } from '../middleware/error.middleware';
 import { apreciacionesDelAlumno, MOMENTO_FINAL } from './apreciaciones.service';
@@ -123,7 +123,6 @@ export async function boletaDelAlumno(
         }),
     ]);
     const redondeo = config.redondeoDeDefinitivas ?? 'MPPE';
-    const idsDeLapsos = lapsos.map((l) => l.id);
 
     const materiasDeLaSeccion = inscripcion.classroom.subjects
         .map((s) => s.subject)
@@ -159,12 +158,27 @@ export async function boletaDelAlumno(
                 };
             }
             const notas: Record<string, number | null> = {};
-            for (const l of lapsos) {
-                const d = await gradesService.promedioDeLaMateria(prisma, studentId, m.id, l.id, undefined, redondeo);
-                notas[l.id] = d.conNotas ? d.promedio : null;
-            }
-            const def = await gradesService.promedioDeLaMateria(prisma, studentId, m.id, undefined, idsDeLapsos, redondeo);
-            const definitiva = def.conNotas ? def.promedio : null;
+            const notasDelLapsoValidas: number[] = [];
+
+            // Consultar los lapsos de esta materia en paralelo
+            await Promise.all(
+                lapsos.map(async (l) => {
+                    const d = await gradesService.promedioDeLaMateria(prisma, studentId, m.id, l.id, undefined, redondeo);
+                    if (d.conNotas) {
+                        notas[l.id] = d.promedio;
+                        notasDelLapsoValidas.push(d.promedio);
+                    } else {
+                        notas[l.id] = null;
+                    }
+                })
+            );
+
+            // La definitiva es la media de los lapsos que tienen nota; se calcula en memoria sin volver a consultar la BD
+            const definitiva = notasDelLapsoValidas.length > 0
+                ? (redondeo === 'MPPE'
+                    ? redondearComoElMPPE(notasDelLapsoValidas.reduce((a, b) => a + b, 0) / notasDelLapsoValidas.length)
+                    : Math.round((notasDelLapsoValidas.reduce((a, b) => a + b, 0) / notasDelLapsoValidas.length) * 100) / 100)
+                : null;
             // La revisión solo cuenta sobre una materia reprobada (como al cerrar).
             const revision =
                 definitiva !== null && definitiva < config.notaMinimaAprobatoria ? (revisiones.get(m.id) ?? null) : null;

@@ -227,24 +227,24 @@ export class AttendanceService {
       }
     }
 
-    // âœ… OPTIMIZADO: Ejecutar updates y creates en paralelo
-    await Promise.all([
-      // Updates individuales en paralelo (Prisma no soporta updateMany con diferentes datos)
-      ...toUpdate.map(update =>
-        prisma.dailyAttendance.update({
-          where: { id: update.id },
-          data: {
-            status: update.status,
-            comments: update.comments,
-            teacherId: userId
-          }
-        })
-      ),
-      // Creates en bulk
-      toCreate.length > 0
-        ? prisma.dailyAttendance.createMany({ data: toCreate })
-        : Promise.resolve({ count: 0 })
-    ]);
+    // Guardar asistencias de forma atómica y agrupada en una sola transacción/conexión
+    if (toUpdate.length > 0 || toCreate.length > 0) {
+      await prisma.$transaction(async (tx) => {
+        if (toCreate.length > 0) {
+          await tx.dailyAttendance.createMany({ data: toCreate });
+        }
+        for (const update of toUpdate) {
+          await tx.dailyAttendance.update({
+            where: { id: update.id },
+            data: {
+              status: update.status,
+              comments: update.comments,
+              teacherId: userId
+            }
+          });
+        }
+      });
+    }
 
     const created = toCreate.length;
     const updated = toUpdate.length;

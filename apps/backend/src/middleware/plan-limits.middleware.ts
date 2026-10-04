@@ -59,11 +59,11 @@ export async function checkStudentLimit(
     request: FastifyRequest,
     reply: FastifyReply
 ): Promise<void> {
-    // Solo aplica si el body tiene role STUDENT
+    // Si viene role explícito en el body y no es STUDENT, no aplica (ej. ADMIN en POST /api/users)
     const body = request.body as any;
-    if (!body?.role || body.role !== 'STUDENT') return;
+    if (body?.role && body.role !== 'STUDENT') return;
 
-    const instituteId = (request as any).institute?.id ?? request.user?.instituteId;
+    const instituteId = (request as any).institute?.id ?? (request.user as any)?.instituteId;
     if (!instituteId) return; // Sin instituto identificado → dejar pasar (otro middleware manejará)
 
     const limits = await getInstituteLimits(instituteId);
@@ -78,14 +78,33 @@ export async function checkStudentLimit(
         });
     }
 
-    if (limits.currentStudents >= limits.maxStudents) {
+    let current = limits.currentStudents;
+    const db = (request as any).tenantPrisma;
+    if (db?.user?.count) {
+        try {
+            const actualCount = await db.user.count({
+                where: { role: 'STUDENT', isActive: true, status: { not: 'ARCHIVED' } }
+            });
+            current = actualCount;
+            if (actualCount !== limits.currentStudents) {
+                platformPrisma.institute.update({
+                    where: { id: instituteId },
+                    data: { currentStudents: actualCount }
+                }).catch(() => {});
+            }
+        } catch {
+            // fallback al valor de limits si falla la consulta
+        }
+    }
+
+    if (current >= limits.maxStudents) {
         return reply.status(403).send({
             error: 'Límite de estudiantes alcanzado',
             code: 'STUDENT_LIMIT_REACHED',
-            message: `El plan ${limits.plan} permite un máximo de ${limits.maxStudents} estudiantes. Actualmente tiene ${limits.currentStudents}.`,
+            message: `El plan ${limits.plan} permite un máximo de ${limits.maxStudents} estudiantes. Actualmente tiene ${current}.`,
             details: {
                 plan: limits.plan,
-                current: limits.currentStudents,
+                current,
                 max: limits.maxStudents,
                 upgradeRequired: true,
             },
@@ -97,16 +116,17 @@ export async function checkStudentLimit(
 
 /**
  * Verifica que el instituto no haya alcanzado su límite de profesores.
- * Debe usarse en preHandler de POST /api/users cuando role === 'TEACHER'.
+ * Puede usarse en preHandler de POST /api/users (cuando role === 'TEACHER')
+ * o directamente en POST /api/teachers.
  */
 export async function checkTeacherLimit(
     request: FastifyRequest,
     reply: FastifyReply
 ): Promise<void> {
     const body = request.body as any;
-    if (!body?.role || body.role !== 'TEACHER') return;
+    if (body?.role && body.role !== 'TEACHER') return;
 
-    const instituteId = (request as any).institute?.id ?? request.user?.instituteId;
+    const instituteId = (request as any).institute?.id ?? (request.user as any)?.instituteId;
     if (!instituteId) return;
 
     const limits = await getInstituteLimits(instituteId);
@@ -120,14 +140,33 @@ export async function checkTeacherLimit(
         });
     }
 
-    if (limits.currentTeachers >= limits.maxTeachers) {
+    let current = limits.currentTeachers;
+    const db = (request as any).tenantPrisma;
+    if (db?.user?.count) {
+        try {
+            const actualCount = await db.user.count({
+                where: { role: 'TEACHER', isActive: true, status: { not: 'ARCHIVED' } }
+            });
+            current = actualCount;
+            if (actualCount !== limits.currentTeachers) {
+                platformPrisma.institute.update({
+                    where: { id: instituteId },
+                    data: { currentTeachers: actualCount }
+                }).catch(() => {});
+            }
+        } catch {
+            // fallback al valor de limits si falla la consulta
+        }
+    }
+
+    if (current >= limits.maxTeachers) {
         return reply.status(403).send({
             error: 'Límite de profesores alcanzado',
             code: 'TEACHER_LIMIT_REACHED',
-            message: `El plan ${limits.plan} permite un máximo de ${limits.maxTeachers} profesores. Actualmente tiene ${limits.currentTeachers}.`,
+            message: `El plan ${limits.plan} permite un máximo de ${limits.maxTeachers} profesores. Actualmente tiene ${current}.`,
             details: {
                 plan: limits.plan,
-                current: limits.currentTeachers,
+                current,
                 max: limits.maxTeachers,
                 upgradeRequired: true,
             },

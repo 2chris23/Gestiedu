@@ -15,7 +15,7 @@ export async function GET(
     const { slug } = await params;
 
     try {
-        const response = await fetch(`${API_URL}/api/instituto/${slug}/info`, {
+        const response = await fetch(`${API_URL}/api/institutes/public/${slug}`, {
             headers: {
                 'X-Institute-Slug': slug,
             },

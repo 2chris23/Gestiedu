@@ -2,6 +2,7 @@
 
 import { OtraFormaDeEvaluarBoton } from '@/components/live-class/OtraFormaDeEvaluar';
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { AyudaDeLaPantalla } from '@/components/common/AyudaDeLaPantalla';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -33,6 +34,7 @@ import { ATTENDANCE_CONFIG, AttendanceStatusType } from '@/components/live-class
 import BotonesDeAsistencia from '@/components/live-class/BotonesDeAsistencia';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
+import { SkeletonLiveClass } from '@/components/ui/skeleton/SkeletonLiveClass';
 import TurnoBadge from '@/components/common/TurnoBadge';
 import LiveTopicMirrorCard from '@/components/live-class/LiveTopicMirrorCard';
 import LiveActivitiesCard from '@/components/live-class/LiveActivitiesCard';
@@ -95,8 +97,9 @@ function LiveClassPageInner() {
     
     // External student search modal
     const [searchTerm, setSearchTerm] = useState('');
+    const debouncedSearchTerm = useDebouncedValue(searchTerm, 300);
     const [showStudentSearch, setShowStudentSearch] = useState(false);
-    const { data: searchResults, isLoading: isSearching } = useSearchStudents(searchTerm);
+    const { data: searchResults, isLoading: isSearching } = useSearchStudents(debouncedSearchTerm);
 
     // Active Grading Activity State (Modo Calificación)
     const [activeGradingActivity, setActiveGradingActivity] = useState<ClassActivity | null>(null);
@@ -459,12 +462,7 @@ function LiveClassPageInner() {
     };
 
     if (isLoading) {
-        return (
-            <div className="min-h-[75vh] flex flex-col items-center justify-center">
-                <Loader2 className="w-10 h-10 animate-spin text-indigo-600 mb-3" />
-                <p className="text-sm font-medium text-gray-500">Cargando clase en vivo...</p>
-            </div>
-        );
+        return <SkeletonLiveClass studentCount={10} />;
     }
 
     const teacherName = data?.teacher ? `${data.teacher.firstName} ${data.teacher.lastName}` : 'Sin profesor';

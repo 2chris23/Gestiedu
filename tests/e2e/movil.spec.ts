@@ -55,7 +55,7 @@ async function esperarAQueTermine(page: Page, tope = 20000) {
             .evaluate(() => {
                 const texto = document.body?.innerText || '';
                 if (/\bCargando\b|\bLoading\b/i.test(texto)) return true;
-                return Array.from(document.querySelectorAll('.animate-pulse, .animate-latir')).some((el) => {
+                return Array.from(document.querySelectorAll('.animate-pulse, .animate-latir, .animate-latir-suave, .skeleton-shimmer')).some((el) => {
                     if (el.textContent && el.textContent.trim().length > 0) return false;
                     const r = el.getBoundingClientRect();
                     return r.width >= 60 && r.height >= 12;

@@ -19,6 +19,7 @@ import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
 import { PaletteColorSelector } from '@/components/ui/PaletteColorSelector';
 import { Lista } from '@/components/ui/lista';
 import { toast } from 'sonner';
+import CargandoMaterias from './loading';
 
 export default function MateriasPage() {
     const [page, setPage] = useState(1);
@@ -119,6 +120,10 @@ export default function MateriasPage() {
         setIsDeleteModalOpen(false);
         setSelectedSubject(null);
     };
+
+    if (isLoading && !subjectsData) {
+        return <CargandoMaterias />;
+    }
 
     return (
         <div className="space-y-6">

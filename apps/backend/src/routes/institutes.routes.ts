@@ -18,6 +18,7 @@ import { platformPrisma } from '../config/database';
 import { INSTITUTE_TENANT_SELECT } from '../utils/institute-fields';
 import { extractTokenFromHeader, verifyAccessToken } from '../config/jwt';
 import { dibujarIconoDelLiceo } from '../services/icono-del-liceo.service';
+import { sendWithETag } from '../utils/etag';
 // Nota: no existen "instituteValidators" en utils/validators; usamos solo schemas JSON locales
 
 const institutesRoutes: FastifyPluginAsync = async (fastify) => {
@@ -371,10 +372,10 @@ const institutesRoutes: FastifyPluginAsync = async (fastify) => {
       if (!sesionComprobada) {
         const portada: Record<string, unknown> = {};
         for (const campo of DE_LA_PORTADA) portada[campo] = (institute as any)[campo];
-        return reply.send({ success: true, data: portada });
+        return sendWithETag(request, reply, { success: true, data: portada });
       }
 
-      return reply.send({
+      return sendWithETag(request, reply, {
         success: true,
         data: {
           ...institute,

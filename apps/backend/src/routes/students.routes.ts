@@ -18,6 +18,7 @@ import { obtenerBoleta } from '../controllers/boleta.controller';
 import { obtenerConstancia } from '../controllers/constancias.controller';
 import { authenticate, requireAdmin, requireTeacher, requireStudent, requireSelfOrAdmin } from '../middleware/auth.middleware';
 import { validateParams, validateCUID } from '../middleware/validation.middleware';
+import { checkStudentLimit } from '../middleware/plan-limits.middleware';
 import { FastifyRequest, FastifyReply } from 'fastify';
 
 // Thin wrappers to adapt "my-*" and profile routes to existing controllers using the authenticated userId
@@ -201,7 +202,7 @@ const studentsRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post('/', {
     schema: createStudentSchema,
-    preHandler: [authenticate, requireAdmin]
+    preHandler: [authenticate, requireAdmin, checkStudentLimit]
   }, createStudent as any);
 
   // Sin `validateCUID`: el id de un estudiante es su CÉDULA (`User.id` es la CI,

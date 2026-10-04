@@ -9,6 +9,7 @@ import {
 } from '../controllers/teachers.controller';
 import { authenticate, requireAdmin, requireTeacher, requireSelfOrAdmin } from '../middleware/auth.middleware';
 import { validateBody, validateCUID } from '../middleware/validation.middleware';
+import { checkTeacherLimit } from '../middleware/plan-limits.middleware';
 import validators from '../utils/validators';
 
 const teachersRoutes: FastifyPluginAsync = async (fastify) => {
@@ -118,7 +119,7 @@ const teachersRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post('/', {
     schema: createTeacherSchema,
-    preHandler: [authenticate, requireAdmin, validateBody(validators.createUserSchema)]
+    preHandler: [authenticate, requireAdmin, validateBody(validators.createUserSchema), checkTeacherLimit]
   }, createTeacher as any);
 
   fastify.put('/:id', {

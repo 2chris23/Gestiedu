@@ -57,11 +57,16 @@ export function CifraCompacta({
                 <p className="min-w-0 pt-0.5 text-xs font-medium leading-tight text-gray-600">{titulo}</p>
             </div>
             {cargando ? (
-                <div className="mt-2 h-7 w-16 animate-pulse rounded bg-gray-200" />
+                <div className="space-y-1.5 mt-2">
+                    <div className="h-7 w-20 animate-latir-suave skeleton-shimmer rounded-md bg-slate-200/80" />
+                    <div className="h-3 w-24 animate-latir-suave skeleton-shimmer rounded-full bg-slate-200/50" />
+                </div>
             ) : (
-                <p className="mt-1.5 text-2xl font-bold leading-none text-gray-900 sm:text-3xl">{valor}</p>
+                <>
+                    <p className="mt-1.5 text-2xl font-bold leading-none text-gray-900 sm:text-3xl">{valor}</p>
+                    {pie && <p className="mt-1 truncate text-xs text-gray-500">{pie}</p>}
+                </>
             )}
-            {pie && !cargando && <p className="mt-1 truncate text-xs text-gray-500">{pie}</p>}
         </article>
     );
 }

@@ -805,6 +805,9 @@ no está registrado». La cuenta vive ahora en un solo sitio,
 
 ## Dónde se anota lo que se hace
 
+- `docs/antigravity/` — lo que dejó Antigravity (oct. 2026): el mapa de la arquitectura,
+  su plan de optimización y su traspaso. **Revisado, no es ley**: su informe decía
+  «100 % en verde» y fallaban 10 pruebas; ver auditoría §64.
 - `docs/AUDITORIA-FUNCIONAL.md` — auditoría funcional y el porcentaje de avance.
 - `docs/MAPA_DE_CALCULOS.md` — toda regla de cálculo.
 - `docs/DESPLIEGUE.md` — despliegue y operación.

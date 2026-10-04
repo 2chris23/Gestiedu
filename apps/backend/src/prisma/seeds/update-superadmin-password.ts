@@ -11,11 +11,15 @@ const prisma = new PrismaClient({
 
 async function updateSuperAdminPassword() {
     const email = process.env.SUPERADMIN_EMAIL || 'admin@tuapp.com';
-    const password = process.env.SUPERADMIN_PASSWORD || 'SuperAdmin2026!';
+    const password = process.env.SUPERADMIN_PASSWORD;
 
-    console.log(`🔄 Actualizando contraseña del SuperAdmin: ${email}`);
+    if (!password) {
+        throw new Error('La variable de entorno SUPERADMIN_PASSWORD es obligatoria y no debe quedar con valores por defecto.');
+    }
 
-    // Hash de la nueva contraseña
+    console.log(`[INFO] Actualizando contrasena del SuperAdmin: ${email}`);
+
+    // Hash de la nueva contrasena
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Actualizar en la base de datos
@@ -24,9 +28,7 @@ async function updateSuperAdminPassword() {
         data: { password: hashedPassword }
     });
 
-    console.log(`✅ Contraseña actualizada exitosamente para: ${updated.email}`);
-    console.log(`📧 Email: ${email}`);
-    console.log(`🔑 Password: ${password}`);
+    console.log(`[INFO] Contrasena actualizada exitosamente para: ${updated.email}`);
 
     await prisma.$disconnect();
 }

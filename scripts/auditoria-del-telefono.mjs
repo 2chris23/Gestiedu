@@ -327,7 +327,10 @@ async function sigueCargando(page) {
              * cargando» estando perfectamente cargadas. Un esqueleto de verdad
              * es una barra ancha y sin texto.
              */
-            return [...document.querySelectorAll('.animate-pulse, .animate-latir')].some((el) => {
+            // Los esqueletos nuevos (2026-10-03) laten con otra clase
+            // (`animate-latir-suave`, `skeleton-shimmer`): sin ellas aquí, una
+            // pantalla a medio cargar salía limpia.
+            return [...document.querySelectorAll('.animate-pulse, .animate-latir, .animate-latir-suave, .skeleton-shimmer, [data-esqueleto] *')].some((el) => {
                 if (el.textContent && el.textContent.trim().length > 0) return false;
                 const r = el.getBoundingClientRect();
                 return r.width >= 60 && r.height >= 12;

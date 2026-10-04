@@ -11,6 +11,7 @@ import { studentsWithNoteInSubject } from '../services/aggregation.service'; // 
 import { getAcademicConfig } from '../services/promotion/close-cycle.service';
 import { studentsService } from '../services/students.service';
 import { bulkSubjectAveragesConDatos, BulkAverageDetail } from '../services/bulk-averages.service';
+import { incrementStudentCount, decrementStudentCount } from '../middleware/plan-limits.middleware';
 
 interface CreateStudentRequest {
   Body: CreateUserInput;
@@ -75,6 +76,11 @@ export async function createStudent(
   });
 
   logger.info('Nuevo estudiante creado', { studentId: student.id });
+
+  const instituteId = (request as any).institute?.id ?? (request.user as any)?.instituteId;
+  if (instituteId) {
+    incrementStudentCount(instituteId).catch(() => {});
+  }
 
   return reply.status(201).send({
     success: true,
@@ -625,6 +631,11 @@ export async function deleteStudent(
       studentName: `${student.firstName} ${student.lastName}`,
       deletedBy: request.user?.id
     });
+
+    const instituteId = (request as any).institute?.id ?? (request.user as any)?.instituteId;
+    if (instituteId) {
+      decrementStudentCount(instituteId).catch(() => {});
+    }
 
     return reply.status(200).send({
       message: 'Estudiante eliminado correctamente',
