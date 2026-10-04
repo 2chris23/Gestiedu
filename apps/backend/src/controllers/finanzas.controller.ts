@@ -28,6 +28,7 @@ import {
     validarNomina,
 } from '../services/finanzas.service';
 import { comprimirComprobante, FotoNoValida, PESO_MAXIMO_DE_SUBIDA } from '../services/foto-de-perfil.service';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
  * LAS FINANZAS DEL LICEO (2026-10-01)
@@ -72,7 +73,7 @@ async function bitacora(request: FastifyRequest, action: string, entity: string,
                 userId: idDe(request),
             },
         })
-        .catch(() => undefined);
+        .catch(avisarSiFalla('finanzas.controller'));
 }
 
 /** El dinero que manda la pantalla: monto, moneda y tasa → céntimos en la moneda base. */

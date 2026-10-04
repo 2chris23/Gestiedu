@@ -5,6 +5,7 @@ import { Client } from 'pg';
 import bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
 import { buildTenantDatabaseUrl, deriveTenantSchema } from '../config/tenant-db-url';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 const execAsync = promisify(exec);
 
@@ -256,14 +257,14 @@ export class TenantProvisioningService {
             await client.connect();
             // Asegurar extensiones para que estén accesibles globalmente en cualquier search_path
             try {
-                await client.query('ALTER EXTENSION pg_trgm SET SCHEMA pg_catalog').catch(() => {});
-                await client.query('CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA pg_catalog').catch(() => {});
-                await client.query('ALTER EXTENSION unaccent SET SCHEMA pg_catalog').catch(() => {});
-                await client.query('CREATE EXTENSION IF NOT EXISTS unaccent SCHEMA pg_catalog').catch(() => {});
+                await client.query('ALTER EXTENSION pg_trgm SET SCHEMA pg_catalog').catch(avisarSiFalla('tenant-provisioning.service'));
+                await client.query('CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA pg_catalog').catch(avisarSiFalla('tenant-provisioning.service'));
+                await client.query('ALTER EXTENSION unaccent SET SCHEMA pg_catalog').catch(avisarSiFalla('tenant-provisioning.service'));
+                await client.query('CREATE EXTENSION IF NOT EXISTS unaccent SCHEMA pg_catalog').catch(avisarSiFalla('tenant-provisioning.service'));
             } catch (extError: any) {
                 // Fallback si no tiene permisos de superuser
-                await client.query('CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public').catch(() => {});
-                await client.query('CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA public').catch(() => {});
+                await client.query('CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public').catch(avisarSiFalla('tenant-provisioning.service'));
+                await client.query('CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA public').catch(avisarSiFalla('tenant-provisioning.service'));
             }
 
             await client.query(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);

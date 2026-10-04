@@ -8,6 +8,7 @@ import { AppErrors } from '../middleware/error.middleware';
 import { SESSION_CONFIG } from '../utils/constants';
 import { validatePassword } from '../utils/password-validator'; // ✅ SECURITY: Password policy
 import { logger } from '../utils/logger';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 // =====================================================
 // SESIONES PERSISTENTES ("Recordar sesión")
@@ -330,7 +331,7 @@ class AuthService {
       await tenantDb.refreshToken.update({
         where: { id: refreshTokenRecord.id },
         data: { replacedAt: now, lastUsedAt: now },
-      }).catch(() => undefined);
+      }).catch(avisarSiFalla('auth.service'));
     }
 
     const newTokenRecordId = randomUUID();
@@ -357,7 +358,7 @@ class AuthService {
         userId: refreshTokenRecord.userId,
         replacedAt: { lt: new Date(now.getTime() - GRACIA_DE_ROTACION_MS) },
       },
-    }).catch(() => undefined);
+    }).catch(avisarSiFalla('auth.service'));
 
     // Guardar el nuevo refresh token en la BD del tenant
     await tenantDb.refreshToken.create({
@@ -687,7 +688,8 @@ class AuthService {
     // 1. Generar token de reset
     // 2. Guardar en BD con expiración
     // 3. Enviar email
-    logger.info(`Password reset requested for user: ${user.email}`);
+    // El id, no el correo: los registros no llevan datos personales (robustez, 2026-10-04).
+    logger.info('Password reset requested', { userId: user.id });
   }
 }
 

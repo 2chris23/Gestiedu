@@ -19,6 +19,7 @@ import {
     sumarDias,
     validarConfiguracion,
 } from '../services/pagos.service';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
  * RUTAS DE PAGOS
@@ -285,7 +286,7 @@ export async function updatePaymentSettings(request: FastifyRequest<{ Body: any 
                     userId: idDe(request),
                 },
             })
-            .catch(() => undefined);
+            .catch(avisarSiFalla('pagos.controller'));
 
         return getPaymentSettings(request, reply);
     } catch (error) {
@@ -778,7 +779,7 @@ export async function registerPayment(
                     userId: idDe(request),
                 },
             })
-            .catch(() => undefined);
+            .catch(avisarSiFalla('pagos.controller'));
 
         return reply.status(201).send({ payment: pago });
     } catch (error) {
@@ -833,7 +834,7 @@ export async function annulPayment(
                     userId: idDe(request),
                 },
             })
-            .catch(() => undefined);
+            .catch(avisarSiFalla('pagos.controller'));
         return reply.send({ message: 'Pago anulado' });
     } catch (error) {
         return responderError(reply, error, 'Error al anular el pago');
@@ -1120,7 +1121,7 @@ export async function reportarPago(request: FastifyRequest<{ Params: { studentId
             mensaje: `${alumno?.firstName ?? ''} ${alumno?.lastName ?? ''}: ${deCentimos(montoCents)} ${b.currency} por ${b.method}. Confírmalo en Finanzas.`,
             enlace: '/dashboard/pagos?vista=estudiantes',
             tipo: 'PAGO_REPORTADO',
-        }).catch(() => undefined);
+        }).catch(avisarSiFalla('pagos.controller'));
         return reply.status(201).send({ reporte: fila });
     } catch (error) {
         return responderError(reply, error, 'Error al reportar el pago');
@@ -1223,7 +1224,7 @@ export async function confirmarReporte(request: FastifyRequest<{ Params: { id: s
             mensaje: `El liceo confirmó tu pago de ${Number(r.monto).toFixed(2)} ${r.moneda}. Ya tienes tu comprobante.`,
             enlace: '/dashboard',
             tipo: 'PAGO_CONFIRMADO',
-        }).catch(() => undefined);
+        }).catch(avisarSiFalla('pagos.controller'));
         return reply.send({ payment: cobro.body.payment });
     } catch (error) {
         return responderError(reply, error, 'Error al confirmar el pago');
@@ -1250,7 +1251,7 @@ export async function rechazarReporte(request: FastifyRequest<{ Params: { id: st
             mensaje: `Motivo: ${motivo}`,
             enlace: '/dashboard',
             tipo: 'PAGO_RECHAZADO',
-        }).catch(() => undefined);
+        }).catch(avisarSiFalla('pagos.controller'));
         return reply.send({ message: 'Rechazado' });
     } catch (error) {
         return responderError(reply, error, 'Error al rechazar');

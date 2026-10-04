@@ -139,7 +139,9 @@ nueva queda cubierta el día que se añade. Si el borrado pasa de
 respaldo. Sección 52 de la auditoría.
 
 Excepciones a propósito: `refreshToken` (guardar sesiones es guardar llaves) y
-`notification` (no es información del liceo).
+`notification` (no es información del liceo). La tarea diaria de mantenimiento
+tira, con plazo configurable, la papelera vieja, los avisos leídos, las llaves
+caducadas y los `cambios_recibidos` viejos (MANT-*); nada del liceo.
 
 Borrar un liceo entero hace `DROP DATABASE`, que la papelera no alcanza: se
 respalda antes, y sin respaldo no se borra.
@@ -810,6 +812,48 @@ del entorno (`override: true`), así que esto cuelga del modo, no del valor.
 puntos daba cuatro trozos y el primero se leía como el liceo: «el instituto 192
 no está registrado». La cuenta vive ahora en un solo sitio,
 `lib/el-liceo-de-la-direccion.ts`, y estaba copiada en tres.
+
+## El cuadro de honor (octubre 2026)
+
+Por lapso y por ciclo completo, con **una foto cada sábado** (tabla
+`cuadro_de_honor`, única por alumno, alcance y fecha; la tarea se pone al día al
+arrancar si el sábado no se sacó). El promedio es **el de la boleta**; la
+asistencia y las observaciones, solo las del período, y una felicitación
+(`POSITIVE`…) no resta. Pesos del liceo en Configuración → Académica (80/20/5
+por defecto; `MAPA` §8h). El admin ve el liceo o un año; **el alumno y su
+representante ven SOLO su puntaje y cuántos puestos subió** —ni su puesto ni a
+nadie: el servidor no lo manda—; el profesor, 403. CUADRO-01…09, CUADRO-UI-01/02.
+
+## El recorrido guiado (como la app rial)
+
+El «?» de la cabecera oscurece la pantalla, ilumina **el botón de verdad** y un
+globo explica qué hace, con «Atrás» y «Siguiente»; la pantalla baja sola. La
+primera vez en cada pantalla se **ofrece** una sola vez. Los pasos van en
+`lib/recorridos.ts` y apuntan a `data-recorrido="…"` (el título y las acciones
+de `EncabezadoDePantalla` ya lo llevan); lo que ese rol no ve se salta.
+**Al renombrar o quitar un botón con `data-recorrido`, RECORRIDO-01 se pone en
+rojo**: es a propósito (un paso sin su marca se saltaría callado). Las pruebas
+de navegador no ven la oferta (la tapa `navigator.webdriver`) salvo que pongan
+`gestiedu:ofrecer-recorridos`. RECORRIDO-UI-01…04.
+
+## Robustez (octubre 2026)
+
+- **Azar en toda espera** (`lib/azar.ts`): vuelve la luz y cientos de teléfonos
+  reintentan a la vez. Medido (`npm run medir:vuelve-la-luz`): p95 de 6–7 s
+  todos juntos, 60 ms con el azar.
+- **Renovar la sesión y `/health` tienen el cupo de un liceo entero** por
+  dirección (un liceo sale por una sola): con el de una persona, 150 de 200
+  teléfonos se quedaban con 429. Y la web reenvía la dirección al renovar; si
+  no, en producción eran todos los liceos en un cupo (CUPO-REN-01).
+- **429 y 503 son «ahora no», no «no se pudo»**: lo pendiente espera lo que
+  pide el servidor; un 400 pasa a «no se pudo» sin atascar lo de detrás
+  (SINCON-13). La base saturada responde 503, no 500 (`esUnAhoraNoDeLaBase`).
+- **Teléfono lleno**: lo pendiente no se pierde callado; se tira lo que se
+  vuelve a bajar y, si aun así no cabe, la pantalla lo dice (GUARDA-01).
+- **Nada falla callado**: las tareas laten y el inicio del superadmin enseña su
+  salud, los respaldos y el disco; los `.catch` vacíos se apuntan
+  (`avisarSiFalla`). Lo que crecía sin límite se tira a diario con plazo
+  configurable (MANT-*). Detalle en `docs/DESPLIEGUE.md` §10.
 
 ## Dónde se anota lo que se hace
 

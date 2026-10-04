@@ -6,6 +6,29 @@ import { alertService } from '../services/alert.service';
 // de tenant. El singleton legacy es su único consumidor legítimo restante.
 import { prisma } from '../config/database';
 import { leerEstado, saludDeLosRespaldos } from '../services/respaldos-programados.service';
+import { carpetaDeRespaldos } from '../services/respaldos.service';
+import { losLatidos } from '../utils/latido-de-tareas';
+import { statfs } from 'fs/promises';
+
+/** Las tareas que tienen que latir (las que no han latido nunca salen «atrasada»). */
+export const TAREAS_QUE_LATEN = ['mantenimiento', 'cuadro-de-honor', 'recordatorio-de-cuotas', 'estado-de-los-anos', 'almacenamiento'];
+
+/**
+ * El disco donde caen los respaldos (y, en un servidor pequeño, la base): lleno,
+ * se caen TODOS los liceos a la vez. Por debajo del 10 % libre, crítico.
+ */
+export async function elDisco(carpeta = carpetaDeRespaldos()): Promise<{ libreGB: number; totalGB: number; libre: number } | null> {
+    try {
+        const s = await statfs(carpeta);
+        const total = Number(s.blocks) * Number(s.bsize);
+        const libre = Number(s.bavail) * Number(s.bsize);
+        if (!total) return null;
+        const gb = (n: number) => Math.round((n / 1024 ** 3) * 10) / 10;
+        return { libreGB: gb(libre), totalGB: gb(total), libre: Math.round((libre / total) * 1000) / 1000 };
+    } catch {
+        return null;
+    }
+}
 
 export class MonitoringController {
     // Endpoint para obtener métricas de queries en tiempo real
@@ -99,6 +122,14 @@ export class MonitoringController {
             const respaldos = saludDeLosRespaldos(estadoDeRespaldos);
             if (respaldos === 'fallo' || respaldos === 'atrasado') status = 'critical';
 
+            // FALLA GRIS: una tarea que dejó de correr no da error, solo deja
+            // de latir (`utils/latido-de-tareas.ts`).
+            const tareas = await losLatidos(TAREAS_QUE_LATEN);
+            const tareasMal = TAREAS_QUE_LATEN.filter((t) => !tareas[t] || tareas[t].salud !== 'bien');
+            if (tareasMal.length && status === 'healthy') status = 'degraded';
+            const disco = await elDisco();
+            if (disco && disco.libre < 0.1) status = 'critical';
+
             const health = {
                 status,
                 timestamp: new Date().toISOString(),
@@ -111,6 +142,9 @@ export class MonitoringController {
                     guardados: estadoDeRespaldos?.guardados ?? null,
                     copiaFuera: estadoDeRespaldos?.copiaFuera ?? null,
                 },
+                tareas,
+                tareasMal,
+                disco,
                 metrics: {
                     queries: {
                         total: metrics.totalQueries,

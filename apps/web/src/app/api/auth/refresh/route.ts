@@ -18,7 +18,7 @@ const SOLO_POR_CONEXION_CIFRADA = process.env.NODE_ENV === 'production';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(_request: NextRequest) {
+export async function POST(request: NextRequest) {
     try {
         const refreshToken = await getRefreshToken();
 
@@ -39,6 +39,12 @@ export async function POST(_request: NextRequest) {
         if (slug) {
             headers['X-Institute-Slug'] = slug;
         }
+        // Desde dónde llama el teléfono (lo pone nginx). Sin esto el servidor
+        // veía SIEMPRE la dirección de la web, y todas las renovaciones de
+        // todos los liceos compartían un solo cupo (CUPO-REN-01), como ya
+        // pasó con el login.
+        const xff = request.headers.get('x-forwarded-for');
+        if (xff) headers['x-forwarded-for'] = xff;
 
         // Proxy to backend refresh endpoint
         const backendResponse = await fetch(`${API_URL}/auth/refresh-token`, {

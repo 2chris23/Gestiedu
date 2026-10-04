@@ -4,6 +4,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { CreateUserInput, UpdateUserInput, UserFiltersInput, PaginationInput } from '../utils/validators';
 import { logger } from '../utils/logger';
 import { incrementTeacherCount, decrementTeacherCount } from '../middleware/plan-limits.middleware';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 interface CreateTeacherRequest {
   Body: CreateUserInput;
@@ -103,7 +104,7 @@ export async function createTeacher(
 
     const instituteId = (request as any).institute?.id ?? (request.user as any)?.instituteId;
     if (instituteId) {
-      incrementTeacherCount(instituteId).catch(() => {});
+      incrementTeacherCount(instituteId).catch(avisarSiFalla('teachers.controller'));
     }
 
     return reply.status(201).send({
@@ -489,7 +490,7 @@ export async function deleteTeacher(
 
     const instituteId = (request as any).institute?.id ?? (request.user as any)?.instituteId;
     if (instituteId) {
-      decrementTeacherCount(instituteId).catch(() => {});
+      decrementTeacherCount(instituteId).catch(avisarSiFalla('teachers.controller'));
     }
 
     return reply.status(200).send({

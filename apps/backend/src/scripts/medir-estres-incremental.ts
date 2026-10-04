@@ -48,6 +48,7 @@ import { monitorEventLoopDelay } from 'perf_hooks';
 import { Client } from 'pg';
 import { platformPrisma } from '../config/database';
 import { guardarMedicion } from './guardar-medicion';
+import { unDiaLibre } from './dia-libre-para-medir';
 
 const PUERTO = Number(process.env.PUERTO_MEDIDA || 3008);
 /**
@@ -70,8 +71,13 @@ const PAUSA_MIN = Number(process.env.PAUSA_MIN || 1000);
 const PAUSA_MAX = Number(process.env.PAUSA_MAX || 3000);
 const P95_MAXIMO = Number(process.env.P95_MAXIMO || 1000);
 const FALLOS_MAXIMOS = Number(process.env.FALLOS_MAXIMOS || 1); // %
-/** Fecha donde escriben los profesores: lejos de los días de uso, y se limpia. */
-const FECHA_DE_ESCRITURA = process.env.FECHA_DE_ESCRITURA || '2027-06-30';
+/**
+ * Fecha donde escriben los profesores: un domingo pasado sin nada guardado
+ * (`dia-libre-para-medir.ts`), y se limpia. Antes era 2027 y el servidor no
+ * deja guardar clases del futuro: cada guardado era un 400 que se contaba como
+ * fallo de carga.
+ */
+let FECHA_DE_ESCRITURA = process.env.FECHA_DE_ESCRITURA || '';
 /** Uno de cada N clics de un profesor es guardar la clase. */
 const GUARDA_CADA = Number(process.env.GUARDA_CADA || 8);
 /**
@@ -304,6 +310,8 @@ async function unClic(p: Persona, contador: { n: number }): Promise<Medida> {
 interface Liceo {
     slug: string;
     base: string;
+    /** Con la base compartida, el esquema del liceo (sin él se leería otro). */
+    esquema: string | null;
     conexion: { user: string; password: string; host: string; port: number };
 }
 
@@ -317,7 +325,7 @@ async function losLiceos(): Promise<Liceo[]> {
             databaseName: { not: null },
             OR: [{ slug: { in: exactos } }, ...prefijos.map((p) => ({ slug: { startsWith: p } }))],
         },
-        select: { slug: true, databaseName: true, databaseHost: true, databasePort: true, databaseUser: true, databasePassword: true },
+        select: { slug: true, databaseName: true, databaseSchema: true, databaseHost: true, databasePort: true, databaseUser: true, databasePassword: true },
         orderBy: { slug: 'asc' },
     });
     return filas
@@ -326,6 +334,7 @@ async function losLiceos(): Promise<Liceo[]> {
         .map((f) => ({
             slug: f.slug,
             base: f.databaseName!,
+            esquema: f.databaseSchema && f.databaseSchema !== 'public' ? f.databaseSchema : null,
             conexion: { user: f.databaseUser!, password: f.databasePassword!, host: f.databaseHost!, port: f.databasePort ?? 5432 },
         }));
 }
@@ -334,6 +343,9 @@ async function losLiceos(): Promise<Liceo[]> {
 async function laGenteDe(liceo: Liceo, cuantos: number): Promise<Persona[]> {
     const db = new Client({ ...liceo.conexion, database: liceo.base });
     await db.connect();
+    if (liceo.esquema) await db.query(`SET search_path TO "${liceo.esquema.replace(/"/g, '')}"`);
+    // El primero elige el día; los demás comprueban que en ellos también está libre.
+    FECHA_DE_ESCRITURA = await unDiaLibre(db, FECHA_DE_ESCRITURA);
 
     const profesores = (
         await db.query<{ email: string; id: string; classroom_id: string; subject_id: string }>(
@@ -398,7 +410,9 @@ async function main() {
     // ── La gente, repartida entre los liceos por turnos ────────────────────────
     const maximo = Math.max(...ESCALONES);
     const porLiceo = Math.ceil(maximo / liceos.length);
-    const grupos = await Promise.all(liceos.map((l) => laGenteDe(l, porLiceo)));
+    // Uno detrás de otro: el primero elige el día donde se escribe.
+    const grupos: Persona[][] = [];
+    for (const l of liceos) grupos.push(await laGenteDe(l, porLiceo));
     const personas: Persona[] = [];
     for (let i = 0; personas.length < maximo && i < porLiceo; i++) {
         for (const g of grupos) if (g[i] && personas.length < maximo) personas.push(g[i]);
@@ -533,7 +547,7 @@ async function main() {
             servidor.kill();
             await matarLoQueEscuchaEn(PUERTO);
         }
-        for (const l of liceos) await limpiar(l.conexion, l.base);
+        for (const l of liceos) await limpiar(l.conexion, l.base, l.esquema);
     }
 
     // ── Lectura ──────────────────────────────────────────────────────────────
@@ -570,10 +584,11 @@ async function contarConexiones(liceos: Liceo[]): Promise<number> {
 }
 
 /** Lo que escribieron los profesores en la fecha de medición no se queda. */
-async function limpiar(conexion: any, base: string) {
+async function limpiar(conexion: any, base: string, esquema: string | null = null) {
     const c = new Client({ ...conexion, database: base });
     try {
         await c.connect();
+        if (esquema) await c.query(`SET search_path TO "${esquema.replace(/"/g, '')}"`);
         await c.query(`DELETE FROM class_sessions WHERE date = $1`, [FECHA_DE_ESCRITURA]);
         await c.query(`DELETE FROM daily_attendance WHERE date = $1`, [FECHA_DE_ESCRITURA]).catch(() => undefined);
     } catch (e) {

@@ -1,6 +1,7 @@
 import { avisar } from './avisos.service';
 import { deCentimos, sumarDias } from './pagos.service';
 import { cicloActivo, configuracionDelCiclo, hoyDelLiceo, leerConfiguracion, pagadoEnElCiclo, resumenDe } from '../controllers/pagos.controller';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
  * EL RECORDATORIO DE LA CUOTA (2026-10-01)
@@ -64,7 +65,7 @@ export async function recordarCuotas(prisma: any, instituteId: string, io: unkno
                 enlace: '/dashboard',
                 tipo: 'CUOTA_POR_VENCER',
                 alTelefono: { titulo: 'Una cuota está por vencer', cuerpo: `Vence el ${fecha}` },
-            }).catch(() => undefined);
+            }).catch(avisarSiFalla('recordatorio-de-cuotas.service'));
             enviados++;
         }
     }

@@ -20,7 +20,7 @@
  *    conexión se anulan.
  */
 
-import { CAJON_POR_ENVIAR, conElCajon } from './base-del-telefono';
+import { CAJON_POR_ENVIAR, SinEspacio, conElCajon, hacerSitio } from './base-del-telefono';
 
 /** 1 el plan y sus instrumentos · 2 crear · 3 cambiar · 4 borrar. */
 export type Grupo = 1 | 2 | 3 | 4;
@@ -158,9 +158,14 @@ function juntarConfig(viejo: any, nuevo: any) {
     return junto;
 }
 
-/** «hace un rato»: cuánto esperar tras `intentos` fallos de red (hasta 5 min). */
-export function esperaTras(intentos: number): number {
-    return Math.min(5 * 60_000, 5_000 * 2 ** Math.max(0, intentos - 1));
+/**
+ * «hace un rato»: cuánto esperar tras `intentos` fallos de red (hasta 5 min),
+ * con azar: entre la mitad y el total. Sin azar, cuando vuelve la luz todos
+ * los teléfonos reintentaban en el MISMO segundo (`lib/azar.ts`).
+ */
+export function esperaTras(intentos: number, azar: () => number = Math.random): number {
+    const tope = Math.min(5 * 60_000, 5_000 * 2 ** Math.max(0, intentos - 1));
+    return Math.round(tope * (0.5 + azar() * 0.5));
 }
 
 // ─── El cajón del teléfono ──────────────────────────────────────────────────
@@ -192,10 +197,25 @@ async function leerTodo(): Promise<CambioPendiente[]> {
 
 async function escribirTodo(antes: CambioPendiente[], despues: CambioPendiente[]) {
     const quedan = new Set(despues.map((c) => c.id));
-    await conElCajon(CAJON_POR_ENVIAR, 'readwrite', (c) => {
-        for (const v of antes) if (!quedan.has(v.id)) c.delete(v.id);
-        for (const n of despues) c.put(n);
-    });
+    const escribir = () =>
+        conElCajon(
+            CAJON_POR_ENVIAR,
+            'readwrite',
+            (c) => {
+                for (const v of antes) if (!quedan.has(v.id)) c.delete(v.id);
+                for (const n of despues) c.put(n);
+            },
+            { exigir: true }
+        );
+    try {
+        await escribir();
+    } catch (e) {
+        // Sin sitio: fuera lo que se vuelve a bajar, y otra vez. Si aún no
+        // cabe, que la pantalla lo diga (`SinEspacio`): nunca «pendiente» sin nada.
+        if (!(e instanceof SinEspacio)) throw e;
+        await hacerSitio();
+        await escribir();
+    }
 }
 
 /** La cola de este dueño, en orden de subida. */

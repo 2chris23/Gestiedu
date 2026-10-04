@@ -12,6 +12,7 @@ import { getAcademicConfig } from '../services/promotion/close-cycle.service';
 import { studentsService } from '../services/students.service';
 import { bulkSubjectAveragesConDatos, BulkAverageDetail } from '../services/bulk-averages.service';
 import { incrementStudentCount, decrementStudentCount } from '../middleware/plan-limits.middleware';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 interface CreateStudentRequest {
   Body: CreateUserInput;
@@ -79,7 +80,7 @@ export async function createStudent(
 
   const instituteId = (request as any).institute?.id ?? (request.user as any)?.instituteId;
   if (instituteId) {
-    incrementStudentCount(instituteId).catch(() => {});
+    incrementStudentCount(instituteId).catch(avisarSiFalla('students.controller'));
   }
 
   return reply.status(201).send({
@@ -634,7 +635,7 @@ export async function deleteStudent(
 
     const instituteId = (request as any).institute?.id ?? (request.user as any)?.instituteId;
     if (instituteId) {
-      decrementStudentCount(instituteId).catch(() => {});
+      decrementStudentCount(instituteId).catch(avisarSiFalla('students.controller'));
     }
 
     return reply.status(200).send({

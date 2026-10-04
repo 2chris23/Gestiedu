@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { syncAcademicYearStatuses } from '../utils/academic-year.utils';
 import { logger } from '../utils/logger';
 import { platformPrisma, getTenantPrisma } from '../config/database';
+import { latido } from '../utils/latido-de-tareas';
 
 /**
  * CRON JOB: Sincronización Automática de Status de Años Académicos
@@ -74,6 +75,7 @@ async function syncAllInstitutes() {
         totalUpdated,
         totalErrors,
     });
+    await latido('estado-de-los-anos', 24 * 60 * 60 * 1000, totalErrors ? `${totalErrors} error(es)` : undefined);
 }
 
 /**

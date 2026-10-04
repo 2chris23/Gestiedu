@@ -21,18 +21,20 @@ import { redis, redisPub, redisSub, connectRedis, disconnectRedis } from './conf
 import { setupAcademicYearCronJob } from './jobs/academic-year-sync.job';
 import { setupRecordatorioDeCuotasJob } from './jobs/recordatorio-de-cuotas.job';
 import { setupCuadroDeHonorJob } from './jobs/cuadro-de-honor.job';
+import { setupMantenimientoJob } from './jobs/mantenimiento.job';
 import { identifyTenant } from './middleware/tenant.middleware';
 import { conLiceo } from './config/ambito-del-liceo';
 import { smartCacheMiddleware, cacheOnSendHook } from './middleware/smart-cache.middleware';
 import { ponerLosGuardiasPrimero } from './middleware/guardias';
 import cambiosSinConexion from './plugins/cambios-sin-conexion';
 import antiDobleEnvio from './plugins/anti-doble-envio';
-import { CupoCompartido } from './plugins/cupo-compartido';
+import { CupoCompartido, CUPO_DEL_LICEO_POR_DIRECCION } from './plugins/cupo-compartido';
 import { leerArchivoDelLiceo } from './services/archivos-del-liceo.service';
 import { createHash } from 'crypto';
 import { deQuienNosFiamos, comoSeExplicaLaConfianza } from './config/de-quien-nos-fiamos';
 import avisarCambios from './plugins/avisar-cambios';
 import { apuntarFallo } from './utils/fallos-del-servidor';
+import { avisarSiFalla } from './utils/sin-callar';
 
 export async function buildServer(): Promise<FastifyInstance> {
   /**
@@ -57,7 +59,9 @@ export async function buildServer(): Promise<FastifyInstance> {
     credentials: true,
     methods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Origin', 'Accept', 'X-Institute-ID', 'X-Institute-Slug', 'X-Cambio', 'X-Hecho-En'],
-    exposedHeaders: ['Content-Length', 'Content-Type', 'X-Cache-Status', 'X-Cambio'],
+    // `Retry-After`: el teléfono la lee para no reintentar antes de tiempo
+    // (sin exponerla, el navegador la esconde y todos volvían a la vez).
+    exposedHeaders: ['Content-Length', 'Content-Type', 'X-Cache-Status', 'X-Cambio', 'Retry-After'],
   });
 
   // ✅ SECURITY: Registrar plugin de seguridad con Helmet (AFTER CORS)
@@ -276,7 +280,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   // Cerrar Redis en cierre del servidor
   server.addHook('onClose', async () => {
     if (redisConnected) {
-      await disconnectRedis().catch(() => { });
+      await disconnectRedis().catch(avisarSiFalla('server'));
     }
   });
 
@@ -358,6 +362,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   logger.info('Academic year auto-sync job configured');
   await setupRecordatorioDeCuotasJob(server);
   await setupCuadroDeHonorJob(server);
+  await setupMantenimientoJob(server);
 
   // Caché de comprobación profunda de salud para evitar agotar el pool de conexiones (dos-health-check-db-pool-exhaustion)
   let estadoSaludCache: { db: boolean; redis: boolean; timestamp: number } | null = null;
@@ -389,7 +394,9 @@ export async function buildServer(): Promise<FastifyInstance> {
   };
 
   // Ruta de salud extendida (con estado de infraestructura protegido por caché)
-  server.get('/health', async () => {
+  // Todos los teléfonos sin conexión preguntan aquí cada ~15 s: el cupo por
+  // dirección es el de un liceo entero (CUPO-REN-01).
+  server.get('/health', { config: { rateLimit: { max: CUPO_DEL_LICEO_POR_DIRECCION } } } as any, async () => {
     const infra = await verificarSaludInfraestructura();
     return {
       status: 'ok',

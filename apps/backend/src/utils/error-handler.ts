@@ -2,6 +2,32 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { Prisma } from '@prisma/client';
 
 /**
+ * ¿ES UN «AHORA NO» DE LA BASE? (robustez, 2026-10-04)
+ *
+ * Con mucha gente a la vez (vuelve la luz, las 7:00) la base puede tardar en
+ * dar una conexión (P2024), no poder abrir la transacción a tiempo (P2028) o
+ * chocar dos escrituras (P2034, y en crudo 40001/40P01/55P03). Nada de eso es
+ * un fallo de lo que se mandó: volver a intentarlo un poco después funciona.
+ * Se responde 503 con `Retry-After`, y el teléfono lo deja pendiente y lo
+ * reintenta; con 500 lo daba por «no se pudo» (medido: un 500 en una
+ * avalancha de 200 teléfonos, `medir:vuelve-la-luz`).
+ */
+export function esUnAhoraNoDeLaBase(error: any): boolean {
+    const codigo = String(error?.code ?? '');
+    if (['P2024', 'P2028', 'P2034'].includes(codigo)) return true;
+    const pg = String(error?.meta?.code ?? error?.cause?.code ?? '');
+    if (['40001', '40P01', '55P03'].includes(pg) || ['40001', '40P01', '55P03'].includes(codigo)) return true;
+    return /Unable to start a transaction in the given time|Transaction already closed|deadlock detected|could not serialize access/i.test(String(error?.message ?? ''));
+}
+
+export function responderAhoraNo(reply: FastifyReply): FastifyReply {
+    return reply
+        .status(503)
+        .header('Retry-After', '5')
+        .send({ error: 'El sistema está con mucha carga en este momento. Se vuelve a intentar solo.', code: 'AHORA_NO' });
+}
+
+/**
  * Maneja errores de Prisma de forma específica
  * Convierte errores técnicos en mensajes amigables para el usuario
  */
@@ -16,6 +42,11 @@ export function handlePrismaError(
     const esErrorPrisma =
         error instanceof Prisma.PrismaClientKnownRequestError ||
         (typeof error?.code === 'string' && /^P\d{4}$/.test(error.code));
+
+    if (esUnAhoraNoDeLaBase(error)) {
+        request.log.warn({ err: error?.message }, 'La base dijo «ahora no»: 503 para que se reintente');
+        return responderAhoraNo(reply);
+    }
 
     if (esErrorPrisma) {
         switch (error.code) {

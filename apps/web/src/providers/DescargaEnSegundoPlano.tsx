@@ -6,6 +6,7 @@ import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
 import { useConexion } from '@/hooks/useConexion';
 import { guardarEstasPaginas } from '@/lib/paginas-guardadas';
+import { escalonar } from '@/lib/azar';
 import { lasPorGuardar } from '@/lib/pantallas-sin-guardar';
 import { loDelAdmin, loDelAlumno, loDelProfesor, type LoQueSeBaja } from '@/lib/lo-que-se-baja-solo';
 
@@ -121,7 +122,9 @@ export function DescargaEnSegundoPlano() {
         const volvio = hayConexion && !antes.current;
         antes.current = hayConexion;
         if (!volvio) return;
-        const t = window.setTimeout(() => void bajarYa.current?.(0), 5_000);
+        // Cada teléfono a su hora (de 5 s a 1 min): bajarse lo de su rol es
+        // lo más pesado, y al volver la luz lo harían todos a la vez.
+        const t = window.setTimeout(() => void bajarYa.current?.(0), 5_000 + escalonar(55_000));
         return () => window.clearTimeout(t);
     }, [hayConexion]);
 

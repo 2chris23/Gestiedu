@@ -316,6 +316,14 @@ describe('La memoria rápida no mezcla liceos', () => {
                 'son tres nombres de propiedad (__proto__, prototype, constructor) que no se recorren, no datos de nadie',
             'src/scripts/medir-concurrencia.ts|credenciales':
                 'guion de medición, no corre en el servidor',
+            'src/config/esquema-del-liceo.ts|RAW':
+                'son los cuatro nombres de los métodos de SQL a mano ($queryRaw…), no datos de nadie',
+            'src/utils/latido-de-tareas.ts|enMemoria':
+                'la última vez que corrió cada tarea del servidor (mantenimiento, cuadro…): de la plataforma, no de un liceo',
+            'src/utils/latido-de-tareas.ts|conocidas':
+                'los nombres de las tareas que han latido, no datos de nadie',
+            'src/utils/sin-callar.ts|ultimaVez':
+                'cuándo se apuntó por última vez cada fallo (para no repetirlo): la clave es qué falló y el mensaje, no datos de un liceo',
         };
 
         const carpetas = ['src/config', 'src/controllers', 'src/middleware', 'src/plugins', 'src/services', 'src/utils', 'src/scripts'];

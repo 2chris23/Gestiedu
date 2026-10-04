@@ -14,6 +14,7 @@ import { crearReemplazo, esFecha } from '../services/class-replacements.service'
 import { avisarDelReemplazo } from './class-replacements.controller';
 import { parseDay } from '../services/school-events.service';
 import { logger } from '../utils/logger';
+import { esUnAhoraNoDeLaBase, responderAhoraNo } from '../utils/error-handler';
 import { randomUUID } from 'crypto';
 import { RequestUser } from '../types/fastify';
 import { planWeekRangeFromRange } from '../utils/plan-weeks';
@@ -47,6 +48,7 @@ import { clasificar, diaDeLaActividad } from '../utils/actividad-del-dia';
 import { evaluacionesDeLaFecha } from '../services/evaluacion-de-la-semana.service';
 import { instrumentoDeLaActividad, notaAManoProhibida } from '../services/instrumentos.service';
 import { maximoDelInstrumento } from '../utils/instrumentos';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
  * La sesión de una clase en un día («YYYY-MM-DD»): la que hay, o una nueva.
@@ -521,7 +523,7 @@ export async function getLiveClassDetail(
                     classSessionId: null,
                 },
                 data: { classSessionId: session.id },
-            }).catch(() => {});
+            }).catch(avisarSiFalla('classSessions.controller'));
         }
 
         const allStudentIds = [...studentsWithAttendance.map(s => s.id), ...externalIds];
@@ -988,6 +990,9 @@ export async function saveLiveClassSession(
                 code: (error as any).code || 'FORBIDDEN',
             });
         }
+        // Con mucha gente a la vez la base puede decir «ahora no»: eso se
+        // reintenta (503), no es «no se pudo» (`esUnAhoraNoDeLaBase`).
+        if (esUnAhoraNoDeLaBase(error)) return responderAhoraNo(reply);
         logger.error('Error saving live class session', {
             error: error instanceof Error ? error.message : String(error),
         });

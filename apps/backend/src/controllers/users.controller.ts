@@ -17,6 +17,7 @@ import {
   incrementTeacherCount,
   decrementTeacherCount,
 } from '../middleware/plan-limits.middleware';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
  * Lo que piden los documentos del Ministerio (nacionalidad, lugar y entidad de
@@ -236,9 +237,9 @@ export async function createUser(
     logger.info('Nuevo usuario creado', { userId: user.id, role: user.role });
 
     if (user.role === UserRole.STUDENT) {
-      incrementStudentCount(instituteId).catch(() => {});
+      incrementStudentCount(instituteId).catch(avisarSiFalla('users.controller'));
     } else if (user.role === UserRole.TEACHER) {
-      incrementTeacherCount(instituteId).catch(() => {});
+      incrementTeacherCount(instituteId).catch(avisarSiFalla('users.controller'));
     }
 
     return reply.status(201).send({ user });
@@ -1627,9 +1628,9 @@ export async function deleteUser(
     logger.info('Usuario eliminado con éxito', { userId: id });
 
     if (existingUser.role === UserRole.STUDENT) {
-      decrementStudentCount(instituteId).catch(() => {});
+      decrementStudentCount(instituteId).catch(avisarSiFalla('users.controller'));
     } else if (existingUser.role === UserRole.TEACHER) {
-      decrementTeacherCount(instituteId).catch(() => {});
+      decrementTeacherCount(instituteId).catch(avisarSiFalla('users.controller'));
     }
 
     // Invalidar caché de sesión del usuario eliminado

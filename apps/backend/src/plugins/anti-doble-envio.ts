@@ -4,6 +4,7 @@ import fp from 'fastify-plugin';
 import type Redis from 'ioredis';
 import { redis } from '../config/redis';
 import { logger } from '../utils/logger';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
  * DOS CLICS A LA VEZ CUENTAN COMO UNO
@@ -108,7 +109,7 @@ async function laRespuestaDelOtro(cliente: ClienteRedis, huella: string): Promis
 
 function quitarMarca(cliente: ClienteRedis, huella: string, ficha: string) {
     try {
-        Promise.resolve(cliente.eval(QUITAR_SI_ES_MIA, 1, MARCA + huella, ficha)).catch(() => undefined);
+        Promise.resolve(cliente.eval(QUITAR_SI_ES_MIA, 1, MARCA + huella, ficha)).catch(avisarSiFalla('anti-doble-envio'));
     } catch {
         /* Redis no está: la marca caduca sola. */
     }
@@ -219,7 +220,7 @@ async function antiDobleEnvioPlugin(server: FastifyInstance, opciones: { cliente
                 try {
                     Promise.resolve(
                         cliente.set(RESPUESTA + marca.huella, JSON.stringify(respuesta), 'PX', DURA_LA_RESPUESTA_MS)
-                    ).catch(() => undefined);
+                    ).catch(avisarSiFalla('anti-doble-envio'));
                 } catch {
                     /* sin Redis: el que espera se atiende como una petición normal */
                 }

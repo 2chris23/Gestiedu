@@ -3,6 +3,7 @@ import { PrismaClient as PlatformPrismaClient } from '../generated/platform-clie
 import { applyTenantIsolation } from './tenant-isolation.ext';
 import { esquemaPropio, fijarElEsquema } from './esquema-del-liceo';
 import { buildTenantDatabaseUrl, cabenLasConexiones, pgBouncer } from './tenant-db-url';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 // =====================================================
 // PLATFORM DATABASE (Metadata única)
@@ -312,7 +313,7 @@ async function cleanupOldConnections(): Promise<void> {
     const connection = tenantConnections.get(instituteId);
     if (connection) {
       tenantConnections.delete(instituteId);
-      cerrar.push(connection.prisma.$disconnect().catch(() => undefined));
+      cerrar.push(connection.prisma.$disconnect().catch(avisarSiFalla('database')));
       console.log(`Cleaned up tenant connection: ${instituteId}`);
     }
   }
@@ -362,7 +363,7 @@ export async function disconnectAll(): Promise<void> {
   if (_prisma) {
     const abierto = _prisma;
     _prisma = null;
-    await abierto.$disconnect().catch(() => undefined);
+    await abierto.$disconnect().catch(avisarSiFalla('database'));
   }
 
   // Desconectar todos los tenants

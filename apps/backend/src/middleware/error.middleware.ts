@@ -5,6 +5,7 @@ import { ERROR_MESSAGES } from '../utils/constants';
 import { config } from '../config/environment';
 
 import { logger } from '../utils/logger';
+import { esUnAhoraNoDeLaBase, responderAhoraNo } from '../utils/error-handler';
 
 // Tipos para errores personalizados
 interface CustomError extends Error {
@@ -82,6 +83,10 @@ export function errorHandler(
       code: 'VALIDATION_ERROR',
     });
   }
+
+  // La base dijo «ahora no» (sin conexión libre, transacción que no abre a
+  // tiempo, dos escrituras que chocan): se reintenta, no es un 500.
+  if (esUnAhoraNoDeLaBase(error)) return responderAhoraNo(reply);
 
   // Errores de Prisma
   if (isPrismaKnownRequestError(error)) {

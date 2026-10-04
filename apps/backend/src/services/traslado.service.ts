@@ -8,6 +8,7 @@ import { datosDelPlantel, valoresDelAlumno, fechaLarga } from './constancias.ser
 import { plantillaDe, parrafosDe } from './plantillas-de-documentos.service';
 import { abreviaturaDe } from './resumen-final.service';
 import { borrarGuardandoCopia } from '../utils/papelera';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
  * EL TRASLADO Y EL RETIRO
@@ -400,7 +401,7 @@ export async function importar(prisma: any, instituteId: string, actor: string, 
             data: { action: 'CREATE', entity: 'USER', entityType: 'USER', entityId: d.alumno.cedula, userId: actor, metadata: { action: 'IMPORTAR_TRASLADO', desde: plantel } },
         });
     });
-    await RedisCache.clearPattern(`grade:avg:student:${d.alumno.cedula}:*`).catch(() => undefined);
+    await RedisCache.clearPattern(`grade:avg:student:${d.alumno.cedula}:*`).catch(avisarSiFalla('traslado.service'));
 
     return {
         alumno: { cedula: d.alumno.cedula, nombre: `${d.alumno.nombres} ${d.alumno.apellidos}`, correo },
@@ -424,6 +425,6 @@ export async function notasTraidas(prisma: any, studentId: string) {
 export async function quitarNotaTraida(prisma: any, actor: string, studentId: string, id: string) {
     const n = await borrarGuardandoCopia(prisma, 'notaDeOtroPlantel', { id, studentId }, { usuarioId: actor, motivo: 'nota traída quitada' });
     if (n === 0) throw AppErrors.NotFound('Nota traída');
-    await RedisCache.clearPattern(`grade:avg:student:${studentId}:*`).catch(() => undefined);
+    await RedisCache.clearPattern(`grade:avg:student:${studentId}:*`).catch(avisarSiFalla('traslado.service'));
     return { quitadas: n };
 }

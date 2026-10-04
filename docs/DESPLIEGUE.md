@@ -429,16 +429,21 @@ con quién la borró y desde dónde.
 
 Si la copia no se puede guardar, **el borrado no ocurre**.
 
-### Tarea diaria
+### Tarea diaria (sola, desde octubre 2026)
 
-```bash
-npm run papelera:limpiar
-```
+El servidor la hace solo, una vez al día (`jobs/mantenimiento.job.ts`, MANT-*),
+junto con lo demás que crecía sin límite:
 
-Tira lo que lleva más de `PAPELERA_DIAS` días (90 por defecto). Sin esto la
-papelera crece para siempre.
+| Qué | Cuánto se guarda | Variable |
+|---|---|---|
+| Papelera (`registros_borrados`) | 90 días | `PAPELERA_DIAS` |
+| Avisos leídos o caducados (los `persistent`, nunca) | 180 días | `AVISOS_DIAS` |
+| Llaves de sesión caducadas | 7 días después de caducar | — |
+| Cambios recibidos (`X-Cambio`) | 90 días | `CAMBIOS_DIAS` |
 
-Va junto al respaldo diario, después: primero se guarda, luego se limpia.
+**No se tira nunca:** notas, asistencia, el rastro del QR (es la prueba de
+quién firmó) ni nada del liceo. Lo de antes de esos plazos está en el respaldo.
+A mano sigue valiendo `npm run papelera:limpiar`.
 
 ### Borrar un liceo entero
 
@@ -490,6 +495,84 @@ Si el servidor arranca sin Redis sigue funcionando, pero:
   queda vieja sin que nadie lo note.
 
 Comprobar `"redis":"connected"` en `GET /health` después de cada despliegue.
+
+### Lo que falla callado: el panel de salud del superadmin
+
+Una tarea que deja de correr no da error en ninguna pantalla (así se quedó una
+vez el recordatorio de cuotas). Cada tarea apunta su **latido**
+(`utils/latido-de-tareas.ts`) y el inicio del superadmin enseña **Salud del
+sistema** (`GET /api/superadmin/monitoring/health`): cada tarea «bien»,
+«atrasada» (dos vueltas sin ir bien) o «fallando»; el último respaldo bueno; y
+el **disco** (por debajo del 10 % libre, crítico). Mirarlo después de cada
+despliegue y una vez por semana. LATIDO-01…03.
+
+Los `.catch(() => undefined)` del servidor (avisos, contadores, la memoria
+rápida) ya no se tragan el error: `avisarSiFalla` lo apunta, una vez por minuto
+como mucho (`utils/sin-callar.ts`).
+
+### Los registros tienen tope
+
+Docker guardaba los registros de cada contenedor sin límite (`json-file`): un
+error que se repite llenaba el disco y tumbaba a TODOS los liceos.
+`docker-compose.prod.yml` les pone 5 archivos de 20 MB por contenedor
+(`x-registros`). Si el servidor no usa Docker, lo mismo con `logrotate`.
+
+### Cuando vuelve la luz (y a las 7:00)
+
+Medido con `npm run medir:vuelve-la-luz` (200 teléfonos del mismo liceo, todos
+por su wifi, en este PC):
+
+| | p95 | fallos |
+|---|---|---|
+| Todos en el mismo instante (como era) | 5,8–7,1 s | 0–1 (un 500, ya es 503) |
+| Con azar de 0 a 4 s (como es ahora) | 60 ms | 0 |
+| Las 7:00: 21 profesores pasando lista en el mismo minuto | 25 ms | 0 |
+
+Lo que se arregló al medirlo:
+
+- **Las esperas llevan azar** (`lib/azar.ts`): reintentos de lo pendiente,
+  la pregunta a `/health`, la reconexión del tiempo real y la descarga de lo
+  de cada rol. Sin azar, todos reintentaban en el mismo segundo.
+- **Renovar la sesión compartía un cupo de 100 por minuto por dirección**: un
+  liceo entero sale por una sola, y en producción la web renovaba sin decir
+  desde dónde, así que eran **todos los liceos** en un cupo. Al volver la luz,
+  150 de 200 teléfonos se quedaban con 429. Ahora renovar y `/health` tienen el
+  cupo de un liceo (`CUPO_DEL_LICEO_POR_DIRECCION`, 3000) y la web reenvía la
+  dirección (CUPO-REN-01).
+- **Un 429 no es «no se pudo»**: lo pendiente espera lo que pide el servidor
+  (`Retry-After`, ahora visible para el navegador) y se reintenta (SINCON-13).
+- **«Ahora no» de la base** (sin conexión libre, transacción que no abre a
+  tiempo, dos escrituras que chocan) responde 503 con `Retry-After`, no 500:
+  el teléfono lo deja pendiente en vez de darlo por perdido (AHORANO-01/02).
+
+### Si se cae algo: qué pasa y qué hacer
+
+Un solo servidor, un PostgreSQL y un Redis: cada uno es un punto de falla.
+
+| Se cae | Qué pasa | Qué hacer |
+|---|---|---|
+| **Redis** | Todo sigue: el cupo, el freno del doble clic y la memoria rápida pasan a la del proceso. Con varios procesos, el tiempo real deja de cruzar entre ellos y la lista de sesiones cerradas no se comparte (una sesión cerrada sigue valiendo hasta 15 min en otro proceso). | Levantarlo; nada que restaurar. |
+| **PostgreSQL** | Sin servidor de datos: los teléfonos trabajan sin conexión (lo pendiente sube al volver). | Levantarlo. Si el disco se perdió: restaurar (abajo). |
+| **El servidor entero / el disco** | Igual que arriba, hasta que vuelva. | Máquina nueva → `docker compose up` → restaurar la plataforma y cada liceo desde la copia fuera del servidor (R2). |
+
+**Restaurar** (probado: RESP-02 con una base por liceo y **BASE-COMP-04** con la
+base compartida: el liceo vuelve a como estaba y el de al lado no se toca):
+
+1. La plataforma primero (`_plataforma__…dump`): qué base y qué esquema es de
+   cada liceo, y con qué llave.
+2. Cada liceo con `restaurarLiceo(archivo, url)` o `pg_restore --clean
+   --if-exists --no-owner --no-acl -d <base> <archivo>`. Con la base
+   compartida, el archivo lleva **su esquema y nada más**.
+3. `npm run migrate:tenants:status`, y comprobar `GET /health` y el panel de salud.
+
+### El tamaño del servidor
+
+Medido aquí (todo en un PC, generador incluido): 500 personas en 50 liceos con
+p95 de 124 ms; 200 teléfonos volviendo a la vez, p95 de 60 ms con el azar. Para
+empezar: **4 vCPU y 8 GB** hasta unos 50 liceos, con PgBouncer; por encima,
+medir en el servidor de verdad (§10-bis) antes de crecer. El disco: la base,
+más 7 días de respaldos locales, más 100 MB de registros por contenedor; el
+panel avisa por debajo del 10 % libre.
 
 ### Compilar en cada cambio, no el día del despliegue
 

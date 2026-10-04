@@ -19,6 +19,7 @@ import { Client } from 'pg';
 import { platformPrisma } from '../config/database';
 import { buildTenantDatabaseUrl, maskDatabaseUrl, TenantDbCredentials } from '../config/tenant-db-url';
 import { logger } from '../utils/logger';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 const execAsync = promisify(exec);
 
@@ -148,7 +149,7 @@ export async function getTenantMigrationStatus(institute: InstituteRow): Promise
         const message = error?.message ?? 'Error desconocido';
         return { ...base, error: /_prisma_migrations/.test(message) ? 'Base sin historial de migraciones' : message };
     } finally {
-        await client.end().catch(() => {});
+        await client.end().catch(avisarSiFalla('tenant-migrations.service'));
     }
 }
 

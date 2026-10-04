@@ -14,6 +14,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { platformPrisma } from '../config/database';
 import { logger } from '../utils/logger';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -90,7 +91,7 @@ export async function checkStudentLimit(
                 platformPrisma.institute.update({
                     where: { id: instituteId },
                     data: { currentStudents: actualCount }
-                }).catch(() => {});
+                }).catch(avisarSiFalla('plan-limits.middleware'));
             }
         } catch {
             // fallback al valor de limits si falla la consulta
@@ -152,7 +153,7 @@ export async function checkTeacherLimit(
                 platformPrisma.institute.update({
                     where: { id: instituteId },
                     data: { currentTeachers: actualCount }
-                }).catch(() => {});
+                }).catch(avisarSiFalla('plan-limits.middleware'));
             }
         } catch {
             // fallback al valor de limits si falla la consulta

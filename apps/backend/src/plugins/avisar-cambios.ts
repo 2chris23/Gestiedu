@@ -5,6 +5,7 @@ import { logger } from '../utils/logger';
 import { RedisCache } from '../config/redis';
 import { conLiceo } from '../config/ambito-del-liceo';
 import { AQuienAfecta, resolverDestinatarios } from '../services/a-quien-afecta.service';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
  * EL ESCÁNER DE LA PUERTA
@@ -113,7 +114,7 @@ async function avisarCambiosPlugin(server: FastifyInstance) {
 
         await conLiceo(instituteId, () =>
             RedisCache.clearPattern(`cache:${instituteId}:*:${quien}:*`)
-        ).catch(() => undefined);
+        ).catch(avisarSiFalla('avisar-cambios'));
         return payload;
     });
 
@@ -165,7 +166,7 @@ async function avisarCambiosPlugin(server: FastifyInstance) {
                 // una vez para todas.
                 await conLiceo(instituteId, () =>
                     RedisCache.clearPatterns(todos.map((id) => `cache:${instituteId}:*:${id}:*`))
-                ).catch(() => undefined);
+                ).catch(avisarSiFalla('avisar-cambios'));
 
                 if (io) {
                     for (const id of destinatarios.personas) {
@@ -179,7 +180,7 @@ async function avisarCambiosPlugin(server: FastifyInstance) {
             } else {
                 await conLiceo(instituteId, () =>
                     RedisCache.clearPattern(`cache:${instituteId}:*`)
-                ).catch(() => undefined);
+                ).catch(avisarSiFalla('avisar-cambios'));
                 io?.to(`institute:${instituteId}`).emit('datos:cambiaron', aviso);
             }
         } catch (error) {

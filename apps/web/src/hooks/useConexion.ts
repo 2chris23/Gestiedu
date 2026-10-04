@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import { elEstadoDelServidor, escucharElServidor } from '@/lib/estado-del-servidor';
+import { conAzar } from '@/lib/azar';
 
 /** Cada cuánto se vuelve a preguntar, mientras el servidor no contesta. */
 const CADA = 15_000;
@@ -56,13 +57,22 @@ export function useConexion(): Conexion {
     // Mientras no contesta: preguntar de vez en cuando, y al volver a la app.
     React.useEffect(() => {
         if (servidor.contesta) return;
-        const reloj = setInterval(() => void preguntarAlServidor(), CADA);
+        // Cada 15 s, con azar (de 10,5 a 19,5): si todos preguntan al mismo
+        // ritmo, al volver el servidor le llegan todos juntos.
+        let reloj = 0;
+        const otraVez = () => {
+            reloj = window.setTimeout(() => {
+                void preguntarAlServidor();
+                otraVez();
+            }, conAzar(CADA));
+        };
+        otraVez();
         const alVolver = () => {
             if (document.visibilityState === 'visible') void preguntarAlServidor();
         };
         document.addEventListener('visibilitychange', alVolver);
         return () => {
-            clearInterval(reloj);
+            window.clearTimeout(reloj);
             document.removeEventListener('visibilitychange', alVolver);
         };
     }, [servidor.contesta]);

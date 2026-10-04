@@ -3660,3 +3660,71 @@ pantallas, 0 con algo que arreglar. Deriva del esquema: solo la vieja.
 
 **Sin conexión** en finanzas solo se anotan fondos y gastos (sin la foto de la
 factura): pagar al personal y confirmar pagos piden servidor.
+
+## 64. Lo de Antigravity, el cuadro de honor, el recorrido guiado y un sistema que no se cae (4 de octubre de 2026)
+
+Mientras Claude no estaba, **Antigravity** trabajó en el repositorio (117
+archivos sin guardar; su traspaso en `docs/antigravity/`). Su informe decía
+«100 % en verde»: **fallaban 10 pruebas**. Se revisó todo antes de guardar nada.
+
+**Lo de Antigravity, revisado (42b401f, 2a87695, febc49e):**
+
+- Se quedaron sus mejoras de velocidad y orden, y la **base compartida (un
+  esquema por liceo)**, pero solo después de blindarla. Con PgBouncer en modo
+  transacción **una consulta escrita a mano leía el esquema de OTRO liceo:
+  359 de 400** (medido). Ahora cada consulta a mano y cada transacción van
+  dentro de `SET LOCAL search_path` (`config/esquema-del-liceo.ts`): **0 de
+  6000** (`npm run probar:aislamiento`, AISLA-10…13).
+- Borrar un liceo de la base compartida hacía `DROP DATABASE` **de la base de
+  todos**; su respaldo era la base entera, con los datos de los demás. Ahora es
+  su esquema y nada más (BASE-COMP-01…03), y **devolverlo está probado**: el
+  liceo vuelve a como estaba y el de al lado no se toca (BASE-COMP-04).
+- Se deshizo: el recordatorio de cuotas con BullMQ (sin Redis al arrancar, no
+  se enviaba nunca), la migración vieja reescrita, la traba de `push-all-dbs`
+  borrada, el armazón que rompía la hidratación, y el fallo silencioso de
+  credenciales.
+
+**Seguridad (cce869a, 1fc8e79):** fuera del repositorio público los secretos
+que había (la contraseña de la base local y la del superadmin, escritas en
+claro). **Siguen en el historial de git**: hay que cambiar esas contraseñas y
+decidir si se reescribe el historial (necesita permiso del dueño). Un `.docx`
+bomba (zip que se infla) ya no revienta la memoria al importar el plan
+(ZIP-01…04); la configuración rechaza `__proto__` (PROTO-01/02).
+
+**Cuadro de honor (d6f7169):** por lapso y por ciclo, con la foto de cada
+sábado. El que había lo hizo Antigravity y enseñaba **cinco alumnos
+inventados** cuando no había datos, promediaba notas sueltas, contaba la
+asistencia de toda la vida y tenía los pesos fijos en el código. Ahora: el
+promedio de la boleta, solo el período, pesos del liceo, y el alumno ve solo su
+puntaje y cuántos puestos subió (CUADRO-01…09, CUADRO-UI-01/02). Una
+felicitación ya no resta: un alumno de pruebas con 74 observaciones salía con 0.
+
+**Recorrido guiado (13bb860):** como en la app rial, el «?» ilumina el botón de
+verdad y lo explica paso a paso (RECORRIDO-01…03, RECORRIDO-UI-01…04).
+
+**Robustez.** De la lista de fenómenos del dueño, los que de verdad pueden
+tumbar este sistema, cada uno medido o probado:
+
+| Fenómeno | Lo encontrado | Lo hecho |
+|---|---|---|
+| Vuelve la luz (estampida) | Todos los teléfonos reintentaban en el mismo segundo: p95 de 6–7 s | Azar en cada espera: p95 60 ms (`medir:vuelve-la-luz`) |
+| Cupo compartido | Renovar la sesión: 100 por minuto **por dirección**; un liceo entero sale por una; en producción, **todos los liceos** (la web no reenviaba la dirección). 150 de 200 teléfonos con 429 | Cupo de un liceo para renovar y `/health`; la web reenvía la dirección (CUPO-REN-01) |
+| Mensaje veneno / desfase de versiones | Un 429 se daba por «no se pudo» | 429/503 esperan y reintentan; un 400 no atasca la cola (SINCON-13) |
+| Base saturada | Un 500 al pasar lista en la avalancha | «Ahora no» de la base = 503 con `Retry-After` (AHORANO-01/02) |
+| Teléfono lleno | Lo pendiente se perdía callado: la pantalla decía «pendiente» y no había nada | Se hace sitio; si no cabe, se dice (GUARDA-01); se pide que el navegador no lo borre |
+| Falla gris | 50 `.catch` vacíos; tareas que podían dejar de correr sin que nadie lo viera | Se apuntan (`avisarSiFalla`); las tareas laten y el superadmin ve su salud, los respaldos y el disco (LATIDO-01…03) |
+| Crecimiento sin límite | Papelera (solo a mano), avisos, sesiones, cambios recibidos y registros de Docker, sin tope | Mantenimiento diario con plazos configurables (MANT-01…03); registros con tope |
+| Espacio de cada liceo | Con la base compartida, cada liceo medía la base ENTERA y salía «al 90 %» | Cada uno mide su esquema |
+| Hora del teléfono | Dos pantallas decían «hoy» con el reloj del aparato | La del liceo; HORA-01 vigila cada `new Date()` |
+| Un solo punto de falla | Ningún respaldo se había devuelto nunca con la base compartida | Simulacro BASE-COMP-04 y plan de recuperación (`DESPLIEGUE.md` §10) |
+
+Lo que **no aplica** a este sistema (consenso, réplicas, NoSQL, memoria de bajo
+nivel, hardware, red de bajo nivel, Kubernetes) está razonado en el plan de
+esta fase; vuelve a importar el día que haya alta disponibilidad.
+
+**Encontrado de paso:** las mediciones escribían en una fecha de 2027 y el
+servidor no deja guardar clases del futuro: cada guardado de `medir:estres`
+era un 400 contado como fallo de carga. Ahora escriben en un domingo pasado
+sin datos. Y `medir:estres` leía el esquema equivocado con la base compartida.
+La ficha del profesor enseñaba un promedio inventado (16.5) en las secciones
+sin notas.

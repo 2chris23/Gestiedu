@@ -2,6 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useSchoolToday } from '@/hooks/useSchoolTime';
 import { olvidarCredencial } from '@/lib/credencial-en-memoria';
 import { conseguirCredencial } from '@/lib/credencial-en-memoria';
 
@@ -81,6 +82,8 @@ function StatCard({ icon, label, value, color }: { icon: string; label: string; 
 }
 
 export default function DashboardPage() {
+    // El día del liceo, no el del reloj del teléfono (HORA-01).
+    const hoy = useSchoolToday();
     const params = useParams();
     const router = useRouter();
     const slug = params.slug as string;
@@ -192,7 +195,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-gray-800/60 border border-gray-700/60 rounded-xl text-sm text-gray-300">
                     <span>📅</span>
-                    <span>{new Date().toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+                    <span>{hoy ? new Date(`${hoy}T12:00:00`).toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' }) : ''}</span>
                 </div>
             </div>
 

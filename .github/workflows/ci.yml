@@ -10,7 +10,10 @@ name: CI
 #   · tipos del servidor y de la web;
 #   · las pruebas del servidor, contra un PostgreSQL y un Redis de verdad;
 #   · las pruebas de la web;
-#   · que la web compila.
+#   · que la web compila;
+#   · que ninguna librería que llega al servidor tenga un fallo CRÍTICO
+#     conocido (`npm audit`; los altos se ven en el registro y Dependabot
+#     abre su petición cada semana).
 #
 # Las de navegador (Playwright) no van aquí: necesitan el liceo de pruebas
 # sembrado y los dos servidores arriba. Ver CLAUDE.md.
@@ -106,6 +109,21 @@ jobs:
       - name: Pruebas del servidor
         working-directory: apps/backend
         run: npx jest --ci
+
+  librerias:
+    name: Librerías (fallos conocidos)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Lo que viaja al servidor, sin fallos críticos
+        run: |
+          npm audit --omit=dev --audit-level=high || true
+          npm audit --omit=dev --audit-level=critical
 
   web:
     name: Web (tipos, pruebas y compilación)

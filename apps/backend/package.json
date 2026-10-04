@@ -49,6 +49,7 @@
     "medir:pozo": "tsx src/scripts/medir-pozo-y-repartidor.ts",
     "medir:aguante": "tsx src/scripts/medir-aguante.ts",
     "medir:estres": "tsx src/scripts/medir-estres-incremental.ts",
+    "medir:vuelve-la-luz": "tsx src/scripts/medir-vuelve-la-luz.ts",
     "seed:muchos-liceos": "tsx src/scripts/seed-muchos-liceos.ts"
   },
   "dependencies": {

@@ -737,9 +737,17 @@ export default function UserProfilePage({ params }: PageProps) {
 
                                                             <div className="text-right flex items-center gap-2">
                                                                 <div>
-                                                                    <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100 block">
-                                                                        {(c.average || 16.5).toFixed(1)} pts
-                                                                    </span>
+                                                                    {/* Sin notas, lo dice: antes enseñaba un 16.5
+                                                                        inventado, que en la ficha parecía su promedio. */}
+                                                                    {typeof c.average === 'number' && c.average > 0 ? (
+                                                                        <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100 block">
+                                                                            {c.average.toFixed(1)} pts
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-xs font-semibold text-gray-600 bg-gray-50 px-2 py-0.5 rounded-md border border-gray-200 block">
+                                                                            Sin notas
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                                 <ChevronLeft className="w-4 h-4 text-gray-400 rotate-180 group-hover:translate-x-1 transition-all group-hover:text-indigo-600" />
                                                             </div>

@@ -5,6 +5,7 @@ import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 import { canSeeStudent } from '../services/authorization.service';
 import { comprimirFoto, direccionDeLaFoto, PESO_MAXIMO_DE_SUBIDA } from '../services/foto-de-perfil.service';
 import { invalidateUserSession } from '../middleware/auth.middleware';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
  * RUTAS DE LA FOTO DE PERFIL
@@ -100,7 +101,7 @@ export async function putUserPhoto(request: ConId, reply: FastifyReply) {
 
         // La sesión guardada lleva el avatar: sin esto la cabecera de la
         // persona seguiría enseñando la foto vieja hasta que caduque.
-        await invalidateUserSession(liceoDe(request), id).catch(() => undefined);
+        await invalidateUserSession(liceoDe(request), id).catch(avisarSiFalla('foto-de-perfil.controller'));
 
         return reply.send({
             avatar: direccionDeLaFoto(id, foto.version),
@@ -132,6 +133,6 @@ export async function deleteUserPhoto(request: ConId, reply: FastifyReply) {
     if (borradas === 0) return reply.status(404).send({ error: 'Sin foto' });
 
     request.aQuienAfecta = { studentIds: [id] };
-    await invalidateUserSession(liceoDe(request), id).catch(() => undefined);
+    await invalidateUserSession(liceoDe(request), id).catch(avisarSiFalla('foto-de-perfil.controller'));
     return reply.send({ message: 'Foto quitada' });
 }

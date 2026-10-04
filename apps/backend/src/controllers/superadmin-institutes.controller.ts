@@ -13,6 +13,7 @@ import {
     migrateTenantById,
     migrateAllTenants,
 } from '../services/tenant-migrations.service';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 interface CreateInstituteBody {
     name: string;
@@ -122,7 +123,7 @@ export class SuperAdminInstitutesController {
                                     currentStudents: studentsCount,
                                     currentTeachers: teachersCount,
                                 },
-                            }).catch(() => {});
+                            }).catch(avisarSiFalla('superadmin-institutes.controller'));
                         }
 
                         return {

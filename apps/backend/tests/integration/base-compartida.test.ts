@@ -137,4 +137,51 @@ describe('La base compartida: borrar y respaldar un liceo (BASE-COMP)', () => {
             rmSync(carpeta, { recursive: true, force: true });
         }
     }, 120000);
+
+    /**
+     * EL SIMULACRO (robustez, 2026-10-04): un respaldo que nadie ha devuelto
+     * nunca no es un respaldo. Se guarda un liceo de la base compartida, se le
+     * rompe, se cambia el liceo de al lado DESPUÉS del respaldo, y se devuelve:
+     * el roto vuelve a como estaba y el vecino se queda con lo suyo de ahora.
+     */
+    it('BASE-COMP-04: devolver el respaldo de un liceo lo deja como estaba y no toca al de al lado', async () => {
+        const bin = process.env.PG_BIN_DIR || (process.platform === 'win32' ? 'C:/Program Files/PostgreSQL/17/bin' : '');
+        if (process.platform === 'win32' && !existsSync(path.join(bin, 'pg_restore.exe'))) {
+            console.warn('BASE-COMP-04 saltada: no hay pg_restore (PG_BIN_DIR)');
+            return;
+        }
+        if (process.platform === 'win32') process.env.PG_BIN_DIR = bin;
+        const { restaurarLiceo } = await import('../../src/services/respaldos.service');
+        await en(base, async (c) => {
+            await c.query(`CREATE SCHEMA IF NOT EXISTS tenant_bc_v`);
+            await c.query(`CREATE TABLE IF NOT EXISTS tenant_bc_v.notas (valor int)`);
+            await c.query(`INSERT INTO tenant_bc_v.notas VALUES (7)`);
+            await c.query(`INSERT INTO tenant_bc_b.notas VALUES (3), (4)`);
+        });
+        const carpeta = mkdtempSync(path.join(tmpdir(), 'simulacro-'));
+        try {
+            const fila = await platformPrisma.institute.findUnique({ where: { id: ids.b } });
+            const r = await respaldarLiceo(fila as any, carpeta);
+            expect(r.ok).toBe(true);
+
+            // Se rompe el liceo, y el vecino sigue trabajando después del respaldo.
+            await en(base, async (c) => {
+                await c.query(`DELETE FROM tenant_bc_b.notas WHERE valor <> 2`);
+                await c.query(`UPDATE tenant_bc_b.notas SET valor = 0`);
+                await c.query(`UPDATE tenant_bc_v.notas SET valor = 8`);
+            });
+
+            await restaurarLiceo(r.archivo!, urlDe(base));
+
+            const despues = await en(base, async (c) => ({
+                liceo: (await c.query('SELECT valor FROM tenant_bc_b.notas ORDER BY valor')).rows.map((x) => x.valor),
+                vecino: (await c.query('SELECT valor FROM tenant_bc_v.notas')).rows.map((x) => x.valor),
+            }));
+            expect(despues.liceo).toEqual([2, 3, 4]);
+            expect(despues.vecino).toEqual([8]);
+            expect(await esquemasDe(base)).toEqual(['tenant_bc_b', 'tenant_bc_v']);
+        } finally {
+            rmSync(carpeta, { recursive: true, force: true });
+        }
+    }, 180000);
 });

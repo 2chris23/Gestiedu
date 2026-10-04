@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/axios';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
+import { escalonar, esperaQuePide } from '@/lib/azar';
+import { pedirQueNoSeBorre } from '@/lib/base-del-telefono';
+import { toast } from 'sonner';
 import { useConexion } from '@/hooks/useConexion';
 import { elDuenoDeAhora } from '@/lib/el-dueno';
 import {
@@ -38,6 +41,9 @@ import {
 
 type Resultado = 'ok' | 'sin-red' | 'sin-sesion';
 
+/** Lo que pidió esperar el servidor (429 con `Retry-After`), si lo pidió. */
+let esperaPedida: number | null = null;
+
 async function mandar(c: CambioPendiente): Promise<Resultado> {
     try {
         const r = await api.request({
@@ -58,6 +64,13 @@ async function mandar(c: CambioPendiente): Promise<Resultado> {
         const status = e?.response?.status;
         const data = e?.response?.data;
         if (status === 401) return 'sin-sesion';
+        // «Demasiadas a la vez»: no es un no, es un «ahora no». Antes se
+        // marcaba como rechazado y el cambio se perdía en la lista de «no se
+        // pudo» justo cuando más teléfonos subían a la vez (vuelve la luz).
+        if (status === 429) {
+            esperaPedida = esperaQuePide(e?.response?.headers?.['retry-after']);
+            return 'sin-red';
+        }
         if (status === 409 && data?.code === 'CAMBIO_EN_CURSO') return 'sin-red';
         // El plan o el instrumento se guardaron desde otro sitio mientras
         // tanto: se pregunta si queda lo de uno (pisando) o lo del otro.
@@ -84,6 +97,37 @@ async function mandar(c: CambioPendiente): Promise<Resultado> {
     }
 }
 
+/**
+ * Sube la cola de `dueno` en orden. Devuelve si llegó algo. Un cambio que el
+ * servidor no acepta (400: la forma cambió en una versión nueva, ya no da esa
+ * clase…) pasa a «no se pudo» y NO detiene a los de detrás: un solo cambio
+ * envenenado no puede atascar todo lo demás (SINCON-13). Solo la falta de red
+ * (o un «ahora no», 429) para la cola, para no desordenar.
+ */
+export async function subirLaCola(dueno: string): Promise<boolean> {
+    let llego = false;
+    // Lo de otra persona en este teléfono no se manda con esta sesión.
+    if ((await pendientesDeOtros(dueno)).length) {
+        for (const o of new Set((await pendientesDeOtros(dueno)).map((c) => c.dueno))) await tirarLosDe(o);
+    }
+    for (const c of await laCola(dueno)) {
+        if (c.estado !== 'pendiente') continue;
+        // Uno que espera tras un fallo de red detiene a los de detrás:
+        // el orden (borrar al final) importa más que la prisa.
+        if (c.noAntesDe && Date.now() < c.noAntesDe) break;
+        const r = await mandar(c);
+        if (r === 'sin-red') {
+            const espera = Math.max(esperaTras(c.intentos + 1), esperaPedida ?? 0);
+            esperaPedida = null;
+            await actualizarCambio(c.id, { intentos: c.intentos + 1, noAntesDe: Date.now() + espera });
+            break;
+        }
+        if (r === 'sin-sesion') break;
+        llego = true;
+    }
+    return llego;
+}
+
 export function EnviarLoPendiente() {
     const { hayConexion } = useConexion();
     const cliente = useQueryClient();
@@ -100,23 +144,7 @@ export function EnviarLoPendiente() {
         enviando.current = true;
         let llego = false;
         try {
-            // Lo de otra persona en este teléfono no se manda con esta sesión.
-            if ((await pendientesDeOtros(dueno)).length) {
-                for (const o of new Set((await pendientesDeOtros(dueno)).map((c) => c.dueno))) await tirarLosDe(o);
-            }
-            for (const c of await laCola(dueno)) {
-                if (c.estado !== 'pendiente') continue;
-                // Uno que espera tras un fallo de red detiene a los de detrás:
-                // el orden (borrar al final) importa más que la prisa.
-                if (c.noAntesDe && Date.now() < c.noAntesDe) break;
-                const r = await mandar(c);
-                if (r === 'sin-red') {
-                    await actualizarCambio(c.id, { intentos: c.intentos + 1, noAntesDe: Date.now() + esperaTras(c.intentos + 1) });
-                    break;
-                }
-                if (r === 'sin-sesion') break;
-                llego = true;
-            }
+            llego = await subirLaCola(dueno);
         } finally {
             enviando.current = false;
             if (llego) void cliente.invalidateQueries({ refetchType: 'active' });
@@ -127,11 +155,31 @@ export function EnviarLoPendiente() {
         }
     }, [cliente]);
 
-    // Al abrir, al volver la conexión.
+    // Al abrir, en el acto; al VOLVER la conexión, cada teléfono en su
+    // momento (0–4 s): vuelve la luz y vuelven todos a la vez.
+    const habiaConexion = useRef(hayConexion);
     useEffect(() => {
         void laCola(elDuenoDeAhora());
-        if (hayConexion) void enviar();
+        const volvio = hayConexion && !habiaConexion.current;
+        habiaConexion.current = hayConexion;
+        if (!hayConexion) return;
+        if (!volvio) {
+            void enviar();
+            return;
+        }
+        const t = window.setTimeout(() => void enviar(), escalonar(4000));
+        return () => window.clearTimeout(t);
     }, [hayConexion, enviar]);
+
+    // Que el navegador no tire lo pendiente cuando le falte sitio; y si queda
+    // poco, avisarlo una vez (en un teléfono lleno lo hecho sin conexión no cabe).
+    useEffect(() => {
+        void pedirQueNoSeBorre().then(({ libre }) => {
+            if (libre !== null && libre < 15 * 1024 * 1024) {
+                toast.warning('Queda poco espacio en este teléfono: lo que hagas sin conexión podría no guardarse.', { id: 'poco-espacio' });
+            }
+        });
+    }, []);
 
     useEffect(() => {
         const ya = () => void enviar();

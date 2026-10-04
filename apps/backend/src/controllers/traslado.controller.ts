@@ -3,6 +3,7 @@ import { retirar, notasParciales, archivoDeTraslado, revisarArchivo, importar, n
 import { invalidateUserSession } from '../middleware/auth.middleware';
 import { instituteTimezone, todayInTimezone } from '../utils/school-time';
 import { responderErrorClaro } from '../utils/error-claro';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
  * EL TRASLADO Y EL RETIRO (`services/traslado.service.ts`). Todo del admin: lo
@@ -19,7 +20,7 @@ export async function retiro(request: FastifyRequest<{ Params: { id: string }; B
     try {
         const hecho = await retirar(request.tenantPrisma, actorDe(request), request.params.id, request.body as any, await hoyDe(request));
         // Retirado es retirado: su sesión abierta deja de servir en el acto.
-        await invalidateUserSession(instituteIdDe(request), request.params.id).catch(() => undefined);
+        await invalidateUserSession(instituteIdDe(request), request.params.id).catch(avisarSiFalla('traslado.controller'));
         request.aQuienAfecta = { studentIds: [request.params.id] };
         return reply.send({ success: true, data: hecho });
     } catch (e) {

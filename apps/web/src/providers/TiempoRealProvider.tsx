@@ -170,6 +170,9 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
                 reconnection: true,
                 reconnectionDelay: 1000,
                 reconnectionDelayMax: 10000,
+                // Cada teléfono reintenta a su ritmo (±50 %): al volver el
+                // servidor no le llegan todos en el mismo segundo.
+                randomizationFactor: 0.5,
             });
             socketRef.current = socket;
 

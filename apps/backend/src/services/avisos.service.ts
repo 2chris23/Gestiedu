@@ -252,8 +252,39 @@ export async function marcarLeido(prisma: any, userId: string, id?: string) {
     return misAvisos(prisma, userId);
 }
 
-/** Una dirección de Web Push es siempre https (la da el navegador: Google, Mozilla, Apple). */
-const esDestinoWeb = (v: string) => /^https:\/\/[^\s]{10,2000}$/.test(v);
+/**
+ * Una dirección de Web Push la da el NAVEGADOR, y es de su servicio de avisos:
+ * Google, Mozilla, Microsoft o Apple. Antes valía cualquier https, y el
+ * servidor le hacía un POST a lo que le dijeran: quien tuviera sesión podía
+ * hacerlo llamar a una dirección interna (SSRF, robustez 2026-10-04). Ahora,
+ * solo los servicios de avisos conocidos (`AVISOS_SERVICIOS_EXTRA` añade otros).
+ */
+const SERVICIOS_DE_AVISOS = [
+    'fcm.googleapis.com',
+    'android.googleapis.com',
+    'updates.push.services.mozilla.com',
+    '.push.services.mozilla.com',
+    '.notify.windows.com',
+    'web.push.apple.com',
+    '.push.apple.com',
+    ...String(process.env.AVISOS_SERVICIOS_EXTRA ?? '')
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean),
+];
+export function esDestinoWeb(v: string): boolean {
+    if (!/^https:\/\/[^\s]{10,2000}$/.test(v)) return false;
+    let anfitrion: string;
+    try {
+        const u = new URL(v);
+        if (u.port && u.port !== '443') return false;
+        if (u.username || u.password) return false;
+        anfitrion = u.hostname.toLowerCase();
+    } catch {
+        return false;
+    }
+    return SERVICIOS_DE_AVISOS.some((s) => (s.startsWith('.') ? anfitrion.endsWith(s) : anfitrion === s));
+}
 
 /** Apunta este teléfono para recibir avisos de esta persona. Si era de otra, pasa a ser de esta. */
 export async function suscribir(

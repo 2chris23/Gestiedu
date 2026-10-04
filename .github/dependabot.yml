@@ -1,0 +1,19 @@
+# Las librerías se revisan solas cada semana (robustez, 2026-10-04): una que es
+# segura hoy no lo es dentro de tres meses. Ya pasó con Next.js (dos fallos
+# críticos de ejecución remota) y otra vez en octubre de 2026. Dependabot abre
+# una petición de cambios; la CI tiene que salir en verde antes de aceptarla.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      parches:
+        update-types: [patch, minor]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

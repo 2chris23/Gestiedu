@@ -13,6 +13,8 @@ import { Client } from 'pg';
 import { platformPrisma } from '../config/database';
 import { logger } from '../utils/logger';
 import { checkPlanAlerts } from '../services/plan-alerts.service';
+import { latido } from '../utils/latido-de-tareas';
+import { esquemaPropio } from '../config/esquema-del-liceo';
 
 const PLATFORM_DB_URL = process.env.PLATFORM_DATABASE_URL || '';
 
@@ -21,19 +23,26 @@ const PLATFORM_DB_URL = process.env.PLATFORM_DATABASE_URL || '';
 /**
  * Obtiene el tamaño en GB de una base de datos PostgreSQL dado su nombre.
  */
-async function getTenantDbSizeGB(dbName: string): Promise<number> {
+async function getTenantDbSizeGB(dbName: string, esquema: string | null = null): Promise<number> {
     const urlParts = PLATFORM_DB_URL.match(/postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\//);
     if (!urlParts) return 0;
 
     const [, user, password, host, port] = urlParts;
-    const client = new Client({ user, password, host, port: parseInt(port), database: 'postgres' });
+    // Con la base compartida, el tamaño de la BASE es el de todos los liceos
+    // juntos: cada uno salía con el total y todos «al 90 %» a la vez. Un liceo
+    // con esquema propio mide su esquema (tablas con sus índices y TOAST).
+    const client = new Client({ user, password, host, port: parseInt(port), database: esquema ? dbName : 'postgres' });
 
     try {
         await client.connect();
-        const res = await client.query(
-            `SELECT pg_database_size($1)::float8 / (1024 * 1024 * 1024) AS size_gb`,
-            [dbName]
-        );
+        const res = esquema
+            ? await client.query(
+                  `SELECT COALESCE(SUM(pg_total_relation_size(c.oid)), 0)::float8 / (1024 * 1024 * 1024) AS size_gb
+                     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = $1 AND c.relkind IN ('r', 'm')`,
+                  [esquema]
+              )
+            : await client.query(`SELECT pg_database_size($1)::float8 / (1024 * 1024 * 1024) AS size_gb`, [dbName]);
         return parseFloat(res.rows[0]?.size_gb ?? '0');
     } catch {
         return 0;
@@ -73,6 +82,7 @@ export async function runStorageMonitor(): Promise<void> {
             name: true,
             slug: true,
             databaseName: true,
+            databaseSchema: true,
             maxStorage: true,
             currentStorage: true,
             maxStudents: true,
@@ -90,7 +100,7 @@ export async function runStorageMonitor(): Promise<void> {
     for (const inst of institutes) {
         try {
             // 1. Calcular tamaño real de la BD del tenant
-            const dbSizeGB = await getTenantDbSizeGB(inst.databaseName!);
+            const dbSizeGB = await getTenantDbSizeGB(inst.databaseName!, esquemaPropio(inst.databaseSchema));
 
             // 2. Actualizar currentStorage en Platform DB
             await platformPrisma.institute.update({
@@ -133,6 +143,7 @@ export async function runStorageMonitor(): Promise<void> {
     }
 
     logger.info(`[monitor-storage] ✅ Completado: ${updated} actualizados, ${alerts} alertas críticas`);
+    await latido('almacenamiento', 60 * 60 * 1000, updated < institutes.length ? `${institutes.length - updated} liceo(s) sin medir` : undefined);
 
     // Ejecutar verificación de alertas de plan (estudiantes/profesores/storage)
     await checkPlanAlerts().catch(e =>

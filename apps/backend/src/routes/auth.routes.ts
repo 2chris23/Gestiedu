@@ -13,6 +13,7 @@ import {
   anularLlaveDeTelefono,
 } from '../controllers/auth.controller';
 import { authenticate, userRateLimit } from '../middleware/auth.middleware';
+import { CUPO_DEL_LICEO_POR_DIRECCION } from '../plugins/cupo-compartido';
 
 const authRoutes: FastifyPluginAsync = async (fastify) => {
   // Esquemas para validación
@@ -116,7 +117,13 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
   // Rutas de autenticación
   // SEGURIDAD: Rate limiting estricto en login (10/min por IP+email) y refresh (20/min por IP)
   fastify.post('/login', { schema: loginSchema, preHandler: userRateLimit as any }, login);
-  fastify.post('/refresh-token', { schema: refreshTokenSchema, preHandler: userRateLimit as any }, refreshToken);
+  // Renovar: el cupo general por dirección es el de un liceo entero (todo él
+  // sale por una sola dirección); el de cada llave lo pone `userRateLimit`.
+  fastify.post(
+    '/refresh-token',
+    { schema: refreshTokenSchema, preHandler: userRateLimit as any, config: { rateLimit: { max: CUPO_DEL_LICEO_POR_DIRECCION } } } as any,
+    refreshToken
+  );
 
   // Rutas protegidas
   fastify.post('/logout', { preHandler: authenticate }, logout as any);
