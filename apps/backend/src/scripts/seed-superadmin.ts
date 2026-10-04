@@ -4,7 +4,7 @@
  *
  * Crea el superadmin con las credenciales del .env:
  *   SUPERADMIN_EMAIL=admin@tuapp.com
- *   SUPERADMIN_PASSWORD=SuperAdmin2026!
+ *   SUPERADMIN_PASSWORD=una-clave-larga-y-tuya
  */
 
 import 'dotenv/config';

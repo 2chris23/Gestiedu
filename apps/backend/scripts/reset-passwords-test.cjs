@@ -2,7 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
 
 const prisma = new PrismaClient({
-  datasources: { db: { url: 'postgresql://postgres:82nQKb95S7wNDmuxyvIG6dOYkZUo@localhost:5432/tenant_instituto_testing' } }
+  datasources: { db: { url: process.env.TEST_DB_URL } }
 });
 
 async function main() {

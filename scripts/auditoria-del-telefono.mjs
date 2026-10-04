@@ -66,7 +66,7 @@ import {
 } from './reglas-del-telefono.mjs';
 import { MEDIR_CLARIDAD, QUE_SIGNIFICA_CLARIDAD } from './reglas-de-claridad.mjs';
 import { mkdir, writeFile, rm } from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -80,9 +80,45 @@ const CLAVE = '123456';
 // `--claridad`: además, ¿se entiende? (`reglas-de-claridad.mjs`). No cuenta para `--exigir`.
 const CLARIDAD = process.argv.includes('--claridad');
 
-const BD =
-    process.env.TEST_DB_URL ||
-    'postgresql://postgres:82nQKb95S7wNDmuxyvIG6dOYkZUo@localhost:5432/tenant_instituto_testing';
+/**
+ * DÓNDE VIVE EL LICEO DE PRUEBAS (2026-10-04)
+ *
+ * Antes: una dirección fija a su base propia, con la contraseña escrita aquí
+ * (el repositorio es público). Ahora se le pregunta a la plataforma: su base,
+ * sus credenciales y su esquema (en la base compartida). TEST_DB_URL manda si
+ * está puesta.
+ */
+function urlDeLaPlataforma() {
+    if (process.env.PLATFORM_DATABASE_URL) return process.env.PLATFORM_DATABASE_URL;
+    const env = readFileSync(join(RAIZ, 'apps', 'backend', '.env'), 'utf8');
+    const linea = env.split(/\r?\n/).find((l) => l.startsWith('PLATFORM_DATABASE_URL='));
+    if (!linea) throw new Error('Falta PLATFORM_DATABASE_URL (apps/backend/.env)');
+    return linea.slice('PLATFORM_DATABASE_URL='.length).trim().replace(/^"|"$/g, '').split('?')[0];
+}
+
+let dondeVive = null;
+function laBaseDelLiceo() {
+    if (process.env.TEST_DB_URL) return Promise.resolve({ url: process.env.TEST_DB_URL, esquema: null });
+    dondeVive ??= (async () => {
+        const plat = new pg.Client({ connectionString: urlDeLaPlataforma() });
+        await plat.connect();
+        try {
+            const { rows } = await plat.query(
+                'SELECT "databaseName", "databaseSchema", "databaseHost", "databasePort", "databaseUser", "databasePassword" FROM institutes WHERE slug = $1',
+                ['instituto-testing']
+            );
+            const r = rows[0];
+            if (!r) throw new Error('El liceo de pruebas no está en la plataforma');
+            return {
+                url: `postgresql://${encodeURIComponent(r.databaseUser)}:${encodeURIComponent(r.databasePassword)}@${r.databaseHost}:${r.databasePort ?? 5432}/${r.databaseName}`,
+                esquema: r.databaseSchema && r.databaseSchema !== 'public' ? r.databaseSchema : null,
+            };
+        } finally {
+            await plat.end();
+        }
+    })();
+    return dondeVive;
+}
 
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -90,8 +126,13 @@ const BD =
 // ════════════════════════════════════════════════════════════════════════════
 
 async function consultar(sql, params = []) {
-    const cliente = new pg.Client({ connectionString: BD });
+    const { url, esquema } = await laBaseDelLiceo();
+    const cliente = new pg.Client({ connectionString: url });
     await cliente.connect();
+    if (esquema) {
+        if (!/^[a-z0-9_]{1,63}$/.test(esquema)) throw new Error(`Esquema no válido: ${esquema}`);
+        await cliente.query(`SET search_path TO "${esquema}"`);
+    }
     try {
         return (await cliente.query(sql, params)).rows;
     } catch (e) {

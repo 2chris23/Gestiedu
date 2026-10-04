@@ -294,7 +294,7 @@ CORS_ORIGIN=http://localhost:3000
 
 # ── Superadmin ──
 SUPERADMIN_EMAIL=admin@tuapp.com
-SUPERADMIN_PASSWORD=SuperAdmin2026!
+SUPERADMIN_PASSWORD=la de SUPERADMIN_PASSWORD
 ```
 
 Crea el archivo `apps/web/.env.local`:
@@ -386,7 +386,7 @@ npm run dev    # Levanta backend (puerto 3001) y frontend (puerto 3000) en paral
 
 | Email | Contraseña |
 |---|---|
-| `admin@tuapp.com` | `SuperAdmin2026!` |
+| `admin@tuapp.com` | `la de SUPERADMIN_PASSWORD` |
 
 ---
 

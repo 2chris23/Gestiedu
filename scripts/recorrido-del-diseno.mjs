@@ -100,7 +100,7 @@ async function losRecorridos() {
         },
         {
             rol: 'superadmin',
-            entrar: { ruta: '/superadmin/login', email: 'admin@tuapp.com', clave: 'SuperAdmin2026!', espera: '**/superadmin/**' },
+            entrar: { ruta: '/superadmin/login', email: 'admin@tuapp.com', clave: process.env.SUPERADMIN_PASSWORD ?? '', espera: '**/superadmin/**' },
             pantallas: [
                 ['Panel', '/superadmin/dashboard'],
                 ['Liceos', '/superadmin/institutes'],

@@ -12,7 +12,7 @@ async function testSuperAdminDashboard() {
         console.log('1. Navegando al login de SuperAdmin...');
         await page.goto('http://localhost:3000/superadmin/login', { waitUntil: 'networkidle' });
         await page.fill('input[type="email"], input[name="email"], input[placeholder*="correo" i], input[placeholder*="email" i]', 'admin@tuapp.com');
-        await page.fill('input[type="password"]', 'SuperAdmin2026!');
+        await page.fill('input[type="password"]', process.env.SUPERADMIN_PASSWORD);
         await page.click('button:has-text("Ingresar"), button[type="submit"]');
 
         console.log('2. Esperando carga del Dashboard de SuperAdmin...');

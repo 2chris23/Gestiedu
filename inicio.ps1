@@ -373,7 +373,7 @@ function Seed-SuperAdmin {
     Write-Host "  o resetea su contraseña si ya existe." -ForegroundColor Gray
     Write-Host ""
     Write-Host "  Email: admin@tuapp.com" -ForegroundColor Cyan
-    Write-Host "  Pass:  SuperAdmin2026!" -ForegroundColor Cyan
+    Write-Host "  Pass:  (la de SUPERADMIN_PASSWORD en apps/backend/.env)" -ForegroundColor Cyan
     Write-Host ""
 
     npx tsx apps/backend/src/scripts/seed-superadmin.ts
@@ -383,7 +383,7 @@ function Seed-SuperAdmin {
         Write-Host "[OK] SuperAdmin listo!" -ForegroundColor Green
         Write-Host "  URL:   http://super-admin.localhost:3000" -ForegroundColor Cyan
         Write-Host "  Email: admin@tuapp.com" -ForegroundColor Cyan
-        Write-Host "  Pass:  SuperAdmin2026!" -ForegroundColor Cyan
+        Write-Host "  Pass:  (la de SUPERADMIN_PASSWORD en apps/backend/.env)" -ForegroundColor Cyan
     } else {
         Write-Host "[ERROR] Fallo el seed del SuperAdmin" -ForegroundColor Red
     }

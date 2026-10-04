@@ -10,7 +10,7 @@ async function checkEndToEnd() {
   console.log('1. Navegando al login de SuperAdmin...');
   await page.goto('http://localhost:3000/superadmin/login', { waitUntil: 'networkidle' });
   await page.fill('#email', 'admin@tuapp.com');
-  await page.fill('#password', 'SuperAdmin2026!');
+  await page.fill('#password', process.env.SUPERADMIN_PASSWORD);
   await page.click('button[type="submit"]');
 
   console.log('2. Esperando navegación automática al Dashboard...');

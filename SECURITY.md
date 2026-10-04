@@ -121,8 +121,8 @@ Ver [Security Advisories](https://github.com/2chris34/Cristian/security/advisori
 
 ### Incidente: secreto en historial git
 
-El password de PostgreSQL (`megustaelcoco2003`) quedó expuesto en `origin/main` (commit `a716d8c`). **Mitigación aplicada**:
-- Password **rotado** (`82nQKb95S7wNDmuxyvIG6dOYkZUo` en entornos locales, gitignored).
+El password de PostgreSQL (`«la vieja, ya cambiada»`) quedó expuesto en `origin/main` (commit `a716d8c`). **Mitigación aplicada**:
+- Password **rotado** (`«la de tu .env»` en entornos locales, gitignored).
 - `.env.test` y `.env.development` des-trackeados + `.env.*.example` commiteados.
 - Scripts dev usan fallback `postgres:postgres` (sin secretos).
 
@@ -142,3 +142,23 @@ El password de PostgreSQL (`megustaelcoco2003`) quedó expuesto en `origin/main`
 - **E2E**: logins autenticados (SuperAdmin UI + instituto API) con **0 violaciones axe** en dashboards.
 - **Pruebas**: backend 84/84, web 10/10, e2e 6/6.
 
+
+## Secretos en el historial público (2026-10-04)
+
+Una revisión encontró, en archivos del repositorio (que es público), tres claves
+reales: la de PostgreSQL local (en ocho guiones y en este mismo archivo), la del
+superadmin (escrita YA PUESTA en la pantalla `/superadmin/login`, en el README,
+en `.env.example` y en `inicio.ps1`) y una clave vieja de la base en
+`check-db.mjs`. Se quitaron todas del árbol: los guiones leen el entorno o le
+preguntan a la plataforma, y la pantalla del superadmin abre vacía.
+
+**Siguen en el historial de git**, así que hay que darlas por conocidas:
+
+1. Cambiar la contraseña del superadmin (y `SUPERADMIN_PASSWORD` en el `.env`).
+2. Cambiar la contraseña de PostgreSQL local (y las URL del `.env`).
+3. Si alguna de las dos se usa o se usó en un servidor de verdad, cambiarla allí.
+4. Opcional: limpiar el historial (`git filter-repo`) y forzar la subida. Reescribe
+   GitHub para todos: solo con el visto bueno del dueño.
+
+Para que no vuelva a pasar: el escaneo de secretos de la integración continua
+(ver `ci.yml`).
