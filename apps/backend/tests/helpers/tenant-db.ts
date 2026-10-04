@@ -133,6 +133,7 @@ export interface InstituteDbInfo {
     databasePort: number;
     databaseUser: string;
     databasePassword: string;
+    databaseSchema?: string | null;
 }
 
 /**

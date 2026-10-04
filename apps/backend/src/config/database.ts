@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaClient as PlatformPrismaClient } from '../generated/platform-client';
 import { applyTenantIsolation } from './tenant-isolation.ext';
+import { esquemaPropio, fijarElEsquema } from './esquema-del-liceo';
 import { buildTenantDatabaseUrl, cabenLasConexiones, pgBouncer } from './tenant-db-url';
 
 // =====================================================
@@ -146,7 +147,9 @@ async function abrirClienteDeLiceo(instituteId: string): Promise<PrismaClient> {
     where: { id: instituteId },
     select: {
       id: true,
+      slug: true,
       databaseName: true,
+      databaseSchema: true,
       databaseHost: true,
       databasePort: true,
       databaseUser: true,
@@ -167,10 +170,23 @@ async function abrirClienteDeLiceo(instituteId: string): Promise<PrismaClient> {
     throw new Error(`Institute database not provisioned: ${instituteId}`);
   }
 
+  // Base compartida (2026-10-03): el liceo vive en SU esquema de esa base.
+  // Lo dice solo la fila de la plataforma (`databaseSchema`); sin él, su base
+  // propia, esquema `public`. Nada se adivina por el nombre ni por variables
+  // del entorno: adivinar mal es abrir el liceo de otro.
+  const resolvedDbCredentials = {
+    databaseHost: institute.databaseHost,
+    databasePort: institute.databasePort,
+    databaseUser: institute.databaseUser,
+    databasePassword: institute.databasePassword,
+    databaseName: institute.databaseName,
+    databaseSchema: institute.databaseSchema ?? null,
+  };
+
   // 3. Crear nueva conexión Prisma para el tenant
   // Con un cliente por liceo, sin límite de conexiones se agota PostgreSQL:
   // ver src/config/tenant-db-url.ts
-  const databaseUrl = buildTenantDatabaseUrl(institute, 'runtime');
+  const databaseUrl = buildTenantDatabaseUrl(resolvedDbCredentials, 'runtime');
 
   const rawPrisma = new PrismaClient({
     datasources: {
@@ -226,6 +242,13 @@ async function abrirClienteDeLiceo(instituteId: string): Promise<PrismaClient> {
       error: extError instanceof Error ? extError.message : 'Unknown',
     });
     tenantPrisma = rawPrisma;
+  }
+
+  // En la base compartida, el esquema del liceo va en CADA transacción: con
+  // PgBouncer, una conexión pasa de un liceo a otro (ver esquema-del-liceo.ts).
+  const esquema = esquemaPropio(resolvedDbCredentials.databaseSchema);
+  if (esquema) {
+    tenantPrisma = fijarElEsquema(tenantPrisma, esquema);
   }
 
   // 4. Verificar conexión

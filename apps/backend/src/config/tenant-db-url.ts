@@ -21,6 +21,7 @@ export interface TenantDbCredentials {
     databaseHost: string | null;
     databasePort: number | null;
     databaseName: string | null;
+    databaseSchema?: string | null;
 }
 
 export type TenantUrlMode = 'runtime' | 'direct';
@@ -159,11 +160,22 @@ export function pgBouncer(): { host: string; port: number } | null {
     return { host, port };
 }
 
+/**
+ * Genera el nombre del esquema PostgreSQL a partir del slug del liceo.
+ * Ejemplo: "liceo-bolivar" -> "tenant_liceo_bolivar"
+ */
+export function deriveTenantSchema(slug: string): string {
+    return `tenant_${slug.toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
+}
+
 export function buildTenantDatabaseUrl(
     credentials: TenantDbCredentials,
     mode: TenantUrlMode = 'runtime'
 ): string {
+    // Sin credenciales propias no se inventa una conexión (ni con las de la
+    // plataforma): falla cerrado. Ver tenant-migrations.test.ts.
     const { databaseUser, databasePassword, databaseHost, databaseName } = credentials;
+
     if (!databaseUser || !databasePassword || !databaseHost || !databaseName) {
         throw new Error('Faltan credenciales de la base de datos del liceo');
     }
@@ -172,7 +184,8 @@ export function buildTenantDatabaseUrl(
     const host = bouncer?.host ?? databaseHost;
     const port = bouncer?.port ?? credentials.databasePort ?? 5432;
 
-    const params = new URLSearchParams({ schema: 'public' });
+    const schema = credentials.databaseSchema?.trim() || 'public';
+    const params = new URLSearchParams({ schema });
     if (mode === 'runtime') {
         params.set('connection_limit', String(tenantConnectionLimit()));
         // PgBouncer en modo transacción no admite sentencias preparadas: este

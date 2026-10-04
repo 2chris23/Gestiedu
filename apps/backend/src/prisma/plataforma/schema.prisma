@@ -63,7 +63,8 @@ model Institute {
   status           InstituteStatus       @default(PENDING)
   trialEndsAt      DateTime?
   notes            String?
-  databaseName     String?               @unique
+  databaseName     String?
+  databaseSchema   String?
   databaseHost     String?
   databasePort     Int?                  @default(5432)
   databaseUser     String?
@@ -98,6 +99,8 @@ model Institute {
   @@index([slug])
   @@index([subdomain])
   @@index([environment])
+  @@index([databaseSchema])
+  @@unique([databaseName, databaseSchema])
   @@map("institutes")
 }
 

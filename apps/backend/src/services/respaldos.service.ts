@@ -1,3 +1,4 @@
+import { esquemaPropio, esquemaValido } from '../config/esquema-del-liceo';
 import { spawn } from 'child_process';
 import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
 import path from 'path';
@@ -129,6 +130,7 @@ async function liceosActivos() {
             slug: true,
             name: true,
             databaseName: true,
+            databaseSchema: true,
             databaseHost: true,
             databasePort: true,
             databaseUser: true,
@@ -152,6 +154,13 @@ export async function respaldarLiceo(
     instituto: Awaited<ReturnType<typeof liceosActivos>>[number],
     carpeta = carpetaDeRespaldos()
 ): Promise<ResultadoDeRespaldo> {
+    // En la base compartida, el liceo es SU esquema: se guarda ese y nada más.
+    // Sin esto, el respaldo de cada liceo era la base entera, con los datos de
+    // TODOS los demás dentro (y restaurarlo los pisaba a todos).
+    const esquema = esquemaPropio((instituto as { databaseSchema?: string | null }).databaseSchema);
+    if (esquema && !esquemaValido(esquema)) {
+        return { slug: instituto.slug, ok: false, error: `esquema no válido: ${esquema}`, ms: 0 };
+    }
     // Conexión directa: los respaldos no pasan por PgBouncer.
     return volcar(instituto.slug, carpeta, () =>
         buildTenantDatabaseUrl(
@@ -163,7 +172,8 @@ export async function respaldarLiceo(
                 databasePassword: instituto.databasePassword,
             } as any,
             'direct'
-        )
+        ),
+        esquema
     );
 }
 
@@ -193,7 +203,7 @@ export async function respaldarPlataforma(carpeta = carpetaDeRespaldos()): Promi
 }
 
 /** Guarda una base en un archivo de la carpeta, con el nombre de `quien`. */
-async function volcar(quien: string, carpeta: string, direccion: () => string): Promise<ResultadoDeRespaldo> {
+async function volcar(quien: string, carpeta: string, direccion: () => string, esquema: string | null = null): Promise<ResultadoDeRespaldo> {
     const t0 = Date.now();
 
     if (!existsSync(carpeta)) mkdirSync(carpeta, { recursive: true });
@@ -203,6 +213,7 @@ async function volcar(quien: string, carpeta: string, direccion: () => string): 
     try {
         const { env: pgEnv, dbName } = extraerEntornoPg(direccion());
         const args = ['--format=custom', '--no-owner', '--no-acl', '--file', archivo];
+        if (esquema) args.push(`--schema=${esquema}`);
         if (dbName) {
             args.push('--dbname', dbName);
         }

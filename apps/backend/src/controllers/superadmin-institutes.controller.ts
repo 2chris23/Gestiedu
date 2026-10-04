@@ -1,3 +1,4 @@
+import { esquemaPropio } from '../config/esquema-del-liceo';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { platformPrisma as prisma, getTenantPrisma } from '../config/database';
 import { generateSlug } from '../utils/slug';
@@ -330,6 +331,7 @@ export class SuperAdminInstitutesController {
                 data: {
                     status: 'ACTIVE',
                     databaseName: provisionResult.databaseName,
+                    databaseSchema: provisionResult.databaseSchema ?? null,
                     databaseHost: provisionResult.databaseHost,
                     databasePort: provisionResult.databasePort,
                     databaseUser: provisionResult.databaseUser,
@@ -593,8 +595,42 @@ export class SuperAdminInstitutesController {
             }
 
             // 3. Eliminar la base de datos del tenant si existe
+            //
+            // EN LA BASE COMPARTIDA, EL LICEO ES SU ESQUEMA (2026-10-04). Antes de
+            // revisarlo, borrar un liceo de la base compartida hacía `DROP DATABASE`
+            // de ESA base: la de todos los liceos. Ahora: con esquema, se borra el
+            // esquema y nada más; y una base que figura en la fila de otro liceo no
+            // se borra nunca, ni con ?force=true.
             let dropError: string | null = null;
-            if (institute.databaseName) {
+            // `public` es la base propia de siempre, no un esquema de la compartida.
+            const esquema = esquemaPropio((institute as { databaseSchema?: string | null }).databaseSchema);
+            const otrosEnLaBase = institute.databaseName
+                ? await prisma.institute.count({ where: { databaseName: institute.databaseName, id: { not: institute.id } } })
+                : 0;
+            if (institute.databaseName && (esquema || otrosEnLaBase > 0)) {
+                const { esquemaValido } = await import('../config/esquema-del-liceo');
+                if (!esquema) {
+                    dropError = `La base '${institute.databaseName}' la usan otros ${otrosEnLaBase} liceo(s) y este no tiene esquema propio: no se borra nada de ella.`;
+                } else if (!esquemaValido(esquema) || esquema === 'public') {
+                    dropError = `Esquema no válido: ${esquema}`;
+                } else {
+                    try {
+                        const { Client } = await import('pg');
+                        const { buildTenantDatabaseUrl } = await import('../config/tenant-db-url');
+                        const directa = new Client({ connectionString: buildTenantDatabaseUrl(institute as any, 'direct').split('?')[0] });
+                        await directa.connect();
+                        try {
+                            await directa.query(`DROP SCHEMA IF EXISTS "${esquema}" CASCADE`);
+                        } finally {
+                            await directa.end();
+                        }
+                        console.log(`✅ Esquema eliminado: ${esquema} (la base ${institute.databaseName} sigue)`);
+                    } catch (dbError: any) {
+                        console.error('⚠️  Error al eliminar el esquema:', dbError.message);
+                        dropError = dbError.message;
+                    }
+                }
+            } else if (institute.databaseName) {
                 try {
                     const { Client } = await import('pg');
 

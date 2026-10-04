@@ -45,6 +45,7 @@
     "medir:guardado": "tsx src/scripts/medir-guardado.ts",
     "contar:consultas": "tsx src/scripts/contar-consultas.ts",
     "probar:pgbouncer": "tsx src/scripts/probar-pgbouncer.ts",
+    "probar:aislamiento": "tsx src/scripts/probar-aislamiento-por-esquema.ts",
     "medir:pozo": "tsx src/scripts/medir-pozo-y-repartidor.ts",
     "medir:aguante": "tsx src/scripts/medir-aguante.ts",
     "medir:estres": "tsx src/scripts/medir-estres-incremental.ts",

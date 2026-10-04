@@ -5,9 +5,44 @@ import { Client } from 'pg';
 export const API_BASE = process.env.API_BASE || 'http://localhost:3001/api';
 export const WEB_BASE = process.env.WEB_BASE || 'http://localhost:3000';
 export const TENANT_SLUG = 'instituto-testing';
-export const DB_CONNECTION_STRING =
-  process.env.TEST_DB_URL ||
-  'postgresql://postgres:82nQKb95S7wNDmuxyvIG6dOYkZUo@localhost:5432/tenant_instituto_testing';
+/**
+ * DÓNDE VIVE EL LICEO DE PRUEBAS (2026-10-04)
+ *
+ * Antes: una dirección fija a su base propia, con la contraseña escrita aquí
+ * (y el repositorio es público). Desde que los liceos pueden vivir en un
+ * esquema de una base compartida, se le pregunta a la plataforma: su base,
+ * sus credenciales y su esquema. `TEST_DB_URL` sigue mandando si está puesta.
+ */
+function platformUrl(): string {
+  if (process.env.PLATFORM_DATABASE_URL) return process.env.PLATFORM_DATABASE_URL;
+  const env = fs.readFileSync(path.join(__dirname, '..', '..', 'apps', 'backend', '.env'), 'utf8');
+  const linea = env.split(/\r?\n/).find((l) => l.startsWith('PLATFORM_DATABASE_URL='));
+  if (!linea) throw new Error('Falta PLATFORM_DATABASE_URL (apps/backend/.env)');
+  return linea.slice('PLATFORM_DATABASE_URL='.length).trim().replace(/^"|"$/g, '').split('?')[0];
+}
+
+let dondeVive: Promise<{ url: string; schema: string | null }> | null = null;
+function liceoDePrueba() {
+  if (process.env.TEST_DB_URL) return Promise.resolve({ url: process.env.TEST_DB_URL, schema: null });
+  dondeVive ??= (async () => {
+    const plat = new Client({ connectionString: platformUrl() });
+    await plat.connect();
+    try {
+      const { rows } = await plat.query(
+        `SELECT "databaseName", "databaseSchema", "databaseHost", "databasePort", "databaseUser", "databasePassword"
+           FROM institutes WHERE slug = $1`,
+        [TENANT_SLUG]
+      );
+      const r = rows[0];
+      if (!r) throw new Error(`El liceo de pruebas (${TENANT_SLUG}) no está en la plataforma`);
+      const url = `postgresql://${encodeURIComponent(r.databaseUser)}:${encodeURIComponent(r.databasePassword)}@${r.databaseHost}:${r.databasePort ?? 5432}/${r.databaseName}`;
+      return { url, schema: r.databaseSchema as string | null };
+    } finally {
+      await plat.end();
+    }
+  })();
+  return dondeVive;
+}
 
 export interface LoginResult {
   user: any;
@@ -266,9 +301,14 @@ export async function loginViaUI(
  * Ejecuta una consulta SQL directa contra la base de datos del tenant de prueba.
  */
 export async function queryTenantDb<T = any>(sql: string, params: any[] = []): Promise<T[]> {
-  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  const { url, schema } = await liceoDePrueba();
+  const client = new Client({ connectionString: url });
   await client.connect();
   try {
+    if (schema) {
+      if (!/^[a-z0-9_]{1,63}$/.test(schema)) throw new Error(`Esquema no válido: ${schema}`);
+      await client.query(`SET search_path TO "${schema}"`);
+    }
     const res = await client.query(sql, params);
     return res.rows;
   } finally {

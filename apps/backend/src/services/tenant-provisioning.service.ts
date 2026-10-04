@@ -1,16 +1,17 @@
-import { exec } from 'child_process';
+import { exec, execFileSync } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import { Client } from 'pg';
 import bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
-import { buildTenantDatabaseUrl } from '../config/tenant-db-url';
+import { buildTenantDatabaseUrl, deriveTenantSchema } from '../config/tenant-db-url';
 
 const execAsync = promisify(exec);
 
 export interface ProvisionResult {
     success: boolean;
     databaseName: string;
+    databaseSchema?: string;
     databaseUrl: string;
     databaseHost: string;
     databasePort: number;
@@ -40,14 +41,31 @@ export interface InstituteSeedData {
 }
 
 /**
- * Servicio para provisionar bases de datos de tenants
+ * Servicio para provisionar bases de datos y esquemas de tenants
  */
 export class TenantProvisioningService {
     /**
-     * Genera el nombre de la base de datos del tenant
+     * Genera el nombre de la base de datos del tenant (modo dedicado)
      */
-    private static generateDatabaseName(slug: string): string {
+    static generateDatabaseName(slug: string): string {
         return `tenant_${slug.toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
+    }
+
+    /**
+     * Genera el nombre del esquema del tenant dentro de la base compartida
+     */
+    static generateSchemaName(slug: string): string {
+        return deriveTenantSchema(slug);
+    }
+
+    /**
+     * Resuelve el nombre de la base de datos compartida
+     */
+    static getSharedDatabaseName(): string {
+        if (process.env.SHARED_TENANT_DB_NAME) return process.env.SHARED_TENANT_DB_NAME;
+        const dUrl = process.env.DATABASE_URL || '';
+        const m = dUrl.match(/postgres(?:ql)?:\/\/[^/]+\/([^?]+)/);
+        return m ? m[1] : 'gestion_escolar';
     }
 
     /**
@@ -62,12 +80,10 @@ export class TenantProvisioningService {
     }
 
     /**
-     * Construye la URL de conexión a la base de datos
+     * Construye la URL de conexión a la base de datos o esquema
      */
-    private static buildDatabaseUrl(dbName: string): string {
+    static buildDatabaseUrl(dbName: string, schemaName?: string): string {
         const { user, password, host, port } = this.getConnectionCredentials();
-        // 'direct': el alta crea el esquema con Prisma Migrate, que necesita una
-        // conexión directa a PostgreSQL y no puede pasar por PgBouncer.
         return buildTenantDatabaseUrl(
             {
                 databaseUser: user,
@@ -75,6 +91,7 @@ export class TenantProvisioningService {
                 databaseHost: host,
                 databasePort: port,
                 databaseName: dbName,
+                databaseSchema: schemaName || 'public',
             },
             'direct'
         );
@@ -105,9 +122,9 @@ export class TenantProvisioningService {
             if (result.rows.length === 0) {
                 // Crear la base de datos
                 await client.query(`CREATE DATABASE "${dbName}"`);
-                console.log(`✅ Base de datos creada: ${dbName}`);
+                console.log(`Base de datos creada: ${dbName}`);
             } else {
-                console.log(`ℹ️  Base de datos ya existe: ${dbName}`);
+                console.log(`Base de datos ya existe: ${dbName}`);
             }
         } finally {
             await client.end();
@@ -133,12 +150,12 @@ export class TenantProvisioningService {
             );
 
             if (stderr && !stderr.includes('warnings')) {
-                console.warn('⚠️  Advertencias en migración:', stderr);
+                console.warn('Advertencias en migracion:', stderr);
             }
 
-            console.log('✅ Migraciones ejecutadas exitosamente');
+            console.log('Migraciones ejecutadas exitosamente');
         } catch (error: any) {
-            console.error('❌ Error ejecutando migraciones:', error.message);
+            console.error('Error ejecutando migraciones:', error.message);
             throw new Error(`Error en migraciones: ${error.message}`);
         }
     }
@@ -184,7 +201,7 @@ export class TenantProvisioningService {
                 },
             });
 
-            console.log(`✅ Instituto registrado en tenant DB: ${instituteData.slug}`);
+            console.log(`Instituto registrado en tenant DB: ${instituteData.slug}`);
 
             // Hash de la contraseña
             const hashedPassword = await bcrypt.hash(adminData.password, 12);
@@ -215,7 +232,7 @@ export class TenantProvisioningService {
                 },
             });
 
-            console.log(`✅ Usuario administrador creado/actualizado: ${admin.email}`);
+            console.log(`Usuario administrador creado/actualizado: ${admin.email}`);
             return admin.id;
         } finally {
             await tenantPrisma.$disconnect();
@@ -223,30 +240,142 @@ export class TenantProvisioningService {
     }
 
     /**
-     * Provisiona completamente un tenant:
-     * 1. Crea la base de datos
-     * 2. Ejecuta migraciones
-     * 3. Crea usuario administrador
+     * Crea el esquema del tenant en la base de datos compartida y asegura las extensiones necesarias
+     */
+    static async createTenantSchema(schemaName: string, dbName: string): Promise<void> {
+        const { user, password, host, port } = this.getConnectionCredentials();
+        const client = new Client({
+            user,
+            password,
+            host,
+            port,
+            database: dbName,
+        });
+
+        try {
+            await client.connect();
+            // Asegurar extensiones para que estén accesibles globalmente en cualquier search_path
+            try {
+                await client.query('ALTER EXTENSION pg_trgm SET SCHEMA pg_catalog').catch(() => {});
+                await client.query('CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA pg_catalog').catch(() => {});
+                await client.query('ALTER EXTENSION unaccent SET SCHEMA pg_catalog').catch(() => {});
+                await client.query('CREATE EXTENSION IF NOT EXISTS unaccent SCHEMA pg_catalog').catch(() => {});
+            } catch (extError: any) {
+                // Fallback si no tiene permisos de superuser
+                await client.query('CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public').catch(() => {});
+                await client.query('CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA public').catch(() => {});
+            }
+
+            await client.query(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);
+            console.log(`Esquema creado: ${schemaName} en base ${dbName}`);
+        } finally {
+            await client.end();
+        }
+    }
+
+    /**
+     * Despliega las tablas de Prisma en el esquema del tenant
+     */
+    static async deploySchemaTables(databaseUrl: string): Promise<void> {
+        const schemaPath = path.join(__dirname, '../prisma/schema.prisma');
+        const cli = require.resolve('prisma/build/index.js');
+
+        try {
+            execFileSync(
+                process.execPath,
+                [cli, 'db', 'push', '--schema', schemaPath, '--skip-generate', '--accept-data-loss'],
+                {
+                    env: {
+                        ...process.env,
+                        DATABASE_URL: databaseUrl,
+                    },
+                    stdio: 'pipe',
+                }
+            );
+            console.log('Tablas desplegadas exitosamente en el esquema');
+        } catch (error: any) {
+            console.error('Error desplegando tablas en esquema:', error.message);
+            throw new Error(`Error en despliegue de tablas: ${error.message}`);
+        }
+    }
+
+    /**
+     * Provisiona completamente un tenant (modo esquema compartido o base de datos dedicada)
      */
     static async provisionTenant(
         slug: string,
         adminData: AdminData,
-        instituteData?: InstituteSeedData
+        instituteData?: InstituteSeedData,
+        options?: { mode?: 'schema' | 'database' }
     ): Promise<ProvisionResult> {
-        const databaseName = this.generateDatabaseName(slug);
-        const databaseUrl = this.buildDatabaseUrl(databaseName);
+        const isDedicatedMode =
+            options?.mode === 'database' ||
+            process.env.USE_DEDICATED_TENANT_DATABASES === 'true' ||
+            (process.env.NODE_ENV === 'test' && options?.mode !== 'schema' && process.env.TENANT_PROVISION_MODE !== 'schema');
+
         const { user, password, host, port } = this.getConnectionCredentials();
 
+        if (isDedicatedMode) {
+            const databaseName = this.generateDatabaseName(slug);
+            const databaseUrl = this.buildDatabaseUrl(databaseName);
+
+            try {
+                console.log(`Iniciando provisioning dedicado para: ${slug}`);
+                await this.createTenantDatabase(databaseName);
+                await this.runMigrations(databaseUrl);
+
+                const seedData: InstituteSeedData = instituteData ?? {
+                    id: slug,
+                    name: slug,
+                    code: slug.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) || 'INST',
+                    email: adminData.email,
+                    slug,
+                    status: 'ACTIVE',
+                    plan: 'BASIC',
+                };
+                const adminUserId = await this.createAdminUser(databaseUrl, adminData, seedData);
+                console.log(`Provisioning dedicado completado para: ${slug}`);
+
+                return {
+                    success: true,
+                    databaseName,
+                    databaseUrl,
+                    databaseHost: host,
+                    databasePort: port,
+                    databaseUser: user,
+                    databasePassword: password,
+                    adminUserId,
+                };
+            } catch (error: any) {
+                console.error(`Error en provisioning dedicado de ${slug}:`, error.message);
+                return {
+                    success: false,
+                    databaseName,
+                    databaseUrl,
+                    databaseHost: host,
+                    databasePort: port,
+                    databaseUser: user,
+                    databasePassword: password,
+                    error: error.message,
+                };
+            }
+        }
+
+        // Modo Base de Datos Compartida con Esquema por Tenant (Schema-Per-Tenant)
+        const databaseName = this.getSharedDatabaseName();
+        const databaseSchema = this.generateSchemaName(slug);
+        const databaseUrl = this.buildDatabaseUrl(databaseName, databaseSchema);
+
         try {
-            console.log(`🚀 Iniciando provisioning para: ${slug}`);
+            console.log(`Iniciando provisioning compartido para: ${slug} (esquema ${databaseSchema} en ${databaseName})`);
 
-            // 1. Crear base de datos
-            await this.createTenantDatabase(databaseName);
+            // 1. Crear el esquema
+            await this.createTenantSchema(databaseSchema, databaseName);
 
-            // 2. Ejecutar migraciones
-            await this.runMigrations(databaseUrl);
+            // 2. Desplegar tablas en el esquema
+            await this.deploySchemaTables(databaseUrl);
 
-            // 3. Crear/actualizar usuario administrador (y registrar el instituto en la tenant DB)
+            // 3. Crear/actualizar usuario administrador
             const seedData: InstituteSeedData = instituteData ?? {
                 id: slug,
                 name: slug,
@@ -258,11 +387,12 @@ export class TenantProvisioningService {
             };
             const adminUserId = await this.createAdminUser(databaseUrl, adminData, seedData);
 
-            console.log(`✅ Provisioning completado para: ${slug}`);
+            console.log(`Provisioning compartido completado para: ${slug}`);
 
             return {
                 success: true,
                 databaseName,
+                databaseSchema,
                 databaseUrl,
                 databaseHost: host,
                 databasePort: port,
@@ -271,10 +401,11 @@ export class TenantProvisioningService {
                 adminUserId,
             };
         } catch (error: any) {
-            console.error(`❌ Error en provisioning de ${slug}:`, error.message);
+            console.error(`Error en provisioning compartido de ${slug}:`, error.message);
             return {
                 success: false,
                 databaseName,
+                databaseSchema,
                 databaseUrl,
                 databaseHost: host,
                 databasePort: port,

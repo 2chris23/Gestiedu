@@ -46,6 +46,7 @@ export const INSTITUTE_SUPERADMIN_SELECT = {
     trialEndsAt: true,
     notes: true,
     databaseName: true,
+    databaseSchema: true,
     adminId: true,
     timezone: true,
     country: true,

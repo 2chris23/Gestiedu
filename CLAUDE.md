@@ -3,7 +3,15 @@
 SaaS de gestión escolar multi-liceo. Monorepo: `apps/backend` (Fastify 5 + Prisma 6 +
 PostgreSQL) y `apps/web` (Next.js 16 + React 19 + Tailwind).
 
-**Multi-tenant: una base de datos por liceo.** La BD de plataforma guarda la fila del
+**Multi-tenant: cada liceo, su esquema en una base compartida** (desde oct. 2026;
+los de antes pueden seguir en su base propia, esquema `public`). La fila de la
+plataforma dice dónde vive (`databaseName` + `databaseSchema`) y nada se adivina.
+**Con PgBouncer, una conexión pasa de un liceo a otro**: el SQL escrito a mano
+leía el esquema de OTRO liceo (medido: 359 de 400). Por eso el cliente de cada
+liceo mete cada consulta a mano y cada transacción en `SET LOCAL search_path`
+(`config/esquema-del-liceo.ts`; `npm run probar:aislamiento`, AISLA-*). Borrar
+un liceo borra **su esquema**, nunca la base compartida; su respaldo es su
+esquema y nada más (BASE-COMP-*). La BD de plataforma guarda la fila del
 instituto con sus credenciales; `getTenantPrisma` cachea hasta 250 clientes con
 PgBouncer (50 sin él; `CLIENTES_DE_LICEO`). El
 `instituteId` del token manda: si la petición nombra otro liceo (slug, cabecera,
