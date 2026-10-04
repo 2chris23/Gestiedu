@@ -3728,3 +3728,31 @@ era un 400 contado como fallo de carga. Ahora escriben en un domingo pasado
 sin datos. Y `medir:estres` leía el esquema equivocado con la base compartida.
 La ficha del profesor enseñaba un promedio inventado (16.5) en las secciones
 sin notas.
+
+**Tercera tanda (10cc9c6): lo que tumba sin avisar.**
+
+| Fenómeno | Lo encontrado | Lo hecho |
+|---|---|---|
+| Librerías | Next con **otro fallo crítico de ejecución remota**; `fastify-multer` y `multer` instalados sin que nadie los usara | Next 16.3.8 y el resto al día: 0 críticos. Quedan 9 altos de herramientas de compilación (`DESPLIEGUE.md`, «Revisar las librerías») |
+| Hilo principal bloqueado | Nada medía si un cálculo largo dejaba a todos esperando | El panel enseña el p99 del retraso del proceso; >200 ms, aviso (LATIDO-04) |
+| Certificado vencido | Un certificado caducado apaga todos los liceos a la vez; se renovaba «poniéndolo en el calendario» | El panel cuenta los días (`CERTIFICADO_TLS`): <14 aviso, <3 grave (LATIDO-04) |
+| Migraciones que bloquean | Un `ALTER` sin tope espera su candado y cuelga al liceo entero | Toda migración nueva empieza con `SET lock_timeout` (MIGRA-01) |
+| SSRF por los avisos | El servidor mandaba un aviso a la dirección que dijera el navegador | Solo a servicios de avisos de verdad (SSRF-01) |
+| Datos personales en registros | El correo se apuntaba al pedir cambiar la contraseña | Se apunta el id |
+| Llave maestra | El superadmin abre todos los liceos con una contraseña | Propuesta de segundo factor en `SECURITY.md`, **pendiente de aprobar** |
+
+**Encontrado al cerrar (verificación final):** el alta de un liceo en la base
+compartida creaba sus tablas con `db push --accept-data-loss` —lo que este
+repositorio prohíbe—, sin `_prisma_migrations`: la primera migración siguiente
+le habría fallado para siempre. Ahora nace con `migrate deploy`, igual de
+rápido (3,6 s; BASE-COMP-05). Y `instituto-testing`, pasado a su esquema, no
+tenía los 5 índices de búsqueda de usuarios: los repone una migración que no
+toca a quien ya los tiene (`20261005000000`). El detector de deriva leía el
+esquema `public` para los liceos de la base compartida y daba las 76 tablas
+como deriva.
+
+**Números al cierre:** servidor **1258 de 1258** (166 archivos); web 120 de
+120; navegador **314 de 315** (la que falta se salta sola en fin de semana:
+no hay clases que suspender); teléfono 55 pantallas, 0 con algo que
+arreglar; aislamiento con PgBouncer 3 de 3; `npm audit --omit=dev` 0
+críticos.

@@ -286,6 +286,12 @@ docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
 Ponlo en el calendario **cada dos meses**. Un certificado caducado deja el liceo
 entero fuera, y el aviso llega por correo a una dirección que igual nadie mira.
 
+**Y que lo vigile el panel.** Con `CERTIFICADO_TLS` apuntando al certificado
+que sirve nginx (montado de solo lectura en el contenedor del servidor, p. ej.
+`/etc/letsencrypt/live/<dominio>/fullchain.pem`), la Salud del sistema del
+superadmin dice cuántos días le quedan: **menos de 14, aviso; menos de 3,
+grave** (LATIDO-04). Sin la variable, el panel dice «sin vigilar».
+
 ### De quién se fía el servidor cuando le dicen desde dónde llaman
 
 La dirección de quien llama la escribe **quien llama**, en una cabecera. El
@@ -506,6 +512,11 @@ sistema** (`GET /api/superadmin/monitoring/health`): cada tarea «bien»,
 el **disco** (por debajo del 10 % libre, crítico). Mirarlo después de cada
 despliegue y una vez por semana. LATIDO-01…03.
 
+También dice **cuánto tarda el proceso en atender** (el p99 del retraso del
+bucle de Node, del último minuto): por encima de 200 ms, algo largo está
+bloqueando a todos —un reporte enorme, un cálculo sin trocear— y se marca
+«algo no va bien». Y los días del certificado (§5-bis). LATIDO-04.
+
 Los `.catch(() => undefined)` del servidor (avisos, contadores, la memoria
 rápida) ya no se tragan el error: `avisarSiFalla` lo apunta, una vez por minuto
 como mucho (`utils/sin-callar.ts`).
@@ -608,6 +619,25 @@ Una librería segura hoy no lo es dentro de tres meses. Si aparece algo
 
 Lo que sale con `--omit=dev` es lo que de verdad viaja al servidor. Sin esa
 opción también salen las herramientas de desarrollo, que no se instalan allí.
+
+**Ojo: `npm audit fix --omit=dev` QUITA de `node_modules` las herramientas de
+desarrollo** (los tipos de React, entre otras) aunque el `package-lock.json`
+no cambie: después, `npm install --legacy-peer-deps` para devolverlas, o
+`tsc` sale con cientos de errores que no son del código.
+
+**Cómo quedó el 4 de octubre de 2026** (`npm audit --omit=dev`): **0
+críticos**. Se subió Next a 16.3.8 (había otro fallo crítico de ejecución
+remota), Fastify, engine.io, undici, axios y nodemailer 10, y se quitaron
+`fastify-multer` y `multer`, que no usaba nadie. Quedan **9 altos, todos de
+herramientas**, no de lo que atiende peticiones:
+
+| Paquete | Por qué sale | Por qué no se toca ya |
+|---|---|---|
+| `prisma`, `@prisma/config`, `deepmerge-ts` | El CLI de Prisma (migraciones) | El arreglo es Prisma 7: cambio mayor, con su propia tanda de pruebas |
+| `tailwindcss`, `tailwindcss-animate`, `chokidar`, `fast-glob`, `micromatch`, `braces` | Compilan los estilos | Solo corren al compilar; `braces` no tiene arreglo aún. Tailwind 4 es otro cambio mayor |
+
+Dependabot (`.github/dependabot.yml`) abre cada semana la propuesta de
+subirlas; la CI falla con cualquier crítico (`librerias` en `ci.yml`).
 
 ---
 

@@ -219,4 +219,26 @@ describe('Base de Datos Compartida — Schema-Per-Tenant', () => {
         });
         expect(subjectAlphaCheck?.name).toBe('Matemática Alpha');
     });
+
+    /**
+     * BASE-COMP-05: un liceo nuevo nace CON su historial de migraciones.
+     * Se creaba con `db push`: tablas sí, `_prisma_migrations` no. La primera
+     * migración siguiente (`migrate:tenants`) le fallaba para siempre («la base
+     * no está vacía»), y lo que solo vive en las migraciones (índices de
+     * búsqueda, SQL a mano) no llegaba nunca.
+     */
+    it('BASE-COMP-05: el liceo nuevo queda migrado, no empujado: su historial al día', async () => {
+        const { getTenantMigrationStatus } = require('../../src/services/tenant-migrations.service');
+        const fila = await platformPrisma.institute.findUnique({ where: { id: instAId } });
+        const estado = await getTenantMigrationStatus(fila);
+        expect(estado.error).toBeUndefined();
+        expect(estado.pending).toEqual([]);
+        expect(estado.upToDate).toBe(true);
+        // Y lo que solo viene en una migración: los índices de búsqueda de usuarios.
+        const clientA = await getTenantPrisma(instAId);
+        const indices: any[] = await clientA.$queryRawUnsafe(
+            `SELECT indexname FROM pg_indexes WHERE schemaname = '${schemaA}' AND indexname LIKE 'users_%trgm_idx'`
+        );
+        expect(indices.length).toBe(5);
+    }, 60000);
 });

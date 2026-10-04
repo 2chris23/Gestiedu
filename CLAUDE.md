@@ -31,8 +31,8 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
 ```bash
 cd apps/backend && npm run dev      # API en :3001
 cd apps/web && npm run dev          # web en :3000
-cd apps/backend && npx jest         # 1217 pruebas en 154 archivos (integración + cálculo)
-npm run test:e2e                    # 309 pruebas de navegador (Playwright), con los dos servidores arriba
+cd apps/backend && npx jest         # 1258 pruebas en 166 archivos (integración + cálculo)
+npm run test:e2e                    # 315 pruebas de navegador (Playwright), con los dos servidores arriba
 cd apps/backend && npm run typecheck
 cd apps/backend && npm run migrate:plataforma        # la base de la plataforma
 cd apps/backend && npm run migrate:tenants[:status]   # migra todos los liceos
@@ -504,7 +504,11 @@ socialización y los instrumentos tienen su propia hoja.
   se escriben a mano; esto compara la base migrada con `schema.prisma` y enseña
   el SQL que faltaría. PostgreSQL corta los nombres a 63 letras: un índice de
   nombre largo sale como deriva. Queda una deriva vieja, no de estas funciones:
-  `institutes.email` y `users.status`/`archivedAt`.
+  `institutes.email` y `users.status`/`archivedAt`. Con un liceo de la base
+  compartida pasa `DATABASE_URL` con SU esquema: si no, salía TODO como deriva.
+- **Un liceo nuevo nace migrado, nunca empujado** (`migrate deploy`, no
+  `db push`): sin `_prisma_migrations`, la migración siguiente le fallaba para
+  siempre (BASE-COMP-05).
 
 ## Carga diferida
 

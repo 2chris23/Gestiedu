@@ -275,7 +275,14 @@ export class TenantProvisioningService {
     }
 
     /**
-     * Despliega las tablas de Prisma en el esquema del tenant
+     * Crea las tablas del liceo en su esquema con LAS MIGRACIONES, igual que
+     * un liceo con base propia (BASE-COMP-05).
+     *
+     * Antes era `db push --accept-data-loss`: salían las tablas, pero sin
+     * `_prisma_migrations`, así que la primera migración siguiente le fallaba
+     * para siempre («la base no está vacía», P3005) y lo que solo vive en las
+     * migraciones (los índices de búsqueda, el SQL escrito a mano) no llegaba.
+     * Cuesta unos segundos más al dar de alta un liceo; una vez.
      */
     static async deploySchemaTables(databaseUrl: string): Promise<void> {
         const schemaPath = path.join(__dirname, '../prisma/schema.prisma');
@@ -284,7 +291,7 @@ export class TenantProvisioningService {
         try {
             execFileSync(
                 process.execPath,
-                [cli, 'db', 'push', '--schema', schemaPath, '--skip-generate', '--accept-data-loss'],
+                [cli, 'migrate', 'deploy', '--schema', schemaPath],
                 {
                     env: {
                         ...process.env,
