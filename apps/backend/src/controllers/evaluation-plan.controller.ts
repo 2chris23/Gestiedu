@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { AppErrors } from '../middleware/error.middleware';
 import { RequestUser } from '../types/fastify';
 import * as mammoth from 'mammoth';
+import { revisarZip, ZipPeligroso } from '../utils/zip-seguro';
 import { leerPlanDeWord } from '../services/importar-plan-de-word';
 import { semanaDelPlanCon, NOMBRE_ANTES_DEL_PLAN } from '../services/semana-del-plan.service';
 import { assertClassroomScope, assertCanSeeClassroom } from '../services/authorization.service';
@@ -1002,6 +1003,15 @@ export async function parseWordFile(request: FastifyRequest, reply: FastifyReply
       buffer[3] !== 0x04
     ) {
       throw AppErrors.BadRequest('El archivo subido no es un documento .docx válido');
+    }
+
+    // SEGURIDAD: 2 MB comprimidos pueden ser gigabytes al abrirlos, y mammoth
+    // lo descomprime entero en memoria (bomba zip). Se revisa antes, con tope.
+    try {
+      revisarZip(buffer);
+    } catch (e) {
+      if (e instanceof ZipPeligroso) throw AppErrors.BadRequest(`El documento no se puede abrir: ${e.message}`);
+      throw e;
     }
 
     const result = await mammoth.convertToHtml({ buffer });
