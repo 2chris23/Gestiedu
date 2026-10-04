@@ -10,6 +10,7 @@ import StudentScheduleSection from '@/components/schedule/StudentScheduleSection
 import LapsoSelector from '@/components/academic/LapsoSelector'; // Fase 3.5 — filtro por lapso
 // ObservationTray moved to AcademicOverview
 import AcademicOverview from '@/components/profile/AcademicOverview';
+import { PuntajeDelAlumno } from '@/components/profile/PuntajeDelAlumno';
 import { ScheduleBlock } from '@/components/schedule/UniversalScheduleViewer';
 import { notFound } from 'next/navigation';
 import { User, Calendar, FileText, AlertCircle, Edit, GraduationCap, ChevronLeft, Clock } from 'lucide-react';
@@ -752,6 +753,8 @@ export default function UserProfilePage({ params }: PageProps) {
                             </div>
                         </div>
                     )}
+                    {/* Su puntaje del cuadro de honor y cuántos puestos subió (2026-10-04). */}
+                    {user.role === 'student' && <PuntajeDelAlumno studentId={user.cedula} />}
                     {/* Rendimiento Académico en Acordeones por Ciclo Escolar */}
                     {user.role === 'student' && (
                         <div className="animate-in fade-in duration-700 delay-300">

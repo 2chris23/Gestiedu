@@ -62,22 +62,6 @@ export interface AdminDashboardDto {
         endTime?: string | null;
         scope?: string | null;
     }>;
-    studentHonorRanking?: Array<{
-        id: string;
-        name: string;
-        avatar?: string | null;
-        classroomName: string;
-        grade?: number | null;
-        section?: string | null;
-        averageScore: number;
-        attendancePercentage: number;
-        incidentsCount: number;
-        academicScore: number;
-        attendanceScore: number;
-        penaltyScore: number;
-        totalScore: number;
-        position: number;
-    }>;
     eventsCalendar?: {
         currentPeriod?: {
             id: string;

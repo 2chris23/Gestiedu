@@ -229,6 +229,22 @@ Implementación: `apps/backend/src/services/finanzas.service.ts` (cuentas puras)
 
 ---
 
+## 8h. El cuadro de honor (2026-10-04)
+
+Implementación: `services/reglas-del-cuadro.ts` (cuenta pura), `services/cuadro-de-honor.service.ts` (la foto) y `jobs/cuadro-de-honor.job.ts`. Tests: `src/tests/reglas-del-cuadro.test.ts` (CUADRO-01…03), `tests/integration/cuadro-de-honor.test.ts` (CUADRO-04…08).
+
+| Métrica | Regla | Notas |
+|---|---|---|
+| Promedio | El **de la boleta** (`boletaDelAlumno`): por lapso, la media de las materias del lapso; del ciclo, el definitivo. Sin apreciaciones (`NOTAS_QUE_CUENTAN`), con el redondeo del liceo. | Sin notas en el período, el alumno no entra en el cuadro de ese período. |
+| Asistencia | Presentes + retardos / días con asistencia registrada, **entre las fechas del período** (lapso o ciclo). Sin registros, 100 %. | Antes se contaba toda la vida. |
+| Observaciones | Las del período (por su `date`), menos las felicitaciones (`TIPOS_QUE_NO_RESTAN`: `POSITIVE`, `FELICITACION`…; CUADRO-09). | El tipo es libre; si el liceo no las usa como llamados de atención, pone la resta en 0. |
+| Puntaje | `pesoNotas × promedio/20 + pesoAsistencia × asistencia/100 − restaPorObservacion × observaciones`, a una décima, nunca menos de 0. | Pesos del liceo (`AcademicConfig.cuadroDeHonor`), 80 / 20 / 5 por defecto. |
+| Puesto | Por puntaje; empate → mejor promedio → mejor asistencia; empate en las tres → **mismo puesto** (1, 2, 2, 4). En el liceo y dentro de su año. | No se desempata por el nombre. |
+| La foto | Una por sábado (el último sábado según la hora del liceo), única por alumno, ciclo, alcance y fecha. La tarea mira al arrancar y cada 6 h; si falta la del último sábado, la saca. | Lapsos que no han empezado, fuera. |
+| «Subió N» | Puesto **en su año** en la foto anterior − puesto en la última. | Al alumno y al representante: su puntaje y esto. Nunca el puesto ni a los demás. |
+
+---
+
 ## 8c. El fin del año escolar (cierre)
 
 **Rehecho el 2026-09-26** (`services/promotion/close-cycle.service.ts`, `services/fin-de-ano.service.ts`,

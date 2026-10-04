@@ -38,6 +38,7 @@ import { apreciacionesRoutes } from './apreciaciones.routes';
 import { revisionRoutes } from './revision.routes';
 import { materiasPendientesRoutes } from './materias-pendientes.routes';
 import { laborSocialRoutes } from './labor-social.routes';
+import { cuadroDeHonorRoutes } from './cuadro-de-honor.routes';
 import { documentosRoutes } from './documentos.routes';
 import { avisosRoutes } from './avisos.routes';
 import { cambiosEnEsperaRoutes } from './cambios-en-espera.routes';
@@ -76,6 +77,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(revisionRoutes, { prefix: '/api/revision' });
   await fastify.register(materiasPendientesRoutes, { prefix: '/api/materias-pendientes' });
   await fastify.register(laborSocialRoutes, { prefix: '/api/labor-social' });
+  await fastify.register(cuadroDeHonorRoutes, { prefix: '/api/cuadro-de-honor' });
   await fastify.register(documentosRoutes, { prefix: '/api' });
   await fastify.register(avisosRoutes, { prefix: '/api/avisos' });
   // Lo hecho sin conexión que decide otra persona (services/cambios-sin-conexion.service.ts).

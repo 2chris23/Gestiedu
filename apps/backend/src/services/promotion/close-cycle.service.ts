@@ -1,3 +1,4 @@
+import { esReglasDelCuadro, limpiarReglasDelCuadro, REGLAS_DEL_CUADRO_POR_DEFECTO, ReglasDelCuadro } from '../reglas-del-cuadro';
 import { PrismaClient } from '@prisma/client';
 import { gradesService } from '../grades.service';
 import { getStrategy, Assignment, StudentForPlacement, SectionOption } from './strategies';
@@ -59,6 +60,8 @@ export interface AcademicConfig {
     pendienteNoAprobada: PendienteNoAprobada;
     pendientes: ReglasDePendientes;
     laborSocial: ReglasDeLaborSocial;
+    /** Los pesos del cuadro de honor (`reglas-del-cuadro.ts`). */
+    cuadroDeHonor: ReglasDelCuadro;
 }
 
 export type RedondeoDeDefinitivas = 'MPPE' | 'NINGUNO';
@@ -82,6 +85,7 @@ export const DEFAULT_ACADEMIC_CONFIG: AcademicConfig = {
     pendienteNoAprobada: 'REPITE',
     pendientes: PENDIENTES_POR_DEFECTO,
     laborSocial: LABOR_SOCIAL_POR_DEFECTO,
+    cuadroDeHonor: REGLAS_DEL_CUADRO_POR_DEFECTO,
 };
 
 /** El porcentaje de asistencia va de 0 a 100 y no admite otra cosa. */
@@ -119,6 +123,7 @@ export async function getAcademicConfig(instituteId: string): Promise<AcademicCo
         laborSocial: esReglasDeLaborSocial(raw.laborSocial)
             ? raw.laborSocial
             : { ...LABOR_SOCIAL_POR_DEFECTO, grados: [typeof raw.maxGradeLevel === 'number' ? raw.maxGradeLevel : defaultMax] },
+        cuadroDeHonor: esReglasDelCuadro(raw.cuadroDeHonor) ? limpiarReglasDelCuadro(raw.cuadroDeHonor) : REGLAS_DEL_CUADRO_POR_DEFECTO,
     };
 }
 
@@ -155,6 +160,7 @@ export async function updateAcademicConfig(instituteId: string, patch: Partial<A
         pendienteNoAprobada: esPendienteNoAprobada(patch.pendienteNoAprobada) ? patch.pendienteNoAprobada : current.pendienteNoAprobada,
         pendientes: esReglasDePendientes(patch.pendientes) ? patch.pendientes : current.pendientes,
         laborSocial: esReglasDeLaborSocial(patch.laborSocial) ? patch.laborSocial : current.laborSocial,
+        cuadroDeHonor: esReglasDelCuadro(patch.cuadroDeHonor) ? limpiarReglasDelCuadro(patch.cuadroDeHonor) : current.cuadroDeHonor,
     };
     await platformPrisma.institute.update({
         where: { id: instituteId },

@@ -2509,3 +2509,32 @@ model PagoReportado {
   @@map("pagos_reportados")
 }
 
+
+/// La foto del cuadro de honor de un sábado (`reglas-del-cuadro.ts`, MAPA §8h).
+/// Una fila por alumno, ciclo, alcance (un lapso o el ciclo entero) y sábado:
+/// comparando con la foto anterior se sabe cuántos puestos subió. Única, así
+/// que dos procesos que saquen la misma foto no la duplican.
+model PuntajeDelCuadro {
+  id               String   @id @default(cuid())
+  studentId        String
+  academicYearId   String
+  /// `CICLO` o el id del lapso.
+  alcance          String
+  /// El sábado de la foto.
+  fecha            DateTime @db.Date
+  grado            Int
+  promedio         Decimal  @db.Decimal(5, 2)
+  asistencia       Int
+  observaciones    Int
+  puntosNotas      Decimal  @db.Decimal(5, 1)
+  puntosAsistencia Decimal  @db.Decimal(5, 1)
+  resta            Decimal  @db.Decimal(5, 1)
+  puntaje          Decimal  @db.Decimal(5, 1)
+  puestoLiceo      Int
+  puestoAno        Int
+  createdAt        DateTime @default(now())
+
+  @@unique([studentId, academicYearId, alcance, fecha])
+  @@index([academicYearId, alcance, fecha])
+  @@map("cuadro_de_honor")
+}

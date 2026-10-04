@@ -23,6 +23,8 @@ export function AcademicSettings() {
         gradeScale: { min: 0, max: 20 },
         passingGrade: 10,
         asistenciaMinima: 80,
+        // Los pesos del cuadro de honor (2026-10-04): 80 / 20 / 5 por defecto.
+        cuadroDeHonor: { pesoNotas: 80, pesoAsistencia: 20, restaPorObservacion: 5 },
         redondeoDeDefinitivas: 'MPPE' as 'MPPE' | 'NINGUNO',
         apreciaciones: [...APRECIACIONES_POR_DEFECTO],
         // Quién firma las constancias. El código DEA y los demás datos
@@ -54,6 +56,11 @@ export function AcademicSettings() {
                     gradeScale: rawConfig.gradeScale || { min: 0, max: 20 },
                     passingGrade: rawConfig.passingGrade ?? rawConfig.notaMinimaAprobatoria ?? 10,
                     asistenciaMinima: rawConfig.asistenciaMinima ?? 80,
+                    cuadroDeHonor: {
+                        pesoNotas: rawConfig.cuadroDeHonor?.pesoNotas ?? 80,
+                        pesoAsistencia: rawConfig.cuadroDeHonor?.pesoAsistencia ?? 20,
+                        restaPorObservacion: rawConfig.cuadroDeHonor?.restaPorObservacion ?? 5,
+                    },
                     redondeoDeDefinitivas: rawConfig.redondeoDeDefinitivas === 'NINGUNO' ? 'NINGUNO' : 'MPPE',
                     apreciaciones: Array.isArray(rawConfig.apreciaciones) && rawConfig.apreciaciones.length >= 2
                         ? rawConfig.apreciaciones
@@ -99,6 +106,17 @@ export function AcademicSettings() {
 
         if (academicConfig.asistenciaMinima < 0 || academicConfig.asistenciaMinima > 100) {
             toast.error('La asistencia mínima es un porcentaje: debe estar entre 0 y 100');
+            return;
+        }
+
+        const c = academicConfig.cuadroDeHonor;
+        if (
+            [c.pesoNotas, c.pesoAsistencia].some((v) => v < 0 || v > 100) ||
+            c.restaPorObservacion < 0 ||
+            c.restaPorObservacion > 50 ||
+            c.pesoNotas + c.pesoAsistencia === 0
+        ) {
+            toast.error('Cuadro de honor: los pesos van de 0 a 100 (no los dos en 0) y lo que resta cada observación, de 0 a 50.');
             return;
         }
 
@@ -253,6 +271,36 @@ export function AcademicSettings() {
                         Por debajo de este porcentaje se le avisa al representante. No reprueba ni afecta las notas.
                     </p>
                 </div>
+
+                {/* El cuadro de honor (2026-10-04): cómo se cuenta el puntaje. */}
+                <fieldset className="rounded-xl border border-gray-200 p-4 md:col-span-2" data-recorrido="config-cuadro-de-honor">
+                    <legend className="px-1 text-sm font-semibold text-gray-800">Cuadro de honor</legend>
+                    <p className="mb-3 text-xs text-gray-600">
+                        El puntaje de cada alumno: el peso de las notas y el de la asistencia (con 80 y 20, el máximo es 100), menos lo que resta cada observación del período. Se recalcula cada sábado.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        {([
+                            ['pesoNotas', 'Peso de las notas', 100],
+                            ['pesoAsistencia', 'Peso de la asistencia', 100],
+                            ['restaPorObservacion', 'Resta por observación', 50],
+                        ] as const).map(([campo, rotulo, max]) => (
+                            <label key={campo} className="block text-sm font-medium text-gray-700">
+                                {rotulo}
+                                <input
+                                    type="number"
+                                    min={0}
+                                    max={max}
+                                    value={academicConfig.cuadroDeHonor[campo]}
+                                    onChange={handleNumberChange((v) =>
+                                        setAcademicConfig((prev) => ({ ...prev, cuadroDeHonor: { ...prev.cuadroDeHonor, [campo]: v } }))
+                                    )}
+                                    className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-indigo-500"
+                                />
+                            </label>
+                        ))}
+                    </div>
+                    <p className="mt-2 text-xs text-gray-600">Si en tu liceo las observaciones no son llamados de atención, pon la resta en 0.</p>
+                </fieldset>
 
                 {/* Redondeo de las definitivas */}
                 <div>

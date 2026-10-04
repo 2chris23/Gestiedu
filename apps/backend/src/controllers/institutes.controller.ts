@@ -1,4 +1,5 @@
 /// <reference path="../types/fastify.d.ts" />
+import { esReglasDelCuadro, limpiarReglasDelCuadro } from '../services/reglas-del-cuadro';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { InstitutesService } from '../services/institutes.service';
 import { SUCCESS_MESSAGES } from '../utils/constants';
@@ -201,6 +202,16 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
             });
           }
           nextAcademicConfig.apreciaciones = configObj.apreciaciones.map((v: string) => v.trim());
+        }
+        // Los pesos del cuadro de honor (`reglas-del-cuadro.ts`).
+        if (configObj.cuadroDeHonor !== undefined) {
+          if (!esReglasDelCuadro(configObj.cuadroDeHonor)) {
+            return reply.status(400).send({
+              error: 'Cuadro de honor: el peso de las notas y el de la asistencia, de 0 a 100 (no los dos en 0), y lo que resta cada observación, de 0 a 50.',
+              code: 'REGLA_INVALIDA',
+            });
+          }
+          nextAcademicConfig.cuadroDeHonor = limpiarReglasDelCuadro(configObj.cuadroDeHonor);
         }
         if (configObj.schedule) horarioPedido = configObj.schedule;
         if (configObj.confirmarClasesFuera === true) confirmarClasesFuera = true;
@@ -507,6 +518,12 @@ export async function updateAcademicConfigEndpoint(request: FastifyRequest, repl
         return mal('Labor social: activa, de 1 a 6 grados (1 a 6), horas de 0 a 1000 y para egresar BLOQUEA, AVISA o NO.', 'REGLA_INVALIDA');
       }
       patch.laborSocial = body.laborSocial;
+    }
+    if (body.cuadroDeHonor !== undefined) {
+      if (!esReglasDelCuadro(body.cuadroDeHonor)) {
+        return mal('Cuadro de honor: el peso de las notas y el de la asistencia, de 0 a 100 (no los dos en 0), y lo que resta cada observación, de 0 a 50.', 'REGLA_INVALIDA');
+      }
+      patch.cuadroDeHonor = body.cuadroDeHonor;
     }
     const instId = getInstId(request);
     const config = await updateAcademicConfig(instId, patch);

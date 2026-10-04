@@ -1,5 +1,6 @@
 'use client';
 
+import { PuntajeDelAlumno } from '@/components/profile/PuntajeDelAlumno';
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -122,6 +123,8 @@ export function MisRepresentados() {
                         </dl>
                         {desplegado && (
                             <div className="space-y-3 px-4 pb-4">
+                                {/* Su puntaje del cuadro de honor y cuántos puestos subió. */}
+                                <PuntajeDelAlumno studentId={hijo.id} />
                                 <Link
                                     href={`/dashboard/boleta/${encodeURIComponent(hijo.id)}`}
                                     className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"

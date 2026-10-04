@@ -20,6 +20,7 @@ import { registerRoutes } from './routes/index';
 import { redis, redisPub, redisSub, connectRedis, disconnectRedis } from './config/redis';
 import { setupAcademicYearCronJob } from './jobs/academic-year-sync.job';
 import { setupRecordatorioDeCuotasJob } from './jobs/recordatorio-de-cuotas.job';
+import { setupCuadroDeHonorJob } from './jobs/cuadro-de-honor.job';
 import { identifyTenant } from './middleware/tenant.middleware';
 import { conLiceo } from './config/ambito-del-liceo';
 import { smartCacheMiddleware, cacheOnSendHook } from './middleware/smart-cache.middleware';
@@ -356,6 +357,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await setupAcademicYearCronJob(server);
   logger.info('Academic year auto-sync job configured');
   await setupRecordatorioDeCuotasJob(server);
+  await setupCuadroDeHonorJob(server);
 
   // Caché de comprobación profunda de salud para evitar agotar el pool de conexiones (dos-health-check-db-pool-exhaustion)
   let estadoSaludCache: { db: boolean; redis: boolean; timestamp: number } | null = null;

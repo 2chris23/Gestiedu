@@ -15,6 +15,7 @@ import api from '@/lib/axios';
 import { PagosDelRepresentante } from '@/components/pagos/PagosDelRepresentante';
 import MiDiaDeClases from '@/components/dashboard/MiDiaDeClases';
 import MisRepresentados from '@/components/dashboard/MisRepresentados';
+import { PuntajeDelAlumno } from '@/components/profile/PuntajeDelAlumno';
 import CitacionesDelRepresentante from '@/components/dashboard/CitacionesDelRepresentante';
 import { LaborSocialDelAlumno } from '@/components/labor-social/LaborSocialDelAlumno';
 import {
@@ -51,22 +52,6 @@ interface AdminDashboardData {
         studentsAtRisk: number;
         pendingActivities: number;
     };
-    studentHonorRanking?: Array<{
-        id: string;
-        name: string;
-        avatar?: string | null;
-        classroomName: string;
-        grade?: number | null;
-        section?: string | null;
-        averageScore: number;
-        attendancePercentage: number;
-        incidentsCount: number;
-        academicScore: number;
-        attendanceScore: number;
-        penaltyScore: number;
-        totalScore: number;
-        position: number;
-    }>;
     eventsCalendar?: {
         currentPeriod?: {
             id: string;
@@ -403,7 +388,7 @@ export default function DashboardPage() {
                         <CalendarioActividadesWidget data={adminData.eventsCalendar} />
 
                         {/* WIDGET 2: Cuadro de Honor / Ranking de Alumnos */}
-                        <CuadroDeHonorWidget students={adminData.studentHonorRanking} />
+                        <CuadroDeHonorWidget />
                     </div>
                 </section>
             )}
@@ -418,6 +403,10 @@ export default function DashboardPage() {
                     seccion={studentStats?.student?.currentSection?.name}
                 />
             )}
+
+            {/* El alumno: su puntaje del cuadro de honor y cuántos puestos subió
+                (solo eso: ni su puesto ni a los demás). */}
+            {rol === 'STUDENT' && yo?.id && <PuntajeDelAlumno studentId={yo.id} />}
 
             {/* El alumno de los últimos años: su labor social (solo si le toca). */}
             {rol === 'STUDENT' && yo?.id && <LaborSocialDelAlumno studentId={yo.id} />}

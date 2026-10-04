@@ -234,7 +234,6 @@ export class DashboardService {
             todayAttendance,
             gradeCapacity,
             eventsAndClosure,
-            studentHonorRanking,
             eventsCalendar,
             pendingActivities,
             recentActivity,
@@ -469,131 +468,8 @@ export class DashboardService {
                 return { periodClosure, events };
             })(),
 
-            // Cuadro de Honor / Ranking de Alumnos del ciclo escolar actual
-            (async () => {
-                if (!activeYear) return [];
-                // 1. Obtener candidatos con mejores notas en el ciclo activo
-                const studentAverages = await db.grade.groupBy({
-                    by: ['studentId'],
-                    where: {
-                        period: { academicYearId: activeYear.id },
-                        score: { not: null },
-                        ...NOTAS_QUE_CUENTAN,
-                    },
-                    _avg: { score: true },
-                    having: {
-                        score: { _avg: { gte: 10 } }
-                    },
-                    orderBy: {
-                        _avg: { score: 'desc' }
-                    },
-                    take: 25
-                });
-
-                if (studentAverages.length === 0) return [];
-
-                const candidateIds = studentAverages.map(s => s.studentId);
-
-                // 2. Cargar datos del alumno y su sección activa
-                const [studentsInfo, attendanceData, observationsData] = await Promise.all([
-                    db.user.findMany({
-                        where: { id: { in: candidateIds } },
-                        select: {
-                            id: true,
-                            firstName: true,
-                            lastName: true,
-                            avatar: true,
-                            studentClassrooms: {
-                                where: { isActive: true },
-                                select: {
-                                    classroom: {
-                                        select: { name: true, grade: true, section: true }
-                                    }
-                                },
-                                take: 1
-                            }
-                        }
-                    }),
-                    // Asistencia agrupada
-                    (db.dailyAttendance as any).groupBy({
-                        by: ['studentId', 'status'],
-                        where: {
-                            studentId: { in: candidateIds }
-                        },
-                        _count: { _all: true }
-                    }),
-                    // Observaciones (incidentes negativos)
-                    db.observation.groupBy({
-                        by: ['studentId'],
-                        where: {
-                            studentId: { in: candidateIds }
-                        },
-                        _count: { _all: true }
-                    })
-                ]);
-
-                // Mapas rápidos
-                const studentMap = new Map(studentsInfo.map(s => [s.id, s]));
-
-                // Mapa de asistencia: { total, present }
-                const attMap = new Map<string, { total: number; present: number }>();
-                for (const att of (attendanceData as Array<{ studentId: string; status: string; _count: { _all: number } }>)) {
-                    const cur = attMap.get(att.studentId) || { total: 0, present: 0 };
-                    cur.total += att._count._all;
-                    if (att.status === 'PRESENT' || att.status === 'LATE') {
-                        cur.present += att._count._all;
-                    }
-                    attMap.set(att.studentId, cur);
-                }
-
-                // Mapa de incidentes (observaciones negativas)
-                const obsMap = new Map<string, number>();
-                for (const obs of observationsData) {
-                    obsMap.set(obs.studentId, obs._count._all);
-                }
-
-                // Calcular puntajes integrales: 80% Académico, 20% Asistencia, -5 pts por cada incidente
-                const rankedList = studentAverages.map(cand => {
-                    const st = studentMap.get(cand.studentId);
-                    const avg = Math.round((cand._avg.score || 0) * 10) / 10;
-                    const academicScore = Math.round(((avg / 20) * 80) * 10) / 10;
-
-                    const att = attMap.get(cand.studentId);
-                    const attPct = att && att.total > 0 ? Math.round((att.present * 100) / att.total) : 100;
-                    const attendanceScore = Math.round(((attPct / 100) * 20) * 10) / 10;
-
-                    const incidentsCount = obsMap.get(cand.studentId) || 0;
-                    const penaltyScore = incidentsCount * 5;
-
-                    const totalScore = Math.max(0, Math.round((academicScore + attendanceScore - penaltyScore) * 10) / 10);
-
-                    const cls = st?.studentClassrooms?.[0]?.classroom;
-
-                    return {
-                        id: cand.studentId,
-                        name: st ? `${st.firstName} ${st.lastName}` : cand.studentId,
-                        avatar: st?.avatar || null,
-                        classroomName: cls?.name || 'Sección activa',
-                        grade: cls?.grade || null,
-                        section: cls?.section || null,
-                        averageScore: avg,
-                        attendancePercentage: attPct,
-                        incidentsCount,
-                        academicScore,
-                        attendanceScore,
-                        penaltyScore,
-                        totalScore
-                    };
-                });
-
-                // Ordenar por puntaje total descendente y tomar Top 5
-                rankedList.sort((a, b) => b.totalScore - a.totalScore || b.averageScore - a.averageScore);
-
-                return rankedList.slice(0, 5).map((item, index) => ({
-                    ...item,
-                    position: index + 1
-                }));
-            })(),
+            // El cuadro de honor ya no se calcula aquí: sale de la foto del sábado
+            // (`/api/cuadro-de-honor`, cuadro-de-honor.service.ts).
 
             // Calendario y actividades para el widget de agenda interactiva
             (async () => {
@@ -707,7 +583,6 @@ export class DashboardService {
             gradeCapacity,
             periodClosure: eventsAndClosure.periodClosure,
             upcomingEvents: eventsAndClosure.events,
-            studentHonorRanking,
             eventsCalendar
         };
     }
