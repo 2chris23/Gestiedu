@@ -8,7 +8,44 @@ import { prisma } from '../config/database';
 import { leerEstado, saludDeLosRespaldos } from '../services/respaldos-programados.service';
 import { carpetaDeRespaldos } from '../services/respaldos.service';
 import { losLatidos } from '../utils/latido-de-tareas';
-import { statfs } from 'fs/promises';
+import { statfs, readFile } from 'fs/promises';
+import { monitorEventLoopDelay } from 'perf_hooks';
+import { X509Certificate } from 'crypto';
+
+/**
+ * EL PROCESO ATASCADO (robustez, 2026-10-04): un reporte grande o un cálculo
+ * largo en el mismo proceso que atiende a todos hace esperar a TODOS. Se mide
+ * el retraso del bucle de eventos (p99 del último minuto); por encima de
+ * 200 ms, algo está acaparando el proceso.
+ */
+const retrasoDelBucle = monitorEventLoopDelay({ resolution: 20 });
+retrasoDelBucle.enable();
+let reiniciadoEn = Date.now();
+export function elBucle(): { p99ms: number; maxMs: number } {
+    const r = { p99ms: Math.round(retrasoDelBucle.percentile(99) / 1e6), maxMs: Math.round(retrasoDelBucle.max / 1e6) };
+    if (Date.now() - reiniciadoEn > 60_000) {
+        retrasoDelBucle.reset();
+        reiniciadoEn = Date.now();
+    }
+    return r;
+}
+
+/**
+ * EL CERTIFICADO (robustez, 2026-10-04): vencido, la app deja fuera a TODOS
+ * los liceos a la vez. Con `CERTIFICADO_TLS` (la ruta del .pem que sirve
+ * nginx, montada de solo lectura), el panel dice cuántos días le quedan y avisa
+ * por debajo de 14.
+ */
+export async function elCertificado(ruta = process.env.CERTIFICADO_TLS): Promise<{ dias: number; vence: string } | null> {
+    if (!ruta) return null;
+    try {
+        const cert = new X509Certificate(await readFile(ruta));
+        const vence = new Date(cert.validTo);
+        return { dias: Math.floor((vence.getTime() - Date.now()) / 86_400_000), vence: vence.toISOString() };
+    } catch {
+        return null;
+    }
+}
 
 /** Las tareas que tienen que latir (las que no han latido nunca salen «atrasada»). */
 export const TAREAS_QUE_LATEN = ['mantenimiento', 'cuadro-de-honor', 'recordatorio-de-cuotas', 'estado-de-los-anos', 'almacenamiento'];
@@ -129,6 +166,10 @@ export class MonitoringController {
             if (tareasMal.length && status === 'healthy') status = 'degraded';
             const disco = await elDisco();
             if (disco && disco.libre < 0.1) status = 'critical';
+            const bucle = elBucle();
+            if (bucle.p99ms > 200 && status === 'healthy') status = 'degraded';
+            const certificado = await elCertificado();
+            if (certificado && certificado.dias < 14) status = certificado.dias < 3 ? 'critical' : status === 'healthy' ? 'degraded' : status;
 
             const health = {
                 status,
@@ -145,6 +186,8 @@ export class MonitoringController {
                 tareas,
                 tareasMal,
                 disco,
+                bucle,
+                certificado,
                 metrics: {
                     queries: {
                         total: metrics.totalQueries,

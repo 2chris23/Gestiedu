@@ -25,6 +25,8 @@ interface Salud {
     tareas?: Record<string, Tarea>;
     tareasMal?: string[];
     disco?: { libreGB: number; totalGB: number; libre: number } | null;
+    bucle?: { p99ms: number; maxMs: number };
+    certificado?: { dias: number; vence: string } | null;
 }
 
 const NOMBRES: Record<string, string> = {
@@ -90,7 +92,7 @@ export function SaludDelSistema() {
                 </h2>
                 <span className={`rounded-full border px-3 py-1 text-sm font-semibold ${general.clase}`}>{general.texto}</span>
             </div>
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-xl border border-gray-700/50 bg-gray-900/60 p-4">
                     <p className="text-sm text-gray-300">Respaldos</p>
                     <p className={`mt-2 inline-block rounded-full border px-2 py-0.5 text-xs font-semibold ${COLOR[salud.respaldos?.salud ?? 'fallo'] ?? COLOR.fallo}`}>
@@ -112,6 +114,19 @@ export function SaludDelSistema() {
                     ) : (
                         <p className="mt-2 text-xs text-gray-300">No se pudo medir</p>
                     )}
+                </div>
+                <div className="rounded-xl border border-gray-700/50 bg-gray-900/60 p-4">
+                    <p className="text-sm text-gray-300">El servidor</p>
+                    {salud.bucle && (
+                        <p className={`mt-2 inline-block rounded-full border px-2 py-0.5 text-xs font-semibold ${COLOR[salud.bucle.p99ms > 200 ? 'atrasado' : 'bien']}`}>
+                            Responde en {salud.bucle.p99ms} ms (p99)
+                        </p>
+                    )}
+                    <p className="mt-2 text-xs text-gray-300">
+                        {salud.certificado
+                            ? `Certificado: vence en ${salud.certificado.dias} días`
+                            : 'Certificado: sin vigilar (CERTIFICADO_TLS)'}
+                    </p>
                 </div>
                 <div className="rounded-xl border border-gray-700/50 bg-gray-900/60 p-4">
                     <p className="text-sm text-gray-300">Tareas automáticas</p>

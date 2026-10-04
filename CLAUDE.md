@@ -65,6 +65,9 @@ cierra, llega SIGPIPE y el proceso muere. Cuesta horas de pruebas falsas en rojo
 
 - **Next 16 usa `src/proxy.ts`, no `middleware.ts`.** Si existen los dos, la app no arranca.
   El guardián de pantallas por rol vive en `apps/web/src/proxy.ts`.
+- **Una migración nueva empieza con `SET lock_timeout = '10s';`** (MIGRA-01):
+  sin tope, un `ALTER` sobre una tabla en uso cuelga al liceo entero mientras
+  espera su candado. Un índice sobre una tabla grande, `CONCURRENTLY` y aparte.
 - **Migraciones: `prisma migrate deploy`, jamás `db push --accept-data-loss`.**
   `src/scripts/push-all-dbs.ts` es un tope que se niega a correr, a propósito.
 - Las migraciones necesitan conexión **directa**, no PgBouncer (el pooling por transacción

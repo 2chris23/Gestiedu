@@ -162,3 +162,38 @@ preguntan a la plataforma, y la pantalla del superadmin abre vacía.
 
 Para que no vuelva a pasar: el escaneo de secretos de la integración continua
 (ver `ci.yml`).
+
+## La llave maestra: el superadmin (propuesta, 2026-10-04)
+
+El superadmin abre **todos** los liceos. Hoy lo protegen la contraseña, el
+límite de intentos por dirección y la rotación de su sesión. Si alguien la
+adivina o la roba (una contraseña reutilizada en otro sitio), entra a todo.
+
+**Propuesta** (pendiente de que el dueño la apruebe; no está hecha):
+
+1. **Segundo factor TOTP** (Google Authenticator, Aegis): al entrar, además de
+   la contraseña, el código de 6 cifras del teléfono del dueño. Se guarda solo
+   la semilla cifrada con una llave del servidor, y 10 códigos de rescate de un
+   solo uso para el día que se pierda el teléfono.
+2. **Registro de lo que hace** (`registros_del_superadmin`): quién, cuándo,
+   desde dónde y qué (crear, suspender o borrar un liceo, ver sus métricas).
+   Solo se añade, nunca se borra.
+3. **Aviso al correo del dueño** en cada entrada desde una dirección nueva.
+
+Lo que ya defiende el resto (los admins de cada liceo): límite de intentos
+por cuenta y dirección (BRUTO-01), llaves que rotan y se anulan al salir, y el
+`instituteId` del token mandando sobre todo lo demás (`TENANT_MISMATCH`).
+
+## Revisado en la tanda de robustez (2026-10-04)
+
+| Riesgo | Estado |
+|---|---|
+| SSRF por los avisos web | **Cerrado**: solo servicios de avisos de verdad (SSRF-01) |
+| CSRF | La cookie de renovar es `httpOnly` y `SameSite=lax`; las escrituras van con la credencial en la cabecera, no en cookie |
+| XSS por `dangerouslySetInnerHTML` | Dos: un guion fijo del arranque y los datos estructurados de la portada (con `<` escapado). Ninguno lleva texto del usuario |
+| Recorrido de rutas en la descarga de la APK | El nombre del paquete pasa por una expresión cerrada antes de tocar el disco |
+| Inyección de órdenes en los respaldos | `pg_dump`/`pg_restore` se lanzan con `spawn` y argumentos en lista (sin intérprete); el esquema se valida (`^[a-z0-9_]{1,63}$`) |
+| ReDoS | La única expresión construida en tiempo de ejecución escapa su entrada (`config/redis.ts`) |
+| Datos personales en los registros | Quitado el correo al pedir cambiar la contraseña; se apunta el id |
+| Números correlativos (recibos) | Secuencia de la base con restricción única: dos a la vez no repiten número |
+| Librerías | `npm audit` en la CI (falla con un crítico) y Dependabot cada semana |

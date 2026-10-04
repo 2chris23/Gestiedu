@@ -125,3 +125,23 @@ describe('La salud del sistema en el panel del superadmin (LATIDO-03)', () => {
         }
     }, 120000);
 });
+
+/**
+ * LATIDO-04: el certificado que vence pronto y el proceso atascado salen en el
+ * panel. El .pem de prueba es SOLO el certificado (sin llave), creado para
+ * vencer a los 5 días: desde entonces vence «pronto» o ya venció, y en los dos
+ * casos el panel tiene que avisar.
+ */
+describe('El certificado y el proceso (LATIDO-04)', () => {
+    it('LATIDO-04: un certificado de menos de 14 días se avisa; el retraso del proceso se mide', async () => {
+        const path = require('path');
+        const { elCertificado, elBucle } = require('../../src/controllers/monitoring.controller');
+        const c = await elCertificado(path.join(__dirname, '..', 'fixtures', 'certificado-que-vence-pronto.pem'));
+        expect(c).not.toBeNull();
+        expect(c.dias).toBeLessThan(14);
+        expect(await elCertificado(undefined)).toBeNull();
+        expect(await elCertificado(path.join(__dirname, 'no-existe.pem'))).toBeNull();
+        const b = elBucle();
+        expect(typeof b.p99ms).toBe('number');
+    });
+});
