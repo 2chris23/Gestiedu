@@ -9,7 +9,7 @@ import { VistaResumen } from '@/components/finanzas/VistaResumen';
 import { VistaDelPersonal } from '@/components/finanzas/VistaDelPersonal';
 import { VistaDeGastosYFondos } from '@/components/finanzas/GastosYFondos';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AyudaDeLaPantalla } from '@/components/common/AyudaDeLaPantalla';
+import { BotonComoFunciona } from '@/components/common/Recorrido';
 import { CalendarioDelCiclo } from '@/components/pagos/CalendarioDelCiclo';
 import { MesEnDias, type DeudorDelMes } from '@/components/pagos/MesEnDias';
 import { SelectorDeCiclo } from '@/components/pagos/SelectorDeCiclo';
@@ -345,28 +345,7 @@ export default function FinanzasPage() {
                 acciones={
                     <>
                         {ciclos.length > 0 && <SelectorDeCiclo ciclos={ciclos} valor={ciclo} alCambiar={(c) => ir({ ciclo: c })} />}
-                        <AyudaDeLaPantalla
-                            titulo="Cómo funcionan las finanzas"
-                            pasos={[
-                                {
-                                    titulo: 'Empieza por el saldo',
-                                    texto: 'En «Resumen», «Poner el saldo inicial»: lo que el liceo tiene hoy. Desde ahí, los fondos disponibles se calculan solos: entra lo cobrado y lo agregado; sale lo pagado al personal y lo gastado.',
-                                },
-                                {
-                                    titulo: 'Cobra a los estudiantes',
-                                    texto: 'En «Estudiantes»: el ciclo mes a mes y la lista. Toca a un estudiante, toca las cuotas que paga y «Registrar pago».',
-                                },
-                                {
-                                    titulo: 'Paga al personal',
-                                    texto: 'En «Personal»: los profesores aparecen solos; agrega al resto. Ponle a cada uno su sueldo (o a varios de una vez), su día de pago y sus vacaciones. Para pagar, toca a la persona y los pagos que le haces: sale su recibo.',
-                                },
-                                {
-                                    titulo: 'Anota gastos y fondos',
-                                    texto: 'En «Gastos y fondos»: lo que se compra o se repara, con la foto de la factura, y lo que entra que no es cuota (una donación).',
-                                },
-                            ]}
-                            nota="Nada se borra: lo que se anotó mal se anula con un motivo, y queda a la vista. Elige otro ciclo arriba para ver los anteriores."
-                        />
+                        <BotonComoFunciona recorrido="finanzas" />
                     </>
                 }
             />
@@ -381,6 +360,7 @@ export default function FinanzasPage() {
                             key={v.id}
                             type="button"
                             onClick={() => ir({ vista: v.id })}
+                            data-recorrido={`finanzas-${v.id}`}
                             aria-current={activa ? 'page' : undefined}
                             aria-describedby={`pista-${v.id}`}
                             className={cn(

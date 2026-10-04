@@ -1,6 +1,7 @@
 'use client';
 
 import { Campana } from '@/components/layout/Campana';
+import { BotonDelRecorrido } from '@/components/common/Recorrido';
 import * as React from 'react';
 import { ChevronDown } from 'lucide-react';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -78,6 +79,7 @@ export function CabeceraMovil({
                         onClick={() => setFichaAbierta(true)}
                         aria-haspopup="dialog"
                         aria-expanded={fichaAbierta}
+                        data-recorrido="mi-cuenta"
                         className="-ml-1 flex min-h-[44px] items-center gap-2.5 rounded-full px-1 pr-3 text-left transition-colors active:bg-gray-100"
                     >
                         <UserAvatar
@@ -89,7 +91,11 @@ export function CabeceraMovil({
                         <span className="truncate text-sm font-semibold text-gray-900">{comoSeLeLlama}</span>
                         <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
                     </button>
-                    <Campana className="ml-auto" />
+                    {/* El «?»: cómo funciona esta pantalla (el recorrido guiado). */}
+                    <div className="ml-auto flex items-center">
+                        <BotonDelRecorrido />
+                        <Campana />
+                    </div>
                 </div>
             </header>
 

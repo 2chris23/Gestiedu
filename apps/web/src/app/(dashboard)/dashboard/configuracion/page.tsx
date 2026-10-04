@@ -63,6 +63,7 @@ export default function ConfiguracionPage() {
                                     key={tab.id}
                                     type="button"
                                     onClick={() => setActiveTab(tab.id)}
+                                    data-recorrido={`config-${tab.id}`}
                                     aria-pressed={isActive}
                                     // El nombre es el apartado; lo de dentro, su descripción.
                                     aria-label={tab.label}

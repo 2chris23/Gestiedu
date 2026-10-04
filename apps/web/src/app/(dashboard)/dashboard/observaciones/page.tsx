@@ -127,7 +127,7 @@ export default function ObservacionesPage() {
             ) : data.observaciones.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-600">No hay observaciones con esos filtros.</p>
             ) : (
-                <ul className="space-y-3" aria-label="Observaciones">
+                <ul className="space-y-3" aria-label="Observaciones" data-recorrido="observaciones-lista">
                     {data.observaciones.map((o) => (
                         <li key={o.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-xs">
                             <div className="flex flex-wrap items-start justify-between gap-2">

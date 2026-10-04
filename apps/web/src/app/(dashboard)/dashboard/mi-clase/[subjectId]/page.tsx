@@ -196,7 +196,11 @@ export default function MiClasePage({ params }: { params: Promise<{ subjectId: s
             {/* La asistencia por QR, desde su clase: escanear el QR del profesor
                 o enseñar el suyo. Solo el alumno (el representante no pasa
                 lista por él), y solo si el liceo la usa. */}
-            {yo?.role === 'STUDENT' && <BotonesDeAsistencia />}
+            {yo?.role === 'STUDENT' && (
+                <div className="empty:hidden" data-recorrido="mi-clase-qr">
+                    <BotonesDeAsistencia />
+                </div>
+            )}
 
             {data.lapsos.length > 1 && (
                 <div
@@ -240,6 +244,7 @@ export default function MiClasePage({ params }: { params: Promise<{ subjectId: s
                         role="tab"
                         aria-selected={pestana === p.clave}
                         onClick={() => setPestana(p.clave)}
+                        data-recorrido={`mi-clase-${p.clave}`}
                         className={cn(
                             'flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-xs font-semibold transition-colors sm:flex-row sm:gap-1.5 sm:text-sm',
                             pestana === p.clave ? 'bg-indigo-50 text-indigo-800 ring-1 ring-indigo-200' : 'text-gray-700 hover:bg-gray-50'

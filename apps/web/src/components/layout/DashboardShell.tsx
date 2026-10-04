@@ -30,6 +30,7 @@ import { BACKEND_URL } from '@/config/env';
 import { elMenuDe, losDeLaBarra, MI_CUENTA } from '@/lib/el-menu';
 import { abrirMiCuenta } from '@/components/layout/CabeceraMovil';
 import BarraInferiorMovil from '@/components/layout/BarraInferiorMovil';
+import { RecorridoGuiado, BotonDelRecorrido } from '@/components/common/Recorrido';
 import { Campana, ApuntarElTelefonoAlEntrar, OfrecerAvisos } from '@/components/layout/Campana';
 import { olvidarEsteTelefono } from '@/lib/avisos-al-telefono';
 import CabeceraMovil from '@/components/layout/CabeceraMovil';
@@ -259,15 +260,16 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                                 initialsClassName="text-sm"
                             />
                             <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium text-gray-900">{nombre} {apellido}</p>
+                                <p className="truncate text-sm font-medium text-gray-900">{nombre} {apellido}</p>
                                 <p className="text-xs text-gray-500">{ROLE_LABELS[user?.role] ?? user?.role}</p>
                             </div>
+                            <BotonDelRecorrido className="-mr-2" />
                             <Campana />
                         </div>
                     </div>
 
                     {/* Navigation */}
-                    <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+                    <nav className="flex-1 p-4 space-y-1 overflow-y-auto" data-recorrido="menu">
                         {menu.map((item) => {
                             const isActive = item.href === '/dashboard'
                                 ? pathname === '/dashboard'
@@ -316,6 +318,8 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
 
             {/* La barra de abajo: donde está el pulgar. */}
             <BarraInferiorMovil destinos={destinosDeLaBarra} />
+            {/* «¿Cómo funciona?»: el globo que ilumina cada botón (rial). */}
+            <RecorridoGuiado />
         </div>
     );
 }

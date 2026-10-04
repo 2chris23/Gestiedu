@@ -349,6 +349,7 @@ export default function DashboardPage() {
 
             {/* Los cuatro números, en 2 × 2 en el teléfono. */}
             {(cifras.length > 0 || cargandoCifras) && (
+                <div className="empty:hidden" data-recorrido="inicio-cifras">
                 <RejillaDeCifras>
                     {(cifras.length > 0
                         ? cifras
@@ -370,6 +371,7 @@ export default function DashboardPage() {
                         />
                     ))}
                 </RejillaDeCifras>
+                </div>
             )}
 
             {/* Lo que antes estaba escondido en la cortina lateral. Al personal,
@@ -378,17 +380,25 @@ export default function DashboardPage() {
                 alumno y al representante les queda un solo acceso (Calendario),
                 y ponerlo delante de SU horario y de SUS representados era
                 hacerles bajar para ver lo que vinieron a ver: va al final. */}
-            {!esFamilia && <AccesosDelLiceo rol={rol} conPagos={Boolean(pagos?.enabled)} />}
+            {!esFamilia && (
+                <div className="empty:hidden" data-recorrido="accesos">
+                    <AccesosDelLiceo rol={rol} conPagos={Boolean(pagos?.enabled)} />
+                </div>
+            )}
 
             {/* Panel Ejecutivo para Administradores: 2 Widgets al 50% */}
             {rol === 'ADMIN' && adminData && (
                 <section aria-label="Supervisión Institucional" className="space-y-5">
                     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 items-start">
                         {/* WIDGET 1: Calendario y Actividades Escolares */}
-                        <CalendarioActividadesWidget data={adminData.eventsCalendar} />
+                        <div className="empty:hidden" data-recorrido="calendario-del-liceo">
+                            <CalendarioActividadesWidget data={adminData.eventsCalendar} />
+                        </div>
 
                         {/* WIDGET 2: Cuadro de Honor / Ranking de Alumnos */}
-                        <CuadroDeHonorWidget />
+                        <div className="empty:hidden" data-recorrido="cuadro-de-honor">
+                            <CuadroDeHonorWidget />
+                        </div>
                     </div>
                 </section>
             )}
@@ -396,27 +406,45 @@ export default function DashboardPage() {
 
             {/* El alumno: su horario de hoy y lo que le falta. */}
             {rol === 'STUDENT' && (
+                <div className="empty:hidden" data-recorrido="mi-dia">
                 <MiDiaDeClases
                     studentId={user?.id ?? ''}
                     classroomId={studentStats?.student?.currentSection?.id}
                     nombre={`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim()}
                     seccion={studentStats?.student?.currentSection?.name}
                 />
+                </div>
             )}
 
             {/* El alumno: su puntaje del cuadro de honor y cuántos puestos subió
                 (solo eso: ni su puesto ni a los demás). */}
-            {rol === 'STUDENT' && yo?.id && <PuntajeDelAlumno studentId={yo.id} />}
+            {rol === 'STUDENT' && yo?.id && (
+                <div className="empty:hidden" data-recorrido="mi-puntaje">
+                    <PuntajeDelAlumno studentId={yo.id} />
+                </div>
+            )}
 
             {/* El alumno de los últimos años: su labor social (solo si le toca). */}
             {rol === 'STUDENT' && yo?.id && <LaborSocialDelAlumno studentId={yo.id} />}
 
             {/* Representante: sus representados y lo que les falta. */}
-            {rol === 'TUTOR' && <CitacionesDelRepresentante />}
-            {rol === 'TUTOR' && <MisRepresentados />}
+            {rol === 'TUTOR' && (
+                <div className="empty:hidden" data-recorrido="citaciones-del-representante">
+                    <CitacionesDelRepresentante />
+                </div>
+            )}
+            {rol === 'TUTOR' && (
+                <div className="empty:hidden" data-recorrido="mis-representados">
+                    <MisRepresentados />
+                </div>
+            )}
 
             {/* Representante: estado de pago de sus representados (si el liceo usa pagos) */}
-            {rol === 'TUTOR' && <PagosDelRepresentante />}
+            {rol === 'TUTOR' && (
+                <div className="empty:hidden" data-recorrido="pagos-del-representante">
+                    <PagosDelRepresentante />
+                </div>
+            )}
 
             {/* Charts Section */}
             {rol === 'STUDENT' && (
@@ -488,7 +516,11 @@ export default function DashboardPage() {
                 </div>
             )}
 
-            {esFamilia && <AccesosDelLiceo rol={rol} conPagos={Boolean(pagos?.enabled)} />}
+            {esFamilia && (
+                <div className="empty:hidden" data-recorrido="accesos">
+                    <AccesosDelLiceo rol={rol} conPagos={Boolean(pagos?.enabled)} />
+                </div>
+            )}
 
             {/*
                 AQUÍ HABÍA DOS TARJETAS QUE NO ERAN NADA

@@ -116,7 +116,7 @@ export default function HorariosPage() {
                 vista, el año y el buscador no caben en una fila y empujaban la
                 pantalla 4 px de lado (MOVIL-03); ahora el buscador baja. */}
             <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2" data-recorrido="horarios-vista">
                     <button
                         onClick={() => setView('sections')}
                         className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
@@ -144,7 +144,7 @@ export default function HorariosPage() {
                 {/* En el teléfono esto se apila: el selector de año y el buscador
                     medían juntos más que la pantalla y la empujaban hacia el
                     lado, así que toda la pantalla se movía al arrastrar. */}
-                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center" data-recorrido="horarios-filtros">
                     {/* Academic year selector */}
                     <Select value={activeYearId || undefined} onValueChange={setSelectedYearId}>
                         <SelectTrigger className="w-full sm:min-w-[200px]">
@@ -183,7 +183,7 @@ export default function HorariosPage() {
 
             {/* Sections View */}
             {!isLoadingSummary && view === 'sections' && (
-                <div className="space-y-4">
+                <div className="space-y-4" data-recorrido="horarios-lista">
                     {/* Header bar with counter and expand/collapse actions */}
                     {filteredSections.length > 0 && (
                         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-1 text-xs text-gray-500">
@@ -414,7 +414,7 @@ export default function HorariosPage() {
 
             {/* Teachers View */}
             {!isLoadingSummary && view === 'teachers' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4" data-recorrido="horarios-lista">
                     {filteredTeachers.length === 0 ? (
                         <div className="sm:col-span-2 xl:col-span-3 bg-white rounded-xl p-12 text-center border border-gray-100">
                             <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />

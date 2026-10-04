@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { AyudaDeLaPantalla } from '@/components/common/AyudaDeLaPantalla';
+import { BotonComoFunciona } from '@/components/common/Recorrido';
 import { useConfirm } from '@/hooks/useConfirm';
 import { toast } from 'sonner';
 import {
@@ -1197,39 +1197,20 @@ export default function EvaluationPlanSection({
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <AyudaDeLaPantalla
-            titulo="Cómo funciona el plan de evaluación"
-            pasos={[
-              {
-                titulo: 'Una fila por semana',
-                texto: 'Cada fila es una semana del lapso. Las columnas las pone el profesor (tema, contenido, actividad…). Una celda puede abarcar varias semanas.',
-              },
-              {
-                titulo: 'Las evaluaciones y sus puntos',
-                texto: 'Marca qué semanas son de evaluación y cuánto valen. Las actividades que se crean en clase esa semana suman a esa evaluación.',
-              },
-              {
-                titulo: 'El instrumento (si lo quieres)',
-                texto: 'Lista de cotejo, escala, rúbrica o por puntos: se arma en la evaluación y en la clase se califica indicador por indicador.',
-              },
-              {
-                titulo: 'Atajos',
-                texto: '«Editar Plan» abre el editor (y desde ahí «Importar Word» lo lee de un archivo). «Copiar a otra sección» lo reutiliza; «Imprimir» saca la hoja del MPPE.',
-              },
-            ]}
-            nota="Lo guardado se ve en la clase en vivo de cada semana; quitar una evaluación con notas pide confirmarlo."
-          />
+          <BotonComoFunciona recorrido="plan-de-evaluacion" />
           {/* El plan en papel tiene su propia hoja (`plan-de-evaluacion/...`):
               imprimir esta pantalla sacaba la sección entera, cortada a una hoja. */}
           <Link
             href={`/dashboard/plan-de-evaluacion/${encodeURIComponent(classroomId)}/${encodeURIComponent(subjectId)}?lapso=${selectedLapso}`}
             className="flex items-center px-3 py-1.5 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs"
+            data-recorrido="plan-imprimir"
           >
             <Printer className="w-3.5 h-3.5 mr-1.5" /> Imprimir
           </Link>
           {canEdit && (
             <button
               onClick={() => setCopiandoAbierto(true)}
+              data-recorrido="plan-copiar"
               className="flex items-center px-3 py-1.5 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs"
               title="Usar este mismo plan en otra sección donde das esta materia"
             >
@@ -1237,7 +1218,7 @@ export default function EvaluationPlanSection({
             </button>
           )}
           {canEdit && (
-            <button onClick={empezarAEditar} className="flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-bold text-xs">
+            <button onClick={empezarAEditar} data-recorrido="plan-editar" className="flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-bold text-xs">
               <Edit2 className="w-3.5 h-3.5 mr-1.5" /> Editar Plan
             </button>
           )}
@@ -1321,7 +1302,7 @@ export default function EvaluationPlanSection({
       )}
 
       {/* Membrete + Table occupying remaining space */}
-      <div className="flex flex-col flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden print:border-none print:shadow-none">
+      <div className="flex flex-col flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden print:border-none print:shadow-none" data-recorrido="plan-rejilla">
         {/* Membrete (fixed height) */}
         <div className="shrink-0">
           {renderMembrete('view')}

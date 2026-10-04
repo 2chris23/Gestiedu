@@ -72,6 +72,7 @@ export function Campana({ className }: { className?: string }) {
             <PopoverTrigger asChild>
                 <button
                     type="button"
+                    data-recorrido="campana"
                     aria-label={sinLeer ? `Avisos: ${sinLeer} sin leer` : 'Avisos'}
                     className={cn(
                         'relative inline-flex h-11 w-11 items-center justify-center rounded-full text-gray-700 transition-colors hover:bg-gray-100 active:bg-gray-100',

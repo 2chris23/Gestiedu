@@ -179,7 +179,7 @@ export default function EventosPage() {
 
             <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-6">
                 {/* Mes */}
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5" data-recorrido="eventos-calendario">
                     <div className="flex items-center justify-between mb-4">
                         <button
                             type="button"

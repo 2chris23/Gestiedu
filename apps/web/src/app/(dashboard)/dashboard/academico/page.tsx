@@ -59,7 +59,9 @@ export default function AcademicPage() {
             />
 
             {/* Timeline View */}
-            <AcademicTimeline years={years} loading={loading} onRefresh={loadYears} />
+            <div data-recorrido="academico-ciclos">
+                <AcademicTimeline years={years} loading={loading} onRefresh={loadYears} />
+            </div>
 
             {isModalOpen && (
             <AcademicYearModal

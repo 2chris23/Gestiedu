@@ -49,6 +49,9 @@ interface Props {
 /** Lo que hay que bajar para que se esconda: menos que esto es un temblor. */
 const UMBRAL = 12;
 
+/** Que vuelva a verse (la pide el recorrido guiado). */
+export const MOSTRAR_LA_BARRA = 'gestiedu:mostrar-la-barra';
+
 export function BarraInferiorMovil({ destinos }: Props) {
     const pathname = usePathname();
     const [escondida, setEscondida] = React.useState(false);
@@ -80,6 +83,14 @@ export function BarraInferiorMovil({ destinos }: Props) {
 
     // Al cambiar de pantalla, la barra vuelve: se llega arriba del todo.
     React.useEffect(() => setEscondida(false), [pathname]);
+
+    // El recorrido guiado la enseña cuando la explica (escondida, el hueco
+    // iluminado caía fuera de la pantalla).
+    React.useEffect(() => {
+        const mostrar = () => setEscondida(false);
+        window.addEventListener(MOSTRAR_LA_BARRA, mostrar);
+        return () => window.removeEventListener(MOSTRAR_LA_BARRA, mostrar);
+    }, []);
 
     const esElActivo = (href: string) =>
         href === '/dashboard' ? pathname === '/dashboard' : pathname === href || pathname.startsWith(href + '/');
@@ -121,6 +132,7 @@ export function BarraInferiorMovil({ destinos }: Props) {
     return (
         <nav
             aria-label="Navegación principal"
+            data-recorrido="menu"
             className="zona-segura-abajo fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white shadow-[0_-1px_8px_rgba(15,23,42,0.06)] transition-transform duration-200 ease-out lateral:hidden print:!hidden"
             style={
                 escondida

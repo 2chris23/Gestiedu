@@ -3,7 +3,7 @@
 import { OtraFormaDeEvaluarBoton } from '@/components/live-class/OtraFormaDeEvaluar';
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { AyudaDeLaPantalla } from '@/components/common/AyudaDeLaPantalla';
+import { BotonComoFunciona } from '@/components/common/Recorrido';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -541,28 +541,7 @@ function LiveClassPageInner() {
                     {/* Sin `flex-shrink-0`: con la ayuda, en el teléfono no cabía en una fila
                         y, sin poder encogerse, ensanchaba la pantalla (481 px en 390). */}
                     <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-                        <AyudaDeLaPantalla
-                            titulo="Cómo funciona la clase en vivo"
-                            pasos={[
-                                {
-                                    titulo: 'Pasa la asistencia',
-                                    texto: '«Pasar asistencia» pregunta cómo: a mano (cuatro botones por alumno), con el QR en la mesa o escaneando el QR de cada alumno.',
-                                },
-                                {
-                                    titulo: 'Mira qué toca hoy',
-                                    texto: 'Arriba está el tema y la evaluación del plan para esta semana. «Editar» cambia el tema; «Añadir bloque» agrega una parte más.',
-                                },
-                                {
-                                    titulo: 'Crea actividades y pon notas',
-                                    texto: '«Nueva Actividad» la crea en esta clase. «Dar nota» cambia la tabla de alumnos para calificar; si la evaluación tiene instrumento, se califica por indicador.',
-                                },
-                                {
-                                    titulo: 'No hay botón de guardar',
-                                    texto: 'Todo se guarda solo («Guardado 07:45» arriba). Sin conexión queda pendiente con un relojito y sube cuando vuelve.',
-                                },
-                            ]}
-                            nota="«Observación» anota algo de la clase entera o de unos alumnos; la ven su representante y el profesor guía."
-                        />
+                        <BotonComoFunciona recorrido="clase-en-vivo" />
                         {isSuspended && (
                             <span className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold px-3 py-2 rounded-xl shadow-2xs">
                                 <Ban className="w-4 h-4" /> Suspendida
@@ -570,6 +549,7 @@ function LiveClassPageInner() {
                         )}
                         <button
                             type="button"
+                            data-recorrido="clase-observacion"
                             onClick={() => setIsLiveObsModalOpen(true)}
                             className="px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center gap-1.5 border shadow-2xs bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
                         >
@@ -599,6 +579,7 @@ function LiveClassPageInner() {
                                 <span
                                     className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-700"
                                     aria-live="polite"
+                                    data-recorrido="clase-guardado"
                                 >
                                     {saveMutation.isPending ? (
                                         <>
@@ -739,7 +720,7 @@ function LiveClassPageInner() {
                     {/* ===================================================================== */}
                     <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
                         {/* 🟢 ZONA VERDE: Espejo del Plan de Evaluación (7 cols en XL) */}
-                        <div className="xl:col-span-7">
+                        <div className="xl:col-span-7" data-recorrido="clase-tema">
                             <LiveTopicMirrorCard
                                 classroomId={classroomId}
                                 subjectId={subjectId}
@@ -756,7 +737,7 @@ function LiveClassPageInner() {
                         </div>
 
                         {/* 🔵 ZONA AZUL: Actividades & Notas (5 cols en XL) */}
-                        <div className="xl:col-span-5">
+                        <div className="xl:col-span-5" data-recorrido="clase-actividades">
                             <LiveActivitiesCard
                                 classroomId={classroomId}
                                 subjectId={subjectId}
@@ -777,7 +758,7 @@ function LiveClassPageInner() {
                     {/* ===================================================================== */}
                     {/* 3. ZONA ROJA: TABLA COMPLETA DE ESTUDIANTES                           */}
                     {/* ===================================================================== */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden" data-recorrido="clase-alumnos">
                         {/* Header de la tabla: Buscador + Contadores + Banner Calificación */}
                         <div className="p-4 sm:p-5 border-b border-gray-100 flex flex-col gap-4">
                             {/* Banner de Modo Calificación Activo */}
@@ -840,6 +821,7 @@ function LiveClassPageInner() {
                                     {canEdit && (
                                         <button
                                             type="button"
+                                            data-recorrido="clase-asistencia"
                                             onClick={() => (modoAsistencia ? setModoAsistencia(false) : conQr ? setEligiendoAsistencia(true) : setModoAsistencia(true))}
                                             aria-pressed={modoAsistencia}
                                             aria-haspopup={modoAsistencia || !conQr ? undefined : 'dialog'}

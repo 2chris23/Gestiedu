@@ -46,14 +46,18 @@ export function EncabezadoDePantalla({
         <header className={cn('space-y-3', className)} {...resto}>
             {migas}
             <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
-                <div className="min-w-0 flex-[1_1_16rem]">
+                <div className="min-w-0 flex-[1_1_16rem]" data-recorrido="pantalla">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">{titulo}</h1>
                         {junto}
                     </div>
                     {descripcion && <p className="mt-1 text-cuerpo text-gray-600">{descripcion}</p>}
                 </div>
-                {acciones && <div className="flex flex-wrap items-center gap-2">{acciones}</div>}
+                {acciones && (
+                    <div className="flex flex-wrap items-center gap-2" data-recorrido="acciones">
+                        {acciones}
+                    </div>
+                )}
             </div>
             {pie}
         </header>
