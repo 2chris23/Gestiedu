@@ -3,6 +3,7 @@
 import { Card } from '@/components/ui';
 import { CifraCompacta, RejillaDeCifras, type ColorDeCifra } from '@/components/dashboard/CifraCompacta';
 import { AccesosDelLiceo } from '@/components/dashboard/AccesosDelLiceo';
+import { InicioDelAdminMovil, EsqueletoDelInicioMovil } from '@/components/dashboard/InicioDelAdminMovil';
 import { StatusBadge } from '@/components/dashboard/StatusBadge';
 import { diferido } from '@/components/common/Diferido';
 import { useAuthStore } from '@/store/auth.store';
@@ -51,6 +52,7 @@ interface AdminDashboardData {
         averageAttendance: number;
         studentsAtRisk: number;
         pendingActivities: number;
+        promedioGeneral?: number | null;
     };
     eventsCalendar?: {
         currentPeriod?: {
@@ -244,6 +246,18 @@ export default function DashboardPage() {
             (rol === 'STUDENT' && !studentStats));
 
     if (estaCargando) {
+        // El admin en el teléfono espera ya sobre su azul (el de la cabecera).
+        // Solo es la forma del esqueleto: vale la pista del almacén.
+        if ((rol ?? user?.role) === 'ADMIN') {
+            return (
+                <>
+                    <EsqueletoDelInicioMovil />
+                    <div className="hidden lateral:block">
+                        <CargandoDashboard />
+                    </div>
+                </>
+            );
+        }
         return <CargandoDashboard />;
     }
 
@@ -326,8 +340,32 @@ export default function DashboardPage() {
         return [];
     })();
 
+    // El admin en el teléfono tiene su Inicio propio (InicioDelAdminMovil);
+    // lo de abajo queda para el ordenador.
+    const soloOrdenador = rol === 'ADMIN' ? 'hidden lateral:block' : '';
+    const [ah, am, ad] = hoy.split('-').map(Number);
+    const hoyLeido =
+        ah && am && ad
+            ? new Date(ah, am - 1, ad).toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' })
+            : '';
+
     return (
         <div className="space-y-6">
+            {rol === 'ADMIN' && adminData && (
+                <InicioDelAdminMovil
+                    conPagos={Boolean(pagos?.enabled)}
+                    datos={{
+                        promedioGeneral: adminData.stats.promedioGeneral ?? null,
+                        ciclo: adminData.kpis.activeAcademicYear,
+                        estudiantes: adminData.kpis.totalStudents,
+                        asistencia: adminData.stats.averageAttendance,
+                        enRiesgo: adminData.stats.studentsAtRisk,
+                        actividadesDeHoy: (adminData.eventsCalendar?.events ?? []).filter((e) => e.date?.slice(0, 10) === hoy).length,
+                        hoyLeido,
+                        lapso: adminData.eventsCalendar?.currentPeriod?.name ?? null,
+                    }}
+                />
+            )}
             {/*
                 LA CABECERA ES LA FECHA
 
@@ -336,7 +374,7 @@ export default function DashboardPage() {
                 entró ya sabe quién es y dónde está— y que en un teléfono se
                 comen lo primero que se ve.
             */}
-            <div className="flex items-center justify-between gap-3">
+            <div className={`flex items-center justify-between gap-3 ${soloOrdenador}`}>
                 <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">Panel</h1>
                 <p className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600 shadow-sm sm:text-sm">
                     <Calendar size={16} aria-hidden />
@@ -349,7 +387,7 @@ export default function DashboardPage() {
 
             {/* Los cuatro números, en 2 × 2 en el teléfono. */}
             {(cifras.length > 0 || cargandoCifras) && (
-                <div className="empty:hidden" data-recorrido="inicio-cifras">
+                <div className={`empty:hidden ${soloOrdenador}`} data-recorrido="inicio-cifras">
                 <RejillaDeCifras>
                     {(cifras.length > 0
                         ? cifras
@@ -381,14 +419,14 @@ export default function DashboardPage() {
                 y ponerlo delante de SU horario y de SUS representados era
                 hacerles bajar para ver lo que vinieron a ver: va al final. */}
             {!esFamilia && (
-                <div className="empty:hidden" data-recorrido="accesos">
+                <div className={`empty:hidden ${soloOrdenador}`} data-recorrido="accesos">
                     <AccesosDelLiceo rol={rol} conPagos={Boolean(pagos?.enabled)} />
                 </div>
             )}
 
             {/* Panel Ejecutivo para Administradores: 2 Widgets al 50% */}
             {rol === 'ADMIN' && adminData && (
-                <section aria-label="Supervisión Institucional" className="space-y-5">
+                <section aria-label="Supervisión Institucional" className="hidden space-y-5 lateral:block">
                     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 items-start">
                         {/* WIDGET 1: Calendario y Actividades Escolares */}
                         <div className="empty:hidden" data-recorrido="calendario-del-liceo">

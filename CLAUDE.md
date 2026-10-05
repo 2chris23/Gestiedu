@@ -878,3 +878,15 @@ de navegador no ven la oferta (la tapa `navigator.webdriver`) salvo que pongan
 - `docs/MAPA_DE_CALCULOS.md` — toda regla de cálculo.
 - `docs/DESPLIEGUE.md` — despliegue y operación.
 - `docs/APP-MOVIL.md` — la app del teléfono: PWA y APK.
+
+## El color de la app y el Inicio del admin en el teléfono (octubre 2026)
+
+Diseño de Cristian («Panel Admin — App móvil»). Cabecera azul `#0D47A1` y un
+**acento que elige cada persona** en Mi cuenta → «Color de la app» (Turquesa,
+Violeta, Amarillo, Coral): es del teléfono, no del liceo
+(`lib/tema-de-la-app.ts`, variables `--acento*`; un guion en el `<head>` lo
+pone antes de pintar). El Inicio del admin en el teléfono es
+`InicioDelAdminMovil` (`lateral:hidden`; en el ordenador sigue el de siempre):
+promedio del liceo con ojo para ocultarlo, luces que flotan (quietas con
+«reducir movimiento»), los accesos en un **carrusel sin fin** (`Carril` con
+`bucle`) y su propio esqueleto azul mientras carga.

@@ -12,6 +12,7 @@ import { FichaDeLaApp } from '@/components/common/FichaDeLaApp';
 import { AyudanteDeLaApp } from '@/components/common/AyudanteDeLaApp';
 import { MarcaDeArranque } from '@/components/common/MarcaDeArranque';
 import { GUARDIAN_DEL_ARRANQUE } from '@/lib/guardian-del-arranque';
+import { COLOR_ANTES_DE_PINTAR } from '@/lib/tema-de-la-app';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -84,6 +85,8 @@ export default function RootLayout({
             <head>
                 {/* Nunca en blanco: corre aunque no llegue ningún archivo de la app. */}
                 <script dangerouslySetInnerHTML={{ __html: GUARDIAN_DEL_ARRANQUE }} />
+                {/* El color que eligió quien usa este teléfono, antes de pintar. */}
+                <script dangerouslySetInnerHTML={{ __html: COLOR_ANTES_DE_PINTAR }} />
             </head>
             <body className={inter.className} suppressHydrationWarning={true}>
                 <MarcaDeArranque />

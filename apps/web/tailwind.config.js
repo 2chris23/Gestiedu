@@ -248,11 +248,22 @@ module.exports = {
                 brillo: {
                     '100%': { transform: 'translateX(100%)' },
                 },
+                // El azul del Inicio en el teléfono: luces que flotan despacio.
+                flotar: {
+                    '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+                    '33%': { transform: 'translate(-28px, 18px) scale(1.12)' },
+                    '66%': { transform: 'translate(16px, -14px) scale(0.94)' },
+                },
+                girar: {
+                    to: { transform: 'rotate(360deg)' },
+                },
             },
             animation: {
                 aparecer: 'aparecer 0.35s cubic-bezier(0.22, 1, 0.36, 1) both',
                 latir: 'latir 1.8s ease-in-out infinite',
                 brillo: 'brillo 1.4s infinite',
+                flotar: 'flotar 14s ease-in-out infinite',
+                girar: 'girar 24s linear infinite',
             },
         },
     },

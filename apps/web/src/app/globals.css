@@ -427,6 +427,13 @@
      arreglarlo. La auditoría del teléfono (`npm run movil`) les pone el valor
      de un Android de verdad y comprueba que no quede nada debajo. */
   :root {
+    /* El color de la app (lib/tema-de-la-app.ts). Turquesa por defecto; el
+       elegido lo pone un guion del <head> antes de pintar. */
+    --azul-cabecera: #0D47A1;
+    --acento: #00BFA5;
+    --acento-suave: rgba(0,191,165,0.16);
+    --acento-hondo: rgb(0,99,86);
+    --sobre-acento: #0B1B33;
     --zona-segura-arriba: env(safe-area-inset-top, 0px);
     --zona-segura-abajo: env(safe-area-inset-bottom, 0px);
   }

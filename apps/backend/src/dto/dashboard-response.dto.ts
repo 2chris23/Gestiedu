@@ -11,6 +11,8 @@ export interface AdminDashboardDto {
         averageAttendance: number;
         studentsAtRisk: number;
         pendingActivities: number;
+        /** Promedio del ciclo activo (nivel 6, MAPA §3), o null sin ciclo o sin notas. */
+        promedioGeneral?: number | null;
     };
     recentActivity: Array<{
         id: string;

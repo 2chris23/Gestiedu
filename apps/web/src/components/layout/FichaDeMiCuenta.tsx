@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { Settings, KeyRound, LogOut, Smartphone, ChevronRight, Loader2, Fingerprint } from 'lucide-react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import UserAvatar from '@/components/ui/UserAvatar';
+import ColorDeLaApp from '@/components/layout/ColorDeLaApp';
 import api from '@/lib/axios';
 import { getApiErrorMessage } from '@/lib/utils';
 import { elLiceoDeLaCookie } from '@/lib/la-puerta-del-liceo';
@@ -145,6 +146,8 @@ export function FichaDeMiCuenta({
                     </button>
 
                     {cambiandoClave && <FormularioDeClave alTerminar={() => setCambiandoClave(false)} />}
+
+                    <ColorDeLaApp />
 
                     <LaHuellaDeEsteTelefono visible={abierta} correo={nombreCompleto} />
 

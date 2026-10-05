@@ -200,6 +200,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 liceo={user?.institute?.name}
                 esAdmin={user?.role === 'ADMIN'}
                 alCerrarSesion={handleLogout}
+                azul={pathname === '/dashboard' && user?.role === 'ADMIN'}
             />
 
             {/* Sin señal se sigue viendo lo de antes, y hay que decirlo. */}

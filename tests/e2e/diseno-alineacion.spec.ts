@@ -119,7 +119,13 @@ function medirElTitulo() {
     const marco = main.firstElementChild as HTMLElement;
     const m = getComputedStyle(marco);
     const columna = marco.getBoundingClientRect().left + parseFloat(m.paddingLeft);
-    const h1 = main.querySelector('h1');
+    // El que se VE: el Inicio del admin trae dos (el del ordenador, escondido
+    // en el teléfono, y uno solo para lectores de pantalla).
+    const h1 = [...main.querySelectorAll('h1')].find((h) => h.getBoundingClientRect().width > 1) ?? null;
+    // El Inicio del admin en el teléfono no lleva título a la vista, a
+    // propósito: su cabecera es el bloque azul del diseño (InicioDelAdminMovil).
+    const conCabeceraAzul = [...main.querySelectorAll<HTMLElement>('[data-diseno="cabecera-azul"]')].some((e) => e.getBoundingClientRect().width > 0);
+    if (!h1 && conCabeceraAzul) return { columna, izquierda: null, letra: null, mains: document.querySelectorAll('main').length, aProposito: true };
     if (!h1) return { columna, izquierda: null, letra: null, mains: document.querySelectorAll('main').length };
     const rango = document.createRange();
     rango.selectNodeContents(h1);
@@ -167,6 +173,7 @@ for (const tam of ['telefono', 'portatil'] as const) {
             const t = await page.evaluate(medirElTitulo);
             if (t.mains !== 1) fallos.push(`${titulo}: ${t.mains} <main> (uno dentro de otro)`);
             if (t.izquierda === null) {
+                if ((t as { aProposito?: boolean }).aProposito) continue;
                 fallos.push(`${titulo}: sin título <h1>`);
                 continue;
             }

@@ -2,17 +2,22 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Trophy, ChevronRight, Crown, Medal, ArrowUp, ArrowDown, Loader2 } from 'lucide-react';
+import { Trophy, ChevronRight, ChevronDown, Crown, ArrowUp, ArrowDown, Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCuadroDeHonor, fechaDeLaFoto, type FilaDelCuadro } from '@/hooks/useCuadroDeHonor';
 import { cn } from '@/lib/utils';
 
 /**
- * EL CUADRO DE HONOR DEL INICIO (2026-10-04)
+ * EL CUADRO DE HONOR DEL INICIO (2026-10-04; forma nueva 2026-10-05)
  *
  * Cristian: por lapso y por ciclo completo, y que se actualice solo los
  * sábados. Lee la foto del último sábado (`/api/cuadro-de-honor`); con el
  * selector se ve un lapso o el ciclo, y el liceo entero o un año.
+ *
+ * La forma es la del diseño «Panel Admin — App móvil»: el podio (plata, oro
+ * con corona, bronce), tres filas más y «Ver ranking completo» para el resto.
+ * Las letras de 11 px del diseño van a 12: es el mínimo del teléfono
+ * (`npm run movil`, regla `letra`).
  *
  * Antes enseñaba cinco alumnos INVENTADOS cuando no había datos: un nombre
  * de muestra en el Inicio de un liceo parece un alumno de verdad. Sin foto
@@ -21,6 +26,7 @@ import { cn } from '@/lib/utils';
 
 const LICEO = 'liceo';
 const ANOS = [1, 2, 3, 4, 5];
+const FILAS_A_LA_VISTA = 3;
 
 const iniciales = (nombre: string) =>
     nombre
@@ -46,76 +52,106 @@ function Subio({ n }: { n: number | null }) {
     );
 }
 
+/** Los colores del diseño: plata, oro y bronce. */
 const PODIO = [
-    { lugar: 2, etiqueta: '2.° Plata', icono: Medal, caja: 'border-slate-200 from-slate-50/70 min-h-[150px]', chapa: 'bg-slate-100 text-slate-800 border-slate-300', circulo: 'bg-slate-100 text-slate-800 border-slate-300' },
-    { lugar: 1, etiqueta: '1.° Oro', icono: Trophy, caja: 'border-2 border-amber-300/80 from-amber-50/70 min-h-[170px] z-10', chapa: 'bg-amber-100 text-amber-900 border-amber-300', circulo: 'bg-amber-100 text-amber-900 border-amber-300' },
-    { lugar: 3, etiqueta: '3.° Bronce', icono: Medal, caja: 'border-orange-200 from-orange-50/70 min-h-[140px]', chapa: 'bg-orange-100 text-orange-900 border-orange-300', circulo: 'bg-orange-100 text-orange-900 border-orange-300' },
+    {
+        lugar: 2,
+        medalla: 'Plata',
+        caja: 'rounded-[18px] border border-[#E3E8F0] bg-[#F8FAFC] px-1.5 py-3',
+        chapa: 'bg-[#E9EDF3] text-[#4A5A72]',
+        circulo: 'h-[42px] w-[42px] bg-[#E3F2FD] text-[#0D47A1] text-[13px]',
+        puntos: 'text-[15px]',
+    },
+    {
+        lugar: 1,
+        medalla: 'Oro',
+        caja: 'rounded-[20px] border-2 border-[#F2C94C] bg-[#FFFBEA] px-1.5 pb-3.5 pt-4',
+        chapa: 'bg-[#FDEBB0] text-[#6B4A00]',
+        circulo: 'h-12 w-12 bg-[#FDEBB0] text-[#6B4A00] text-sm',
+        puntos: 'text-[17px]',
+    },
+    {
+        lugar: 3,
+        medalla: 'Bronce',
+        caja: 'rounded-[18px] border border-[#F6D2B8] bg-[#FFF6EF] px-1.5 py-3',
+        chapa: 'bg-[#FBE0CC] text-[#8A4416]',
+        circulo: 'h-[42px] w-[42px] bg-[#FBE0CC] text-[#8A4416] text-[13px]',
+        puntos: 'text-[15px]',
+    },
 ] as const;
 
+/** «1.° Oro»; si el puesto no es el del cajón (un empate), «2.° Empate». */
+const laChapa = (puesto: number, lugar: number, medalla: string) => (puesto === lugar ? `${puesto}.° ${medalla}` : `${puesto}.° Empate`);
+
+const SELECTOR =
+    'h-10 w-auto gap-1.5 rounded-full border border-[#E3E8F0] bg-white px-3.5 text-[13px] font-bold text-[#0B1B33] [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-100';
+
 export function CuadroDeHonorWidget() {
+    const titulo = React.useId();
     const [alcance, setAlcance] = React.useState<string | null>(null);
     const [ano, setAno] = React.useState<number | null>(null);
+    const [todos, setTodos] = React.useState(false);
     const { data, isLoading, isError } = useCuadroDeHonor(alcance, ano);
     const filas = data?.filas ?? [];
     const podio = (lugar: number) => filas[lugar - 1];
-    const resto = filas.slice(3, 10);
+    const resto = filas.slice(3);
+    const aLaVista = todos ? resto : resto.slice(0, FILAS_A_LA_VISTA);
 
     return (
-        <section className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-xs" aria-labelledby="cuadro-de-honor">
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-3">
-                <div className="flex items-center gap-2.5">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
-                        <Trophy className="h-5 w-5" aria-hidden />
-                    </div>
-                    <div>
-                        <h3 id="cuadro-de-honor" className="text-sm font-bold text-gray-900">
-                            Cuadro de honor
-                        </h3>
-                        <p className="text-xs text-gray-600">
-                            Se actualiza cada sábado{data?.fecha ? ` · última: ${fechaDeLaFoto(data.fecha)}` : ''}
-                        </p>
-                    </div>
+        <section className="flex flex-col gap-3.5 rounded-3xl bg-white px-4 py-[18px] shadow-[0_1px_2px_rgba(13,71,161,0.06)]" aria-labelledby={titulo}>
+            <div className="flex items-center gap-2.5">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-[#FFF6DA] text-[#9A6B00]">
+                    <Trophy className="h-5 w-5" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                    <h3 id={titulo} className="text-[15px] font-extrabold text-[#0B1B33]">
+                        Cuadro de honor
+                    </h3>
+                    <p className="text-xs text-[#5B6B82]">
+                        Se actualiza cada sábado{data?.fecha ? ` · última: ${fechaDeLaFoto(data.fecha)}` : ''}
+                    </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                    <Select value={alcance ?? data?.alcance ?? 'CICLO'} onValueChange={(v) => setAlcance(v)}>
-                        <SelectTrigger aria-label="Lapso o ciclo completo" className="h-11 w-auto min-w-[9rem] rounded-xl bg-white text-sm font-semibold text-gray-800">
-                            <SelectValue placeholder="Ciclo completo" />
-                        </SelectTrigger>
-                        <SelectContent position="popper" align="end" className="rounded-xl bg-white p-1">
-                            {(data?.alcances ?? [{ id: 'CICLO', nombre: 'Ciclo completo' }]).map((a) => (
-                                <SelectItem key={a.id} value={a.id} className="min-h-[44px] rounded-lg text-sm">
-                                    {a.nombre}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <Select value={ano ? String(ano) : LICEO} onValueChange={(v) => setAno(v === LICEO ? null : Number(v))}>
-                        <SelectTrigger aria-label="Todo el liceo o un año" className="h-11 w-auto min-w-[8rem] rounded-xl bg-white text-sm font-semibold text-gray-800">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent position="popper" align="end" className="rounded-xl bg-white p-1">
-                            <SelectItem value={LICEO} className="min-h-[44px] rounded-lg text-sm">
-                                Todo el liceo
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+                <Select value={alcance ?? data?.alcance ?? 'CICLO'} onValueChange={(v) => setAlcance(v)}>
+                    <SelectTrigger aria-label="Lapso o ciclo completo" className={SELECTOR}>
+                        <SelectValue placeholder="Ciclo completo" />
+                    </SelectTrigger>
+                    <SelectContent position="popper" align="start" className="rounded-xl bg-white p-1">
+                        {(data?.alcances ?? [{ id: 'CICLO', nombre: 'Ciclo completo' }]).map((a) => (
+                            <SelectItem key={a.id} value={a.id} className="min-h-[44px] rounded-lg text-sm">
+                                {a.nombre}
                             </SelectItem>
-                            {ANOS.map((n) => (
-                                <SelectItem key={n} value={String(n)} className="min-h-[44px] rounded-lg text-sm">
-                                    {n}.º año
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <Select value={ano ? String(ano) : LICEO} onValueChange={(v) => setAno(v === LICEO ? null : Number(v))}>
+                    <SelectTrigger aria-label="Todo el liceo o un año" className={SELECTOR}>
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent position="popper" align="start" className="rounded-xl bg-white p-1">
+                        <SelectItem value={LICEO} className="min-h-[44px] rounded-lg text-sm">
+                            Todo el liceo
+                        </SelectItem>
+                        {ANOS.map((n) => (
+                            <SelectItem key={n} value={String(n)} className="min-h-[44px] rounded-lg text-sm">
+                                {n}.º año
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
             </div>
 
             {isLoading ? (
                 <div className="flex justify-center py-10">
-                    <Loader2 className="h-6 w-6 animate-spin text-amber-600" aria-label="Cargando el cuadro de honor" />
+                    <Loader2 className="h-6 w-6 animate-spin text-[#9A6B00]" aria-label="Cargando el cuadro de honor" />
                 </div>
             ) : isError ? (
                 <p className="py-8 text-center text-sm text-gray-700">No se pudo cargar el cuadro de honor.</p>
             ) : filas.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
-                    <Trophy className="mb-2 h-8 w-8 text-amber-600" aria-hidden />
+                    <Trophy className="mb-2 h-8 w-8 text-[#9A6B00]" aria-hidden />
                     <p className="text-sm font-semibold text-gray-900">{data?.fecha ? 'Nadie con notas en este período' : 'Todavía no hay cuadro de honor'}</p>
                     <p className="mt-1 max-w-[280px] text-xs text-gray-600">
                         {data?.fecha
@@ -124,39 +160,40 @@ export function CuadroDeHonorWidget() {
                     </p>
                 </div>
             ) : (
-                <div className="space-y-3">
-                    <ol className="grid grid-cols-3 items-end gap-2.5 pt-3" aria-label="Los tres primeros">
-                        {PODIO.map(({ lugar, etiqueta, icono: Icono, caja, chapa, circulo }) => {
+                <>
+                    <ol className="grid grid-cols-[1fr_1.12fr_1fr] items-end gap-2 pt-3" aria-label="Los tres primeros">
+                        {PODIO.map(({ lugar, medalla, caja, chapa, circulo, puntos }) => {
                             const f = podio(lugar);
                             if (!f) {
                                 return (
-                                    <li key={lugar} className="flex min-h-[140px] flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 p-2.5 text-center">
-                                        <span className="text-xs font-bold text-gray-600">{etiqueta}</span>
+                                    <li key={lugar} className="flex min-h-[140px] flex-col items-center justify-center rounded-[18px] border border-dashed border-[#E3E8F0] p-2.5 text-center">
+                                        <span className="text-xs font-bold text-[#5B6B82]">
+                                            {lugar}.° {medalla}
+                                        </span>
                                     </li>
                                 );
                             }
                             return (
-                                <li key={lugar} className={lugar === 1 ? 'self-end' : 'self-end'}>
+                                <li key={lugar}>
                                     <Link
                                         href={`/dashboard/usuarios/${encodeURIComponent(f.id)}`}
-                                        className={cn('relative flex flex-col items-center justify-between rounded-2xl border bg-gradient-to-b to-white p-2.5 text-center transition-shadow hover:shadow-sm', caja)}
+                                        className={cn('relative flex flex-col items-center gap-1.5 text-center transition-shadow hover:shadow-sm', caja)}
                                     >
-                                        {lugar === 1 && <Crown className="absolute -top-3 left-1/2 h-5 w-5 -translate-x-1/2 fill-amber-400 text-amber-600" aria-hidden />}
-                                        <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-bold', chapa)}>
-                                            <Icono className="h-3 w-3" aria-hidden />
-                                            {f.puesto === lugar ? etiqueta : `${f.puesto}.°`}
-                                        </span>
-                                        <span className={cn('my-1.5 flex h-10 w-10 items-center justify-center rounded-full border text-xs font-bold', circulo)} aria-hidden>
+                                        {lugar === 1 && (
+                                            <span className="absolute -top-3.5 flex h-7 w-7 items-center justify-center rounded-full bg-[#F2C94C] text-[#6B4A00]" aria-hidden>
+                                                <Crown className="h-[15px] w-[15px]" />
+                                            </span>
+                                        )}
+                                        <span className={cn('whitespace-nowrap rounded-full px-1.5 py-0.5 text-xs font-extrabold', chapa)}>{laChapa(f.puesto, lugar, medalla)}</span>
+                                        <span className={cn('flex items-center justify-center rounded-full font-extrabold', circulo)} aria-hidden>
                                             {iniciales(f.nombre)}
                                         </span>
-                                        <span className="w-full min-w-0 px-1">
-                                            <span className="block truncate text-xs font-bold text-gray-900" title={f.nombre}>
-                                                {f.nombre}
-                                            </span>
-                                            <span className="block truncate text-xs text-gray-600">{f.seccion}</span>
+                                        <span className="w-full min-w-0 text-xs font-bold leading-tight text-[#0B1B33] [overflow-wrap:anywhere]" title={f.nombre}>
+                                            {f.nombre}
                                         </span>
-                                        <span className="mt-1 inline-flex items-center gap-1 text-sm font-extrabold text-gray-900">
-                                            {f.puntaje.toFixed(1)} <span className="text-xs font-semibold text-gray-600">pts</span>
+                                        <span className="w-full truncate text-xs text-[#5B6B82]">{f.seccion}</span>
+                                        <span className={cn('inline-flex items-center gap-1 font-extrabold text-[#0B1B33]', puntos)}>
+                                            {f.puntaje.toFixed(1)} <span className="text-xs font-semibold text-[#5B6B82]">pts</span>
                                             <Subio n={f.subio} />
                                         </span>
                                     </Link>
@@ -165,43 +202,44 @@ export function CuadroDeHonorWidget() {
                         })}
                     </ol>
 
-                    {resto.length > 0 && (
-                        <ol className="space-y-1.5" start={4} aria-label="Del cuarto en adelante">
-                            {resto.map((f) => (
+                    {aLaVista.length > 0 && (
+                        <ol className="flex flex-col gap-2" start={4} aria-label="Del cuarto en adelante">
+                            {aLaVista.map((f) => (
                                 <li key={f.id}>
                                     <Link
                                         href={`/dashboard/usuarios/${encodeURIComponent(f.id)}`}
-                                        className="group flex min-h-[44px] items-center justify-between gap-2.5 rounded-xl border border-gray-100 bg-gray-50/50 p-2 transition-colors hover:border-gray-200 hover:bg-gray-100/70"
+                                        className="flex min-h-[44px] items-center gap-3 rounded-2xl bg-[#F8FAFC] px-3 py-2.5 text-[#0B1B33] transition-colors hover:bg-[#EEF2F7]"
                                     >
-                                        <span className="flex min-w-0 items-center gap-2.5">
-                                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-xs font-bold text-gray-700">
-                                                {f.puesto}
-                                            </span>
-                                            <span className="min-w-0">
-                                                <span className="block truncate text-sm font-semibold text-gray-900">{f.nombre}</span>
-                                                <span className="block truncate text-xs text-gray-600">{f.seccion}</span>
+                                        <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-[#E3E8F0] bg-white text-xs font-extrabold text-[#4A5A72]">
+                                            {f.puesto}
+                                        </span>
+                                        <span className="flex min-w-0 flex-1 flex-col">
+                                            <span className="truncate text-sm font-bold">{f.nombre}</span>
+                                            <span className="truncate text-xs text-[#5B6B82]">
+                                                {f.seccion} · Prom. {f.promedio.toFixed(1)} · Asist. {f.asistencia}%
                                             </span>
                                         </span>
-                                        <span className="flex shrink-0 items-center gap-2.5">
-                                            <span className="hidden items-center gap-2 text-xs text-gray-600 sm:flex">
-                                                <span>Promedio {f.promedio.toFixed(1)}</span>
-                                                <span>Asist. {f.asistencia} %</span>
-                                            </span>
-                                            <Subio n={f.subio} />
-                                            <span className="text-sm font-extrabold text-gray-900">{f.puntaje.toFixed(1)}</span>
-                                            <ChevronRight className="h-4 w-4 text-gray-500 group-hover:text-indigo-700" aria-hidden />
-                                        </span>
+                                        <Subio n={f.subio} />
+                                        <span className="text-[15px] font-extrabold">{f.puntaje.toFixed(1)}</span>
                                     </Link>
                                 </li>
                             ))}
                         </ol>
                     )}
-                </div>
-            )}
 
-            <p className="border-t border-gray-100 pt-2 text-xs text-gray-600">
-                Puntaje: notas, asistencia y observaciones del período, con los pesos del liceo (Configuración → Académica).
-            </p>
+                    {resto.length > FILAS_A_LA_VISTA && (
+                        <button
+                            type="button"
+                            onClick={() => setTodos((v) => !v)}
+                            aria-expanded={todos}
+                            className="flex min-h-[44px] items-center gap-1.5 self-center text-[13px] font-bold text-[#0D47A1]"
+                        >
+                            {todos ? 'Ver menos' : 'Ver ranking completo'}
+                            {todos ? <ChevronDown className="h-3.5 w-3.5 rotate-180" aria-hidden /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden />}
+                        </button>
+                    )}
+                </>
+            )}
         </section>
     );
 }

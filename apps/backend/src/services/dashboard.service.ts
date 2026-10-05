@@ -552,6 +552,19 @@ export class DashboardService {
             })
         ]);
 
+        // El promedio del liceo, el mismo de las estadísticas del ciclo (en
+        // bloque y guardado en la memoria rápida: no recalcula en cada visita).
+        let promedioGeneral: number | null = null;
+        if (activeYear) {
+            try {
+                const { cycleStatisticsService } = await import('./cycle-statistics.service');
+                const ciclo = await cycleStatisticsService.getCycleGlobalAverage(db, activeYear.id, instituteId);
+                promedioGeneral = ciclo.globalAverage > 0 ? ciclo.globalAverage : null;
+            } catch {
+                promedioGeneral = null;
+            }
+        }
+
         return {
             kpis: {
                 totalStudents,
@@ -562,7 +575,8 @@ export class DashboardService {
             stats: {
                 averageAttendance: Math.round(attendanceStats[0]?.avgAttendance || 0),
                 studentsAtRisk: studentsAtRisk.count,
-                pendingActivities
+                pendingActivities,
+                promedioGeneral
             },
             recentActivity: recentActivity.map(a => ({
                 id: a.id,

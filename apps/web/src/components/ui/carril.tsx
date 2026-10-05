@@ -44,6 +44,8 @@ interface Props {
     conFlechas?: boolean;
     /** Deja de enganchar y corre libre. Para listas muy largas. */
     libre?: boolean;
+    /** Sin fin: al pasar el último vuelve el primero (los accesos del Inicio). */
+    bucle?: boolean;
     /**
      * El ancho de cada elemento (clases de Tailwind). Va en la caja de cada
      * uno, no dentro: un `w-[44%]` dentro de una caja que mide lo que su
@@ -64,6 +66,7 @@ export function Carril({
     etiqueta,
     conFlechas = true,
     libre = false,
+    bucle = false,
     anchoDeCada,
     hueco = 'gap-3',
     inicio,
@@ -72,7 +75,8 @@ export function Carril({
 }: Props) {
     const opciones: EmblaOptionsType = {
         align: 'start',
-        containScroll: 'trimSnaps',
+        containScroll: bucle ? false : 'trimSnaps',
+        loop: bucle,
         dragFree: libre,
         // Arrastrar tiene que costar lo mismo que empujar la tarjeta: 1 a 1.
         // Por debajo de 1 el dedo "resbala" y se siente barato.
