@@ -3,7 +3,7 @@
 import { Card } from '@/components/ui';
 import { CifraCompacta, RejillaDeCifras, type ColorDeCifra } from '@/components/dashboard/CifraCompacta';
 import { AccesosDelLiceo } from '@/components/dashboard/AccesosDelLiceo';
-import { InicioDelAdminMovil, EsqueletoDelInicioMovil } from '@/components/dashboard/InicioDelAdminMovil';
+import { InicioDelAdminMovil } from '@/components/dashboard/InicioDelAdminMovil';
 import { StatusBadge } from '@/components/dashboard/StatusBadge';
 import { diferido } from '@/components/common/Diferido';
 import { useAuthStore } from '@/store/auth.store';
@@ -246,18 +246,6 @@ export default function DashboardPage() {
             (rol === 'STUDENT' && !studentStats));
 
     if (estaCargando) {
-        // El admin en el teléfono espera ya sobre su azul (el de la cabecera).
-        // Solo es la forma del esqueleto: vale la pista del almacén.
-        if ((rol ?? user?.role) === 'ADMIN') {
-            return (
-                <>
-                    <EsqueletoDelInicioMovil />
-                    <div className="hidden lateral:block">
-                        <CargandoDashboard />
-                    </div>
-                </>
-            );
-        }
         return <CargandoDashboard />;
     }
 

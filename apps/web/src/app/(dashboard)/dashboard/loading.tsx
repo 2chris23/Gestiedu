@@ -1,5 +1,6 @@
 import React from 'react';
 import { BaseSkeleton, SkeletonKPI } from '@/components/ui/skeleton';
+import { EsqueletoSegunElRol } from '@/components/dashboard/EsqueletoSegunElRol';
 
 /**
  * Precarga de alta fidelidad del panel principal (Dashboard):
@@ -11,6 +12,15 @@ import { BaseSkeleton, SkeletonKPI } from '@/components/ui/skeleton';
  * - Animación uniforme 'animate-latir-suave' y 'skeleton-shimmer'.
  */
 export default function CargandoDashboard() {
+  // El admin en el teléfono espera sobre su azul; lo demás, este esqueleto.
+  return (
+    <EsqueletoSegunElRol>
+      <CargandoDashboardDeSiempre />
+    </EsqueletoSegunElRol>
+  );
+}
+
+export function CargandoDashboardDeSiempre() {
   return (
     <div className="space-y-6" aria-busy="true" aria-live="polite">
       <span className="sr-only">Cargando panel de control...</span>
