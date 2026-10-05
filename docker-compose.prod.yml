@@ -19,6 +19,15 @@ x-registros: &registros
     max-size: '20m'
     max-file: '5'
 
+# Archivos abiertos: cada conexión (cada teléfono con su tiempo real) es uno.
+# Docker hereda el tope del sistema, a menudo 1024: con un par de liceos
+# grandes conectados a la vez, el proceso empieza a rechazar conexiones
+# («EMFILE: too many open files») y nada lo dice en pantalla.
+x-archivos: &archivos
+  nofile:
+    soft: 65535
+    hard: 65535
+
 services:
   postgres:
     build: ./docker/postgres
@@ -119,6 +128,7 @@ services:
       dockerfile: docker/backend/Dockerfile
     restart: unless-stopped
     logging: *registros
+    ulimits: *archivos
     env_file: [.env.production]
     environment:
       NODE_ENV: production
@@ -190,6 +200,7 @@ services:
     build: ./docker/nginx
     restart: unless-stopped
     logging: *registros
+    ulimits: *archivos
     ports:
       - '80:80'
       - '443:443'

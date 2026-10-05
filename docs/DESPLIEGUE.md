@@ -327,6 +327,24 @@ crecer: otra para PostgreSQL y más procesos del servidor de datos (§5, «200
 liceos, y más de un proceso»), sin cambiar código. La copia de los respaldos
 fuera del servidor, a Cloudflare R2 (§8), que no cobra por descargar.
 
+### Desde Venezuela: lo que un proveedor puede cortar (octubre 2026)
+
+Las sanciones de EE. UU. a Venezuela son **selectivas**, no un embargo total,
+pero algunas empresas cierran cuentas venezolanas por precaución (Adobe lo hizo
+en 2019). Nada de esto se puede probar desde aquí: se confirma al contratar, y
+cada pieza tiene que tener su alternativa **antes** de necesitarla.
+
+| Pieza | Riesgo | Si se corta |
+|---|---|---|
+| Servidor (Hetzner u otro VPS) | Pide verificar identidad y pago; una tarjeta o dirección venezolana puede no pasar | El sistema es `docker-compose` puro: se levanta igual en cualquier VPS (OVH, DigitalOcean, Contabo) con el respaldo de anoche (§8, §10). Contratar a nombre de quien pueda pagar desde fuera |
+| Respaldos fuera (R2) | Cuenta de Cloudflare cerrada | Cualquier almacén que hable S3 (Backblaze B2, Wasabi, otro VPS con MinIO): son las mismas variables `BACKUP_S3_*`. Y van cifrados (§8): el proveedor no los lee |
+| Google Play | Venezuela figura como país admitido para registrar desarrolladores (ver la [lista de Google](https://support.google.com/googleplay/android-developer/answer/9306917)) | La APK se instala y se actualiza sola **sin Play** (`docs/APP-MOVIL.md`), y la app instalada desde el navegador no necesita tienda |
+| Firebase (avisos a la APK) | Proyecto suspendido | Los avisos siguen por la campana y el tiempo real; la PWA usa Web Push, que no depende de Firebase |
+| Correo (SMTP) | Cuenta cerrada | Cualquier SMTP: son variables (`SMTP_*`); el sistema no depende del correo para entrar |
+
+Regla: **ningún dato del liceo vive solo en un proveedor**. Lo de la base está
+en el respaldo cifrado, y el respaldo, en dos sitios.
+
 ## 7. El modo de la aplicación: comprobarlo, no suponerlo
 
 La aplicación carga los archivos `.env` **pisando** lo que venga del sistema. Es a
@@ -388,6 +406,43 @@ pg_restore --clean --if-exists --no-owner --dbname=gestion_escolar_platform back
 | `PG_BIN_DIR` | Dónde está `pg_dump` si no está en el PATH (en Windows no suele estarlo). | — |
 | `HORA_DE_RESPALDO` | A qué hora del país (`TZ`) corre el respaldo de cada noche (servicio `respaldos`). | `02:00` |
 | `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`, `BACKUP_S3_REGION` | La copia **fuera** del servidor, en R2 o cualquier S3. Vacío = desactivada. | desactivada |
+| `RESPALDO_LLAVE_PUBLICA` | La llave **pública** con la que sale cifrada la copia de fuera (el PEM, o la ruta al archivo). **Sin ella no sale nada** y el panel lo marca como fallo: lleva datos de menores. | — |
+
+### La copia de fuera va cifrada (datos de menores, octubre 2026)
+
+Un respaldo lleva cédulas, notas, direcciones y fotos de niños, y la copia de
+fuera vive en una empresa ajena. Sale cifrada (AES-256-GCM, con la llave AES
+cifrada para la llave pública del dueño; `utils/cifrar-respaldo.ts`,
+CIFRA-01…03). **El servidor puede cifrar pero no descifrar**: la llave privada
+la guarda el dueño fuera del servidor (si alguien entra al servidor, tampoco
+abre las copias). El par se crea en el ordenador del dueño:
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out respaldos-privada.pem
+```
+
+```bash
+openssl pkey -in respaldos-privada.pem -pubout -out respaldos-publica.pem
+```
+
+La pública va a `RESPALDO_LLAVE_PUBLICA`. La privada, en dos sitios seguros
+(una memoria USB guardada y el gestor de contraseñas del dueño): **perderla es
+perder todas las copias de fuera**. Para devolver una:
+
+```bash
+npm run respaldo:descifrar -- liceo__2026-10-05T02-00-00.dump.cifrado respaldos-privada.pem
+```
+
+Y sale el `.dump` de siempre, para `pg_restore`. Los respaldos del disco del
+servidor no se cifran: la restauración del día a día (BASE-COMP-04) los usa
+tal cual, y ese disco ya es del servidor.
+
+**Lo demás de los menores:** los registros no guardan cédulas, correos ni
+contraseñas (solo las 3 últimas cifras; `utils/datos-en-registros.ts`,
+REGISTRO-01…03). El expediente de un alumno retirado **no se borra**: el liceo
+está obligado a conservarlo (certificaciones, prosecución); lo borrado va a la
+papelera 90 días (§9) y los respaldos viejos se tiran a los
+`BACKUP_RETENTION_DAYS`.
 
 ### Avisos al teléfono y traslados (septiembre 2026)
 
@@ -527,6 +582,22 @@ Docker guardaba los registros de cada contenedor sin límite (`json-file`): un
 error que se repite llenaba el disco y tumbaba a TODOS los liceos.
 `docker-compose.prod.yml` les pone 5 archivos de 20 MB por contenedor
 (`x-registros`). Si el servidor no usa Docker, lo mismo con `logrotate`.
+
+### Lo que se revisó en la cuarta tanda (octubre 2026)
+
+| Fenómeno | Medido | Hecho |
+|---|---|---|
+| Fuga de memoria | `medir:aguante` 20 min, 30 personas: 36.804 peticiones, 0 fallos, memoria 237 → 148 MB, p95 19 → 6 ms | Nada que arreglar |
+| Consultas que crecen por alumno (N+1) | 16 pantallas con 3 y con 15 alumnos. Estadísticas de sección/año/ciclo: **~30 consultas por alumno** (471, 555 y 644 con 15); resumen final ~6 por alumno | En bloque: 35, 51, 72 y 20, **con los mismos números** (N1-01…16) |
+| Asistencia del año y del ciclo | El ciclo se dividía siempre entre 5 (un liceo con solo 1.º, todos presentes: 20 %); el año contaba como 0 % la sección que no había pasado lista | Media de lo que tiene datos (ASIS-CICLO-01/02, `MAPA` §4) |
+| Tablas que engordan | Autovacuum al 20 %: en `grades` con 1,8 M de notas, 360.000 filas muertas antes de limpiar | Al 5 % en las 7 tablas que cambian todo el día (migración `20261005010000`) |
+| Descriptores de archivo | Docker hereda a menudo 1024: con un par de liceos grandes conectados, `EMFILE` | `ulimits` 65535 al servidor y a nginx; `worker_rlimit_nofile` |
+| El que llega despacio (Slowloris) | nginx esperaba 60 s por cada cabecera | 15–20 s y un tope de conexiones por dirección pensado para un liceo entero (600) |
+| Reinicios en bucle | `/health` responde siempre 200 (con lo que falla dentro) y el servidor no tiene sonda de Docker que lo reinicie | Nada que arreglar: no hay bucle posible |
+| Login que dice quién existe por el tiempo | Ya cubierto (ENUM-02) | — |
+| Hidratación y oyentes vivos | Web compilada: 0 errores de hidratación en las pantallas de los 4 roles; 5 vueltas por las pantallas y la clase en vivo: 174 oyentes antes y después | Vigilado: HIDRA-01 (en `dashboard.spec`) y OYENTES-01 |
+| Reconversión monetaria | Montos en bolívares del cono viejo y del nuevo se habrían sumado | `npm run reconvertir` (RECONV-01…03, `MAPA` §8b) |
+| Datos de menores | Copia de fuera sin cifrar; cédulas y correos en los registros | Cifrada (§8) y registros tapados (REGISTRO-*) |
 
 ### Cuando vuelve la luz (y a las 7:00)
 

@@ -7,11 +7,11 @@ import {
     getCurrentAcademicYear,
     getStudentCurrentEnrollment
 } from '../utils/academic-year.utils';
-import { gradesService } from './grades.service';
 import {
     subjectSectionAverage,
     studentsWithNoteInSubject,
     sectionAverage,
+    promediosDeLaSeccion,
     yearGradeAverage,
     cycleAverage,
 } from './aggregation.service';
@@ -145,6 +145,8 @@ export interface SectionGlobalAverageResult {
     studentsAtRisk: number;
     totalStudents: number;
     attendanceRate: number;
+    /** Registros de asistencia de la sección: 0 = aún no pasó lista (no penaliza el año). */
+    attendanceRecords?: number;
     studentsWithLowAttendance: number;
     totalObservations: number;              // ✨ Total de observaciones en la sección
     studentsWithObservations: number;       // ✨ Estudiantes con observaciones
@@ -167,6 +169,8 @@ export interface GradeAverageResult {
     studentsAtRisk: number;
     passingRate: number;
     attendanceRate: number;
+    /** Alumnos de las secciones que ya pasaron lista (peso del año en el ciclo). */
+    attendanceStudents?: number;
     totalObservations: number;              // ✨ Total de observaciones en el grado
     studentsWithObservations: number;       // ✨ Estudiantes con observaciones
     sectionAverages: Array<{
@@ -715,11 +719,12 @@ class CycleStatisticsService {
             // Calcular promedio de la materia — JERARQUÍA (Nivel 3):
             // promedio de los N2 por estudiante excluyendo estudiantes SIN notas
             // (Grade o ClassActivity.scores — las notas de Clase en Vivo cuentan).
-            const n3 = await subjectSectionAverage(prisma, sectionId, subjectId);
+            // El N2 de todos, en bloque: lo usan el N3 y el riesgo (N1-11).
+            const n2 = await promediosDeLaSeccion(prisma, sectionId, undefined, [subjectId]);
+            const n3 = await subjectSectionAverage(prisma, sectionId, subjectId, undefined, n2);
 
             // Estudiantes con datos (para riesgo/aprobación) = los que el N3
-            // reconoce; sus N2 se consultan una vez más (con cache) para el
-            // conteo de riesgo/aprobación en la misma escala ponderada.
+            // reconoce, con su N2 en la misma escala ponderada.
             const studentsWithData = await studentsWithNoteInSubject(prisma, sectionId, subjectId);
             let totalAverage = 0;
             let studentsWithGrades = 0;
@@ -727,7 +732,7 @@ class CycleStatisticsService {
             let studentsPassing = 0;
 
             for (const studentId of studentsWithData) {
-                const avg = await gradesService.calculateWeightedSubjectAverage(prisma, studentId, subjectId);
+                const avg = n2.get(studentId)?.get(subjectId) ?? 0;
                 totalAverage += avg;
                 studentsWithGrades++;
                 if (avg < minAprobatoria) {
@@ -788,7 +793,7 @@ class CycleStatisticsService {
         ]);
         // Los dos umbrales van en el nombre de la copia guardada: si el liceo
         // cambia uno, lo guardado con el anterior deja de usarse solo.
-        const cacheKey = `stats:section:${sectionId}:global:min${minAprobatoria}:asis${minAsistencia}`;
+        const cacheKey = `stats:section:${sectionId}:global:min${minAprobatoria}:asis${minAsistencia}:v2`;
 
         try {
             const cached = await RedisCache.get<SectionGlobalAverageResult>(cacheKey);
@@ -864,13 +869,18 @@ class CycleStatisticsService {
                 : 0;
 
             const ssa: SubjectAverageResult[] = [];
+            // El N2 de cada alumno en cada materia, UNA vez y en bloque; antes
+            // se pedía alumno por alumno, dos veces (N1-11).
+            const n2 = await promediosDeLaSeccion(prisma, sectionId);
+            const conNota = new Map<string, Set<string>>();
 
             for (const cs of classroomSubjects) {
-                const n3 = await subjectSectionAverage(prisma, sectionId, cs.subjectId);
+                const n3 = await subjectSectionAverage(prisma, sectionId, cs.subjectId, undefined, n2);
                 const studentsWithData = await studentsWithNoteInSubject(prisma, sectionId, cs.subjectId);
+                conNota.set(cs.subjectId, studentsWithData);
                 let subjectStudentsAtRisk = 0;
                 for (const studentId of studentsWithData) {
-                    const avg2 = await gradesService.calculateWeightedSubjectAverage(prisma, studentId, cs.subjectId);
+                    const avg2 = n2.get(studentId)?.get(cs.subjectId) ?? 0;
                     // `studentsWithData` ya son solo los que tienen nota: un 0 es
                     // una nota y está por debajo de la mínima (CERO-05). Antes
                     // `avg2 !== 0` lo dejaba fuera del riesgo.
@@ -909,9 +919,8 @@ class CycleStatisticsService {
                 let sSum = 0;
                 let sCount = 0;
                 for (const cs of classroomSubjects) {
-                    const withData = await studentsWithNoteInSubject(prisma, sectionId, cs.subjectId);
-                    if (withData.has(sId)) {
-                        sSum += await gradesService.calculateWeightedSubjectAverage(prisma, sId, cs.subjectId);
+                    if (conNota.get(cs.subjectId)?.has(sId)) {
+                        sSum += n2.get(sId)?.get(cs.subjectId) ?? 0;
                         sCount++;
                     }
                 }
@@ -957,6 +966,7 @@ class CycleStatisticsService {
                 studentsAtRisk,
                 totalStudents: studentIds.length,
                 attendanceRate: sectionAttendanceRate,
+                attendanceRecords: totalRecords,
                 studentsWithLowAttendance,
                 totalObservations: observationStats.total,
                 studentsWithObservations: observationStats.studentsWithObservations,
@@ -990,7 +1000,7 @@ class CycleStatisticsService {
         instituteId?: string
     ): Promise<GradeAverageResult> {
         const minAprobatoria = await this.notaMinima(instituteId);
-        const cacheKey = `stats:grade:${academicYearId}:${gradeLevel}:min${minAprobatoria}`;
+        const cacheKey = `stats:grade:${academicYearId}:${gradeLevel}:min${minAprobatoria}:v2`;
 
         try {
             const cached = await RedisCache.get<GradeAverageResult>(cacheKey);
@@ -1030,6 +1040,8 @@ class CycleStatisticsService {
             let totalStudents = 0;
             let totalStudentsAtRisk = 0;
             let totalAttendance = 0;
+            let sectionsWithAttendance = 0;
+            let attendanceStudents = 0;
             let totalObservations = 0;
             let sectionsWithData = 0;
 
@@ -1082,7 +1094,13 @@ class CycleStatisticsService {
 
                 totalStudents += stats.totalStudents;
                 totalStudentsAtRisk += stats.studentsAtRisk;
-                totalAttendance += stats.attendanceRate;
+                // Solo las secciones que ya pasaron lista (MAPA §4: los días sin
+                // toma de asistencia no penalizan). Antes contaban como 0 %.
+                if ((stats.attendanceRecords ?? 0) > 0) {
+                    totalAttendance += stats.attendanceRate;
+                    sectionsWithAttendance++;
+                    attendanceStudents += stats.totalStudents;
+                }
                 totalObservations += stats.totalObservations;
 
                 sectionAverages.push({
@@ -1099,8 +1117,8 @@ class CycleStatisticsService {
             // los Nivel 4 (sección) de las secciones con datos del grado.
             const average = (await yearGradeAverage(prisma, academicYearId, gradeLevel)).average;
 
-            const attendanceRate = sections.length > 0
-                ? Math.round((totalAttendance / sections.length) * 10) / 10
+            const attendanceRate = sectionsWithAttendance > 0
+                ? Math.round((totalAttendance / sectionsWithAttendance) * 10) / 10
                 : 0;
 
             const passingRate = totalStudents > 0
@@ -1115,6 +1133,7 @@ class CycleStatisticsService {
                 studentsAtRisk: totalStudentsAtRisk,
                 passingRate,
                 attendanceRate,
+                attendanceStudents,
                 totalObservations,
                 studentsWithObservations: studentsWithObservationsSet.size,
                 sectionAverages,
@@ -1146,7 +1165,7 @@ class CycleStatisticsService {
         instituteId?: string
     ): Promise<CycleGlobalAverageResult> {
         const minAprobatoria = await this.notaMinima(instituteId);
-        const cacheKey = `stats:cycle:${academicYearId}:global:min${minAprobatoria}`;
+        const cacheKey = `stats:cycle:${academicYearId}:global:min${minAprobatoria}:v2`;
 
         try {
             const cached = await RedisCache.get<CycleGlobalAverageResult>(cacheKey);
@@ -1168,6 +1187,7 @@ class CycleStatisticsService {
             let totalStudents = 0;
             let totalStudentsAtRisk = 0;
             let totalAttendance = 0;
+            let attendanceWeight = 0;
             let totalObservations = 0;
             let gradesWithData = 0;
 
@@ -1217,7 +1237,12 @@ class CycleStatisticsService {
 
                 totalStudents += stats.totalStudents;
                 totalStudentsAtRisk += stats.studentsAtRisk;
-                totalAttendance += stats.attendanceRate;
+                // Media de los años que pasaron lista, pesada por sus alumnos
+                // (MAPA §4). Antes: la suma entre 5, siempre, aunque el liceo
+                // tuviera un solo año; y 0 si aún no había notas.
+                const peso = stats.attendanceStudents ?? 0;
+                totalAttendance += stats.attendanceRate * peso;
+                attendanceWeight += peso;
                 totalObservations += stats.totalObservations;
 
                 gradeAverages.push({
@@ -1234,8 +1259,8 @@ class CycleStatisticsService {
             // promedio de los Nivel 5 (años) de los grados con datos del ciclo.
             const globalAverage = (await cycleAverage(prisma, academicYearId)).average;
 
-            const attendanceRate = gradesWithData > 0
-                ? Math.round((totalAttendance / 5) * 10) / 10
+            const attendanceRate = attendanceWeight > 0
+                ? Math.round((totalAttendance / attendanceWeight) * 10) / 10
                 : 0;
 
             const passingRate = totalStudents > 0

@@ -1,5 +1,17 @@
 import winston from 'winston';
 import { config } from '../config/environment';
+import { taparDatos, taparEnTexto } from './datos-en-registros';
+
+/** Antes que nada: ni cédulas, ni correos, ni contraseñas al registro (REGISTRO-*). */
+const tapar = winston.format((info) => {
+  // Con su nombre: `password`, `token`… se reconocen por la clave.
+  const claves = Object.keys(info).filter((k) => k !== 'level' && k !== 'timestamp' && k !== 'message' && k !== 'stack');
+  const tapado = taparDatos(Object.fromEntries(claves.map((k) => [k, (info as any)[k]]))) as Record<string, unknown>;
+  for (const k of claves) (info as any)[k] = tapado[k];
+  if (typeof info.message === 'string') info.message = taparEnTexto(info.message);
+  if (typeof (info as any).stack === 'string') (info as any).stack = taparEnTexto((info as any).stack);
+  return info;
+});
 
 /**
  * EN PRODUCCIÓN NO SE ESCRIBE UN RENGLÓN POR CONSULTA.
@@ -31,6 +43,8 @@ function nivelSeguro(): string {
 const loggerConfig: winston.LoggerOptions = {
   level: nivelSeguro(),
   format: winston.format.combine(
+    winston.format.errors({ stack: true }),
+    tapar(),
     winston.format.timestamp({
       format: 'YYYY-MM-DD HH:mm:ss',
     }),

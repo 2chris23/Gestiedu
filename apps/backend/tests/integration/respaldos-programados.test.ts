@@ -1,6 +1,8 @@
 import http from 'http';
 import { AddressInfo } from 'net';
-import { mkdtempSync, writeFileSync, rmSync } from 'fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'fs';
+import { generateKeyPairSync } from 'crypto';
+import { descifrarArchivo } from '../../src/utils/cifrar-respaldo';
 import { tmpdir } from 'os';
 import path from 'path';
 import { prisma } from '../../src/config/database';
@@ -24,7 +26,14 @@ import { InformeDeRespaldo } from '../../src/services/respaldos.service';
 describe('Respaldos programados', () => {
     let carpeta = '';
     let servidor: http.Server;
-    let recibidos: Array<{ url: string; bytes: number; auth: string }> = [];
+    let recibidos: Array<{ url: string; bytes: number; auth: string; cuerpo: Buffer }> = [];
+    // Un par de llaves de usar y tirar: la pública la tiene «el servidor»; la
+    // privada, «el dueño» (aquí, la prueba que descifra lo que llegó fuera).
+    const { publicKey, privateKey } = generateKeyPairSync('rsa', {
+        modulusLength: 2048,
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
     let responder = 200;
     const env = { ...process.env };
 
@@ -42,10 +51,11 @@ describe('Respaldos programados', () => {
     beforeAll(async () => {
         carpeta = mkdtempSync(path.join(tmpdir(), 'respaldos-programados-'));
         servidor = http.createServer((req, res) => {
-            let bytes = 0;
-            req.on('data', (t) => (bytes += t.length));
+            const trozos: Buffer[] = [];
+            req.on('data', (t) => trozos.push(t));
             req.on('end', () => {
-                recibidos.push({ url: req.url || '', bytes, auth: String(req.headers.authorization || '') });
+                const cuerpo = Buffer.concat(trozos);
+                recibidos.push({ url: req.url || '', bytes: cuerpo.length, auth: String(req.headers.authorization || ''), cuerpo });
                 res.statusCode = responder;
                 res.end(responder === 200 ? '' : '<Error>AccessDenied</Error>');
             });
@@ -56,6 +66,7 @@ describe('Respaldos programados', () => {
         process.env.BACKUP_S3_BUCKET = 'gestiedu-respaldos';
         process.env.BACKUP_S3_ACCESS_KEY_ID = 'AKIDPRUEBA';
         process.env.BACKUP_S3_SECRET_ACCESS_KEY = 'secreto-de-prueba';
+        process.env.RESPALDO_LLAVE_PUBLICA = publicKey;
     });
 
     afterAll(async () => {
@@ -70,7 +81,7 @@ describe('Respaldos programados', () => {
         responder = 200;
     });
 
-    it('RESP-01: una pasada buena queda apuntada, y cada respaldo llega entero al almacén de fuera', async () => {
+    it('RESP-01 y CIFRA-01: una pasada buena queda apuntada, y cada respaldo llega fuera CIFRADO y entero', async () => {
         const contenido = 'datos del liceo '.repeat(5000);
         const estado = await respaldarAhora(carpeta, async () =>
             informeDe([{ slug: 'liceo-bolivar', contenido }, { slug: 'liceo-sucre' }])
@@ -81,10 +92,20 @@ describe('Respaldos programados', () => {
         expect(saludDeLosRespaldos(leerEstado(carpeta))).toBe('al-dia');
 
         expect(recibidos.map((r) => r.url).sort()).toEqual([
-            '/gestiedu-respaldos/liceo-bolivar/liceo-bolivar__2026-09-23T02-00-00.dump',
-            '/gestiedu-respaldos/liceo-sucre/liceo-sucre__2026-09-23T02-00-00.dump',
+            '/gestiedu-respaldos/liceo-bolivar/liceo-bolivar__2026-09-23T02-00-00.dump.cifrado',
+            '/gestiedu-respaldos/liceo-sucre/liceo-sucre__2026-09-23T02-00-00.dump.cifrado',
         ]);
-        expect(recibidos.find((r) => r.url.includes('bolivar'))!.bytes).toBe(contenido.length);
+        // Lo que llegó fuera NO se lee: no contiene el texto del respaldo…
+        const llegado = recibidos.find((r) => r.url.includes('bolivar'))!.cuerpo;
+        expect(llegado.includes(Buffer.from('datos del liceo'))).toBe(false);
+        // …y con la llave privada del dueño vuelve a ser exactamente el respaldo.
+        const enDisco = path.join(carpeta, 'llegado.cifrado');
+        const vuelto = path.join(carpeta, 'llegado.dump');
+        writeFileSync(enDisco, llegado);
+        await descifrarArchivo(enDisco, vuelto, privateKey);
+        expect(readFileSync(vuelto, 'utf8')).toBe(contenido);
+        rmSync(enDisco);
+        rmSync(vuelto);
         expect(recibidos.every((r) => r.auth.startsWith('AWS4-HMAC-SHA256 Credential=AKIDPRUEBA/'))).toBe(true);
     });
 
@@ -106,6 +127,34 @@ describe('Respaldos programados', () => {
 
         const despues = await prisma.systemAlert.count({ where: { type: 'BACKUP_FAILED', severity: 'CRITICAL' } });
         expect(despues).toBeGreaterThan(antes);
+    });
+
+    it('CIFRA-02: sin llave pública el respaldo NO sale del servidor (datos de menores), y se ve como fallo', async () => {
+        const llave = process.env.RESPALDO_LLAVE_PUBLICA;
+        delete process.env.RESPALDO_LLAVE_PUBLICA;
+        try {
+            const estado = await respaldarAhora(carpeta, async () => informeDe([{ slug: 'liceo-bolivar' }]));
+            expect(recibidos).toEqual([]);
+            expect(estado.copiaFuera).toBe('fallo');
+            expect(estado.erroresDeCopiaFuera[0]).toMatch(/RESPALDO_LLAVE_PUBLICA/);
+        } finally {
+            process.env.RESPALDO_LLAVE_PUBLICA = llave;
+        }
+    });
+
+    it('CIFRA-03: un archivo tocado, o la llave equivocada, no se descifra', async () => {
+        const original = path.join(carpeta, 'tocado.dump');
+        const cifrado = path.join(carpeta, 'tocado.cifrado');
+        writeFileSync(original, 'cédulas y notas '.repeat(100));
+        const { cifrarArchivo } = require('../../src/utils/cifrar-respaldo');
+        await cifrarArchivo(original, cifrado, publicKey);
+        const bytes = readFileSync(cifrado);
+        bytes[bytes.length - 40] ^= 0xff;
+        writeFileSync(cifrado, bytes);
+        await expect(descifrarArchivo(cifrado, path.join(carpeta, 'x.dump'), privateKey)).rejects.toThrow();
+        const otra = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
+        await cifrarArchivo(original, cifrado, publicKey);
+        await expect(descifrarArchivo(cifrado, path.join(carpeta, 'y.dump'), otra.privateKey)).rejects.toThrow();
     });
 
     it('RESP-03: si hace más de un día que no sale uno bueno, está «atrasado» aunque nadie viera un error', () => {

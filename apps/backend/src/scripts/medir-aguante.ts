@@ -186,6 +186,7 @@ async function main() {
         select: {
             id: true,
             databaseName: true,
+            databaseSchema: true,
             databaseHost: true,
             databasePort: true,
             databaseUser: true,
@@ -206,6 +207,11 @@ async function main() {
     // Las personas: profesores y alumnos de verdad del liceo.
     const cliente = new Client({ ...admin, database: liceo.databaseName });
     await cliente.connect();
+    // En la base compartida, SU esquema: `public` es otro (o nadie) y daba
+    // gente que no puede entrar («No se pudo entrar con nadie»).
+    if (liceo.databaseSchema && /^[a-z0-9_]{1,63}$/.test(liceo.databaseSchema)) {
+        await cliente.query(`SET search_path TO "${liceo.databaseSchema}"`);
+    }
     const gente = (
         await cliente.query<{ email: string; role: string }>(
             `SELECT email, role FROM users

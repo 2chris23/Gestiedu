@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import path from 'path';
 import {
     carpetaDeRespaldos,
@@ -7,6 +7,7 @@ import {
     InformeDeRespaldo,
 } from './respaldos.service';
 import { destinoDeFuera, subirAFuera } from './copia-fuera.service';
+import { cifrarArchivo, llavePublicaDeRespaldos } from '../utils/cifrar-respaldo';
 import { alertService, AlertSeverity } from './alert.service';
 import { logger } from '../utils/logger';
 
@@ -92,12 +93,31 @@ export async function respaldarAhora(
     const destino = destinoDeFuera();
     const erroresDeCopiaFuera: string[] = [];
     if (destino) {
+        // Lleva datos de menores: a una empresa ajena solo sale CIFRADO, con la
+        // llave pública del dueño. Sin llave no sale (y se ve como fallo, no
+        // como «desactivada»): falla cerrado (`utils/cifrar-respaldo.ts`, CIFRA-*).
+        let llave: string | null = null;
+        let sinLlave: string | null = null;
+        try {
+            llave = llavePublicaDeRespaldos();
+            if (!llave) sinLlave = 'falta RESPALDO_LLAVE_PUBLICA: no sale del servidor sin cifrar';
+        } catch (error) {
+            sinLlave = error instanceof Error ? error.message : String(error);
+        }
         for (const r of informe.resultados) {
             if (!r.ok || !r.archivo) continue;
+            if (!llave) {
+                erroresDeCopiaFuera.push(`${r.slug}: ${sinLlave}`);
+                continue;
+            }
+            const cifrado = `${r.archivo}.cifrado`;
             try {
-                await subirAFuera(r.archivo, r.slug, destino);
+                await cifrarArchivo(r.archivo, cifrado, llave);
+                await subirAFuera(cifrado, r.slug, destino);
             } catch (error) {
                 erroresDeCopiaFuera.push(`${r.slug}: ${error instanceof Error ? error.message : String(error)}`);
+            } finally {
+                rmSync(cifrado, { force: true });
             }
         }
     }

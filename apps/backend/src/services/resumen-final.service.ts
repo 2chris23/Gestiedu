@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { platformPrisma } from '../config/database';
-import { gradesService } from './grades.service';
+import { redondearComoElMPPE } from './grades.service';
+import { bulkSubjectAveragesConDatos } from './bulk-averages.service';
 import { getAcademicConfig, condicionSugerida, SuggestionStatus } from './promotion/close-cycle.service';
 import { AppErrors } from '../middleware/error.middleware';
 import { apreciacionesFinalesDelCiclo } from './apreciaciones.service';
@@ -226,22 +227,41 @@ export async function resumenFinalDeLaSeccion(
     const porMateria: ResumenFinal['porMateria'] = {};
     for (const mat of materias) porMateria[mat.id] = { aprobados: 0, reprobados: 0, sinNotas: 0 };
 
-    // La definitiva de cada alumno en cada materia; de a cinco alumnos, cada
-    // uno con sus materias a la vez (como el cierre, que va de a 25).
+    // La definitiva de cada alumno en cada materia: la misma cuenta que
+    // `gradesService.promedioDeLaMateria(…, lapsos, redondeo)` —cada lapso con
+    // notas, con su redondeo, y su media redondeada otra vez—, pero con los
+    // promedios de cada lapso EN BLOQUE para toda la sección. Alumno por
+    // alumno eran ~6 consultas más por alumno (N1-14): una sección de 40,
+    // cientos.
     const definitivas = new Map<string, { promedio: number; conNotas: boolean }>();
     // Los lapsos de ESTE año: con un año ya cerrado, el alumno tiene también
     // la inscripción del siguiente, y sin ellos se tomaban los de esa.
     const lapsos = (await prisma.period.findMany({ where: { academicYearId }, select: { id: true } })).map((p) => p.id);
     if (tipo !== 'MATERIA_PENDIENTE') {
-        for (let i = 0; i < activos.length; i += 5) {
-            await Promise.all(
-                activos.slice(i, i + 5).flatMap((a) =>
-                    materias.map(async (mat) => {
-                        const d = await gradesService.promedioDeLaMateria(prisma, a.id, mat.id, undefined, lapsos, redondeo);
-                        definitivas.set(`${a.id}|${mat.id}`, { promedio: d.promedio, conNotas: d.conNotas });
-                    })
-                )
-            );
+        const definitiva = (n: number) => (redondeo === 'MPPE' ? redondearComoElMPPE(n) : n);
+        const porLapso = await Promise.all(
+            lapsos.map((periodId) =>
+                bulkSubjectAveragesConDatos(prisma, {
+                    classroomId,
+                    studentIds: activos.map((a) => a.id),
+                    subjectIds: materias.filter((m) => m.evaluacion !== 'CUALITATIVA').map((m) => m.id),
+                    periodId,
+                })
+            )
+        );
+        for (const a of activos) {
+            for (const mat of materias) {
+                const sumas = porLapso
+                    .map((d) => d.get(a.id)?.get(mat.id))
+                    .filter((v): v is { promedio: number; conNotas: boolean } => Boolean(v?.conNotas))
+                    .map((v) => definitiva(v.promedio));
+                definitivas.set(
+                    `${a.id}|${mat.id}`,
+                    sumas.length === 0
+                        ? { promedio: 0, conNotas: false }
+                        : { promedio: definitiva(Math.round((sumas.reduce((x, y) => x + y, 0) / sumas.length) * 100) / 100), conNotas: true }
+                );
+            }
         }
     }
 

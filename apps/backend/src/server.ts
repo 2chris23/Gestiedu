@@ -35,6 +35,7 @@ import { deQuienNosFiamos, comoSeExplicaLaConfianza } from './config/de-quien-no
 import avisarCambios from './plugins/avisar-cambios';
 import { apuntarFallo } from './utils/fallos-del-servidor';
 import { avisarSiFalla } from './utils/sin-callar';
+import { taparEnTexto } from './utils/datos-en-registros';
 
 export async function buildServer(): Promise<FastifyInstance> {
   /**
@@ -45,7 +46,18 @@ export async function buildServer(): Promise<FastifyInstance> {
   const confianza = deQuienNosFiamos();
 
   const server = Fastify({
-    logger: true,
+    // Cada petición queda en el registro con su ruta, y la ruta lleva cédulas
+    // (`/students/12345678/boleta`) y lo buscado: se tapan (REGISTRO-03).
+    logger: {
+      serializers: {
+        req: (req: any) => ({
+          method: req.method,
+          url: taparEnTexto(String(req.url ?? '')),
+          host: req.host ?? req.hostname,
+          remoteAddress: req.ip,
+        }),
+      },
+    },
     trustProxy: confianza,
     bodyLimit: config.upload.maxFileSize,
   });

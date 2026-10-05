@@ -31,8 +31,8 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
 ```bash
 cd apps/backend && npm run dev      # API en :3001
 cd apps/web && npm run dev          # web en :3000
-cd apps/backend && npx jest         # 1258 pruebas en 166 archivos (integración + cálculo)
-npm run test:e2e                    # 315 pruebas de navegador (Playwright), con los dos servidores arriba
+cd apps/backend && npx jest         # 1284 pruebas en 170 archivos (integración + cálculo)
+npm run test:e2e                    # 316 pruebas de navegador (Playwright), con los dos servidores arriba
 cd apps/backend && npm run typecheck
 cd apps/backend && npm run migrate:plataforma        # la base de la plataforma
 cd apps/backend && npm run migrate:tenants[:status]   # migra todos los liceos
@@ -861,6 +861,13 @@ de navegador no ven la oferta (la tapa `navigator.webdriver`) salvo que pongan
   salud, los respaldos y el disco; los `.catch` vacíos se apuntan
   (`avisarSiFalla`). Lo que crecía sin límite se tira a diario con plazo
   configurable (MANT-*). Detalle en `docs/DESPLIEGUE.md` §10.
+- **Datos de menores**: la copia de fuera de los respaldos sale cifrada con la
+  llave PÚBLICA del dueño (`RESPALDO_LLAVE_PUBLICA`; sin ella no sale) y los
+  registros no guardan cédulas ni correos (`utils/datos-en-registros.ts`).
+- **Las listas no consultan por alumno**: N1-* cuenta las consultas de 16
+  pantallas con 3 y con 15 alumnos; las estadísticas van en bloque
+  (`promediosDeLaSeccion`).
+- **El bolívar pierde ceros**: `npm run reconvertir` (RECONV-*, `MAPA` §8b).
 
 ## Dónde se anota lo que se hace
 

@@ -3756,3 +3756,24 @@ como deriva.
 no hay clases que suspender); teléfono 55 pantallas, 0 con algo que
 arreglar; aislamiento con PgBouncer 3 de 3; `npm audit --omit=dev` 0
 críticos.
+
+**Cuarta tanda (5 de octubre): lo que quedaba sin tocar.** Detalle y números
+en `DESPLIEGUE.md` («Lo que se revisó en la cuarta tanda»). Lo encontrado de
+verdad:
+
+- **Las estadísticas hacían ~30 consultas por alumno** (la del ciclo, 644 con
+  15 alumnos; con 600, decenas de miles). En bloque, con los mismos números:
+  35/51/72. El resumen final, de 116 a 20 (N1-01…16).
+- **La asistencia del ciclo se dividía siempre entre 5**: un liceo con solo
+  1.º y todos presentes salía con 20 %; y el año contaba como 0 % la sección
+  que no había pasado lista (ASIS-CICLO-01/02).
+- **La copia de fuera de los respaldos iba sin cifrar** con datos de menores;
+  ahora cifrada con la llave pública del dueño y, sin llave, no sale
+  (CIFRA-01…03). Los registros guardaban cédulas (el id del usuario) y correos
+  en claro: tapados (REGISTRO-01…03).
+- **`medir:aguante` no entraba con nadie** con la base compartida (leía el
+  esquema `public`): arreglado y medido, sin fuga (20 min, 0 fallos).
+- Nuevo: reconversión monetaria (`npm run reconvertir`, RECONV-01…03),
+  autovacuum por tabla, tope de descriptores y tiempos de nginx contra
+  Slowloris; vigilancia de hidratación (HIDRA-01) y de oyentes vivos
+  (OYENTES-01), los dos en verde.

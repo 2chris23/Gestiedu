@@ -1,7 +1,45 @@
 import { PrismaClient } from '@prisma/client';
-import { gradesService } from './grades.service';
 import { fechaDeLaActividad, lapsoDeLaFecha, LapsoConFechas } from '../utils/lapso-de-la-actividad';
 import { esCualitativa } from './apreciaciones.service';
+import { bulkSubjectAverages } from './bulk-averages.service';
+
+/**
+ * EL NIVEL 2 DE TODA UNA SECCIÓN, EN BLOQUE (N1-11…14, 2026-10-05)
+ *
+ * Cada nivel de arriba necesita el promedio de cada alumno en cada materia.
+ * Antes se pedía alumno por alumno (`calculateWeightedSubjectAverage`, unas
+ * 30 consultas cada uno): la estadística de un ciclo de 600 alumnos eran
+ * decenas de miles de consultas. `bulkSubjectAverages` aplica las mismas
+ * reglas con un puñado para toda la sección (su paridad la vigila
+ * `bulk-averages-parity.test.ts`).
+ *
+ * studentId → subjectId → promedio. Solo se mira para quien
+ * `studentsWithNoteInSubject` dice que tiene nota, como antes.
+ */
+export type PromediosDeLaSeccion = Map<string, Map<string, number>>;
+
+export async function promediosDeLaSeccion(
+    prisma: PrismaClient,
+    classroomId: string,
+    periodId?: string,
+    soloMaterias?: string[]
+): Promise<PromediosDeLaSeccion> {
+    const [enrollments, materias] = await Promise.all([
+        prisma.studentClassroom.findMany({ where: { classroomId, isActive: true }, select: { studentId: true } }),
+        soloMaterias
+            ? Promise.resolve(soloMaterias.map((subjectId) => ({ subjectId })))
+            : prisma.classroomSubject.findMany({ where: { classroomId }, select: { subjectId: true } }),
+    ]);
+    return bulkSubjectAverages(prisma, {
+        classroomId,
+        studentIds: enrollments.map((e) => e.studentId),
+        subjectIds: [...new Set(materias.map((m) => m.subjectId))],
+        periodId,
+    });
+}
+
+const n2De = (promedios: PromediosDeLaSeccion, studentId: string, subjectId: string): number =>
+    promedios.get(studentId)?.get(subjectId) ?? 0;
 
 /**
  * =====================================================================
@@ -140,15 +178,15 @@ export async function subjectSectionAverage(
     prisma: PrismaClient,
     classroomId: string,
     subjectId: string,
-    periodId?: string
+    periodId?: string,
+    promedios?: PromediosDeLaSeccion
 ): Promise<AggregateResult> {
     const withData = await studentsWithNoteInSubject(prisma, classroomId, subjectId, periodId);
     if (withData.size === 0) return { average: 0, hasData: false };
 
+    const n2 = promedios ?? (await promediosDeLaSeccion(prisma, classroomId, periodId, [subjectId]));
     let sum = 0;
-    for (const studentId of withData) {
-        sum += await gradesService.calculateWeightedSubjectAverage(prisma, studentId, subjectId, periodId);
-    }
+    for (const studentId of withData) sum += n2De(n2, studentId, subjectId);
     return { average: Math.round((sum / withData.size) * 100) / 100, hasData: true };
 }
 
@@ -177,17 +215,21 @@ export async function sectionStudentAverages(
         select: { subjectId: true },
     });
 
+    // Una vez por materia, no una por alumno y materia.
+    const [conNota, n2] = await Promise.all([
+        Promise.all(classroomSubjects.map((cs) => studentsWithNoteInSubject(prisma, classroomId, cs.subjectId, periodId))),
+        promediosDeLaSeccion(prisma, classroomId, periodId),
+    ]);
     const out: number[] = [];
     for (const studentId of studentIds) {
         let sum = 0;
         let cnt = 0;
-        for (const cs of classroomSubjects) {
-            const withData = await studentsWithNoteInSubject(prisma, classroomId, cs.subjectId, periodId);
-            if (withData.has(studentId)) {
-                sum += await gradesService.calculateWeightedSubjectAverage(prisma, studentId, cs.subjectId, periodId);
+        classroomSubjects.forEach((cs, i) => {
+            if (conNota[i].has(studentId)) {
+                sum += n2De(n2, studentId, cs.subjectId);
                 cnt++;
             }
-        }
+        });
         if (cnt > 0) out.push(Math.round((sum / cnt) * 100) / 100);
     }
     return out;
@@ -213,8 +255,9 @@ export async function sectionAverage(
     let sum = 0;
     let cnt = 0;
     const subjectAverages: Array<{ subjectId: string; subjectName: string; average: number }> = [];
+    const n2 = await promediosDeLaSeccion(prisma, classroomId, periodId);
     for (const cs of classroomSubjects) {
-        const n3 = await subjectSectionAverage(prisma, classroomId, cs.subjectId, periodId);
+        const n3 = await subjectSectionAverage(prisma, classroomId, cs.subjectId, periodId, n2);
         if (n3.hasData) {
             sum += n3.average;
             cnt++;
@@ -348,16 +391,28 @@ export async function yearGradeStudentDetails(
         subjectsByClassroom.set(cs.classroomId, list);
     });
 
+    // Por sección: el N2 de todos en bloque y qué materias tienen datos (antes,
+    // el N3 entero se recalculaba por CADA alumno y materia).
+    const porSeccion = new Map<string, { n2: PromediosDeLaSeccion; conDatos: Set<string> }>();
+    for (const classroomId of sectionIds) {
+        const n2 = await promediosDeLaSeccion(prisma, classroomId, periodId);
+        const conDatos = new Set<string>();
+        for (const subjectId of subjectsByClassroom.get(classroomId) || []) {
+            if ((await studentsWithNoteInSubject(prisma, classroomId, subjectId, periodId)).size > 0) conDatos.add(subjectId);
+        }
+        porSeccion.set(classroomId, { n2, conDatos });
+    }
+
     const studentAverages: number[] = [];
     for (const [studentId, classroomId] of studentClassroom.entries()) {
         const subjectIds = subjectsByClassroom.get(classroomId) || [];
+        const seccion = porSeccion.get(classroomId)!;
         let sum = 0;
         let cnt = 0;
         for (const subjectId of subjectIds) {
-            const n3 = await subjectSectionAverage(prisma, classroomId, subjectId, periodId);
-            if (n3.hasData) {
+            if (seccion.conDatos.has(subjectId)) {
                 // Nivel 2 del estudiante en la materia — solo si ÉL tiene nota
-                const avg2 = await gradesService.calculateWeightedSubjectAverage(prisma, studentId, subjectId, periodId);
+                const avg2 = n2De(seccion.n2, studentId, subjectId);
                 if (avg2 > 0) {
                     sum += avg2;
                     cnt++;
