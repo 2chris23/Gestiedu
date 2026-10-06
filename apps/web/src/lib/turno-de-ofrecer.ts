@@ -16,6 +16,8 @@ export type Oferta = 'descargar-la-app' | 'avisos' | 'recorrido';
 const PRIORIDAD: Oferta[] = ['descargar-la-app', 'avisos', 'recorrido'];
 
 const quieren = new Set<Oferta>();
+/** Pantallas enteras encima (la descarga de la primera vez, el bloqueo): ninguna oferta. */
+const ocupan = new Set<symbol>();
 const oyentes = new Set<() => void>();
 
 const avisar = () => oyentes.forEach((o) => o());
@@ -23,7 +25,25 @@ const suscribir = (o: () => void) => {
     oyentes.add(o);
     return () => oyentes.delete(o);
 };
-const laDeTurno = (): Oferta | null => PRIORIDAD.find((o) => quieren.has(o)) ?? null;
+const laDeTurno = (): Oferta | null => (ocupan.size > 0 ? null : PRIORIDAD.find((o) => quieren.has(o)) ?? null);
+
+/**
+ * Mientras se enseña algo que ocupa la pantalla entera, no sale ninguna
+ * oferta encima: «¿Te avisamos?» salía sobre el libro de la descarga (lo vio
+ * Cristian). Sale cuando esa pantalla se va.
+ */
+export function useOcuparLaPantalla(ocupa: boolean): void {
+    useEffect(() => {
+        if (!ocupa) return;
+        const yo = Symbol('ocupa');
+        ocupan.add(yo);
+        avisar();
+        return () => {
+            ocupan.delete(yo);
+            avisar();
+        };
+    }, [ocupa]);
+}
 
 /** ¿Le toca salir a esta oferta? `quiere`: si ahora mismo tiene algo que ofrecer. */
 export function useTurnoDeOfrecer(oferta: Oferta, quiere: boolean): boolean {

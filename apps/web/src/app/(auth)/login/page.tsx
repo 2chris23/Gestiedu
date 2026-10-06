@@ -13,6 +13,8 @@ import { BookOpen, Eye, EyeOff, Fingerprint } from 'lucide-react';
 import { BACKEND_URL, getAssetUrl } from '@/config/env';
 import NotFound from '@/app/not-found';
 import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
+import { quitarLaCortina } from '@/lib/cortina-del-arranque';
+import { esconderElIconoDeArranque } from '@/lib/el-candado';
 import { abrirConLaHuella, guardarLaLlave, hayHuella, hayLlaveGuardada, olvidarLaLlave } from '@/lib/la-huella';
 
 const loginSchema = z.object({
@@ -71,9 +73,29 @@ export default function LoginPage() {
         }
 
         setDetectedSlug(slug);
-        setValidatingInstitute(true);
         setInstituteNotFound(false);
         setLogoError(false);
+
+        /**
+         * EL LICEO, YA SABIDO: sin esqueleto
+         *
+         * Al abrir la app se veía el esqueleto del login mientras se preguntaba
+         * el nombre y el logo del liceo (lo vio Cristian). Lo de la última vez
+         * se enseña al momento y se pone al día por detrás.
+         */
+        const llaveDelLiceo = `gestiedu:info-del-liceo:${slug}`;
+        let yaSabido: typeof instituteData = null;
+        try {
+            yaSabido = JSON.parse(localStorage.getItem(llaveDelLiceo) || 'null');
+        } catch {
+            yaSabido = null;
+        }
+        if (yaSabido?.name) {
+            setInstituteData(yaSabido);
+            setIsCheckingScope(false);
+        } else {
+            setValidatingInstitute(true);
+        }
 
         fetch(`/api/instituto/${encodeURIComponent(slug)}/info`)
             .then(async (res) => {
@@ -82,6 +104,11 @@ export default function LoginPage() {
                     const data = await res.json();
                     setInstituteData(data);
                     setInstituteNotFound(false);
+                    try {
+                        localStorage.setItem(llaveDelLiceo, JSON.stringify(data));
+                    } catch {
+                        /* sin almacenamiento: la próxima vez, con esqueleto */
+                    }
                 } else if (res.status === 404) {
                     setInstituteNotFound(true);
                     setInstituteData(null);
@@ -109,6 +136,15 @@ export default function LoginPage() {
             isMounted = false;
         };
     }, []);
+
+    // En la app, el icono de Android se queda hasta que el login está entero:
+    // nada de pantallas a medias por el camino (`ArranqueYCandado`).
+    const listo = !isCheckingScope && !validatingInstitute;
+    useEffect(() => {
+        if (!listo) return;
+        quitarLaCortina();
+        esconderElIconoDeArranque();
+    }, [listo]);
 
     // Al volver la conexión, se vuelve a intentar sola.
     useEffect(() => {

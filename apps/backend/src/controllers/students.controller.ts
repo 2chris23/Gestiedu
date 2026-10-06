@@ -833,6 +833,10 @@ export async function getDashboardStats(
     let activeSubjectsWithGrades = 0;
 
     const allSubjectIds = [...new Set([...assignedMap.keys(), ...subjectIdsWithNote])];
+    // Los lapsos del alumno, una vez y no una por materia (la misma consulta
+    // que haría `promedioDeLaMateria` en cada una): en la descarga del admin,
+    // 599 alumnos × 15 materias.
+    const lapsosDelAlumno = periodId ? undefined : await gradesService.lapsosDelAlumno(prisma as any, id);
     for (const subjectId of allSubjectIds) {
         const s = assignedMap.get(subjectId);
         const name = s?.name || 'N/A';
@@ -841,7 +845,7 @@ export async function getDashboardStats(
             ? (activeClassroom ? (await studentsWithNoteInSubject(prisma as any, activeClassroom.id, subjectId, periodId)).has(id) : false)
             : subjectIdsWithNote.has(subjectId);
         const average = hasNote
-            ? parseFloat((await gradesService.calculateWeightedSubjectAverage(prisma as any, id, subjectId, periodId)).toFixed(1))
+            ? parseFloat((await gradesService.calculateWeightedSubjectAverage(prisma as any, id, subjectId, periodId, lapsosDelAlumno)).toFixed(1))
             : 0;
         subjectAverages[subjectId] = { id: subjectId, average, name, color };
 

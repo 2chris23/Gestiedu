@@ -86,6 +86,17 @@ if (existsSync(join(WEB, 'static')) && existsSync(join(WEB, 'BUILD_ID'))) {
     console.warn('No hay web compilada (apps/web/.next): la APK sale sin la cáscara y la bajará por la red.');
 }
 
+// La de verdad, sin la llave del liceo, saldría sin firmar (Android no la
+// instala). La llave la crea el dueño y vive fuera del repositorio.
+if (FIRMADA && !existsSync(join(RAIZ, 'android', 'key.properties'))) {
+    console.error(
+        'Falta la llave de firma del liceo: apps/movil/android/key.properties (no va al repositorio).\n' +
+            'Cómo crearla: docs/APP-MOVIL.md, «La versión firmada».'
+    );
+    alFallar();
+    process.exit(1);
+}
+
 // 2. Compilar.
 correr('npx', ['cap', 'sync', 'android'], RAIZ);
 const gradlew = join(RAIZ, 'android', process.platform === 'win32' ? 'gradlew.bat' : 'gradlew');

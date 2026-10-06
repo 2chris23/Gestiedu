@@ -288,21 +288,33 @@ La llave de firma es **la identidad del liceo en Google Play**: quien la tenga
 puede publicar actualizaciones en su nombre. Se crea una vez y se guarda como se
 guarda una llave, no en el repositorio (ya está en `.gitignore`).
 
+**La de pruebas NO se reparte** (2026-10-06): va firmada con la llave de
+depuración de este PC y marcada «depurable» (`application-debuggable`):
+cualquiera con el teléfono y un cable puede mirar dentro de la app, y los
+antivirus la dan por riesgosa (el de un Transsion lo dijo). La que se reparte
+es `npm run publicar -- --firmada`: compila `release`, no depurable, y la firma
+con la llave del liceo (`build.gradle` la lee de `key.properties`; sin él,
+`publicar --firmada` se niega).
+
+La llave la crea el dueño, fuera del repositorio (por ejemplo en
+`C:\Users\Windows\Cristian\llaves\`), con el `keytool` del JDK:
+
 ```bash
-keytool -genkey -v -keystore gestiedu.keystore -alias gestiedu \
-        -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkey -v -keystore C:/Users/Windows/Cristian/llaves/gestiedu.keystore -alias gestiedu -keyalg RSA -keysize 2048 -validity 10000
 ```
 
 Luego, en `apps/movil/android/key.properties` (que tampoco se versiona):
 
 ```properties
-storeFile=../../gestiedu.keystore
+storeFile=C:/Users/Windows/Cristian/llaves/gestiedu.keystore
 storePassword=...
 keyAlias=gestiedu
 keyPassword=...
 ```
 
-y `npm run apk:firmada`.
+y `npm run publicar -- --firmada`. **Cambiar de la firma de pruebas a la de
+verdad obliga a desinstalar la app una vez** (Android no actualiza encima de
+otra firma); después, las actualizaciones siguen solas.
 
 > Si se pierde esa llave, Google Play **no deja publicar más actualizaciones**
 > de esa app: hay que subir una nueva y que todos la instalen otra vez. Se

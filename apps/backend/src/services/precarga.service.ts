@@ -424,13 +424,125 @@ export interface Plan {
     sinGrabar: string[];
 }
 
-function huella(texto: string): string {
+function huellaNumero(texto: string): number {
     let h = 2166136261;
     for (let i = 0; i < texto.length; i++) {
         h ^= texto.charCodeAt(i);
         h = Math.imul(h, 16777619);
     }
-    return (h >>> 0).toString(36);
+    return h >>> 0;
+}
+
+function huella(texto: string): string {
+    return huellaNumero(texto).toString(36);
+}
+
+/**
+ * LAS LECTURAS, BARAJADAS (siempre igual)
+ *
+ * Iban en el orden de las pantallas: primero lo grande (secciones, listas) y
+ * al final lo pequeño (600 fichas). El teléfono calcula lo que falta con lo
+ * que lleva, así que el total empezaba muy alto y bajaba solo: el amigo de
+ * Cristian vio 104,9 → 89,7 → 51,0 → 33,2 MB. Barajadas por su huella, cada
+ * bloque se parece a todos —el cálculo acierta desde el primero— y el orden
+ * es el mismo cada vez (la versión del plan y el reanudar no cambian).
+ */
+function barajar(lecturas: string[]): string[] {
+    return lecturas
+        .map((l) => [huellaNumero(l), l] as const)
+        .sort((a, b) => a[0] - b[0] || (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0))
+        .map(([, l]) => l);
+}
+
+// ── Lo que pesa cada tipo de lectura (para el «X de Y MB») ──────────────────
+
+/**
+ * Un trozo de la dirección que cambia de una lectura a otra (un id, un slug
+ * con números, una fecha): se cambia por `:x` para agrupar por tipo.
+ */
+const TROZO_VARIABLE = /^(?=[A-Za-z0-9_.-]*\d)[A-Za-z0-9_.-]{4,}$|^\d+$/;
+
+/** `/students/est0575/boleta?lapso=2` → `/students/:x/boleta?lapso` */
+export function formaDeLaLectura(lectura: string): string {
+    const [camino, query = ''] = lectura.split('?');
+    const trozos = camino.split('/').map((t) => {
+        let limpio = t;
+        try {
+            limpio = decodeURIComponent(t);
+        } catch {
+            /* tal cual */
+        }
+        return t && TROZO_VARIABLE.test(limpio) ? ':x' : t;
+    });
+    const claves = [...new Set(new URLSearchParams(query).keys())].sort();
+    return trozos.join('/') + (claves.length ? `?${claves.join('&')}` : '');
+}
+
+/**
+ * LO APRENDIDO: liceo → tipo de lectura → cuánto pesa de media.
+ *
+ * Cada bloque que se entrega enseña cuánto pesó cada lectura; con eso el plan
+ * siguiente dice cuánto pesará cada bloque antes de bajar nada, y el total
+ * que ve la persona no baila. Es solo un cálculo: si el proceso se reinicia,
+ * se vuelve a aprender con la primera descarga. La llave es el liceo
+ * (MEZCLA-08): lo de un liceo no estima lo de otro.
+ */
+const PESOS = new Map<string, Map<string, { n: number; media: number }>>();
+const MAX_LICEOS_CON_PESOS = 300;
+const MAX_TIPOS_POR_LICEO = 3000;
+
+export function apuntarLoQuePesa(liceo: string, lectura: string, bytes: number): void {
+    if (!liceo || !Number.isFinite(bytes)) return;
+    let delLiceo = PESOS.get(liceo);
+    if (!delLiceo) {
+        if (PESOS.size >= MAX_LICEOS_CON_PESOS) PESOS.delete(PESOS.keys().next().value as string);
+        delLiceo = new Map();
+        PESOS.set(liceo, delLiceo);
+    }
+    const forma = formaDeLaLectura(lectura);
+    const antes = delLiceo.get(forma);
+    if (!antes) {
+        if (delLiceo.size >= MAX_TIPOS_POR_LICEO) return;
+        delLiceo.set(forma, { n: 1, media: bytes });
+        return;
+    }
+    // Media que sigue a los datos (pesa lo último), sin olvidar de golpe.
+    const n = Math.min(antes.n + 1, 200);
+    antes.media += (bytes - antes.media) / n;
+    antes.n = n;
+}
+
+/**
+ * Cuánto pesará cada bloque del plan, con lo aprendido; `null` si este liceo
+ * aún no ha bajado nada. Un tipo nunca visto vale la media del liceo.
+ */
+export function loQuePesaraCadaBloque(liceo: string, lecturas: string[], porBloque: number): { porBloque: number[]; conocidas: number } | null {
+    const delLiceo = PESOS.get(liceo);
+    if (!delLiceo || delLiceo.size === 0) return null;
+    let suma = 0;
+    let cuantas = 0;
+    for (const { n, media } of delLiceo.values()) {
+        suma += n * media;
+        cuantas += n;
+    }
+    const mediaDelLiceo = cuantas ? suma / cuantas : 0;
+    const salida: number[] = [];
+    let conocidas = 0;
+    for (let i = 0; i < lecturas.length; i += porBloque) {
+        let bloque = 0;
+        for (const l of lecturas.slice(i, i + porBloque)) {
+            const peso = delLiceo.get(formaDeLaLectura(l));
+            if (peso) conocidas++;
+            bloque += peso ? peso.media : mediaDelLiceo;
+        }
+        salida.push(Math.round(bloque));
+    }
+    return { porBloque: salida, conocidas };
+}
+
+/** Para las pruebas. */
+export function olvidarLoQuePesa(): void {
+    PESOS.clear();
 }
 
 /**
@@ -466,10 +578,11 @@ export function elPlanDeLasPantallas(pantallas: Pantalla[], rol: string): Plan {
             }
         }
     }
+    const barajadas = barajar(lecturas);
     return {
-        version: `${moldes.version}-${huella(lecturas.join('\n'))}`,
+        version: `${moldes.version}-${huella(barajadas.join('\n'))}`,
         paginas,
-        lecturas,
+        lecturas: barajadas,
         sinGrabar: [...sinGrabar],
     };
 }

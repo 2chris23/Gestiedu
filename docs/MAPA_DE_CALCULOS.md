@@ -271,6 +271,15 @@ liceo (`academicConfig`, `reglas-del-fin-de-ano.ts`); lo del MPPE es el valor po
 
 Pruebas: CIERRE-01…10, academic-close 1…9, CIERRE-UI-01/02; la pendiente: PEND-01…08, PEND-UI-01 (`materias-pendientes.service.ts`).
 
+**La definitiva, en bloque (2026-10-06).** `prepareClose` ya no pide el promedio alumno por
+alumno, materia por materia y lapso por lapso (`promedioDeLaMateria`: unas 18.000 cuentas con
+600 alumnos, 47 s en frío). Saca el de cada lapso por sección con `bulkSubjectAveragesConDatos`
+(las mismas reglas: niveles 0-2, notas traídas, alumnos que cambiaron de sección) y aplica la
+misma definitiva: cada lapso con notas redondeado según `redondeoDeDefinitivas`, su media a dos
+decimales y otra vez el redondeo (`definitivaDeLaMateria`). **Ninguna regla cambia.** Paridad
+medida con los datos del instituto de pruebas: 0 diferencias en 8.985 materias de 599 alumnos;
+1,8 s en vez de 61 s. Sin lapsos en el año, la cuenta de siempre.
+
 ---
 
 ## 8d. La labor social (horas comunitarias)

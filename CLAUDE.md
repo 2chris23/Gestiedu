@@ -938,21 +938,43 @@ seguir (solo «Cerrar sesión»), y sigue sola donde quedó (decidido por Cristi
   `precarga` NO son cambios (si no, bucle). Una vez al día, la pasada entera de
   fondo (lo nuevo, como un alumno nuevo, llega ahí). CAMBIOS-01…05.
 - PRECARGA-01…06 (navegador) miden por rol el tiempo y los MB. PRECARGA-07: la primera vez el libro sale ANTES que el esqueleto del Inicio (lo decide lo guardado en el teléfono, no esperar al servidor).
+- **Lo que tarda es preparar, no la red** (medido 2026-10-06, admin, 9.513
+  lecturas): 34 MB guardados viajan comprimidos en ~2,2 MB. En frío tardaba
+  153 s en el servidor: 101 s eran el cierre del año (`prepareClose`, ahora en
+  bloque) y casi todo lo demás, promedios alumno por alumno. Ahora: el plan
+  **precalienta los promedios del año en bloque** (`precalentar-promedios.service.ts`,
+  misma llave que `promedioDelLapso`; paridad 26.955/26.955) y el teléfono pide
+  **3 bloques a la vez** y guarda cada bloque **en una sola transacción**
+  (antes abría la base 9.500 veces): 47 s en frío. Un alumno o un representante,
+  segundos.
+- **El total no baila**: las lecturas van **barajadas** por su huella (el plan
+  empezaba por lo grande: 104,9 → 33,2 MB) y el servidor **aprende cuánto pesa
+  cada tipo de lectura** en cada liceo y lo dice por bloque (`estimadoPorBloque`,
+  PAQUETE-06). El % va por lecturas, exacto. Debajo, el ritmo y **los datos de
+  internet de verdad** (`encodedBodySize`; con la API en otro origen, el bloque
+  manda `Timing-Allow-Origin`).
+- **El libro, una sola hoja** que pasa siempre por encima (con cuatro en bucle,
+  la de abajo caía bajo la de la izquierda y «desaparecía»).
 
 ## El arranque y el candado (octubre 2026)
 
-Al abrir la APK: el icono → el libro → el logo del liceo → **la pantalla de
-bloqueo** si hay sesión (como Zinli o el banco), o el login. «Ingresar» pide la
-huella o el bloqueo del teléfono; sin bloqueo, un **PIN de 4 de la app** que
-crea la persona una vez y **solo un admin** cambia o resetea desde la ficha
-(PIN-01…07). Al volver a la app pasado el tiempo de «Mi cuenta» (1 min por
-defecto), otra vez. **Antes del libro no se ve nada**: la página llega pintada
-del servidor y el libro sale cuando arranca React, así que en la app un guion
-del `<head>` pone una cortina (`lib/cortina-del-arranque.ts`, `data-arrancando`)
-que quita el candado al pintar; sin ella se veía el esqueleto del Inicio 2–3 s
-(BLOQUEO-UI-07). Es la puerta de la casa; la caja fuerte sigue siendo el
-servidor. Código en `components/arranque/`, `lib/el-candado.ts`,
-`lib/pin-de-la-app.ts`; BLOQUEO-UI-01…05.
+Al abrir la APK: el icono → con sesión, el logo del liceo y **la pantalla de
+bloqueo** (como Zinli o el banco); sin sesión, **el login, ya entero** (el
+icono de Android se queda hasta que el login tiene su liceo, y el liceo de la
+última vez se recuerda: ni libro, ni «Gestiedu», ni esqueleto; BLOQUEO-UI-08).
+**El libro es solo la descarga de la primera vez**, después de entrar
+(decidido por Cristian). «Ingresar» pide la huella o el bloqueo del teléfono;
+sin bloqueo, un **PIN de 4 de la app** que crea la persona una vez y **solo un
+admin** cambia o resetea desde la ficha (PIN-01…07). Al volver a la app pasado
+el tiempo de «Mi cuenta» (1 min por defecto), otra vez. **Antes de pintar no se
+ve nada**: la página llega pintada del servidor y el candado sale cuando arranca
+React, así que en la app un guion del `<head>` pone una cortina
+(`lib/cortina-del-arranque.ts`, `data-arrancando`) que quitan el candado o el
+login; sin ella se veía el esqueleto del Inicio 2–3 s (BLOQUEO-UI-07). Mientras
+la descarga, el logo o el bloqueo ocupan la pantalla, **ninguna oferta sale
+encima** (`useOcuparLaPantalla`, `lib/turno-de-ofrecer.ts`). Es la puerta de la
+casa; la caja fuerte sigue siendo el servidor. Código en `components/arranque/`,
+`lib/el-candado.ts`, `lib/pin-de-la-app.ts`; BLOQUEO-UI-01…08.
 
 ## Probar desde cualquier teléfono: el túnel
 

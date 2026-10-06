@@ -524,7 +524,16 @@ self.addEventListener('message', (evento) => {
     } else if (mensaje.tipo === 'olvidar-paginas') {
         evento.waitUntil(olvidarLasPaginas().catch(() => {}));
     } else if (mensaje.tipo === 'mirar-version') {
-        evento.waitUntil(mirarLaVersion().catch(() => {}));
+        // Con `respuesta` (la precarga) se avisa al acabar: la descarga de la
+        // primera vez no se da por hecha hasta tener la cáscara entera.
+        const respuesta = evento.ports && evento.ports[0];
+        evento.waitUntil(
+            mirarLaVersion()
+                .catch(() => {})
+                .then(() => {
+                    if (respuesta) respuesta.postMessage({ listo: true });
+                })
+        );
     }
 });
 

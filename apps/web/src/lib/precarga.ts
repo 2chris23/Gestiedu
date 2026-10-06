@@ -1,8 +1,8 @@
 import api from '@/lib/axios';
 import { esLaApp } from '@/lib/el-candado';
 import { conAzar } from '@/lib/azar';
-import { ESTADO_GUARDADO, guardarRespuesta } from '@/lib/respuestas-guardadas';
-import { guardarEstasPaginasYEsperar, mirarLaVersionDeLaApp } from '@/lib/paginas-guardadas';
+import { ESTADO_GUARDADO, guardarRespuestas } from '@/lib/respuestas-guardadas';
+import { guardarEstasPaginasYEsperar, mirarLaVersionDeLaAppYEsperar } from '@/lib/paginas-guardadas';
 
 /**
  * LA PRECARGA: SIN CONEXIÓN, TODO — EN UN PAQUETE (octubre 2026)
@@ -37,6 +37,16 @@ export interface Avance {
     bytesTotales: number | null;
     bloquesHechos: number;
     bloques: number;
+    /**
+     * El avance de verdad (el % y la barra): lecturas hechas de las del plan.
+     * Se sabe exacto desde el principio; los MB, no.
+     */
+    lecturasHechas: number;
+    lecturasTotales: number;
+    /** Lo que de verdad pasó por internet (va comprimido: unas 15-30 veces menos). 0 si no se sabe. */
+    bytesPorLaRed: number;
+    /** A qué ritmo se está bajando (bytes de lo guardado por segundo), en los últimos segundos. */
+    velocidad: number | null;
 }
 
 interface Plan {
@@ -46,6 +56,8 @@ interface Plan {
     paginas: string[];
     lecturas: string[];
     porBloque: number;
+    /** Lo que pesará cada bloque según lo aprendido en el servidor (null si aún no sabe). */
+    estimadoPorBloque?: number[] | null;
 }
 
 // ── Lo ya hecho, para reanudar ─────────────────────────────────────────────
@@ -155,11 +167,20 @@ function esDeEsperar(e: unknown): boolean {
  * que algo no se descargó.
  */
 async function apuntarLosFallos(dueno: string, fallos: Record<string, number> | undefined, otraVez: string[]) {
+    const negadas: Array<[string, unknown]> = [];
     for (const [clave, codigo] of Object.entries(fallos ?? {})) {
         if (codigo === 429 || codigo >= 500) otraVez.push(clave);
-        else if (codigo >= 400) await guardarRespuesta(dueno, clave, { [ESTADO_GUARDADO]: codigo });
+        else if (codigo >= 400) negadas.push([clave, { [ESTADO_GUARDADO]: codigo }]);
     }
+    await guardarRespuestas(dueno, negadas);
 }
+
+/**
+ * Bloques a la vez. El servidor tarda más en preparar un bloque (~1 s) que la
+ * red en traerlo (va comprimido: 1,1 MB son ~35 KB); de uno en uno, el
+ * teléfono pasaba la mayor parte del tiempo esperando.
+ */
+const BLOQUES_A_LA_VEZ = 3;
 
 export interface Opciones {
     dueno: string;
@@ -174,6 +195,39 @@ export interface Opciones {
  * `listo`, o en `cancelada` (se cerró la sesión o la pantalla).
  */
 export async function bajarTodo(o: Opciones): Promise<'listo' | 'cancelada'> {
+    const red = midiendoLaRed();
+    try {
+        return await bajarTodoMidiendo(o, red);
+    } finally {
+        red.parar();
+    }
+}
+
+/**
+ * CUÁNTO PASA DE VERDAD POR INTERNET
+ *
+ * Lo que se guarda en el teléfono (los «MB» de la descarga) viaja comprimido:
+ * 34 MB del admin son unos 2 MB de datos. El navegador lo dice por cada
+ * respuesta (`encodedBodySize`); se suma lo de la precarga. Si no lo dice
+ * (otro origen sin `Timing-Allow-Origin`), queda en 0 y no se enseña.
+ */
+function midiendoLaRed(): { bytes: () => number; parar: () => void } {
+    let bytes = 0;
+    let observador: PerformanceObserver | null = null;
+    try {
+        observador = new PerformanceObserver((lista) => {
+            for (const e of lista.getEntries() as PerformanceResourceTiming[]) {
+                if (e.name.includes('/precarga/')) bytes += e.encodedBodySize || 0;
+            }
+        });
+        observador.observe({ type: 'resource', buffered: false });
+    } catch {
+        observador = null;
+    }
+    return { bytes: () => bytes, parar: () => observador?.disconnect() };
+}
+
+async function bajarTodoMidiendo(o: Opciones, red: { bytes: () => number }): Promise<'listo' | 'cancelada'> {
     const avisar = (a: Avance) => o.alAvanzar?.(a);
     const hecho = leerHecho(o.dueno);
     let intento = 0;
@@ -197,10 +251,22 @@ export async function bajarTodo(o: Opciones): Promise<'listo' | 'cancelada'> {
         }
     }
 
-    const vacio: Avance = { fase: 'empezando', bytes: hecho.bytes, bytesTotales: null, bloquesHechos: 0, bloques: 0 };
+    const vacio: Avance = {
+        fase: 'empezando',
+        bytes: hecho.bytes,
+        bytesTotales: null,
+        bloquesHechos: 0,
+        bloques: 0,
+        lecturasHechas: 0,
+        lecturasTotales: 0,
+        bytesPorLaRed: 0,
+        velocidad: null,
+    };
     avisar(vacio);
     // La cáscara de la app (en la APK ya va dentro; en el navegador, se baja).
-    mirarLaVersionDeLaApp();
+    // Se pide ya y se espera al final: sin ella entera, sin conexión algunas
+    // partes de la app no abrirían.
+    const laCascara = mirarLaVersionDeLaAppYEsperar();
 
     const plan = await hastaQueSalga(async () => (await api.post('/precarga/plan', { menu: o.menu })).data as Plan, () => vacio);
     if (plan === 'cancelada') return 'cancelada';
@@ -220,44 +286,102 @@ export async function bajarTodo(o: Opciones): Promise<'listo' | 'cancelada'> {
     const hechos = new Set(hecho.hechos);
     let lecturasBajadas = 0;
     let bytesDeLoBajado = 0;
+    // Lo que el servidor calcula que pesará cada bloque (lo aprendió de otras
+    // descargas de este liceo). Sin eso, la media de lo que se lleva.
+    const estimados =
+        Array.isArray(plan.estimadoPorBloque) && plan.estimadoPorBloque.length === bloques.length ? plan.estimadoPorBloque : null;
 
+    /**
+     * EL TOTAL QUE SE ENSEÑA: lo bajado + lo que se calcula que falta.
+     *
+     * Antes era «media de lo bajado × lo que falta», y como lo primero era lo
+     * más grande, el total empezaba en 104,9 MB y acababa en 33,2 (lo vio el
+     * amigo de Cristian). Ahora las lecturas van barajadas (cada bloque se
+     * parece a todos) y, si el servidor ya sabe cuánto pesa cada tipo de
+     * lectura en este liceo, lo dice por bloque; lo que se desvíe se corrige
+     * con lo que va llegando. El % y la barra van por lecturas: exactos.
+     */
     const avanceAhora = (fase: Fase = 'bajando'): Avance => {
-        const pendientes = bloques.reduce((n, b, i) => n + (hechos.has(i) ? 0 : b.length), 0);
+        let lecturasHechas = 0;
+        let porEstimar = 0;
+        let estimadoQueFalta = 0;
+        let estimadoDeLoHecho = 0;
+        bloques.forEach((b, i) => {
+            if (hechos.has(i)) {
+                lecturasHechas += b.length;
+                if (estimados) estimadoDeLoHecho += estimados[i];
+            } else if (estimados) estimadoQueFalta += estimados[i];
+            else porEstimar += b.length;
+        });
+        // Si lo de verdad pesa distinto de lo aprendido, se corrige (con
+        // calma: solo con unos cuantos bloques hechos, y como mucho ×2).
+        const correccion =
+            estimados && hechos.size >= 3 && estimadoDeLoHecho > 0 ? Math.min(2, Math.max(0.5, hecho.bytes / estimadoDeLoHecho)) : 1;
         const porLectura = lecturasBajadas ? bytesDeLoBajado / lecturasBajadas : BYTES_POR_LECTURA_AL_EMPEZAR;
         return {
             fase,
             bytes: hecho.bytes,
-            bytesTotales: Math.round(hecho.bytes + pendientes * porLectura),
+            bytesTotales: Math.max(hecho.bytes, Math.round(hecho.bytes + estimadoQueFalta * correccion + porEstimar * porLectura)),
             bloquesHechos: hechos.size,
             bloques: bloques.length,
+            lecturasHechas,
+            lecturasTotales: plan.lecturas.length,
+            bytesPorLaRed: red.bytes(),
+            velocidad: elRitmo(),
         };
+    };
+
+    // El ritmo: lo guardado en los últimos ~5 s (con la media de toda la
+    // descarga mientras no haya bastante).
+    const muestras: Array<[number, number]> = [];
+    const empezo = performance.now();
+    const apuntarRitmo = () => {
+        const ahora = performance.now();
+        muestras.push([ahora, bytesDeLoBajado]);
+        while (muestras.length > 2 && ahora - muestras[0][0] > 5000) muestras.shift();
+    };
+    const elRitmo = (): number | null => {
+        const segundos = (performance.now() - empezo) / 1000;
+        if (bytesDeLoBajado === 0 || segundos < 1) return null;
+        if (muestras.length >= 2) {
+            const [t0, b0] = muestras[0];
+            const [t1, b1] = muestras[muestras.length - 1];
+            if (t1 - t0 >= 1500) return ((b1 - b0) * 1000) / (t1 - t0);
+        }
+        return bytesDeLoBajado / segundos;
     };
     avisar(avanceAhora());
 
     // Lo que el servidor no pudo dar en el momento (estaba ocupado): al final, otra vez.
     const otraVez: string[] = [];
 
-    for (let i = 0; i < bloques.length; i++) {
-        if (hechos.has(i)) continue;
-        const r = await hastaQueSalga(
-            async () => (await api.post('/precarga/bloque', { lecturas: bloques[i] })).data as { datos: Record<string, unknown>; fallos: Record<string, number> },
-            () => avanceAhora()
-        );
-        if (r === 'cancelada') return 'cancelada';
-        let bytes = 0;
-        for (const [clave, datos] of Object.entries(r.datos ?? {})) {
-            bytes += JSON.stringify(datos)?.length ?? 0;
-            await guardarRespuesta(o.dueno, clave, datos);
+    const porBajar = bloques.map((_, i) => i).filter((i) => !hechos.has(i));
+    let seCancelo = false;
+    const trabajador = async () => {
+        while (!seCancelo && porBajar.length) {
+            const i = porBajar.shift()!;
+            const r = await hastaQueSalga(
+                async () => (await api.post('/precarga/bloque', { lecturas: bloques[i] })).data as { datos: Record<string, unknown>; fallos: Record<string, number> },
+                () => avanceAhora()
+            );
+            if (r === 'cancelada') {
+                seCancelo = true;
+                return;
+            }
+            const bytes = await guardarRespuestas(o.dueno, Object.entries(r.datos ?? {}));
+            await apuntarLosFallos(o.dueno, r.fallos, otraVez);
+            lecturasBajadas += bloques[i].length;
+            bytesDeLoBajado += bytes;
+            apuntarRitmo();
+            hecho.bytes += bytes;
+            hechos.add(i);
+            hecho.hechos = [...hechos];
+            escribirHecho(hecho);
+            avisar(avanceAhora());
         }
-        await apuntarLosFallos(o.dueno, r.fallos, otraVez);
-        lecturasBajadas += bloques[i].length;
-        bytesDeLoBajado += bytes;
-        hecho.bytes += bytes;
-        hechos.add(i);
-        hecho.hechos = [...hechos];
-        escribirHecho(hecho);
-        avisar(avanceAhora());
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(BLOQUES_A_LA_VEZ, porBajar.length) }, trabajador));
+    if (seCancelo) return 'cancelada';
 
     // TODAS, de bloque en bloque, hasta cinco vueltas y cada vez con más calma:
     // con el servidor cargado, a veces una sección entera quedaba fuera (solo
@@ -275,7 +399,7 @@ export async function bajarTodo(o: Opciones): Promise<'listo' | 'cancelada'> {
                 () => avanceAhora()
             );
             if (r === 'cancelada') return 'cancelada';
-            for (const [clave, datos] of Object.entries(r.datos ?? {})) await guardarRespuesta(o.dueno, clave, datos);
+            await guardarRespuestas(o.dueno, Object.entries(r.datos ?? {}));
             await apuntarLosFallos(o.dueno, r.fallos, otraVez);
         }
     }
@@ -283,6 +407,7 @@ export async function bajarTodo(o: Opciones): Promise<'listo' | 'cancelada'> {
     // Las páginas (una por tipo de pantalla), que guarda el ayudante.
     avisar(avanceAhora('paginas'));
     await guardarEstasPaginasYEsperar(plan.paginas);
+    await laCascara;
 
     hecho.completa = true;
     hecho.cuando = Date.now();
@@ -313,7 +438,7 @@ export async function ponerseAlDia(dueno: string, menu: string[], hayConexion: (
         for (let i = 0; i < r.lecturas.length; i += porBloque) {
             if (!hayConexion()) return 'sin-conexion';
             const { data: b } = await api.post('/precarga/bloque', { lecturas: r.lecturas.slice(i, i + porBloque) });
-            for (const [clave, datos] of Object.entries((b?.datos ?? {}) as Record<string, unknown>)) await guardarRespuesta(dueno, clave, datos);
+            await guardarRespuestas(dueno, Object.entries((b?.datos ?? {}) as Record<string, unknown>));
             await apuntarLosFallos(dueno, b?.fallos, []);
         }
         apuntarLaMarca(dueno, r.marca);

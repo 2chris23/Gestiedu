@@ -17,20 +17,23 @@ import {
     estaVerificando,
     hayQuePedir,
 } from '@/lib/el-candado';
-import { LibroQueSeAbre } from '@/components/arranque/LibroQueSeAbre';
 import { PantallaDeBloqueo } from '@/components/arranque/PantallaDeBloqueo';
 import { quitarLaCortina } from '@/lib/cortina-del-arranque';
+import { useOcuparLaPantalla } from '@/lib/turno-de-ofrecer';
 
 /**
  * EL ARRANQUE Y EL CANDADO DE LA APP (octubre 2026, pedido por Cristian)
  *
- * Al abrir la app: el icono de Android (lo deja puesto `SplashScreen` hasta
- * que esto pinta), el libro que se abre, el logo del liceo y luego:
+ * Al abrir la app, el icono de Android (lo deja puesto `SplashScreen`) y luego:
  *
- *   · si en este teléfono hay alguien con la sesión abierta, la pantalla de
- *     bloqueo (`PantallaDeBloqueo`): «Ingresar» con la huella o el bloqueo
- *     del teléfono, o «Cerrar sesión»;
- *   · si no, el login de siempre.
+ *   · si en este teléfono hay alguien con la sesión abierta, el logo del
+ *     liceo y la pantalla de bloqueo (`PantallaDeBloqueo`): «Ingresar» con la
+ *     huella o el bloqueo del teléfono, o «Cerrar sesión»;
+ *   · si no, el login de siempre, ya entero: el icono se quita cuando el
+ *     login tiene su liceo (sin esqueleto por el camino).
+ *
+ * El libro NO sale al abrir (decidido por Cristian): es solo la descarga de
+ * la primera vez, después de entrar (`PrecargaAlEntrar`).
  *
  * Y al volver a la app pasado el tiempo elegido (1 min por defecto, «Mi
  * cuenta»), otra vez el bloqueo. Al irse, una cortina con el logo, para que
@@ -65,7 +68,14 @@ export function ArranqueYCandado() {
     return <ElCandado />;
 }
 
-type Fase = 'libro' | 'logo' | 'bloqueo' | 'cortina' | 'libre';
+/**
+ * `arrancando`: aún no se sabe si hay alguien (nada a la vista; en la APK sigue
+ * el icono de Android encima). Ya NO hay libro al abrir: el libro es solo la
+ * descarga de la primera vez (`PrecargaAlEntrar`). Cristian vio el libro, luego
+ * «Gestiedu», luego el esqueleto del login y luego el login: sin nadie dentro,
+ * ahora va directo al login, y el icono se quita cuando el login está entero.
+ */
+type Fase = 'arrancando' | 'logo' | 'bloqueo' | 'cortina' | 'libre';
 
 function yaArranco(): boolean {
     try {
@@ -78,7 +88,7 @@ function yaArranco(): boolean {
 function ElCandado() {
     const user = useAuthStore((s) => s.user);
     const isHydrated = useAuthStore((s) => s.isHydrated);
-    const [fase, setFase] = React.useState<Fase>(() => (yaArranco() ? 'cortina' : 'libro'));
+    const [fase, setFase] = React.useState<Fase>(() => (yaArranco() ? 'cortina' : 'arrancando'));
     const [perfil, setPerfil] = React.useState<PerfilRecordado | null>(null);
     const hayAlguien = Boolean(user?.id);
 
@@ -108,26 +118,38 @@ function ElCandado() {
         setFase(hayQuePedir() ? 'bloqueo' : 'libre');
     }, []);
 
-    // El arranque: libro (~1,4 s) → logo (~0,8 s) → decidir.
+    // El arranque: con alguien dentro, el logo (~0,8 s) y el bloqueo; sin
+    // nadie, el login (que quita el icono cuando está entero).
     React.useEffect(() => {
         if (!isHydrated) return;
-        esconderElIconoDeArranque();
         if (fase === 'cortina') {
+            esconderElIconoDeArranque();
             decidir();
             return;
         }
-        if (fase !== 'libro') return;
-        const a = window.setTimeout(() => setFase('logo'), 1400);
-        return () => window.clearTimeout(a);
-    }, [fase, isHydrated, decidir]);
-
-    React.useEffect(() => {
-        if (fase !== 'logo') return;
+        if (fase !== 'arrancando') return;
         try {
             sessionStorage.setItem(LLAVE_ARRANCO, '1');
         } catch {
             /* nada */
         }
+        if (useAuthStore.getState().user?.id) {
+            esconderElIconoDeArranque();
+            setFase('logo');
+            return;
+        }
+        setFase('libre');
+        // Por si el login no llega a decir que está listo (otra pantalla, un
+        // fallo): nunca se queda tapado.
+        const porSiAcaso = window.setTimeout(() => {
+            quitarLaCortina();
+            esconderElIconoDeArranque();
+        }, 6000);
+        return () => window.clearTimeout(porSiAcaso);
+    }, [fase, isHydrated, decidir]);
+
+    React.useEffect(() => {
+        if (fase !== 'logo') return;
         const t = window.setTimeout(decidir, 800);
         return () => window.clearTimeout(t);
     }, [fase, decidir]);
@@ -170,12 +192,17 @@ function ElCandado() {
 
     // Lo de detrás, sin poder tocarse ni leerse mientras hay algo encima.
     const tapa = fase !== 'libre';
+    // Y ninguna oferta encima del libro, el logo o el bloqueo.
+    useOcuparLaPantalla(tapa);
 
-    // Ya está pintado el libro (o no hay nada que tapar): fuera la cortina
-    // de antes de pintar (`lib/cortina-del-arranque.ts`).
+    // Fuera la cortina de antes de pintar (`lib/cortina-del-arranque.ts`) en
+    // cuanto hay algo nuestro encima (logo, bloqueo) o la app con alguien
+    // dentro. Sin nadie, la quita el login cuando está entero (sin esqueleto).
     React.useEffect(() => {
+        if (fase === 'arrancando') return;
+        if (fase === 'libre' && !useAuthStore.getState().user?.id) return;
         quitarLaCortina();
-    }, []);
+    }, [fase]);
     React.useEffect(() => {
         if (!tapa) return;
         const otros = Array.from(document.body.children).filter((e) => !(e as HTMLElement).dataset.capaDelCandado);
@@ -203,9 +230,7 @@ function ElCandado() {
                 <PantallaDeBloqueo perfil={perfil} alAbrir={abrir} />
             ) : (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-gray-50 px-6">
-                    {fase === 'libro' ? (
-                        <LibroQueSeAbre titulo="Abriendo tu liceo…" avance={null} />
-                    ) : perfil?.logo ? (
+                    {fase === 'arrancando' ? null : perfil?.logo ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={perfil.logo} alt={perfil.nombreDelLiceo ?? 'Logo del liceo'} className="h-28 w-auto max-w-[240px] object-contain motion-safe:animate-aparecer" />
                     ) : (

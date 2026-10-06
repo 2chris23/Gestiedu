@@ -74,6 +74,20 @@
         "tunel"
       ],
       "port": 3100
+    },
+    {
+      "name": "web-compilada-3000",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "--prefix",
+        "apps/web",
+        "next",
+        "start",
+        "apps/web",
+        "-p",
+        "3000"
+      ],
+      "port": 3000
     }
   ]
 }

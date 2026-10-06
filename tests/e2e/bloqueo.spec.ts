@@ -17,7 +17,8 @@ import { loginViaUI, loginApi, API_BASE, TENANT_SLUG, queryTenantDb } from './he
  *   BLOQUEO-UI-04  sin bloqueo en el teléfono: el PIN de la app (crear, fallar, acertar);
  *   BLOQUEO-UI-05  «Cerrar sesión» desde el bloqueo lleva al login y olvida a quién enseñaba;
  *   BLOQUEO-UI-06  con un Capacitor como el de la APK (sus addListener no son promesas), la app no se cae;
- *   BLOQUEO-UI-07  al abrir, el esqueleto del Inicio no se ve antes del libro (la cortina de antes de pintar).
+ *   BLOQUEO-UI-07  al abrir, el esqueleto del Inicio no se ve antes del libro (la cortina de antes de pintar);
+ *   BLOQUEO-UI-08  sin nadie dentro, ni libro ni esqueleto: el login, ya entero.
  */
 
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -206,5 +207,33 @@ test.describe('La pantalla de bloqueo', () => {
         // Y en cuanto arranca, el libro y luego el bloqueo: nunca el Inicio a medias.
         await expect(bloqueo(otra)).toBeVisible({ timeout: 30000 });
         expect(await otra.evaluate(() => document.documentElement.hasAttribute('data-arrancando'))).toBe(false);
+    });
+
+    test('BLOQUEO-UI-08: sin nadie dentro, al abrir no sale el libro ni un esqueleto: el login, ya entero', async ({ context }) => {
+        // Lo vio Cristian: libro → «Gestiedu» → esqueleto del login → login.
+        // Ahora el libro es solo la descarga de después de entrar, y el login
+        // sale cuando ya tiene su liceo (en la APK, el icono de Android tapa la espera).
+        await conHuellaDeMentira(context, 'si');
+        const page = await context.newPage();
+        const fases: string[] = [];
+        await page.exposeFunction('apuntarFase', (f: string) => fases.push(f));
+        await page.addInitScript(() => {
+            new MutationObserver(() => {
+                const f = document.querySelector('[data-candado]')?.getAttribute('data-candado');
+                if (f) (window as any).apuntarFase(f);
+            }).observe(document, { subtree: true, childList: true, attributes: true });
+        });
+        // El liceo tarda en contestar: mientras, nada a la vista.
+        await page.route('**/api/instituto/*/info', async (ruta) => {
+            await new Promise((r) => setTimeout(r, 2500));
+            await ruta.continue();
+        });
+        await page.goto('/login?slug=instituto-testing', { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(1200);
+        expect(await page.evaluate(() => document.documentElement.hasAttribute('data-arrancando'))).toBe(true);
+        await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 20000 });
+        expect(await page.evaluate(() => document.documentElement.hasAttribute('data-arrancando'))).toBe(false);
+        expect(fases.filter((f) => f === 'libro' || f === 'logo')).toEqual([]);
+        await expect(page.locator('.libro')).toHaveCount(0);
     });
 });

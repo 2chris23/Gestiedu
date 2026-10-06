@@ -201,5 +201,10 @@ test.describe('Precarga: sin conexión, todo', () => {
         });
         await loginViaUI(page, 'est0575@testing.edu.ve');
         await expect(page.locator('[data-precarga]')).toBeVisible({ timeout: 1500 });
+        // Una sola hoja que pasa, siempre encima: con cuatro en bucle, la de
+        // abajo caía bajo la que ya estaba a la izquierda y desaparecía.
+        await expect(page.locator('[data-precarga] .libro-hoja')).toHaveCount(1);
+        // Ninguna oferta («¿Te avisamos?») encima del libro.
+        await expect(page.getByRole('region', { name: /Avisos en el teléfono|Descarga la app|Recorrido/ })).toHaveCount(0);
     });
 });

@@ -11,10 +11,13 @@
 export function LibroQueSeAbre({
     titulo,
     detalle,
+    nota,
     avance,
 }: {
     titulo: string;
     detalle?: string | null;
+    /** Una línea más pequeña debajo (lo que pasó de verdad por internet). */
+    nota?: string | null;
     /** De 0 a 1; `null` mientras no se sabe cuánto hay. */
     avance: number | null;
 }) {
@@ -48,19 +51,27 @@ export function LibroQueSeAbre({
                             <Renglones />
                         </div>
                     </div>
-                    <div className="absolute inset-0">
-                        {[0, 1, 2, 3].map((i) => (
-                            <div
-                                key={i}
-                                className="libro-hoja absolute inset-0 rounded-r-[10px] bg-[#FBFCFF] ring-1 ring-[#D6E2F5]"
-                                // Tras abrirse la tapa, una hoja cada 0,6 s: pasa de la
-                                // derecha a la izquierda y SE QUEDA ahí, encima de la
-                                // anterior, hasta que la siguiente cae sobre ella.
-                                style={{ animationDelay: `${1 + i * 0.6}s` }}
-                            >
-                                <Renglones />
-                            </div>
-                        ))}
+                    {/*
+                        LA HOJA QUE PASA: una sola, y siempre encima de todo.
+
+                        Eran cuatro en bucle, cada una con su retraso, y la de abajo
+                        de las cuatro, al dar la vuelta, caía DEBAJO de la que ya
+                        estaba en la izquierda: cada 3 o 4 hojas una «se reseteaba»
+                        y desaparecía a mitad de camino (lo vio un amigo de Cristian).
+
+                        Una sola basta: pasa de la derecha a la izquierda, se queda
+                        un momento y vuelve de golpe a la derecha. Ese salto no se
+                        ve porque cada cara es igual a la página fija que tapa: la
+                        de delante, a la de la derecha; la de detrás, a la de la
+                        izquierda.
+                    */}
+                    <div className="libro-hoja absolute inset-0">
+                        <div className="libro-cara absolute inset-0 rounded-r-[10px] bg-white shadow-[inset_6px_0_10px_rgba(13,71,161,0.08)] ring-1 ring-[#D6E2F5]">
+                            <Renglones />
+                        </div>
+                        <div className="libro-cara libro-cara-de-atras absolute inset-0 rounded-r-[10px] bg-white ring-1 ring-[#D6E2F5]">
+                            <Renglones />
+                        </div>
                     </div>
                 </div>
                 {/* El lomo. */}
@@ -79,6 +90,7 @@ export function LibroQueSeAbre({
                     />
                 </div>
                 {detalle && <p className="text-xs font-medium text-[#5B6B82] tabular-nums">{detalle}</p>}
+                {nota && <p className="text-xs text-[#5B6B82] tabular-nums">{nota}</p>}
             </div>
         </div>
     );

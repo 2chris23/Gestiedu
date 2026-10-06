@@ -28,15 +28,25 @@ async function listar(dir: string, base: string): Promise<string[]> {
     return salida;
 }
 
+/**
+ * Dónde está la compilación. Normalmente en `<cwd>/.next`; con `next start
+ * apps/web` lanzado desde la raíz del repositorio, el directorio de trabajo es
+ * la raíz y aquí salía 404: el ayudante no guardaba la cáscara entera y, sin
+ * conexión, partes de la app decían «no está guardada» (PRECARGA-01/04).
+ */
+const DONDE_PUEDE_ESTAR = [path.join(process.cwd(), '.next'), path.join(process.cwd(), 'apps', 'web', '.next')];
+
 async function calcular(): Promise<Version | null> {
-    try {
-        const raiz = path.join(process.cwd(), '.next');
-        const id = (await readFile(path.join(raiz, 'BUILD_ID'), 'utf8')).trim();
-        const archivos = (await listar(path.join(raiz, 'static'), '/_next/static')).sort();
-        return { id, archivos };
-    } catch {
-        return null;
+    for (const raiz of DONDE_PUEDE_ESTAR) {
+        try {
+            const id = (await readFile(path.join(raiz, 'BUILD_ID'), 'utf8')).trim();
+            const archivos = (await listar(path.join(raiz, 'static'), '/_next/static')).sort();
+            return { id, archivos };
+        } catch {
+            /* la siguiente */
+        }
     }
+    return null;
 }
 
 export async function GET() {

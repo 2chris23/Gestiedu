@@ -81,6 +81,41 @@ export async function guardarRespuesta(dueno: string | null, clave: string, dato
     if (++escrituras % 50 === 0) void recortarLasRespuestas();
 }
 
+/**
+ * MUCHAS DE UNA VEZ (la precarga: un bloque de 150)
+ *
+ * De una en una, cada respuesta abría la base del teléfono, hacía su
+ * transacción y la cerraba: 9.500 veces en la descarga del admin, y en un
+ * teléfono lento eso se notaba más que la red. Aquí, una sola transacción.
+ * Devuelve lo que ocupa lo guardado (el «X MB» de la descarga).
+ */
+export async function guardarRespuestas(dueno: string | null, filas: Array<[string, unknown]>): Promise<number> {
+    if (!dueno || filas.length === 0) return 0;
+    const cuando = Date.now();
+    const validas: Guardada[] = [];
+    let bytes = 0;
+    for (const [clave, datos] of filas) {
+        if (!seGuarda(clave)) continue;
+        let tamano = 0;
+        try {
+            tamano = JSON.stringify(datos)?.length ?? 0;
+        } catch {
+            continue;
+        }
+        if (tamano > TAMANO_MAXIMO) continue;
+        bytes += tamano;
+        validas.push({ dueno, clave, cuando, datos });
+    }
+    if (validas.length === 0) return bytes;
+    await conElCajon(CAJON_RESPUESTAS, 'readwrite', (c) => {
+        for (const fila of validas) c.put(fila, llave(dueno, fila.clave));
+    });
+    const antes = escrituras;
+    escrituras += validas.length;
+    if (Math.floor(antes / 50) !== Math.floor(escrituras / 50)) void recortarLasRespuestas();
+    return bytes;
+}
+
 export async function leerRespuesta(dueno: string | null, clave: string): Promise<{ datos: unknown; cuando: number } | null> {
     if (!dueno) return null;
     const fila = await conElCajon<Guardada>(CAJON_RESPUESTAS, 'readonly', (c) => c.get(llave(dueno, clave)));

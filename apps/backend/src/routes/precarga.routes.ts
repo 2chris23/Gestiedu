@@ -4,13 +4,17 @@ import {
     CABECERA_INTERNA,
     LECTURAS_POR_BLOQUE,
     MARCA_INTERNA,
+    apuntarLoQuePesa,
     elPlanDeLasPantallas,
     esUnaLecturaValida,
     laUltimaMarca,
     lasPantallasDe,
     loQueCambioDesde,
+    loQuePesaraCadaBloque,
     rellenar,
 } from '../services/precarga.service';
+import { lasSeccionesDelProfesor, precalentarLosPromedios } from '../services/precalentar-promedios.service';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
  * LA PRECARGA EN UN PAQUETE (ver `services/precarga.service.ts`)
@@ -22,6 +26,11 @@ import {
  * El bloque no se fía del teléfono para nada: cada lectura se hace con la
  * credencial de quien pide, por la misma puerta que si la pidiera a mano.
  */
+
+/** El liceo de quien pide (para lo aprendido de cuánto pesa cada lectura). */
+function suLiceo(request: FastifyRequest): string {
+    return String((request as any).institute?.id ?? (request.user as any)?.instituteId ?? '');
+}
 
 function yo(request: FastifyRequest): { id: string; role: string } {
     const u = request.user as any;
@@ -62,12 +71,24 @@ export async function precargaRoutes(fastify: FastifyInstance) {
             // La marca ANTES de mirar nada: lo que cambie mientras se baja, se
             // vuelve a bajar después (`/precarga/cambios`), nunca se pierde.
             const marca = await laUltimaMarca(request.tenantPrisma);
+            // Los promedios del año, en bloque y antes de nada: las lecturas que
+            // los calculaban alumno por alumno los encuentran hechos (mitad de la
+            // descarga del admin). Si falla, cada lectura los calcula como siempre.
+            if (quien.role === 'ADMIN' || quien.role === 'TEACHER') {
+                const alcance = quien.role === 'TEACHER' ? { secciones: await lasSeccionesDelProfesor(request.tenantPrisma, quien.id) } : {};
+                await precalentarLosPromedios(request.tenantPrisma, suLiceo(request), alcance).catch(avisarSiFalla('precalentar-promedios'));
+            }
             const pantallas = await lasPantallasDe(request.tenantPrisma, quien, cuerpo.menu);
             const plan = elPlanDeLasPantallas(pantallas, quien.role);
+            // Cuánto pesará cada bloque, con lo aprendido de las descargas de este
+            // liceo: el «X de Y MB» del teléfono no baila (null si aún no se sabe).
+            const estimado = loQuePesaraCadaBloque(suLiceo(request), plan.lecturas, LECTURAS_POR_BLOQUE);
             return reply.send({
                 ...plan,
                 marca,
                 porBloque: LECTURAS_POR_BLOQUE,
+                estimadoPorBloque: estimado?.porBloque ?? null,
+                conocidas: estimado?.conocidas ?? 0,
                 // La grabación de las lecturas (pruebas) necesita saber qué es cada trozo.
                 ...(cuerpo.conContexto
                     ? { pantallas: pantallas.map((p) => ({ molde: p.molde, variante: p.variante ?? null, ctx: p.ctx, url: rellenar(p.molde, p.ctx) })).filter((p) => p.url) }
@@ -115,6 +136,7 @@ export async function precargaRoutes(fastify: FastifyInstance) {
         async (request: FastifyRequest, reply: FastifyReply) => {
             const lecturas = ((request.body as { lecturas: string[] }).lecturas ?? []).filter(esUnaLecturaValida);
             const cabeceras = lasDeQuienPide(request);
+            const liceo = suLiceo(request);
             const datos: Record<string, unknown> = {};
             const fallos: Record<string, number> = {};
 
@@ -124,7 +146,10 @@ export async function precargaRoutes(fastify: FastifyInstance) {
                     const clave = lecturas[i++];
                     try {
                         const r = await fastify.inject({ method: 'GET', url: `/api${clave}`, headers: cabeceras });
-                        if (r.statusCode === 200 && String(r.headers['content-type'] ?? '').includes('json')) datos[clave] = r.json();
+                        if (r.statusCode === 200 && String(r.headers['content-type'] ?? '').includes('json')) {
+                            datos[clave] = r.json();
+                            apuntarLoQuePesa(liceo, clave, r.payload.length);
+                        }
                         else fallos[clave] = r.statusCode;
                     } catch {
                         fallos[clave] = 500;
@@ -141,6 +166,11 @@ export async function precargaRoutes(fastify: FastifyInstance) {
             if (ahoraNo > 0 && Object.keys(datos).length === 0) {
                 return reply.status(503).send({ error: 'El servidor está ocupado; se reintenta solo', code: 'AHORA_NO' });
             }
+            // Que el teléfono pueda saber cuánto pasó de verdad por internet
+            // (`encodedBodySize`) aunque la API viva en otro origen: el mismo
+            // origen al que CORS ya deja leer la respuesta.
+            const permitido = reply.getHeader('access-control-allow-origin');
+            if (permitido) reply.header('timing-allow-origin', String(permitido));
             return reply.send({ datos, fallos });
         }
     );

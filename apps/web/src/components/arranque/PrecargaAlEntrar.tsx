@@ -8,6 +8,7 @@ import { usePagosActivos } from '@/hooks/usePagos';
 import { usePaeActivo } from '@/hooks/usePae';
 import { useCerrarSesion } from '@/hooks/useCerrarSesion';
 import { useAuthStore } from '@/store/auth.store';
+import { useOcuparLaPantalla } from '@/lib/turno-de-ofrecer';
 import { elMenuDe } from '@/lib/el-menu';
 import { elDuenoDeAhora } from '@/lib/el-dueno';
 import { bajarTodo, cuandoSeCompleto, enMegas, estaCompleta, seEnsenaLaPrecarga, type Avance } from '@/lib/precarga';
@@ -110,21 +111,29 @@ export function PrecargaAlEntrar() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [yo?.id, yo?.role, hayConexion, menu.length, menuSabido]);
 
+    // Ninguna oferta («¿Te avisamos?», «Descarga la app») encima del libro.
+    useOcuparLaPantalla(aLaVista);
+
     if (!aLaVista) return null;
 
     const fase = avance?.fase ?? 'empezando';
     const lista = fase === 'listo';
     const esperando = fase === 'esperando';
     const total = avance?.bytesTotales ?? null;
-    const proporcion = avance && total ? Math.min(1, avance.bytes / Math.max(total, 1)) : null;
+    // El % va por lecturas (exacto desde el principio), no por MB (calculados).
+    const proporcion = avance && avance.lecturasTotales ? Math.min(1, avance.lecturasHechas / avance.lecturasTotales) : null;
     const detalle =
         fase === 'empezando'
             ? 'Preparando la descarga…'
             : fase === 'paginas'
               ? 'Terminando…'
               : avance && total
-                ? `${enMegas(avance.bytes)} de ${enMegas(total)}`
+                ? `${enMegas(avance.bytes)} de ${enMegas(total)}${avance.velocidad ? ` · ${enMegas(avance.velocidad)}/s` : ''}`
                 : null;
+    // Lo que de verdad usa de los datos del teléfono: va comprimido, y es lo
+    // que cuenta para quien paga los megas (pedido por Cristian: «ver cuánto
+    // está descargando»).
+    const nota = avance && avance.bytesPorLaRed > 0 && fase === 'bajando' ? `Datos de internet usados: ${enMegas(avance.bytesPorLaRed)} (va comprimido)` : null;
 
     return (
         <div
@@ -155,7 +164,7 @@ export function PrecargaAlEntrar() {
                     ) : null}
                 </div>
             ) : (
-                <LibroQueSeAbre titulo="Descargando tu liceo…" detalle={detalle} avance={proporcion} />
+                <LibroQueSeAbre titulo="Descargando tu liceo…" detalle={detalle} nota={nota} avance={proporcion} />
             )}
 
             {!lista && (

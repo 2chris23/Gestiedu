@@ -341,6 +341,29 @@ export class RedisCache {
     }
   }
 
+  /**
+   * Muchas de una vez (el precalentado de promedios: decenas de miles). Con
+   * Redis, en tandas por la misma conexión (`pipeline`): de una en una serían
+   * decenas de miles de idas y vueltas.
+   */
+  static async setMany(entradas: Array<[string, unknown]>, ttlSeconds: number): Promise<void> {
+    if (entradas.length === 0) return;
+    const conLlave = entradas.map(([k, v]) => [this.getKey(k), v] as const);
+    try {
+      if (this.isRedisReady()) {
+        for (let i = 0; i < conLlave.length; i += 1000) {
+          const tanda = redis.pipeline();
+          for (const [k, v] of conLlave.slice(i, i + 1000)) tanda.setex(k, ttlSeconds, JSON.stringify(v));
+          await tanda.exec();
+        }
+        return;
+      }
+    } catch {
+      /* sin Redis: a la memoria del proceso, abajo */
+    }
+    for (const [k, v] of conLlave) this.memorySet(k, v, ttlSeconds);
+  }
+
   // Obtener valor del caché
   static async get<T>(key: string): Promise<T | null> {
     const redisKey = this.getKey(key);

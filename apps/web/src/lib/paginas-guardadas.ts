@@ -49,6 +49,31 @@ export function mirarLaVersionDeLaApp(): void {
 }
 
 /**
+ * Lo mismo, esperando a que acabe: la cáscara de la app (su javascript y sus
+ * estilos) entera en el teléfono. La precarga, al ir más rápida que la
+ * cáscara, acababa antes, y sin conexión algunas partes decían «no está
+ * guardada» (PRECARGA-01). Sin ayudante, o pasado el tope, sigue sin esperar.
+ */
+export async function mirarLaVersionDeLaAppYEsperar(tope = 120_000): Promise<void> {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const registro = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<null>((r) => setTimeout(() => r(null), 5000)),
+    ]).catch(() => null);
+    const activo = registro?.active;
+    if (!activo) return;
+    await new Promise<void>((resolver) => {
+        const canal = new MessageChannel();
+        const corte = setTimeout(resolver, tope);
+        canal.port1.onmessage = () => {
+            clearTimeout(corte);
+            resolver();
+        };
+        activo.postMessage({ tipo: 'mirar-version' }, [canal.port2]);
+    });
+}
+
+/**
  * Al cerrar sesión: una pantalla guardada lleva el nombre de quien la abrió, y
  * lo que guarda el ayudante es del navegador, no de la persona. Se queda la
  * cáscara (el javascript, los estilos), que es igual para todos.

@@ -3,7 +3,7 @@ import request = require('supertest');
 import { PrismaClient } from '@prisma/client';
 import { UserRole } from '../../src/utils/prisma-enums';
 import { createTestServer, createTestPrismaClient, createTestUser, generateTestToken, createTestAcademicYear, createTestClassroom } from '../helpers';
-import { cambiarLosMoldes } from '../../src/services/precarga.service';
+import { cambiarLosMoldes, formaDeLaLectura, olvidarLoQuePesa } from '../../src/services/precarga.service';
 
 /**
  * LA PRECARGA EN UN PAQUETE (`routes/precarga.routes.ts`)
@@ -16,7 +16,9 @@ import { cambiarLosMoldes } from '../../src/services/precarga.service';
  *   PAQUETE-02  el profesor: ni fichas (no las abre); pedir la de otro, 403 y fuera del paquete;
  *   PAQUETE-03  el alumno: solo lo suyo;
  *   PAQUETE-04  el representante: solo sus representados;
- *   PAQUETE-05  sin sesión, 401; lo de entrar y el superadmin no se piden nunca.
+ *   PAQUETE-05  sin sesión, 401; lo de entrar y el superadmin no se piden nunca;
+ *   PAQUETE-06  las lecturas van barajadas (siempre igual) y, tras bajar, el plan
+ *               dice cuánto pesará cada bloque (el «X de Y MB» no baila).
  *
  * Y «solo lo que cambió» (`cambios_del_liceo`):
  *
@@ -126,6 +128,34 @@ describe('La precarga en un paquete', () => {
         const b = await bloque('admin', ['/auth/profile', '/superadmin/institutes', '/../users', '//evil.com/x', '/academic-years']);
         expect(Object.keys(b.body.datos)).toEqual(['/academic-years']);
         expect(Object.keys(b.body.fallos)).toEqual([]);
+    });
+
+    it('PAQUETE-06: lecturas barajadas siempre igual; tras bajar, el plan dice cuánto pesará cada bloque', async () => {
+        // El tipo de una lectura: lo que cambia de una a otra fuera.
+        expect(formaDeLaLectura('/students/est0575/boleta?lapso=2&ciclo=x')).toBe('/students/:x/boleta?ciclo&lapso');
+        expect(formaDeLaLectura('/academic-years/ay-2026-2027-testing/cierre')).toBe('/academic-years/:x/cierre');
+        expect(formaDeLaLectura('/dashboard/admin')).toBe('/dashboard/admin');
+        expect(formaDeLaLectura('/boleta/mia')).toBe('/boleta/mia');
+
+        olvidarLoQuePesa();
+        const primero = await plan('admin');
+        const otraVez = await plan('admin');
+        // El mismo orden cada vez (reanudar y la versión dependen de eso).
+        expect(otraVez.body.lecturas).toEqual(primero.body.lecturas);
+        expect(otraVez.body.version).toBe(primero.body.version);
+        // Sin haber bajado nada en este liceo, no se inventa el peso.
+        expect(primero.body.estimadoPorBloque).toBeNull();
+
+        const lecturas: string[] = primero.body.lecturas;
+        const b = await bloque('admin', lecturas);
+        const deVerdad = Object.values(b.body.datos as Record<string, unknown>).reduce<number>((n, d) => n + JSON.stringify(d).length, 0);
+
+        const despues = await plan('admin');
+        expect(despues.body.estimadoPorBloque).toHaveLength(Math.ceil(lecturas.length / despues.body.porBloque));
+        expect(despues.body.conocidas).toBe(lecturas.length);
+        // Lo calculado es lo que pesó (media por tipo de lectura).
+        const calculado = (despues.body.estimadoPorBloque as number[]).reduce((n, x) => n + x, 0);
+        expect(Math.abs(calculado - deVerdad)).toBeLessThanOrEqual(lecturas.length);
     });
 
     it('CAMBIOS-01/02/03: se apunta la escritura; vuelve a quien le toca, no al otro alumno', async () => {

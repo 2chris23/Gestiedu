@@ -995,7 +995,7 @@ class GradesService {
     // el año, el riesgo, el cierre— ya deja fuera lo que no tiene notas.
     if (await esCualitativa(prisma, subjectId)) return { promedio: 0, conNotas: false };
 
-    const cacheKey = `grade:avg:student:${studentId}:subject:${subjectId}:period:${periodId}`;
+    const cacheKey = claveDelPromedioDelLapso(studentId, subjectId, periodId);
 
     const guardado = await RedisCache.get<{ promedio: number; conNotas: boolean } | number>(cacheKey);
     if (guardado !== null && guardado !== undefined) {
@@ -1042,7 +1042,7 @@ class GradesService {
         if (traida) detalle = { promedio: traida.nota, conNotas: true };
       }
       // Cache por 10 minutos
-      await RedisCache.set(cacheKey, detalle, CACHE_TTL.SHORT * 2);
+      await RedisCache.set(cacheKey, detalle, DURACION_DEL_PROMEDIO_DEL_LAPSO);
       return detalle;
     }
   }
@@ -1083,6 +1083,25 @@ class GradesService {
   }
 
   /**
+   * Los lapsos del «modo global» de un alumno: los del año de su inscripción
+   * activa. Es la consulta que `promedioDeLaMateria` hace si no se le pasan;
+   * quien pide varias materias del mismo alumno la hace una vez con esto.
+   */
+  async lapsosDelAlumno(prisma: PrismaClient, studentId: string): Promise<string[]> {
+    const student = await prisma.user.findUnique({
+      where: { id: studentId },
+      select: {
+        studentClassrooms: {
+          where: { isActive: true },
+          take: 1,
+          select: { classroom: { select: { academicYear: { select: { periods: { select: { id: true, name: true } } } } } } }
+        }
+      },
+    });
+    return (student?.studentClassrooms?.[0]?.classroom?.academicYear?.periods || []).map((p) => p.id);
+  }
+
+  /**
    * Lo mismo que `calculateWeightedSubjectAverage`, diciendo además si el
    * alumno tiene alguna nota en la materia. Sin eso, quien lo usa no puede
    * distinguir «sacó 0» de «no tiene notas» (ver `promedioDelLapso`).
@@ -1108,17 +1127,7 @@ class GradesService {
 
     if (!lapsos || lapsos.length === 0) {
       // Modo global: TODOS los lapsos con datos del aula del estudiante
-      const student = await prisma.user.findUnique({
-        where: { id: studentId },
-        select: {
-          studentClassrooms: {
-            where: { isActive: true },
-            take: 1,
-            select: { classroom: { select: { academicYear: { select: { periods: { select: { id: true, name: true } } } } } } }
-          }
-        },
-      });
-      lapsos = (student?.studentClassrooms?.[0]?.classroom?.academicYear?.periods || []).map((p) => p.id);
+      lapsos = await this.lapsosDelAlumno(prisma, studentId);
     }
 
     if (lapsos.length === 0) return { promedio: 0, conNotas: false };
@@ -2156,6 +2165,17 @@ class GradesService {
  * 0,50 o más se lleva al entero inmediato superior. El `1e-9` es por la coma
  * flotante: 9,5 guardado como 9,4999999… también es 9,5.
  */
+/**
+ * La llave del promedio de un lapso en la memoria rápida. La comparten
+ * `promedioDelLapso` y el precalentado en bloque (`precalentar-promedios.service.ts`).
+ */
+export function claveDelPromedioDelLapso(studentId: string, subjectId: string, periodId: string): string {
+  return `grade:avg:student:${studentId}:subject:${subjectId}:period:${periodId}`;
+}
+
+/** Lo que dura guardado el promedio de un lapso (`promedioDelLapso`). */
+export const DURACION_DEL_PROMEDIO_DEL_LAPSO = CACHE_TTL.SHORT * 2;
+
 export function redondearComoElMPPE(n: number): number {
   return Math.floor(n + 0.5 + 1e-9);
 }

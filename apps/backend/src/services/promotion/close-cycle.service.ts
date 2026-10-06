@@ -1,6 +1,7 @@
 import { esReglasDelCuadro, limpiarReglasDelCuadro, REGLAS_DEL_CUADRO_POR_DEFECTO, ReglasDelCuadro } from '../reglas-del-cuadro';
 import { PrismaClient } from '@prisma/client';
-import { gradesService } from '../grades.service';
+import { gradesService, redondearComoElMPPE } from '../grades.service';
+import { bulkSubjectAveragesConDatos, BulkAverageDetail } from '../bulk-averages.service';
 import { getStrategy, Assignment, StudentForPlacement, SectionOption } from './strategies';
 import { platformPrisma } from '../../config/database';
 import { borrarGuardandoCopia, QuienBorra } from '../../utils/papelera';
@@ -302,6 +303,66 @@ export function egresoDe(
 }
 
 /** 1. Calcula los resultados sugeridos evaluando notas reales y reglas de grado */
+/** `${classroomId}|${periodId}` → alumno → materia → promedio del lapso y si tiene notas. */
+type PromediosPorSeccionYLapso = Map<string, BulkAverageDetail>;
+
+async function promediosPorSeccionYLapso(
+    prisma: any,
+    enrollments: Array<{ studentId: string; classroom: { id: string; subjects: Array<{ subjectId: string; subject: { evaluacion?: string | null } }> } }>,
+    lapsos: string[]
+): Promise<PromediosPorSeccionYLapso> {
+    const secciones = new Map<string, { alumnos: string[]; materias: string[] }>();
+    for (const e of enrollments) {
+        const s = secciones.get(e.classroom.id) ?? {
+            alumnos: [],
+            // Las de apreciación no se promedian: el cierre las trata aparte.
+            materias: [...new Set(e.classroom.subjects.filter((cs) => cs.subject.evaluacion !== 'CUALITATIVA').map((cs) => cs.subjectId))],
+        };
+        s.alumnos.push(e.studentId);
+        secciones.set(e.classroom.id, s);
+    }
+    const trabajos = [...secciones].flatMap(([aula, s]) => lapsos.map((periodId) => ({ aula, periodId, s })));
+    const salida: PromediosPorSeccionYLapso = new Map();
+    // De cuatro en cuatro: cada una son unas pocas consultas grandes.
+    for (let i = 0; i < trabajos.length; i += 4) {
+        await Promise.all(
+            trabajos.slice(i, i + 4).map(async ({ aula, periodId, s }) => {
+                salida.set(
+                    `${aula}|${periodId}`,
+                    s.materias.length
+                        ? await bulkSubjectAveragesConDatos(prisma, { classroomId: aula, studentIds: s.alumnos, subjectIds: s.materias, periodId })
+                        : new Map()
+                );
+            })
+        );
+    }
+    return salida;
+}
+
+/**
+ * La definitiva de una materia con los promedios en bloque: la MISMA cuenta
+ * que `gradesService.promedioDeLaMateria` con lapsos (cada lapso con notas,
+ * redondeado si el liceo usa el del MPPE; su media a dos decimales y otra vez
+ * el redondeo). Un lapso sin notas no pesa; uno con un 0, sí.
+ */
+function definitivaDeLaMateria(
+    enBloque: PromediosPorSeccionYLapso,
+    aula: string,
+    studentId: string,
+    subjectId: string,
+    lapsos: string[],
+    redondeo?: 'MPPE' | 'NINGUNO'
+): { promedio: number; conNotas: boolean } {
+    const definitiva = (n: number) => (redondeo === 'MPPE' ? redondearComoElMPPE(n) : n);
+    const sums = lapsos
+        .map((p) => enBloque.get(`${aula}|${p}`)?.get(studentId)?.get(subjectId))
+        .filter((d): d is { promedio: number; conNotas: boolean } => Boolean(d?.conNotas))
+        .map((d) => definitiva(d.promedio));
+    if (sums.length === 0) return { promedio: 0, conNotas: false };
+    const global = sums.reduce((a, b) => a + b, 0) / sums.length;
+    return { promedio: definitiva(Math.round(global * 100) / 100), conNotas: true };
+}
+
 export async function prepareClose(prisma: any, academicYearId: string, instituteId: string): Promise<PrepareCloseResult> {
     const config = await getAcademicConfig(instituteId);
 
@@ -355,6 +416,19 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
     const lapsosDelAno: string[] = (
         await prisma.period.findMany({ where: { academicYearId }, select: { id: true } })
     ).map((p: any) => p.id);
+
+    /**
+     * LOS PROMEDIOS, EN BLOQUE POR SECCIÓN Y LAPSO (2026-10-06)
+     *
+     * Se pedían alumno por alumno, materia por materia y lapso por lapso
+     * (`gradesService.promedioDeLaMateria`): con 600 alumnos, unas 18.000
+     * cuentas y 47 s medidos en frío. La pantalla del cierre esperaba eso, y
+     * la primera descarga del admin también (101 s de sus 153).
+     * `bulkSubjectAveragesConDatos` aplica las mismas reglas con un puñado de
+     * consultas por sección y lapso (paridad: `bulk-averages-parity.test.ts`),
+     * y la definitiva se saca igual que en `promedioDeLaMateria` (MAPA §1).
+     */
+    const enBloque = lapsosDelAno.length > 0 ? await promediosPorSeccionYLapso(prisma, enrollments, lapsosDelAno) : null;
 
     // Lo que decidió el admin antes de cerrar (paso 4), con su motivo.
     const decisiones = new Map<string, any>(
@@ -411,9 +485,11 @@ export async function prepareClose(prisma: any, academicYearId: string, institut
                         }
                         // La definitiva, con el redondeo del liceo (MPPE por defecto): un
                         // 9,5 es un 10 aprobado, no una materia pendiente (RED-01…04).
-                        const { promedio: avg, conNotas } = await gradesService.promedioDeLaMateria(
-                            prisma, enr.studentId, cs.subjectId, undefined, lapsosDelAno, config.redondeoDeDefinitivas
-                        );
+                        const { promedio: avg, conNotas } = enBloque
+                            ? definitivaDeLaMateria(enBloque, classroom.id, enr.studentId, cs.subjectId, lapsosDelAno, config.redondeoDeDefinitivas)
+                            : await gradesService.promedioDeLaMateria(
+                                  prisma, enr.studentId, cs.subjectId, undefined, lapsosDelAno, config.redondeoDeDefinitivas
+                              );
                         const revision = revisiones.get(`${enr.studentId}|${cs.subjectId}`);
                         const usaRevision = conNotas && avg < config.notaMinimaAprobatoria && revision !== undefined;
                         const definitiva = usaRevision ? (revision as number) : avg;
