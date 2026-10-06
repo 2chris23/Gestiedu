@@ -108,6 +108,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ActualizarAppPlugin.class);
         registerPlugin(AsistenciaQrPlugin.class);
         registerPlugin(ImprimirPlugin.class);
+        registerPlugin(BarraDelRelojPlugin.class);
         super.onCreate(savedInstanceState);
 
         dejarSitioParaElReloj();

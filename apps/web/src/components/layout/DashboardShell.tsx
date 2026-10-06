@@ -203,8 +203,9 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 azul={pathname === '/dashboard' && user?.role === 'ADMIN'}
             />
 
-            {/* Sin señal se sigue viendo lo de antes, y hay que decirlo. */}
-            <AvisoSinConexion />
+            {/* Sin señal se sigue viendo lo de antes, y hay que decirlo. En el
+                teléfono va dentro de la cabecera; este, el del ordenador. */}
+            <AvisoSinConexion soloOrdenador />
             <AvisoDePantallaSinGuardar />
             {/* Como WhatsApp: con conexión, lo de cada uno se baja solo. */}
             <DescargaEnSegundoPlano />

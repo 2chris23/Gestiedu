@@ -82,15 +82,12 @@ export function InicioDelAdminMovil({ datos, conPagos }: { datos: DatosDelInicio
                 <h1 className="sr-only">Panel</h1>
                 {/*
                     LAS LUCES: dos manchas difusas que flotan despacio (una con el
-                    acento elegido) y un anillo ENTERO que gira con un degradado.
-                    El anillo de antes asomaba cortado por la esquina. Quieto con
-                    «reducir movimiento».
+                    acento elegido). Quietas con «reducir movimiento». El anillo
+                    se quitó (lo pidió Cristian).
                 */}
                 <span aria-hidden className="pointer-events-none absolute inset-0">
                     <span className="absolute -right-10 top-24 h-56 w-56 rounded-full bg-[#42A5F5] opacity-30 blur-3xl motion-safe:animate-flotar" />
                     <span className="absolute -left-20 bottom-4 h-48 w-48 rounded-full bg-[var(--acento)] opacity-20 blur-3xl motion-safe:animate-flotar [animation-delay:-7s]" />
-                    <span className="absolute right-5 top-4 h-[132px] w-[132px] rounded-full p-[14px] opacity-60 [background:conic-gradient(from_0deg,rgba(144,202,249,0)_0%,rgba(144,202,249,0.55)_35%,var(--acento)_60%,rgba(144,202,249,0)_100%)] [mask:radial-gradient(farthest-side,transparent_calc(100%-14px),#000_calc(100%-13px))] motion-safe:animate-girar" />
-                    <span className="absolute right-[53px] top-[49px] h-[66px] w-[66px] rounded-full border border-white/10" />
                 </span>
                 <div className="relative flex flex-col gap-1.5">
                     <button

@@ -2,6 +2,9 @@
 
 import { Campana } from '@/components/layout/Campana';
 import { BotonDelRecorrido } from '@/components/common/Recorrido';
+import AvisoSinConexion from '@/components/common/AvisoSinConexion';
+import { pintarLaBarraDelReloj } from '@/lib/barra-del-reloj';
+import { AZUL_CABECERA } from '@/lib/tema-de-la-app';
 import * as React from 'react';
 import { ChevronDown } from 'lucide-react';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -76,6 +79,24 @@ export function CabeceraMovil({
         window.addEventListener(ABRIR_MI_CUENTA, abrir);
         return () => window.removeEventListener(ABRIR_MI_CUENTA, abrir);
     }, []);
+
+    // La franja del reloj, del mismo azul que la cabecera (la de la APK la
+    // pinta Android: `lib/barra-del-reloj.ts`). Al salir, la de siempre.
+    // Se repite a los 0,5 y 2 s y al volver a la app: pedido en la primera
+    // pintada, el puente con Android aún no estaba y se perdía (moto g13).
+    React.useEffect(() => {
+        if (!azul) return;
+        const pintar = () => pintarLaBarraDelReloj(AZUL_CABECERA);
+        pintar();
+        const relojes = [500, 2000].map((ms) => window.setTimeout(pintar, ms));
+        const alVolver = () => document.visibilityState === 'visible' && pintar();
+        document.addEventListener('visibilitychange', alVolver);
+        return () => {
+            relojes.forEach((r) => window.clearTimeout(r));
+            document.removeEventListener('visibilitychange', alVolver);
+            pintarLaBarraDelReloj(null);
+        };
+    }, [azul]);
     const nombreCompleto = `${nombre ?? ''} ${apellido ?? ''}`.trim() || 'Usuario';
     // En una pantalla de 390 px cabe el nombre de pila y un apellido; un
     // «María de los Ángeles Rodríguez Betancourt» entero empuja la cabecera.
@@ -128,6 +149,7 @@ export function CabeceraMovil({
                     </button>
                     {/* El «?»: cómo funciona esta pantalla (el recorrido guiado). */}
                     <div className={azul ? 'ml-auto flex items-center gap-2' : 'ml-auto flex items-center'}>
+                        <AvisoSinConexion enLaCabecera />
                         <BotonDelRecorrido className={azul ? SOBRE_AZUL : undefined} />
                         <Campana className={azul ? SOBRE_AZUL : undefined} />
                     </div>
