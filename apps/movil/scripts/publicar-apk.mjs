@@ -22,7 +22,7 @@
 
 import { spawnSync } from 'child_process';
 import { createHash } from 'crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, readdirSync, writeFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -67,6 +67,24 @@ alFallar = () => {
     writeFileSync(ARCHIVO_DE_VERSION, JSON.stringify(version, null, 2) + '\n');
     console.error(`El número de versión vuelve a ${version.versionCode}.`);
 };
+
+// 1-bis. El diseño de la web, dentro de la APK (`CascaraDeLaApk.java`): la
+//    compilación que sirve el servidor (`apps/web/.next/static`). Lo que el
+//    servidor estrene después se baja por la red; lo de aquí no cambia nunca
+//    (cada archivo lleva su huella en el nombre).
+const WEB = join(RAIZ, '..', 'web', '.next');
+const CASCARA = join(RAIZ, 'android', 'app', 'src', 'main', 'assets', 'cascara');
+rmSync(CASCARA, { recursive: true, force: true });
+if (existsSync(join(WEB, 'static')) && existsSync(join(WEB, 'BUILD_ID'))) {
+    cpSync(join(WEB, 'static'), join(CASCARA, '_next', 'static'), { recursive: true });
+    const pesa = (d) => readdirSync(d).reduce((n, f) => {
+        const r = join(d, f);
+        return n + (statSync(r).isDirectory() ? pesa(r) : statSync(r).size);
+    }, 0);
+    console.log(`Cáscara de la web dentro de la APK: ${(pesa(CASCARA) / 1e6).toFixed(1)} MB (compilación ${readFileSync(join(WEB, 'BUILD_ID'), 'utf-8').trim()})`);
+} else {
+    console.warn('No hay web compilada (apps/web/.next): la APK sale sin la cáscara y la bajará por la red.');
+}
 
 // 2. Compilar.
 correr('npx', ['cap', 'sync', 'android'], RAIZ);

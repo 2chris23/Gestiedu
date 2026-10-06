@@ -65,6 +65,15 @@
         "3108"
       ],
       "port": 3108
+    },
+    {
+      "name": "tunel",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "tunel"
+      ],
+      "port": 3100
     }
   ]
 }

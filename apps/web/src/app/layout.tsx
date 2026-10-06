@@ -10,6 +10,7 @@ import { DynamicTitle } from '@/components/common/DynamicTitle';
 import { DynamicColors } from '@/components/common/DynamicColors';
 import { FichaDeLaApp } from '@/components/common/FichaDeLaApp';
 import { AyudanteDeLaApp } from '@/components/common/AyudanteDeLaApp';
+import { ArranqueYCandado } from '@/components/arranque/ArranqueYCandado';
 import { MarcaDeArranque } from '@/components/common/MarcaDeArranque';
 import { GUARDIAN_DEL_ARRANQUE } from '@/lib/guardian-del-arranque';
 import { COLOR_ANTES_DE_PINTAR } from '@/lib/tema-de-la-app';
@@ -99,6 +100,8 @@ export default function RootLayout({
                             <FichaDeLaApp />
                         </Suspense>
                         <AyudanteDeLaApp />
+                        {/* En la app: el libro, el logo y la pantalla de bloqueo. */}
+                        <ArranqueYCandado />
                         {children}
                     </ConfirmProvider>
                 </QueryProvider>

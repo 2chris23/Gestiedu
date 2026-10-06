@@ -93,7 +93,10 @@ function esUnArchivoFijo(url) {
  * pasar del tope se tiran los más antiguos (el orden de guardado es el de
  * `keys()`), que son los de versiones anteriores.
  */
-const TOPE_DE_ARCHIVOS = 700;
+// Con la precarga (`lib/precarga.ts`) el admin guarda TODAS sus pantallas
+// —una ficha por alumno: 600 y pico—, así que el tope es para lo que sobra
+// de versiones viejas, no para lo que se usa.
+const TOPE_DE_ARCHIVOS = 6000;
 let recortando = false;
 
 /** Lo que nunca se tira al recortar: lo de entrada y la marca de la versión. */
@@ -177,6 +180,53 @@ async function buscarPagina(direccion) {
         const todas = await (await caches.open(nombre)).matchAll(direccion, { ignoreVary: true, ignoreSearch: true });
         const pagina = todas.find((r) => (r.headers.get('content-type') || '').includes('text/html'));
         if (pagina) return pagina;
+    }
+    return laPlantilla(direccion);
+}
+
+/**
+ * UNA FICHA GUARDADA VALE PARA TODAS (la plantilla de la ruta)
+ *
+ * `/dashboard/usuarios/12345678` y `/dashboard/usuarios/87654321` son la
+ * MISMA página: todo lo de esa persona llega después por `useQuery`, y lo
+ * guardado de cada lectura está en el teléfono (`respuestas-guardadas`). Lo
+ * único que cambia en el HTML es el trozo de la dirección: Next lo lleva
+ * dentro (`useParams`), así que se sirve la de otra persona con ese trozo
+ * cambiado. Sin esto, había que guardar 600 fichas iguales, una por alumno.
+ *
+ * Solo dentro del panel, con el mismo número de trozos, los fijos iguales y
+ * los distintos con cara de identificador (6 o más, con un número o un guion).
+ */
+// Con algún número (cédula, cuid) o un guion (`materia-quim`, `2026-2027-1-a`):
+// «profesor» y «seccion», «cierre» y «matricula» no son ids.
+const PARECE_UN_ID = /^(?=[A-Za-z0-9_-]*[\d-])[A-Za-z0-9_-]{6,}$/;
+
+async function laPlantilla(direccion) {
+    const destino = new URL(direccion);
+    if (!destino.pathname.startsWith('/dashboard/')) return undefined;
+    const trozos = destino.pathname.split('/');
+    const cache = await caches.open(CASCARA);
+    for (const peticion of await cache.keys()) {
+        const url = new URL(peticion.url);
+        if (url.searchParams.has('_rsc') || url.pathname === destino.pathname) continue;
+        const suyos = url.pathname.split('/');
+        if (suyos.length !== trozos.length) continue;
+        const cambios = [];
+        let encaja = true;
+        for (let i = 0; i < trozos.length && encaja; i++) {
+            if (suyos[i] === trozos[i]) continue;
+            if (i < 3 || !PARECE_UN_ID.test(suyos[i]) || !PARECE_UN_ID.test(trozos[i])) encaja = false;
+            else cambios.push([suyos[i], trozos[i]]);
+        }
+        if (!encaja || !cambios.length) continue;
+        const respuesta = await cache.match(peticion, { ignoreVary: true });
+        if (!respuesta || !(respuesta.headers.get('content-type') || '').includes('text/html')) continue;
+        let html = await respuesta.text();
+        for (const [viejo, nuevo] of cambios) html = html.split(viejo).join(nuevo);
+        const cabeceras = new Headers(respuesta.headers);
+        cabeceras.delete('content-length');
+        cabeceras.set('x-plantilla-de', url.pathname);
+        return new Response(html, { status: 200, headers: cabeceras });
     }
     return undefined;
 }
@@ -462,9 +512,13 @@ self.addEventListener('message', (evento) => {
     if (mensaje.tipo === 'guardar-pagina' && Array.isArray(mensaje.direcciones)) {
         // De una en una: la descarga en segundo plano manda treinta de golpe,
         // y treinta páginas a la vez son treinta pintadas en el servidor.
+        // Con `respuesta` (la precarga) se avisa al acabar: cuántas quedaron.
+        const respuesta = evento.ports && evento.ports[0];
         evento.waitUntil(
             (async () => {
-                for (const d of [...new Set(mensaje.direcciones)]) await guardarLaPagina(d).catch(() => {});
+                let guardadas = 0;
+                for (const d of [...new Set(mensaje.direcciones)]) if (await guardarLaPagina(d).catch(() => false)) guardadas++;
+                if (respuesta) respuesta.postMessage({ guardadas });
             })()
         );
     } else if (mensaje.tipo === 'olvidar-paginas') {

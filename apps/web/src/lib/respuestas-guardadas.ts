@@ -21,10 +21,19 @@ import { MAXIMO_DE_DIAS } from './lo-guardado-en-el-telefono';
 /** Lo que no se guarda: la hora (sin conexión se cuenta aparte), sesiones y salud. */
 const NO_SE_GUARDA = [/^\/?auth\/(refresh|logout|sessions)/, /^\/?health/, /^\/?time\b/, /^\/?avisos\/telefonos/];
 
+/**
+ * Una respuesta guardada que fue un «no» del servidor (403, 404…): la precarga
+ * la apunta así para que sin conexión se conteste lo mismo (`lib/axios.ts`).
+ */
+export const ESTADO_GUARDADO = '__estadoGuardado';
+
 /** Una respuesta más grande no se guarda: llenaría el teléfono. */
 const TAMANO_MAXIMO = 2_000_000;
 
-export const TOPE_DE_RESPUESTAS = 1500;
+// La precarga del admin guarda todo el liceo (unas 30 lecturas por ficha y
+// 600 fichas): el tope está para que el teléfono no se llene sin fin, no para
+// recortar lo que se usa. Medido en `docs/mediciones/` (precarga).
+export const TOPE_DE_RESPUESTAS = 40000;
 
 interface Guardada {
     dueno: string;

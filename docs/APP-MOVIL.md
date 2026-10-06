@@ -437,3 +437,21 @@ Como en WhatsApp: el aviso llega aunque la app esté cerrada.
 como PDF»); la web lo usa sola (`lib/imprimir.ts`). Una APK de antes no lo tiene:
 al pulsar «Imprimir» dice que hay que actualizar la app. Lo que sale es la hoja
 sola, igual que en el navegador (`lib/documentos.ts`).
+
+## El diseño dentro de la APK y la primera descarga (octubre 2026)
+
+- **La APK lleva la web compilada** (`assets/cascara/_next/static`, ~5 MB más):
+  `npm run publicar` la copia de `apps/web/.next` antes de compilar, así que
+  **compila la web primero** (la misma que sirve el servidor). `CascaraDeLaApk.java`
+  la sirve a la ventana y al ayudante (`ServiceWorkerController`); lo que no está
+  (una versión nueva del servidor) baja por la red como siempre.
+- **La primera vez que alguien entra**, se baja todo lo suyo en un paquete, con
+  los MB; sin conexión espera y no deja seguir. Después, solo lo que cambia.
+  Detalle en `CLAUDE.md` («La precarga»).
+- **Para probar desde cualquier teléfono**: `npm run tunel` (Tailscale Funnel,
+  https) y la APK con `--url=https://<pc>.ts.net/login?slug=<liceo>`. Sin cable
+  ni `adb reverse`.
+- **Firebase**: el proyecto ya existe (Cristian, 2026-10-06). Falta que él
+  ponga `google-services.json` (fuera del repo; `preparar-liceo.mjs --firebase=<ruta>`)
+  y `FCM_CUENTA_DE_SERVICIO` en el `.env` del servidor. Con eso, el aviso
+  silencioso despierta la app cerrada para ponerse al día.

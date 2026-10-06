@@ -192,6 +192,17 @@ async function main() {
         errorPath: `index.html?volver=${encodeURIComponent(url)}`,
     };
     config.plugins.SplashScreen.backgroundColor = color;
+    // EL ICONO SE QUEDA HASTA QUE LA APP PINTA (octubre 2026): luego sigue el
+    // libro de la precarga, el logo y el bloqueo (`ArranqueYCandado.tsx`), que
+    // lo esconden en cuanto están pintados. Sin ruedita: la animación es la
+    // del libro. Y un tope de 6 s por si la página no llegara (sin servidor
+    // sale `www/index.html`): nunca se queda el icono para siempre.
+    Object.assign(config.plugins.SplashScreen, {
+        launchShowDuration: 6000,
+        launchAutoHide: true,
+        launchFadeOutDuration: 250,
+        showSpinner: false,
+    });
     // La barra de estado NO se pinta del color del liceo: va del color de la
     // cabecera de la app, que es blanca, como hacen Facebook o WhatsApp. Una
     // raya de otro color encima de una cabecera blanca se ve como un borde

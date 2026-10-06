@@ -1,5 +1,7 @@
 'use client';
 
+import { esElRecorridoInvisible } from '@/lib/en-el-marco';
+
 import * as React from 'react';
 import { dehydrate, hydrate, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth.store';
@@ -97,7 +99,8 @@ export function MemoriaDelTelefono({ children }: { children: React.ReactNode }) 
 
     // ── Ir guardando lo que llega ────────────────────────────────────────
     React.useEffect(() => {
-        if (!dueno || !devuelto) return;
+        // En el recorrido invisible de la precarga no se guarda: lo guarda la ventana de verdad.
+        if (!dueno || !devuelto || esElRecorridoInvisible()) return;
 
         let reloj: ReturnType<typeof setTimeout> | null = null;
 

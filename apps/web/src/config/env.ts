@@ -2,7 +2,16 @@
 // All frontend files should import from here instead of hardcoding localhost
 
 // API URL with /api suffix — for API calls
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+//
+// En el SERVIDOR de pantallas (rutas de `app/api/auth/*`, el icono…) manda
+// `API_DEL_SERVIDOR` si existe: con el túnel (`npm run tunel`) el navegador
+// pide a `https://<pc>.ts.net/api`, y si el servidor usara esa misma dirección
+// para entrar se llamaría a sí mismo por internet, y `/api/auth/login` (que es
+// una ruta de Next) a sí misma, en bucle.
+export const API_URL =
+    (typeof window === 'undefined' ? process.env.API_DEL_SERVIDOR : undefined) ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    'http://localhost:3001/api';
 
 // Backend base URL without /api — for static assets (uploads, logos, favicons)
 export const BACKEND_URL = API_URL.replace(/\/api\/?$/, '');

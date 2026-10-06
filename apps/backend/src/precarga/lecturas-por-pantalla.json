@@ -1,0 +1,542 @@
+{
+  "version": 8,
+  "pantallas": {
+    "ADMIN:/dashboard": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/cuadro-de-honor",
+      "/dashboard/admin",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings"
+    ],
+    "ADMIN:/dashboard/academico": [
+      "/academic-years",
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings"
+    ],
+    "ADMIN:/dashboard/academico/{ciclo}": [
+      "/academic-years",
+      "/academic-years/{anio}/stats",
+      "/avisos",
+      "/avisos/preferencias",
+      "/classrooms?academicYearId={anio}",
+      "/institutes/current/academic-config",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings"
+    ],
+    "ADMIN:/dashboard/academico/{ciclo}/cierre": [
+      "/academic-years",
+      "/academic-years/{anio}/cierre",
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings"
+    ],
+    "ADMIN:/dashboard/academico/{ciclo}/graduandos": [
+      "/academic-years/{ciclo}/graduandos",
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/pae/config",
+      "/payments/settings"
+    ],
+    "ADMIN:/dashboard/academico/{ciclo}/matricula": [
+      "/academic-years/{ciclo}/matricula",
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/pae/config",
+      "/payments/settings"
+    ],
+    "ADMIN:/dashboard/academico/{ciclo}/promocion": [
+      "/academic-years",
+      "/academic-years/close/strategies",
+      "/academic-years/{anio}/promotion-context",
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings"
+    ],
+    "ADMIN:/dashboard/academico/{ciclo}/{seccionSlug}": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/class-replacements?classroomId={seccion}&from={hoy}&to={hoy}",
+      "/classrooms/slug/{seccionSlug}?academicYear={ciclo}",
+      "/classrooms/{seccionSlug}/stats",
+      "/classrooms/{seccion}/stats",
+      "/classrooms/{seccion}/subjects",
+      "/classrooms/{seccion}/subjects?stats=true",
+      "/evaluation-plan/instrumentos-del-lapso?classroomId={seccion}&lapso=1&subjectId={materiasDeLaSeccion[]}",
+      "/evaluation-plan/metadata?classroomId={seccion}&lapso=1&subjectId={materiasDeLaSeccion[]}",
+      "/evaluation-plan/rows?classroomId={seccion}&lapso=1&subjectId={materiasDeLaSeccion[]}",
+      "/institutes/current/academic-config",
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/observations/classroom/{seccion}",
+      "/pae/config",
+      "/payments/settings",
+      "/schedules/classroom/{seccion}",
+      "/sessions/live-overview?classroomId={seccion}&date={hoy}",
+      "/students/available",
+      "/students/available?academicYearId={anio}",
+      "/students?classroomId={seccion}&isActive=true&limit=20&page=1"
+    ],
+    "ADMIN:/dashboard/academico/{ciclo}/{seccionSlug}/{materia}": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/classrooms/slug/{seccionSlug}?academicYear={ciclo}",
+      "/classrooms/{seccion}/subjects/{materia}",
+      "/classrooms/{seccion}/subjects?stats=true",
+      "/evaluation-plan/instrumentos-del-lapso?classroomId={seccion}&lapso=1&subjectId={materia}",
+      "/evaluation-plan/metadata?classroomId={seccion}&lapso=1&subjectId={materia}",
+      "/evaluation-plan/rows?classroomId={seccion}&lapso=1&subjectId={materia}",
+      "/institutes/current/academic-config",
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/observations/subject/{seccion}/{materia}",
+      "/pae/config",
+      "/payments/settings",
+      "/revision/{seccion}/{materia}",
+      "/sessions/activities?classroomId={seccion}&subjectId={materia}",
+      "/sessions/live-overview?classroomId={seccion}&date={hoy}",
+      "/students?classroomId={seccion}&isActive=true&limit=20&page=1",
+      "/students?classroomId={seccion}&isActive=true&limit=20&page=1&subjectId={materia}"
+    ],
+    "ADMIN:/dashboard/boleta/{alumno}": [
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/pae/config",
+      "/payments/settings",
+      "/students/{alumno}/boleta"
+    ],
+    "ADMIN:/dashboard/configuracion": [
+      "/asistencia-qr/configuracion",
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/institutes/current/plantillas",
+      "/institutes/current/recaudos",
+      "/institutes/subject-palette",
+      "/pae/config",
+      "/payments/settings"
+    ],
+    "ADMIN:/dashboard/consejo/{seccion}": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/classrooms/{seccion}/consejos",
+      "/classrooms/{seccion}/consejos/{lapsos[]}",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings"
+    ],
+    "ADMIN:/dashboard/eventos": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/events/day?date={hoy}",
+      "/events?from={inicioDeLaRejilla}&to={finDeLaRejilla}",
+      "/institutes/current/academic-config",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings"
+    ],
+    "ADMIN:/dashboard/horario/{ciclo}/{seccionSlug}": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/classrooms/slug/{seccionSlug}?academicYear={ciclo}",
+      "/classrooms/{seccion}/subjects",
+      "/institutes/current/academic-config",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings",
+      "/schedules/classroom/{seccion}"
+    ],
+    "ADMIN:/dashboard/horarios": [
+      "/academic-years",
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings",
+      "/schedules/summary/{anio}"
+    ],
+    "ADMIN:/dashboard/horarios/profesor/{profe}": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/academic-config",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings",
+      "/schedules/teacher/{profe}/blocks",
+      "/schedules/teacher/{profe}/subjects",
+      "/users?isActive=true&role=TEACHER"
+    ],
+    "ADMIN:/dashboard/horarios/seccion/{seccion}": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/classrooms/{seccion}",
+      "/classrooms/{seccion}/subjects",
+      "/institutes/current/academic-config",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings",
+      "/schedules/classroom/{seccion}"
+    ],
+    "ADMIN:/dashboard/labor-social": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/labor-social",
+      "/pae/config",
+      "/payments/settings"
+    ],
+    "ADMIN:/dashboard/materias": [
+      "/academic-years",
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings",
+      "/subjects?academicYearId={anio}&grade=&limit=20&page=1&search=",
+      "/subjects?grade=&limit=20&page=1&search="
+    ],
+    "ADMIN:/dashboard/materias-pendientes": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/materias-pendientes",
+      "/pae/config",
+      "/payments/settings",
+      "/users?isActive=true&limit=100&role=TEACHER"
+    ],
+    "ADMIN:/dashboard/materias/{ciclo}/{materiaSlug}": [
+      "/academic-years",
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings",
+      "/subjects/{materiaSlug}?academicYearName={ciclo}"
+    ],
+    "ADMIN:/dashboard/observaciones": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/classrooms",
+      "/institutes/current/config",
+      "/observations/panel?pagina=1",
+      "/pae/config",
+      "/payments/settings"
+    ],
+    "ADMIN:/dashboard/pagos": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/finanzas/fondos",
+      "/finanzas/gastos",
+      "/finanzas/personal",
+      "/finanzas/resumen",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/cycles",
+      "/payments/overview",
+      "/payments/reportes",
+      "/payments/settings"
+    ],
+    "ADMIN:/dashboard/plan-de-evaluacion/{seccion}/{materia}": [
+      "/evaluation-plan/metadata?classroomId={seccion}&lapso=1&subjectId={materia}",
+      "/evaluation-plan/rows?classroomId={seccion}&lapso=1&subjectId={materia}",
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/pae/config",
+      "/payments/settings"
+    ],
+    "ADMIN:/dashboard/usuarios": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings",
+      "/users?limit=1&status=ARCHIVED",
+      "/users?limit=10&page=1&status=ACTIVE"
+    ],
+    "ADMIN:/dashboard/usuarios/{id}#ADMIN": [
+      "/academic-years",
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/academic-config",
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/pae/config",
+      "/payments/settings",
+      "/users/{id}",
+      "/users/{id}/pin"
+    ],
+    "ADMIN:/dashboard/usuarios/{id}#STUDENT": [
+      "/academic-years",
+      "/asistencia-qr/aparato/{id}",
+      "/avisos",
+      "/avisos/preferencias",
+      "/class-replacements?classroomId={seccionDelAlumno}&from={hoy}&to={hoy}",
+      "/cuadro-de-honor/alumno/{id}",
+      "/institutes/current/academic-config",
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/labor-social/alumno/{id}",
+      "/pae/config",
+      "/payments/settings",
+      "/schedules/classroom/{seccionDelAlumno}",
+      "/sessions/live-overview?classroomId={seccionDelAlumno}&date={hoy}",
+      "/students/{id}/dashboard",
+      "/students/{id}/dashboard?academicYearId={anio}",
+      "/students/{id}/notas-traidas",
+      "/students/{id}/recaudos",
+      "/users/{id}",
+      "/users/{id}/pin",
+      "/users/{id}/tutors"
+    ],
+    "ADMIN:/dashboard/usuarios/{id}#TEACHER": [
+      "/academic-years",
+      "/avisos",
+      "/avisos/preferencias",
+      "/class-replacements?from={hoy}&teacherId={id}&to={hoy}",
+      "/institutes/current/academic-config",
+      "/institutes/current/carga-horaria",
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/pae/config",
+      "/payments/settings",
+      "/schedules/teacher/{id}/blocks",
+      "/sessions/live-overview?classroomId={seccionesDelProfe[]}&date={hoy}",
+      "/users/{id}",
+      "/users/{id}/pin"
+    ],
+    "ADMIN:/dashboard/usuarios/{id}#TUTOR": [
+      "/academic-years",
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/academic-config",
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/pae/config",
+      "/payments/settings",
+      "/users/{id}",
+      "/users/{id}/pin"
+    ],
+    "STUDENT:/dashboard": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/class-replacements?classroomId={seccionDelAlumno}&from={hoy}&to={hoy}",
+      "/cuadro-de-honor/alumno/{yo}",
+      "/institutes/current/academic-config",
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/labor-social/alumno/{yo}",
+      "/payments/settings",
+      "/schedules/classroom/{seccionDelAlumno}",
+      "/sessions/live-overview?classroomId={seccionDelAlumno}&date={hoy}",
+      "/students/my-dashboard",
+      "/students/{yo}/actividades",
+      "/students/{yo}/materias"
+    ],
+    "STUDENT:/dashboard/boleta/mia": [
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/payments/settings",
+      "/students/{yo}/boleta"
+    ],
+    "STUDENT:/dashboard/mi-clase": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/payments/settings",
+      "/students/{yo}/materias"
+    ],
+    "STUDENT:/dashboard/mi-clase/{materia}": [
+      "/asistencia-qr/configuracion",
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/payments/settings",
+      "/students/{yo}/materias",
+      "/students/{yo}/materias/{materia}/clase"
+    ],
+    "TEACHER:/dashboard": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/dashboard/teacher",
+      "/institutes/current/config",
+      "/payments/settings"
+    ],
+    "TEACHER:/dashboard/academico": [
+      "/academic-years",
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/payments/settings"
+    ],
+    "TEACHER:/dashboard/academico/{ciclo}/{seccionSlug}#IMPARTE": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/class-replacements?classroomId={seccion}&from={hoy}&to={hoy}",
+      "/classrooms/slug/{seccionSlug}?academicYear={ciclo}",
+      "/classrooms/{seccionSlug}/stats",
+      "/classrooms/{seccion}/stats",
+      "/classrooms/{seccion}/subjects",
+      "/classrooms/{seccion}/subjects?stats=true",
+      "/evaluation-plan/instrumentos-del-lapso?classroomId={seccion}&lapso=1&subjectId={materiasDeLaSeccion[]}",
+      "/evaluation-plan/metadata?classroomId={seccion}&lapso=1&subjectId={materiasDeLaSeccion[]}",
+      "/evaluation-plan/rows?classroomId={seccion}&lapso=1&subjectId={materiasDeLaSeccion[]}",
+      "/institutes/current/academic-config",
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/observations/classroom/{seccion}",
+      "/payments/settings",
+      "/schedules/classroom/{seccion}",
+      "/sessions/live-overview?classroomId={seccion}&date={hoy}",
+      "/students/available",
+      "/students/available?academicYearId={anio}",
+      "/students?classroomId={seccion}&isActive=true&limit=20&page=1"
+    ],
+    "TEACHER:/dashboard/academico/{ciclo}/{seccionSlug}/{materia}": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/classrooms/slug/{seccionSlug}?academicYear={ciclo}",
+      "/classrooms/{seccion}/subjects/{materia}",
+      "/classrooms/{seccion}/subjects?stats=true",
+      "/evaluation-plan/instrumentos-del-lapso?classroomId={seccion}&lapso=1&subjectId={materia}",
+      "/evaluation-plan/metadata?classroomId={seccion}&lapso=1&subjectId={materia}",
+      "/evaluation-plan/rows?classroomId={seccion}&lapso=1&subjectId={materia}",
+      "/institutes/current/academic-config",
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/observations/subject/{seccion}/{materia}",
+      "/payments/settings",
+      "/revision/{seccion}/{materia}",
+      "/sessions/activities?classroomId={seccion}&subjectId={materia}",
+      "/sessions/live-overview?classroomId={seccion}&date={hoy}",
+      "/students?classroomId={seccion}&isActive=true&limit=20&page=1&subjectId={materia}"
+    ],
+    "TEACHER:/dashboard/clase-en-vivo/{seccion}/{materia}?date={fecha}&start={inicio}&end={fin}": [
+      "/asistencia-qr/configuracion",
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/payments/settings",
+      "/sessions/live-detail?classroomId={seccion}&date={fecha}&subjectId={materia}"
+    ],
+    "TEACHER:/dashboard/horario/{ciclo}/{seccionSlug}": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/classrooms/slug/{seccionSlug}?academicYear={ciclo}",
+      "/classrooms/{seccion}/subjects",
+      "/institutes/current/academic-config",
+      "/institutes/current/config",
+      "/payments/settings",
+      "/schedules/classroom/{seccion}"
+    ],
+    "TEACHER:/dashboard/horarios": [
+      "/academic-years",
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/payments/settings",
+      "/schedules/summary/{anio}"
+    ],
+    "TEACHER:/dashboard/horarios/seccion/{seccion}": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/classrooms/{seccion}",
+      "/classrooms/{seccion}/subjects",
+      "/institutes/current/academic-config",
+      "/institutes/current/config",
+      "/payments/settings",
+      "/schedules/classroom/{seccion}"
+    ],
+    "TEACHER:/dashboard/instrumentos-de-evaluacion/{seccion}/{materia}": [
+      "/evaluation-plan/instrumentos-del-lapso?classroomId={seccion}&conNotas=1&lapso=1&subjectId={materia}",
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/payments/settings"
+    ],
+    "TEACHER:/dashboard/labor-social": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/labor-social",
+      "/payments/settings"
+    ],
+    "TEACHER:/dashboard/materias": [
+      "/academic-years",
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/payments/settings",
+      "/subjects?academicYearId={anio}&grade=&limit=20&page=1&search=",
+      "/subjects?grade=&limit=20&page=1&search="
+    ],
+    "TEACHER:/dashboard/materias-pendientes": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/materias-pendientes",
+      "/payments/settings"
+    ],
+    "TEACHER:/dashboard/mis-pagos": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/finanzas/mis-pagos",
+      "/institutes/current/config",
+      "/payments/settings"
+    ],
+    "TEACHER:/dashboard/observaciones": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/classrooms",
+      "/institutes/current/config",
+      "/observations/panel?pagina=1",
+      "/payments/settings"
+    ],
+    "TEACHER:/dashboard/plan-de-evaluacion/{seccion}/{materia}": [
+      "/evaluation-plan/metadata?classroomId={seccion}&lapso=1&subjectId={materia}",
+      "/evaluation-plan/rows?classroomId={seccion}&lapso=1&subjectId={materia}",
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/payments/settings"
+    ],
+    "TUTOR:/dashboard": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/citaciones/mias",
+      "/cuadro-de-honor/alumno/{hijos[]}",
+      "/dashboard/tutor",
+      "/institutes/current/config",
+      "/labor-social/alumno/{hijos[]}",
+      "/payments/my-children",
+      "/payments/settings",
+      "/students/{hijos[]}/actividades"
+    ],
+    "TUTOR:/dashboard/boleta/{alumno}": [
+      "/institutes/current/config",
+      "/institutes/current/membrete",
+      "/payments/settings",
+      "/students/{alumno}/boleta"
+    ],
+    "TUTOR:/dashboard/mi-clase/{materia}?alumno={alumno}": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/payments/settings",
+      "/students/{alumno}/materias/{materia}/clase"
+    ],
+    "TUTOR:/dashboard/mi-clase?alumno={alumno}": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/payments/settings",
+      "/students/{alumno}/materias"
+    ]
+  }
+}

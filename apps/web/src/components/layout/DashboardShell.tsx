@@ -1,22 +1,15 @@
 'use client';
 
-import { useRouter, usePathname } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
+import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/auth.store';
-import { olvidarCredencial } from '@/lib/credencial-en-memoria';
-import { olvidarLoDescargado } from '@/lib/lo-guardado-en-el-telefono';
-import { olvidarLasRespuestas } from '@/lib/respuestas-guardadas';
-import { laPuertaDelLiceo, elLiceoDeLaCookie } from '@/lib/la-puerta-del-liceo';
-import { laLlaveGuardada, olvidarLaLlave } from '@/lib/la-huella';
 import AvisoSinConexion from '@/components/common/AvisoSinConexion';
 import AvisoDePantallaSinGuardar from '@/components/common/AvisoDePantallaSinGuardar';
 import DescargaEnSegundoPlano from '@/providers/DescargaEnSegundoPlano';
+import PrecargaAlEntrar from '@/components/arranque/PrecargaAlEntrar';
+import RecordarElPerfil from '@/components/arranque/RecordarElPerfil';
 import EnviarLoPendiente from '@/providers/EnviarLoPendiente';
 import CambiosSinEnviar from '@/components/common/CambiosSinEnviar';
-import { laCola, tirarLosDe, EVENTO_ENCOLADO } from '@/lib/por-enviar';
-import { elDuenoDeAhora } from '@/lib/el-dueno';
-import { useConfirm } from '@/hooks/useConfirm';
 import ActualizarLaApp from '@/components/common/ActualizarLaApp';
 import { AsistenciaEnPantalla } from '@/components/asistencia/AsistenciaDelAlumno';
 import FondoQuieto from '@/components/layout/FondoQuieto';
@@ -32,11 +25,12 @@ import { abrirMiCuenta } from '@/components/layout/CabeceraMovil';
 import BarraInferiorMovil from '@/components/layout/BarraInferiorMovil';
 import { RecorridoGuiado, BotonDelRecorrido } from '@/components/common/Recorrido';
 import { Campana, ApuntarElTelefonoAlEntrar, OfrecerAvisos } from '@/components/layout/Campana';
-import { olvidarEsteTelefono } from '@/lib/avisos-al-telefono';
 import CabeceraMovil from '@/components/layout/CabeceraMovil';
 import UserAvatar from '@/components/ui/UserAvatar';
 import Image from 'next/image';
 import { esDocumento } from '@/lib/documentos';
+import { useCerrarSesion } from '@/hooks/useCerrarSesion';
+import { useEnElMarco } from '@/lib/en-el-marco';
 
 interface DashboardUser {
     id: string;
@@ -64,100 +58,19 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function DashboardShell({ user, children }: DashboardShellProps) {
-    const router = useRouter();
     const pathname = usePathname();
-    const { logout: zustandLogout, user: usuarioDeLaSesion } = useAuthStore();
+    const { user: usuarioDeLaSesion } = useAuthStore();
     const { data: instituteConfig } = useInstituteConfig();
     const { data: pagos } = usePagosActivos();
     const { data: comedor } = usePaeActivo(user?.role === 'ADMIN');
 
     // Mantener la sesión activa de forma transparente mientras la pestaña esté abierta
     useSessionKeepAlive();
+    // Dentro del recorrido invisible de la precarga, nada de lo que trabaja de fondo.
+    const enMarco = useEnElMarco();
 
-    const queryClient = useQueryClient();
-    const preguntar = useConfirm();
 
-    const handleLogout = async () => {
-        /**
-         * SALIR DEVUELVE AL PORTAL DEL LICEO, NO A UN 404
-         *
-         * `/login` a secas responde «esta dirección no existe»: la pantalla de
-         * entrar necesita saber de qué liceo es. Al cerrar sesión se mandaba
-         * ahí, así que lo último que veía quien salía era un error, con un
-         * botón a la portada de la plataforma y sin forma de volver a entrar en
-         * su liceo. Se apunta el liceo ANTES de borrar las credenciales, que se
-         * lo llevan por delante.
-         */
-        /**
-         * CERRAR SESIÓN CON COSAS SIN ENVIAR (2026-09-30)
-         *
-         * Con conexión, primero se envían. Si aún quedan (sin conexión, o algo
-         * por decidir), se pregunta: cerrar sesión las pierde, y en un teléfono
-         * que se presta no se pueden quedar a la vista del siguiente.
-         */
-        const dueno = elDuenoDeAhora();
-        if (dueno) {
-            if ((await laCola(dueno)).length) {
-                document.dispatchEvent(new Event(EVENTO_ENCOLADO));
-                await new Promise((r) => setTimeout(r, 2500));
-            }
-            const quedan = await laCola(dueno);
-            if (quedan.length) {
-                const ok = await preguntar({
-                    title: `Tienes ${quedan.length} cambio(s) sin enviar`,
-                    description:
-                        'Lo que hiciste sin conexión todavía no llegó al liceo. Si cierras sesión ahora, se pierde. Espera a tener conexión (se envía solo) o ciérrala igual.',
-                    confirmLabel: 'Cerrar y perderlos',
-                    cancelLabel: 'No cerrar',
-                });
-                if (!ok) return;
-                await tirarLosDe(dueno);
-            }
-        }
-        const liceo = elLiceoDeLaCookie();
-        const puerta = laPuertaDelLiceo();
-
-        // La llave de la huella de ESTE teléfono: se manda para que el
-        // servidor la anule, y se borra de aquí. Cerrar sesión es cerrar
-        // sesión: si se quedara, el siguiente que abriera la app entraría con
-        // la huella del dueño del móvil sin pasar por la contraseña.
-        const llaveDelTelefono = liceo ? await laLlaveGuardada(liceo) : null;
-
-        /**
-         * SIN CONEXIÓN TAMBIÉN SE CIERRA
-         *
-         * Lo de hablar con el servidor puede fallar (sin señal, sin servidor):
-         * se intenta y ya. Antes un fallo aquí cortaba el resto, y lo
-         * descargado se quedaba en el teléfono con la sesión «cerrada».
-         */
-        try {
-            // Y los avisos a este teléfono: con la sesión todavía abierta, que el
-            // servidor necesita saber de quién son. Un teléfono prestado no debe
-            // seguir recibiendo las citaciones del anterior.
-            await olvidarEsteTelefono();
-
-            await fetch('/api/auth/logout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ llaveDelTelefono: llaveDelTelefono ?? undefined }),
-            });
-        } catch {
-            // Sin conexión: lo del servidor caduca solo; lo de aquí se borra igual.
-        }
-        if (liceo) await olvidarLaLlave(liceo);
-        // Y la llave que estaba en la memoria de la pestaña: si no, seguiría
-        // sirviendo hasta que caduque aunque la sesión esté cerrada.
-        olvidarCredencial();
-        // Y lo descargado a este teléfono. Cerrar sesión es cerrar sesión: en
-        // un móvil que se presta, lo de antes no se enseña al siguiente. Lo
-        // que hay en la memoria de la pestaña, también.
-        await olvidarLoDescargado();
-        await olvidarLasRespuestas();
-        queryClient.clear();
-        // Clear Zustand UI state
-        zustandLogout();
-        router.push(puerta);
-    };
+    const handleLogout = useCerrarSesion();
 
     const menu = elMenuDe(user?.role, Boolean(pagos?.enabled), Boolean(comedor?.enabled));
 
@@ -207,16 +120,24 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 teléfono va dentro de la cabecera; este, el del ordenador. */}
             <AvisoSinConexion soloOrdenador />
             <AvisoDePantallaSinGuardar />
-            {/* Como WhatsApp: con conexión, lo de cada uno se baja solo. */}
-            <DescargaEnSegundoPlano />
-            {/* Lo hecho sin conexión: sube solo al volver, y aquí se ve (⏱). */}
-            <EnviarLoPendiente />
-            <CambiosSinEnviar />
-            {/* Si ya dio permiso, este teléfono recibe los avisos de quien entró. */}
-            <ApuntarElTelefonoAlEntrar />
+            {!enMarco && (
+                <>
+                    {/* Como WhatsApp: con conexión, lo de cada uno se baja solo. */}
+                    <DescargaEnSegundoPlano />
+                    {/* Y la primera vez, TODO, con el libro (`lib/precarga.ts`). */}
+                    <PrecargaAlEntrar />
+                    {/* Quién usa el teléfono, para la pantalla de bloqueo. */}
+                    <RecordarElPerfil />
+                    {/* Lo hecho sin conexión: sube solo al volver, y aquí se ve (⏱). */}
+                    <EnviarLoPendiente />
+                    <CambiosSinEnviar />
+                    {/* Si ya dio permiso, este teléfono recibe los avisos de quien entró. */}
+                    <ApuntarElTelefonoAlEntrar />
 
-            {/* En la APK: si hay una versión nueva publicada, se ofrece aquí. */}
-            <ActualizarLaApp />
+                    {/* En la APK: si hay una versión nueva publicada, se ofrece aquí. */}
+                    <ActualizarLaApp />
+                </>
+            )}
             {/* La cámara de la asistencia por QR del alumno, fuera de toda ventana. */}
             <AsistenciaEnPantalla />
             <FondoQuieto />
@@ -297,7 +218,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
 
                     <div className="border-t p-4">
                         <button
-                            onClick={handleLogout}
+                            onClick={() => void handleLogout()}
                             className="flex w-full items-center px-4 py-3 text-sm font-medium text-red-600 rounded-md hover:bg-red-50 transition-colors"
                         >
                             <LogOut className="mr-3 h-5 w-5" />
@@ -313,7 +234,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                     sistema: sin él, lo último de cada pantalla queda donde el
                     dedo pulsa la barra de gestos. */}
                 <div className="mx-auto max-w-7xl px-4 py-6 pb-[calc(7rem+var(--zona-segura-abajo))] sm:px-6 lg:px-8 lateral:pb-6 print:!p-0 print:max-w-none">
-                    <OfrecerAvisos />
+                    {!enMarco && <OfrecerAvisos />}
                     {children}
                 </div>
             </main>
@@ -321,7 +242,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
             {/* La barra de abajo: donde está el pulgar. */}
             <BarraInferiorMovil destinos={destinosDeLaBarra} />
             {/* «¿Cómo funciona?»: el globo que ilumina cada botón (rial). */}
-            <RecorridoGuiado />
+            {!enMarco && <RecorridoGuiado />}
         </div>
     );
 }

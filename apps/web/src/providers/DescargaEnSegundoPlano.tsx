@@ -1,129 +1,128 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import api from '@/lib/axios';
+import { useEffect, useMemo, useRef } from 'react';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
-import { useSchoolToday } from '@/hooks/useSchoolTime';
 import { useConexion } from '@/hooks/useConexion';
-import { guardarEstasPaginas } from '@/lib/paginas-guardadas';
+import { usePagosActivos } from '@/hooks/usePagos';
+import { usePaeActivo } from '@/hooks/usePae';
+import { elMenuDe } from '@/lib/el-menu';
+import { elDuenoDeAhora } from '@/lib/el-dueno';
 import { escalonar } from '@/lib/azar';
+import { guardarEstasPaginas } from '@/lib/paginas-guardadas';
 import { lasPorGuardar } from '@/lib/pantallas-sin-guardar';
-import { loDelAdmin, loDelAlumno, loDelProfesor, type LoQueSeBaja } from '@/lib/lo-que-se-baja-solo';
+import { bajarTodo, estaCompleta, ponerseAlDia, seEnsenaLaPrecarga } from '@/lib/precarga';
+import { EVENTO_DATOS_CAMBIARON } from '@/providers/TiempoRealProvider';
 
 /**
- * LA DESCARGA EN SEGUNDO PLANO (como WhatsApp)
+ * LA COPIA DEL TELÉFONO, AL DÍA SOLA (como WhatsApp)
  *
- * Con conexión, sin que nadie lo pida: al entrar, al volver la conexión, al
- * volver a la app y cada media hora, se baja lo de cada uno
- * (`lo-que-se-baja-solo.ts`). De una en una y sin prisa: la pantalla que la
- * persona está usando va primero. Nada si el teléfono pide ahorrar datos.
+ * Después de la primera descarga (`PrecargaAlEntrar`), nunca más se baja todo
+ * ni se abre pantalla alguna: se pregunta qué cambió (`ponerseAlDia`) y se
+ * baja solo eso. Cuándo:
  *
- * Con la app CERRADA del todo no baja nada: en la APK eso necesita el aviso de
- * Firebase para despertarla (pendiente, `docs/APP-MOVIL.md`).
+ *   · al abrir la app y al volver a ella;
+ *   · al volver la conexión, cada teléfono a su hora (`escalonar`);
+ *   · con la app abierta, cuando el tiempo real avisa de un cambio;
+ *   · cada 30 min, por si se perdió algún aviso.
+ *
+ * Si el servidor dice «demasiado viejo» (`todo`), la pasada entera, de fondo
+ * y sin pantalla. Nada si el teléfono pide ahorrar datos.
+ *
+ * Con la app CERRADA del todo, el aviso silencioso de Firebase la despierta
+ * para lo mismo (`docs/APP-MOVIL.md`).
  */
 
 const CADA = 30 * 60 * 1000;
-const AL_VOLVER = 15 * 60 * 1000;
-const PAUSA_ENTRE_LECTURAS = 250;
-const LLAVE = 'gestiedu:ultima-descarga';
-
-const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const AL_VOLVER = 2 * 60 * 1000;
+/** Varios avisos seguidos (una tanda de notas) se juntan en una pasada. */
+const JUNTAR_AVISOS = 4000;
 
 function ahorrandoDatos(): boolean {
     const conexion = (navigator as unknown as { connection?: { saveData?: boolean } }).connection;
     return Boolean(conexion?.saveData);
 }
 
-function ultima(dueno: string): number {
-    try {
-        const g = JSON.parse(localStorage.getItem(LLAVE) || 'null');
-        return g?.dueno === dueno ? Number(g.cuando) || 0 : 0;
-    } catch {
-        return 0;
-    }
-}
-
-function apuntar(dueno: string) {
-    try {
-        localStorage.setItem(LLAVE, JSON.stringify({ dueno, cuando: Date.now() }));
-    } catch {
-        /* sin almacenamiento: se bajará algo más a menudo, nada más */
-    }
-}
-
-async function queBajar(rol: string, yoId: string, hoy: string): Promise<LoQueSeBaja> {
-    if (rol === 'TEACHER') {
-        const { data } = await api.get(`/schedules/teacher/${yoId}/blocks`);
-        return loDelProfesor(yoId, data?.scheduleBlocks ?? [], hoy);
-    }
-    if (rol === 'STUDENT') {
-        const { data } = await api.get(`/students/${encodeURIComponent(yoId)}/materias`);
-        return loDelAlumno(yoId, data?.seccion?.id ?? null, data?.materias ?? []);
-    }
-    if (rol === 'ADMIN') return loDelAdmin();
-    return { lecturas: [], pantallas: ['/dashboard'] };
-}
-
 export function DescargaEnSegundoPlano() {
     const { yo } = useQuienSoy();
-    const hoy = useSchoolToday();
     const { hayConexion } = useConexion();
-    const bajando = useRef(false);
+    const { data: pagos, isFetched: pagosSabido } = usePagosActivos();
+    const { data: comedor, isFetched: comedorSabido } = usePaeActivo(yo?.role === 'ADMIN');
+    // El menú depende de los módulos del liceo: hasta saberlos, no se pide nada
+    // (si no, Pagos o Comedor quedaban fuera de lo descargado).
+    const menuSabido = pagosSabido && (yo?.role !== 'ADMIN' || comedorSabido);
+    const menu = useMemo(
+        () => elMenuDe(yo?.role, Boolean(pagos?.enabled), Boolean(comedor?.enabled)).map((d) => d.href),
+        [yo?.role, pagos?.enabled, comedor?.enabled]
+    );
+    const estado = useRef({ hayConexion, menu, menuSabido });
+    useEffect(() => {
+        estado.current = { hayConexion, menu, menuSabido };
+    }, [hayConexion, menu, menuSabido]);
+    const corriendo = useRef(false);
+    const ultima = useRef(0);
     const bajarYa = useRef<((minimo: number) => Promise<void>) | null>(null);
-    const estado = useRef({ yo, hoy, hayConexion });
-    estado.current = { yo, hoy, hayConexion };
 
     useEffect(() => {
         if (!yo?.id || !yo.role) return;
-        const dueno = `${yo.role}:${yo.id}`;
 
         const bajar = async (minimo: number) => {
-            const { yo: quien, hoy: dia, hayConexion: hay } = estado.current;
-            if (bajando.current || !hay || !quien?.id || ahorrandoDatos()) return;
-            if (Date.now() - ultima(dueno) < minimo) return;
-            bajando.current = true;
+            const dueno = elDuenoDeAhora();
+            if (corriendo.current || !estado.current.hayConexion || !estado.current.menuSabido || !dueno || ahorrandoDatos()) return;
+            // La primera descarga la lleva `PrecargaAlEntrar` (con su pantalla, en la app).
+            if (seEnsenaLaPrecarga() && !estaCompleta(dueno)) return;
+            if (Date.now() - ultima.current < minimo) return;
+            corriendo.current = true;
             try {
-                const plan = await queBajar(quien.role, quien.id, dia);
-                guardarEstasPaginas([...plan.pantallas, ...lasPorGuardar()]);
-                for (const l of plan.lecturas) {
-                    // Si se va la conexión a medias, se deja: se sigue la próxima vez.
-                    if (!estado.current.hayConexion) return;
-                    await api.get(l.url, { params: l.params }).catch(() => undefined);
-                    await esperar(PAUSA_ENTRE_LECTURAS);
+                // Las pantallas que alguien tocó sin conexión y no estaban.
+                const porGuardar = lasPorGuardar();
+                if (porGuardar.length) guardarEstasPaginas(porGuardar);
+                const r = await ponerseAlDia(dueno, estado.current.menu, () => estado.current.hayConexion);
+                if (r === 'todo') {
+                    await bajarTodo({
+                        dueno,
+                        menu: estado.current.menu,
+                        hayConexion: () => estado.current.hayConexion,
+                        // De fondo no se espera a la conexión para siempre: la próxima vez.
+                        cancelada: () => !estado.current.hayConexion || elDuenoDeAhora() !== dueno,
+                    });
                 }
-                apuntar(dueno);
+                ultima.current = Date.now();
             } catch {
                 /* sin conexión o sin permiso: la próxima vez */
             } finally {
-                bajando.current = false;
+                corriendo.current = false;
             }
         };
-
         bajarYa.current = bajar;
 
-        // Un poco después de abrir: lo primero es lo que la persona está viendo.
-        const primera = window.setTimeout(() => void bajar(AL_VOLVER), 15_000);
+        const primera = window.setTimeout(() => void bajar(0), 5_000);
         const cada = window.setInterval(() => void bajar(CADA), CADA);
         const alVolver = () => {
             if (document.visibilityState === 'visible') void bajar(AL_VOLVER);
         };
+        let juntando: number | undefined;
+        const alCambiar = () => {
+            window.clearTimeout(juntando);
+            juntando = window.setTimeout(() => void bajar(0), JUNTAR_AVISOS);
+        };
         document.addEventListener('visibilitychange', alVolver);
+        window.addEventListener(EVENTO_DATOS_CAMBIARON, alCambiar);
         return () => {
             window.clearTimeout(primera);
+            window.clearTimeout(juntando);
             window.clearInterval(cada);
             document.removeEventListener('visibilitychange', alVolver);
+            window.removeEventListener(EVENTO_DATOS_CAMBIARON, alCambiar);
             bajarYa.current = null;
         };
     }, [yo?.id, yo?.role]);
 
-    // Al volver la conexión, lo que falte, sin esperar la media hora.
+    // Al volver la conexión, sin esperar: cada teléfono a su hora (de 5 s a 1 min).
     const antes = useRef(hayConexion);
     useEffect(() => {
         const volvio = hayConexion && !antes.current;
         antes.current = hayConexion;
         if (!volvio) return;
-        // Cada teléfono a su hora (de 5 s a 1 min): bajarse lo de su rol es
-        // lo más pesado, y al volver la luz lo harían todos a la vez.
         const t = window.setTimeout(() => void bajarYa.current?.(0), 5_000 + escalonar(55_000));
         return () => window.clearTimeout(t);
     }, [hayConexion]);

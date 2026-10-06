@@ -31,6 +31,7 @@ describe('Qué liceo dice la dirección', () => {
 
     it('los túneles públicos, tampoco: ese trozo cambia cada vez', () => {
         expect(elLiceoDelHost('abc-123.trycloudflare.com')).toBeNull();
+        expect(elLiceoDelHost('desktop-o5indos.taile320b0.ts.net')).toBeNull();
         expect(elLiceoDelHost('algo.ngrok-free.app')).toBeNull();
     });
 

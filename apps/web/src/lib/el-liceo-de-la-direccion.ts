@@ -27,6 +27,8 @@ const TUNELES = [
     'trycloudflare.com',
     'pinggy.link',
     'pinggy.io',
+    // Tailscale Funnel (`npm run tunel`): `desktop-xxx.tailNNN.ts.net`.
+    'ts.net',
 ];
 
 const NO_SON_LICEOS = new Set(['www', 'superadmin', 'super-admin']);

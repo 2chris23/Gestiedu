@@ -356,3 +356,29 @@ export async function captureEvidence(
     contentType: 'application/json',
   });
 }
+
+/**
+ * El representante de prueba con un representado (est0575): el de la base
+ * no tiene ninguno. Si hay que poner el vínculo, `quitar()` lo deja como estaba.
+ */
+export async function representanteConUnHijo(): Promise<{ correo: string; quitar: () => Promise<void> }> {
+  const correo = 'tutor.prueba@testing.edu.ve';
+  const [par] = await queryTenantDb<{ sid: string; tid: string; vinculado: boolean }>(
+    `SELECT s.id AS sid, t.id AS tid,
+            EXISTS (SELECT 1 FROM student_tutors st WHERE st."studentId" = s.id AND st."tutorId" = t.id) AS vinculado
+       FROM users s, users t
+      WHERE s.email = 'est0575@testing.edu.ve' AND t.email = $1`,
+    [correo]
+  );
+  if (!par || par.vinculado) return { correo, quitar: async () => {} };
+  await queryTenantDb(
+    `INSERT INTO student_tutors (id, "studentId", "tutorId", relationship, "createdAt", "updatedAt") VALUES ($1, $2, $3, 'Madre', now(), now())`,
+    [`c${Date.now()}vinculo`, par.sid, par.tid]
+  );
+  return {
+    correo,
+    quitar: async () => {
+      await queryTenantDb(`DELETE FROM student_tutors WHERE "studentId" = $1 AND "tutorId" = $2`, [par.sid, par.tid]).catch(() => undefined);
+    },
+  };
+}

@@ -230,6 +230,14 @@ model User {
   joinDate            DateTime  @default(now())
   lastLogin           DateTime?
 
+  // El PIN de 4 números de la app, para teléfonos sin bloqueo de pantalla
+  // (`services/pin-de-la-app.service.ts`). Su resumen (bcrypt), nunca el PIN.
+  // `pinVersion` sube cuando un admin lo cambia o lo resetea: el teléfono
+  // tira su copia. `pinFallos`: a los 10 seguidos, solo un admin lo suelta.
+  pinDeLaApp String?
+  pinVersion Int     @default(0)
+  pinFallos  Int     @default(0)
+
   // Campos específicos para profesores
   specialization String?
 
@@ -2537,4 +2545,26 @@ model PuntajeDelCuadro {
   @@unique([studentId, academicYearId, alcance, fecha])
   @@index([academicYearId, alcance, fecha])
   @@map("cuadro_de_honor")
+}
+
+/// CADA CAMBIO DEL LICEO, PARA QUE LOS TELÉFONOS BAJEN SOLO LO QUE CAMBIÓ
+///
+/// Lo apunta `plugins/avisar-cambios.ts` por cada escritura que sale bien. El
+/// teléfono pregunta «¿qué cambió desde el número N?» (`POST /precarga/cambios`)
+/// y se baja solo lo que esos cambios tocan. No guarda QUÉ se escribió, solo
+/// qué recurso, a quién toca y qué ids nombraba. Se tira a los 30 días
+/// (`CAMBIOS_DEL_LICEO_DIAS`, `mantenimiento.service.ts`).
+model CambioDelLiceo {
+  id            Int      @id @default(autoincrement())
+  momento       DateTime @default(now())
+  recurso       String
+  accion        String
+  /// Alumnos, sección y los ids que nombraba la dirección de la escritura.
+  ids           String[] @default([])
+  /// A quién toca. Vacío con `todos` = todo el liceo.
+  destinatarios String[] @default([])
+  todos         Boolean  @default(false)
+
+  @@index([momento])
+  @@map("cambios_del_liceo")
 }

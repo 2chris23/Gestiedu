@@ -69,7 +69,10 @@ function recursoDeLaUrl(url: string): string | null {
     if (i === -1 || !partes[i + 1]) return null;
 
     const recurso = partes[i + 1];
-    if (recurso === 'superadmin' || recurso === 'auth' || recurso === 'time') return null;
+    // `precarga`: sus POST solo LEEN (el plan y los bloques). Contarlos como
+    // cambio haría un bucle: el aviso pondría al día a los teléfonos, que
+    // pedirían otro bloque, que avisaría otra vez…
+    if (recurso === 'superadmin' || recurso === 'auth' || recurso === 'time' || recurso === 'precarga') return null;
 
     return recurso;
 }
@@ -86,6 +89,45 @@ function accionDelMetodo(metodo: string): AvisoDeCambio['accion'] {
     if (metodo === 'POST') return 'creado';
     if (metodo === 'DELETE') return 'borrado';
     return 'actualizado';
+}
+
+/** Los ids que nombra la dirección de la escritura (`/users/<id>`, `?classroomId=<id>`). */
+const PARECE_UN_ID = /^(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{6,64}$/;
+export function losIdsDeLaUrl(url: string): string[] {
+    const [camino, query = ''] = url.split('?');
+    const trozos = [...camino.split('/'), ...new URLSearchParams(query).values()];
+    const limpios = trozos.map((t) => {
+        try {
+            return decodeURIComponent(t);
+        } catch {
+            return t;
+        }
+    });
+    return [...new Set(limpios.filter((t) => PARECE_UN_ID.test(t)))];
+}
+
+/**
+ * Lo apunta para los teléfonos (`cambios_del_liceo`): qué recurso, a quién
+ * toca y qué ids nombraba. No QUÉ se escribió.
+ */
+async function apuntarElCambio(
+    request: FastifyRequest,
+    aviso: AvisoDeCambio,
+    destinatarios: { personas: string[]; personal: string[] } | null
+): Promise<void> {
+    const prisma = (request as any).tenantPrisma;
+    if (!prisma?.cambioDelLiceo) return;
+    const quien = request.aQuienAfecta;
+    const ids = [...new Set([...(quien?.studentIds ?? []), ...(quien?.classroomId ? [quien.classroomId] : []), ...losIdsDeLaUrl(request.url)])];
+    await prisma.cambioDelLiceo.create({
+        data: {
+            recurso: aviso.recurso,
+            accion: aviso.accion,
+            ids,
+            destinatarios: destinatarios ? [...new Set([...destinatarios.personas, ...destinatarios.personal])] : [],
+            todos: !destinatarios,
+        },
+    });
 }
 
 async function avisarCambiosPlugin(server: FastifyInstance) {
@@ -152,6 +194,9 @@ async function avisarCambiosPlugin(server: FastifyInstance) {
                 error: error instanceof Error ? error.message : String(error),
             });
         }
+
+        // Para los teléfonos: «¿qué cambió desde la última vez?» (`POST /precarga/cambios`).
+        await apuntarElCambio(request, aviso, destinatarios).catch(avisarSiFalla('cambios-del-liceo'));
 
         try {
             if (destinatarios) {

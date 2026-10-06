@@ -652,8 +652,8 @@ Y tres cosas más que ya estaban y siguen valiendo:
 
 Cambió el 2026-09-30 (antes era «sin señal se mira, no se toca»): en Venezuela
 se va la luz y el liceo se queda sin internet. **La app no se queda nunca en
-blanco**, **se baja sola** lo de cada rol (también lo que no se ha abierto,
-`lib/lo-que-se-baja-solo.ts`, cada 30 min y al volver la conexión) y **se
+blanco**, **se baja TODO** lo de cada persona la primera vez (también lo que
+no se ha abierto: la precarga, más abajo) y luego solo lo que cambia, y **se
 pone al día sola** (el ayudante baja la compilación nueva en segundo plano; la
 APK nueva se baja sola con wifi y pide un toque para instalarse).
 
@@ -890,3 +890,59 @@ pone antes de pintar). El Inicio del admin en el teléfono es
 promedio del liceo con ojo para ocultarlo, luces que flotan (quietas con
 «reducir movimiento»), los accesos en un **carrusel sin fin** (`Carril` con
 `bucle`) y su propio esqueleto azul mientras carga.
+
+## La precarga: sin conexión, todo (octubre 2026)
+
+La primera vez que alguien entra en un teléfono se baja **todo lo suyo**, como
+WhatsApp al restaurar: el libro que se abre con «12,4 de 31 MB»
+(`components/arranque/PrecargaAlEntrar.tsx`). **Solo esa vez**, y no se puede
+saltar: sin conexión dice «Esperando para seguir descargando…», sin botón para
+seguir (solo «Cerrar sesión»), y sigue sola donde quedó (decidido por Cristian).
+
+- **El diseño va dentro de la APK** (`CascaraDeLaApk.java`; `npm run publicar`
+  copia `apps/web/.next/static` a `assets/cascara`). Lo nuevo del servidor baja
+  por la red; los datos del liceo **nunca** van en la APK (es la misma para todos).
+- **Los datos, en un paquete** (`services/precarga.service.ts`,
+  `routes/precarga.routes.ts`): `POST /precarga/plan` dice qué bajar y
+  `POST /precarga/bloque` lo entrega de 150 en 150. **Cada lectura se hace como
+  esa persona** (`server.inject` con su credencial): lo que daría 403 a mano no
+  va (PAQUETE-01…05). Las lecturas internas no gastan su cupo (marca del proceso).
+- **Qué lee cada pantalla no se escribe a mano**: lo graba
+  `tests/e2e/grabar-lecturas.spec.ts` en `precarga/lecturas-por-pantalla.json`
+  (por rol, molde y variante: la ficha de un alumno no es la de un profesor).
+  **PRECARGA-MAPA se pone en rojo si una pantalla pide algo que no está en el
+  mapa, o un id que el contexto no explica**: `GRABAR=1` lo reescribe; un dato
+  nuevo se le da al contexto en `precarga.service.ts`. **Al cambiar lo que pide
+  una pantalla, vuelve a grabar.**
+- **Una página por tipo de pantalla**: el ayudante sirve la ficha de un alumno
+  para las demás con el trozo de la dirección cambiado (`laPlantilla` en
+  `sw.js`, PLANTILLA-01). Una lectura con `fetch` a mano no se guarda: van por `api`.
+- **Después, solo lo que cambió**: cada escritura se apunta en
+  `cambios_del_liceo` (`plugins/avisar-cambios.ts`; 30 días) y el teléfono
+  pregunta `POST /precarga/cambios {desde}` al abrir, al volver la conexión, al
+  avisar el tiempo real y cada 30 min (`DescargaEnSegundoPlano`). Los POST de
+  `precarga` NO son cambios (si no, bucle). Una vez al día, la pasada entera de
+  fondo (lo nuevo, como un alumno nuevo, llega ahí). CAMBIOS-01…05.
+- PRECARGA-01…06 (navegador) miden por rol el tiempo y los MB.
+
+## El arranque y el candado (octubre 2026)
+
+Al abrir la APK: el icono → el libro → el logo del liceo → **la pantalla de
+bloqueo** si hay sesión (como Zinli o el banco), o el login. «Ingresar» pide la
+huella o el bloqueo del teléfono; sin bloqueo, un **PIN de 4 de la app** que
+crea la persona una vez y **solo un admin** cambia o resetea desde la ficha
+(PIN-01…07). Al volver a la app pasado el tiempo de «Mi cuenta» (1 min por
+defecto), otra vez. Es la puerta de la casa; la caja fuerte sigue siendo el
+servidor. Código en `components/arranque/`, `lib/el-candado.ts`,
+`lib/pin-de-la-app.ts`; BLOQUEO-UI-01…05.
+
+## Probar desde cualquier teléfono: el túnel
+
+`npm run tunel` compila la web, levanta los dos servidores y la publica con
+**Tailscale Funnel** en `https://<pc>.<tailnet>.ts.net` (la de Cristian:
+`desktop-o5indos.taile320b0.ts.net`), mientras la PC esté prendida. Las
+pantallas en el 3100 (no el 3000: `funnel --bg` sobrevive al proceso),
+`/api` lo reenvía Next (`API_DEL_SERVIDOR`), `/socket.io` va directo al 3001.
+CORS: `ORIGEN_DEL_TUNEL` (ningún `.env` la trae). `*.ts.net` no nombra un liceo.
+**Con TunnelBear, Tailscale va excluido en SplitBear**; si no, sale «offline».
+`npm run tunel -- --apagar` cierra el túnel.

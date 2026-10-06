@@ -727,3 +727,65 @@ select,
   pointer-events: none;
   will-change: transform;
 }
+
+/*
+ * EL LIBRO DE LA PRECARGA (`components/arranque/LibroQueSeAbre.tsx`)
+ *
+ * La tapa se abre una vez y luego las hojas pasan, una tras otra y SIN
+ * PARAR, mientras se baja lo del liceo. Antes cada hoja, al acabar su vuelta,
+ * saltaba de golpe al lado derecho y se quedaban todas amontonadas: en el
+ * teléfono de Cristian pasaban las primeras y luego parecía detenido. Ahora
+ * cada hoja aparece a la derecha, pasa, se posa a la izquierda y se
+ * desvanece mientras la siguiente ya está pasando: un ciclo continuo.
+ * Con «reducir movimiento», el libro abierto y quieto.
+ */
+@keyframes libro-tapa {
+  0% { transform: rotateY(0deg); }
+  100% { transform: rotateY(-178deg); }
+}
+@keyframes libro-hoja {
+  0% { transform: rotateY(0deg); opacity: 0; }
+  8% { transform: rotateY(0deg); opacity: 1; }
+  55% { transform: rotateY(-176deg); opacity: 1; }
+  80% { transform: rotateY(-176deg); opacity: 1; }
+  100% { transform: rotateY(-176deg); opacity: 0; }
+}
+@keyframes libro-aparece {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+.libro { perspective: 900px; animation: libro-aparece 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.libro-tapa,
+.libro-hoja {
+  transform-origin: left center;
+  transform-style: preserve-3d;
+  backface-visibility: visible;
+  will-change: transform, opacity;
+}
+.libro-tapa { animation: libro-tapa 0.9s cubic-bezier(0.65, 0, 0.35, 1) 0.2s both; }
+/* 4 hojas, 2,4 s cada una y una cada 0,6 s: siempre hay una pasando. */
+.libro-hoja { opacity: 0; animation: libro-hoja 2.4s cubic-bezier(0.45, 0, 0.25, 1) infinite both; }
+@media (prefers-reduced-motion: reduce) {
+  .libro, .libro-tapa, .libro-hoja { animation: none !important; }
+  .libro-tapa { transform: rotateY(-178deg); }
+}
+
+/*
+ * EL FONDO DE LA PANTALLA DE BLOQUEO (`components/arranque/FondoDeIconos.tsx`)
+ *
+ * Iconos del liceo que flotan despacio sobre el azul, y el logo que «respira».
+ * Con «reducir movimiento», todo quieto.
+ */
+@keyframes icono-flota {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-6deg); }
+  50% { transform: translate3d(6px, -16px, 0) rotate(5deg); }
+}
+@keyframes logo-respira {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-4px) scale(1.02); }
+}
+.icono-que-flota { animation: icono-flota 9s ease-in-out infinite; will-change: transform; }
+.logo-que-respira { animation: logo-respira 5s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .icono-que-flota, .logo-que-respira { animation: none !important; }
+}

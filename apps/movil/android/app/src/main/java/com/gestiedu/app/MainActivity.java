@@ -8,7 +8,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.View;
+import android.os.Build;
 import android.webkit.CookieManager;
+import android.webkit.ServiceWorkerClient;
+import android.webkit.ServiceWorkerController;
 import android.webkit.URLUtil;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -80,6 +83,11 @@ import com.getcapacitor.BridgeWebViewClient;
  * ni una cookie en el disco y otra vez al login; pasando, las cuatro, y la
  * app abre en el panel.
  *
+ * EL DISEÑO, DESDE LA APK
+ *
+ * Los archivos de la web (`/_next/static`) van dentro de la APK y salen de
+ * aquí, sin internet: ver `CascaraDeLaApk`.
+ *
  * LA PANTALLA DE «NO SE LLEGA AL LICEO», SOLO SI NO HAY NADA QUE ENSEÑAR
  *
  * Sin servidor, la app abre igual: el ayudante del navegador (`sw.js`) sirve
@@ -101,6 +109,9 @@ public class MainActivity extends BridgeActivity {
 
     private final Handler hiloPrincipal = new Handler(Looper.getMainLooper());
 
+    /** El diseño de la web que va dentro de la APK (ver `CascaraDeLaApk`). */
+    private CascaraDeLaApk cascara;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         // Antes de `super.onCreate`: Capacitor solo conoce los complementos
@@ -112,7 +123,17 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
 
         dejarSitioParaElReloj();
+        cascara = new CascaraDeLaApk(getAssets(), CascaraDeLaApk.elOrigen(getBridge().getServerUrl()));
         getBridge().setWebViewClient(new ClienteQueNoTapaLaApp(getBridge()));
+        // El ayudante (`sw.js`) pide por su cuenta: también sale de la APK.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            ServiceWorkerController.getInstance().setServiceWorkerClient(new ServiceWorkerClient() {
+                @Override
+                public WebResourceResponse shouldInterceptRequest(WebResourceRequest peticion) {
+                    return cascara.responder(peticion);
+                }
+            });
+        }
 
         getBridge().getWebView().setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
             try {
@@ -237,6 +258,12 @@ public class MainActivity extends BridgeActivity {
         ClienteQueNoTapaLaApp(Bridge puente) {
             super(puente);
             this.puente = puente;
+        }
+
+        @Override
+        public WebResourceResponse shouldInterceptRequest(WebView vista, WebResourceRequest peticion) {
+            WebResourceResponse deLaApk = cascara == null ? null : cascara.responder(peticion);
+            return deLaApk != null ? deLaApk : super.shouldInterceptRequest(vista, peticion);
         }
 
         @Override

@@ -8,6 +8,7 @@ import { Settings, KeyRound, LogOut, Smartphone, ChevronRight, Loader2, Fingerpr
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import UserAvatar from '@/components/ui/UserAvatar';
 import ColorDeLaApp from '@/components/layout/ColorDeLaApp';
+import BloquearAlVolver from '@/components/layout/BloquearAlVolver';
 import api from '@/lib/axios';
 import { getApiErrorMessage } from '@/lib/utils';
 import { elLiceoDeLaCookie } from '@/lib/la-puerta-del-liceo';
@@ -150,6 +151,8 @@ export function FichaDeMiCuenta({
                     <ColorDeLaApp />
 
                     <LaHuellaDeEsteTelefono visible={abierta} correo={nombreCompleto} />
+
+                    <BloquearAlVolver />
 
                     <SesionesAbiertas visible={abierta} />
 

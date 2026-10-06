@@ -19,6 +19,7 @@ import { useTeacherScheduleBlocks, transformTeacherScheduleData, useClassroomSch
 import Link from 'next/link';
 import { RepresentantesDelAlumno } from '@/components/users/RepresentantesDelAlumno';
 import { TelefonoDeAsistencia } from '@/components/users/TelefonoDeAsistencia';
+import { PinDeLaAppDelUsuario } from '@/components/users/PinDeLaAppDelUsuario';
 import { CambiarCedula } from '@/components/users/CambiarCedula';
 import { EditarDatosPersonales } from '@/components/users/EditarDatosPersonales';
 import { InscripcionDelAlumno } from '@/components/users/InscripcionDelAlumno';
@@ -506,6 +507,7 @@ export default function UserProfilePage({ params }: PageProps) {
                             )}
                             {user.role === 'student' && <RepresentantesDelAlumno studentId={user.cedula} />}
                             {user.role === 'student' && <TelefonoDeAsistencia studentId={user.cedula} />}
+                            <PinDeLaAppDelUsuario userId={user.cedula} />
                             {user.role === 'tutor' && (
                                 <div className="pt-4 border-t border-gray-100 mt-2">
                                     <span className="text-gray-400 text-xs uppercase font-bold tracking-wider">Representa a</span>

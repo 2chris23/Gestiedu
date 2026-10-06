@@ -360,6 +360,7 @@ export default function FinanzasPage() {
                             key={v.id}
                             type="button"
                             onClick={() => ir({ vista: v.id })}
+                                    data-pestana
                             data-recorrido={`finanzas-${v.id}`}
                             aria-current={activa ? 'page' : undefined}
                             aria-describedby={`pista-${v.id}`}

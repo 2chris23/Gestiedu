@@ -1,0 +1,188 @@
+import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { API_BASE, TENANT_SLUG, loginApi, loginViaUI, queryTenantDb, representanteConUnHijo } from './helpers';
+
+/**
+ * PRECARGA: SIN CONEXIÓN, TODO — EN UN PAQUETE (`lib/precarga.ts`)
+ *
+ * Cristian no pudo enseñarle la app a un profesor sin conexión: había
+ * pantallas que «no se habían cargado». Aquí se mide lo que importa, con la
+ * web compilada (el ayudante `sw.js` solo guarda páginas en producción):
+ *
+ *   1. entra como cada rol en un teléfono y deja que la precarga termine;
+ *   2. corta la conexión;
+ *   3. abre CADA pantalla del plan de esa persona (y cada pestaña) y exige
+ *      que salga entera: ni «no está guardada», ni una sola lectura que
+ *      faltara (`window.__lecturasSinGuardar`).
+ *
+ *   PRECARGA-01 profesor · 02 alumno · 03 representante · 04 admin
+ *   PRECARGA-05 se corta la conexión a media descarga: «esperando», sin
+ *               poder seguir (solo «Cerrar sesión»); vuelve y termina sola
+ *   PRECARGA-06 la segunda vez que entra, la pantalla de carga no sale
+ *
+ * El admin baja TODO (600 y pico fichas): su prueba abre sin conexión todas
+ * las pantallas que no son fichas y 25 fichas al azar (de cada tipo de persona).
+ */
+
+test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+async function profesorDeVerdad(): Promise<string> {
+    const [fila] = await queryTenantDb<{ email: string }>(
+        `SELECT u.email FROM classroom_subjects cs JOIN users u ON u.id = cs."teacherId"
+          WHERE u."isActive" = true GROUP BY u.email ORDER BY count(*) DESC, u.email LIMIT 1`
+    );
+    return fila?.email ?? 'profesor.ciencias@tuapp.com';
+}
+
+const conPrecarga = (page: Page) =>
+    page.addInitScript(() => {
+        try {
+            localStorage.setItem('gestiedu:precarga-en-el-navegador', '1');
+        } catch {
+            /* nada */
+        }
+    });
+
+const estado = (page: Page) =>
+    page.evaluate(() => {
+        const h = JSON.parse(localStorage.getItem('gestiedu:precarga') || 'null');
+        return h?.completa ? 'listo' : (document.querySelector('[data-precarga]')?.getAttribute('data-precarga') ?? 'oculta');
+    });
+
+async function conLaPrecarga(page: Page, correo: string, tope: number): Promise<number> {
+    await conPrecarga(page);
+    const inicio = Date.now();
+    await loginViaUI(page, correo);
+    await expect(page.locator('[data-precarga]')).toBeVisible({ timeout: 30_000 });
+    await expect.poll(() => estado(page), { timeout: tope, intervals: [2000] }).toBe('listo');
+    return Date.now() - inicio;
+}
+
+/** Las pantallas del plan de esa persona (las mismas que la precarga). */
+async function lasPantallas(correo: string, menu: string[]): Promise<Array<{ url: string; molde: string; variante: string | null }>> {
+    const s = await loginApi(correo);
+    const r = await fetch(`${API_BASE}/precarga/plan`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${s.accessToken}`, 'X-Institute-Slug': TENANT_SLUG, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ menu, conContexto: true }),
+    });
+    return ((await r.json()) as { pantallas: Array<{ url: string; molde: string; variante: string | null }> }).pantallas;
+}
+
+async function elMenu(page: Page): Promise<string[]> {
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => undefined);
+    const hrefs = await page.$$eval('a[href^="/dashboard"]', (as) => as.map((a) => (a as HTMLAnchorElement).getAttribute('href') || ''));
+    return [...new Set(hrefs.filter((h) => /^\/dashboard(\/[a-z0-9-]+)*$/.test(h)))];
+}
+
+async function medir(nombre: string, ms: number, page: Page) {
+    const bytes = await page.evaluate(() => JSON.parse(localStorage.getItem('gestiedu:precarga') || '{}').bytes ?? 0);
+    console.log(`PRECARGA ${nombre}: ${(ms / 1000).toFixed(0)} s, ${(bytes / 1e6).toFixed(1)} MB de datos`);
+}
+
+async function sinConexionSeVe(page: Page, context: BrowserContext, urls: string[]) {
+    await context.setOffline(true);
+    const faltas: string[] = [];
+    try {
+        for (const url of urls) {
+            await page.evaluate(() => ((window as unknown as { __lecturasSinGuardar?: string[] }).__lecturasSinGuardar = []));
+            await page.goto(url, { waitUntil: 'load' }).catch(() => undefined);
+            await page.waitForTimeout(1200);
+            const donde = new URL(page.url());
+            if (donde.searchParams.get('sin-guardar') || donde.pathname !== url.split('?')[0]) {
+                faltas.push(`${url}: la página no estaba guardada (acabó en ${donde.pathname}${donde.search})`);
+                continue;
+            }
+            const pestanas = page.locator('[data-pestana]');
+            const n = Math.min(await pestanas.count(), 12);
+            for (let i = 0; i < n; i++) {
+                await pestanas.nth(i).click({ timeout: 3000 }).catch(() => undefined);
+                await page.waitForTimeout(500);
+            }
+            const sinGuardar = (await page.evaluate(() => (window as unknown as { __lecturasSinGuardar?: string[] }).__lecturasSinGuardar ?? [])).filter(
+                // La hora y la salud no se guardan nunca, a propósito.
+                (c) => !/^\/?(health|time)\b/.test(c)
+            );
+            if (sinGuardar.length) faltas.push(`${url}: ${[...new Set(sinGuardar)].join(', ')}`);
+            if (await page.getByText(/no está guardad|no se ha abierto nunca con internet|no se había abierto antes/i).count()) {
+                faltas.push(`${url}: dice que algo no está guardado`);
+            }
+        }
+    } finally {
+        await context.setOffline(false);
+    }
+    expect(faltas, faltas.join('\n')).toEqual([]);
+}
+
+test.describe('Precarga: sin conexión, todo', () => {
+    test.describe.configure({ timeout: 45 * 60 * 1000 });
+
+    test('PRECARGA-01: el profesor, sin conexión, abre todo lo suyo', async ({ page, context }) => {
+        const correo = await profesorDeVerdad();
+        await medir('profesor', await conLaPrecarga(page, correo, 15 * 60 * 1000), page);
+        const pantallas = await lasPantallas(correo, await elMenu(page));
+        const fichas = pantallas.filter((p) => p.molde === '/dashboard/usuarios/{id}');
+        await sinConexionSeVe(page, context, [
+            ...pantallas.filter((p) => p.molde !== '/dashboard/usuarios/{id}').map((p) => p.url),
+            ...fichas.slice(0, 8).map((p) => p.url),
+        ]);
+    });
+
+    test('PRECARGA-02: el alumno, sin conexión, abre todo lo suyo', async ({ page, context }) => {
+        await medir('alumno', await conLaPrecarga(page, 'est0575@testing.edu.ve', 10 * 60 * 1000), page);
+        await sinConexionSeVe(page, context, (await lasPantallas('est0575@testing.edu.ve', await elMenu(page))).map((p) => p.url));
+    });
+
+    test('PRECARGA-03: el representante, sin conexión, abre todo lo suyo', async ({ page, context }) => {
+        const { correo, quitar } = await representanteConUnHijo();
+        try {
+            await medir('representante', await conLaPrecarga(page, correo, 10 * 60 * 1000), page);
+            await sinConexionSeVe(page, context, (await lasPantallas(correo, await elMenu(page))).map((p) => p.url));
+        } finally {
+            await quitar();
+        }
+    });
+
+    test('PRECARGA-04: el admin baja todo; sin conexión, todo lo que no es ficha y 25 fichas', async ({ page, context }) => {
+        await medir('admin', await conLaPrecarga(page, 'admin@testing.edu.ve', 40 * 60 * 1000), page);
+        const pantallas = await lasPantallas('admin@testing.edu.ve', await elMenu(page));
+        const fichas = pantallas.filter((p) => p.molde === '/dashboard/usuarios/{id}');
+        expect(fichas.length).toBeGreaterThan(500);
+        const muestra = [
+            ...fichas.filter((p) => p.variante !== 'STUDENT').slice(0, 5),
+            ...[...fichas.filter((p) => p.variante === 'STUDENT')].sort(() => Math.random() - 0.5).slice(0, 20),
+        ];
+        // Las boletas (una por alumno, la misma página): 10 al azar.
+        const boletas = pantallas.filter((p) => p.molde === '/dashboard/boleta/{alumno}');
+        const muchas = new Set(['/dashboard/usuarios/{id}', '/dashboard/boleta/{alumno}']);
+        await sinConexionSeVe(page, context, [
+            ...pantallas.filter((p) => !muchas.has(p.molde)).map((p) => p.url),
+            ...muestra.map((p) => p.url),
+            ...[...boletas].sort(() => Math.random() - 0.5).slice(0, 10).map((p) => p.url),
+        ]);
+    });
+
+    test('PRECARGA-05: sin conexión a media descarga espera y no deja seguir; al volver, termina', async ({ page }) => {
+        // Se corta el paquete (como si se fuera la señal) hasta que se diga.
+        let cortado = true;
+        await page.route('**/api/precarga/bloque', (ruta) => (cortado ? ruta.abort('internetdisconnected') : ruta.continue()));
+        await conPrecarga(page);
+        await loginViaUI(page, 'est0575@testing.edu.ve');
+        const pantalla = page.locator('[data-precarga]');
+        await expect(pantalla).toHaveAttribute('data-precarga', 'esperando', { timeout: 60_000 });
+        await expect(pantalla.getByText('Esperando para seguir descargando', { exact: false })).toBeVisible();
+        // Dice cuánto es, en MB o KB.
+        await expect(pantalla.getByText(/\d+(,\d)? (MB|KB) de \d+(,\d)? (MB|KB)/)).toBeVisible();
+        // No deja seguir: ni «Usar la app» ni nada detrás que se pueda tocar.
+        await expect(pantalla.getByRole('button', { name: /usar la app/i })).toHaveCount(0);
+        await expect(pantalla.getByRole('button', { name: 'Cerrar sesión' })).toBeVisible();
+        cortado = false;
+        await expect.poll(() => estado(page), { timeout: 2 * 60 * 1000, intervals: [2000] }).toBe('listo');
+    });
+
+    test('PRECARGA-06: la segunda vez, la pantalla de carga no sale', async ({ page }) => {
+        await conLaPrecarga(page, 'est0575@testing.edu.ve', 10 * 60 * 1000);
+        await page.reload();
+        await page.waitForTimeout(4000);
+        await expect(page.locator('[data-precarga]')).toHaveCount(0);
+    });
+});

@@ -30,6 +30,7 @@ const nextConfig = {
     '*.trycloudflare.com',
     '*.pinggy.link',
     '*.pinggy.io',
+    '*.ts.net',
     /**
      * Y la red de casa, para probar en un teléfono de verdad (`npm run
      * telefono`). Sin esto, el servidor de desarrollo corta lo que le pide una
@@ -64,7 +65,11 @@ const nextConfig = {
   // Configurar rewrites para servir archivos de la carpeta shared y API
   async rewrites() {
     // Backend al que se proxifica /api/* (configurable para entornos e2e/CI)
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+    // `API_DEL_SERVIDOR`: por dónde llega ESTE servidor a los datos cuando el
+    // navegador los pide por otra dirección (el túnel, `npm run tunel`: el
+    // navegador pide a `https://<pc>.ts.net/api` y aquí se reenvía al 3001;
+    // sin esto se reenviaba a sí mismo, en bucle).
+    const apiUrl = process.env.API_DEL_SERVIDOR || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
     const backendBase = apiUrl.replace(/\/api\/?$/, '');
     return [
       {
@@ -111,6 +116,9 @@ const nextConfig = {
           },
         ],
       },
+      // El panel también: la precarga ya no abre pantallas en un marco
+      // oculto (baja un paquete, `lib/precarga.ts`), así que nadie, ni la
+      // propia web, necesita enmarcarlo.
     ];
     // Acceso desde subdominios de localhost en desarrollo
     if (process.env.NODE_ENV === 'development') {

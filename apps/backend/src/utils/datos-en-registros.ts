@@ -14,7 +14,8 @@
  * sin que el registro sea una lista de cédulas. REGISTRO-01…03.
  */
 
-const SECRETOS = /pass(word)?|contrase|token|secret|authorization|cookie|llave|apikey|api_key|databasePassword/i;
+// `pin`: el PIN de la app (y `pinDeLaApp`, su resumen).
+const SECRETOS = /pass(word)?|contrase|token|secret|authorization|cookie|llave|apikey|api_key|databasePassword|^pin|pinDeLaApp/i;
 const CORREO = /([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
 const CIFRAS = /\d{6,}/g;
 

@@ -12,6 +12,7 @@ import { limpiarPapeleraVieja, diasQueSeGuardaLoBorrado } from '../utils/papeler
  *   avisos leídos o caducados         AVISOS_DIAS          180 (los `persistent`, nunca)
  *   llaves de sesión caducadas        —                    7 días después de caducar
  *   cambios recibidos (`X-Cambio`)    CAMBIOS_DIAS         90
+ *   cambios del liceo (precarga)      CAMBIOS_DEL_LICEO_DIAS 30 (quien lleve más, baja todo otra vez)
  *
  * Lo que NO se toca, a propósito: el rastro de la asistencia por QR (es la
  * prueba de quién firmó), las notas, la asistencia y todo lo del liceo. Eso se
@@ -33,6 +34,7 @@ export interface LoQueSeTiro {
     avisos: number;
     sesiones: number;
     cambios: number;
+    cambiosDelLiceo: number;
 }
 
 export async function tirarLoQueNoSirve(prisma: PrismaClient, ahora = new Date()): Promise<LoQueSeTiro> {
@@ -47,5 +49,6 @@ export async function tirarLoQueNoSirve(prisma: PrismaClient, ahora = new Date()
     });
     const sesiones = await p.refreshToken.deleteMany({ where: { expiresAt: { lt: haceDias(7, ahora) } } });
     const cambios = await p.cambioRecibido.deleteMany({ where: { recibidoEn: { lt: haceDias(dias('CAMBIOS_DIAS', 90), ahora) } } });
-    return { papelera, avisos: avisos?.count ?? 0, sesiones: sesiones?.count ?? 0, cambios: cambios?.count ?? 0 };
+    const delLiceo = await p.cambioDelLiceo?.deleteMany({ where: { momento: { lt: haceDias(dias('CAMBIOS_DEL_LICEO_DIAS', 30), ahora) } } });
+    return { papelera, avisos: avisos?.count ?? 0, sesiones: sesiones?.count ?? 0, cambios: cambios?.count ?? 0, cambiosDelLiceo: delLiceo?.count ?? 0 };
 }

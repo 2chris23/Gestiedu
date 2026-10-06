@@ -244,6 +244,7 @@ export default function MiClasePage({ params }: { params: Promise<{ subjectId: s
                         role="tab"
                         aria-selected={pestana === p.clave}
                         onClick={() => setPestana(p.clave)}
+                                    data-pestana
                         data-recorrido={`mi-clase-${p.clave}`}
                         className={cn(
                             'flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-xs font-semibold transition-colors sm:flex-row sm:gap-1.5 sm:text-sm',

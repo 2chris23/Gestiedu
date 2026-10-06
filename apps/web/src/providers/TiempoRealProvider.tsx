@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { esElRecorridoInvisible } from '@/lib/en-el-marco';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Socket } from 'socket.io-client';
 import { API_URL } from '@/config/env';
@@ -41,6 +42,10 @@ import { preguntarAlServidor } from '@/hooks/useConexion';
 /** Tras refrescar, se esperan estos ms antes de volver a hacerlo. */
 const VENTANA_DE_AGRUPACION = 700;
 
+/** Lo escucha `DescargaEnSegundoPlano` para poner al día la copia del teléfono. */
+export const EVENTO_DATOS_CAMBIARON = 'gestiedu:datos-cambiaron';
+const avisarALaDescarga = () => window.dispatchEvent(new Event(EVENTO_DATOS_CAMBIARON));
+
 export function TiempoRealProvider({ children }: { children: React.ReactNode }) {
     const queryClient = useQueryClient();
     const socketRef = useRef<Socket | null>(null);
@@ -52,7 +57,8 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
     const huboCambios = useRef(false);
 
     useEffect(() => {
-        if (typeof window === 'undefined') return;
+        // En el recorrido invisible de la precarga, sin tiempo real: una conexión por pantalla sobra.
+        if (typeof window === 'undefined' || esElRecorridoInvisible()) return;
 
         /**
          * LA CREDENCIAL YA NO SE LEE DE LAS COOKIES
@@ -177,6 +183,9 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
             socketRef.current = socket;
 
             socket.on('datos:cambiaron', refrescarLoQueSeVe);
+            // Y la copia del teléfono también (`DescargaEnSegundoPlano`):
+            // así, sin conexión, se ve lo último aunque no se abriera.
+            socket.on('datos:cambiaron', avisarALaDescarga);
             // El pase de lista por QR del profesor: alguien escaneó. Tampoco trae
             // datos; la pantalla del QR lo vuelve a pedir (`PaseDeListaQr`).
             socket.on('asistencia-qr:cambio', avisarDelPase);
@@ -216,6 +225,7 @@ export function TiempoRealProvider({ children }: { children: React.ReactNode }) 
             if (pendiente.current) clearTimeout(pendiente.current);
             document.removeEventListener('visibilitychange', alVolverALaPestaña);
             socket?.off('datos:cambiaron', refrescarLoQueSeVe);
+            socket?.off('datos:cambiaron', avisarALaDescarga);
             socket?.off('asistencia-qr:cambio', avisarDelPase);
             socket?.off('aviso:nuevo', llegoUnAviso);
             socket?.disconnect();

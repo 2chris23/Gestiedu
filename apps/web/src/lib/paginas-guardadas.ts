@@ -20,6 +20,29 @@ export function guardarEstasPaginas(direcciones: string[]): void {
     alAyudante({ tipo: 'guardar-pagina', direcciones });
 }
 
+/**
+ * Igual, pero esperando a que acabe (la precarga): cuántas quedaron
+ * guardadas. Sin ayudante (desarrollo, un navegador viejo), 0 al momento.
+ */
+export async function guardarEstasPaginasYEsperar(direcciones: string[], tope = 120_000): Promise<number> {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return 0;
+    const registro = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<null>((r) => setTimeout(() => r(null), 5000)),
+    ]).catch(() => null);
+    const activo = registro?.active;
+    if (!activo) return 0;
+    return new Promise<number>((resolver) => {
+        const canal = new MessageChannel();
+        const corte = setTimeout(() => resolver(0), tope);
+        canal.port1.onmessage = (e) => {
+            clearTimeout(corte);
+            resolver(Number(e.data?.guardadas) || 0);
+        };
+        activo.postMessage({ tipo: 'guardar-pagina', direcciones }, [canal.port2]);
+    });
+}
+
 /** Que mire si hay una versión nueva de la app y la baje en segundo plano. */
 export function mirarLaVersionDeLaApp(): void {
     alAyudante({ tipo: 'mirar-version' });

@@ -36,6 +36,7 @@ import avisarCambios from './plugins/avisar-cambios';
 import { apuntarFallo } from './utils/fallos-del-servidor';
 import { avisarSiFalla } from './utils/sin-callar';
 import { taparEnTexto } from './utils/datos-en-registros';
+import { CABECERA_INTERNA, MARCA_INTERNA } from './services/precarga.service';
 
 export async function buildServer(): Promise<FastifyInstance> {
   /**
@@ -138,6 +139,10 @@ export async function buildServer(): Promise<FastifyInstance> {
     max: config.isDevelopment ? 10000 : config.rateLimit.max,
     timeWindow: config.rateLimit.timeWindow,
     keyGenerator: cupoDeLaPeticion,
+    // Las lecturas de dentro de un bloque de la precarga (`routes/precarga.routes.ts`):
+    // el bloque ya contó; sus 150 lecturas no gastan el cupo de la persona.
+    // La marca solo la conoce este proceso.
+    allowList: (request: FastifyRequest) => request.headers[CABECERA_INTERNA] === MARCA_INTERNA,
     // La cuenta en Redis, compartida por todos los procesos; si Redis no
     // contesta, en la memoria de este. Ver `plugins/cupo-compartido.ts`.
     store: CupoCompartido as any,
