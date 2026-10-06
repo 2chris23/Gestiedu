@@ -9,6 +9,7 @@ import { elDuenoDeAhora } from '@/lib/el-dueno';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { cn } from '@/lib/utils';
 import { MOSTRAR_LA_BARRA } from '@/components/layout/BarraInferiorMovil';
+import { useTurnoDeOfrecer } from '@/lib/turno-de-ofrecer';
 
 /**
  * EL RECORRIDO GUIADO, COMO EN RIAL (2026-10-04)
@@ -144,6 +145,8 @@ export function RecorridoGuiado() {
     const [i, setI] = React.useState(0);
     const [caja, setCaja] = React.useState<Caja | null>(null);
     const [ofrecer, setOfrecer] = React.useState<Recorrido | null>(null);
+    // Una oferta cada vez: si antes hay que ofrecer la app o los avisos, espera.
+    const meTocaOfrecer = useTurnoDeOfrecer('recorrido', Boolean(ofrecer) && !abierto);
     const globo = React.useRef<HTMLDivElement>(null);
     const [altoDelGlobo, setAltoDelGlobo] = React.useState(180);
     const [ventana, setVentana] = React.useState({ w: 1024, h: 768 });
@@ -331,6 +334,7 @@ export function RecorridoGuiado() {
     if (!montado) return null;
 
     if (ofrecer && !abierto) {
+        if (!meTocaOfrecer) return null;
         return createPortal(
             <div
                 role="region"

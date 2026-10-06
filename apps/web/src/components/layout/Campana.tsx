@@ -9,6 +9,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { apuntarEsteTelefono, estadoDelPermiso, preferenciasDeAvisos, type EstadoDelPermiso } from '@/lib/avisos-al-telefono';
 import api from '@/lib/axios';
 import { cn } from '@/lib/utils';
+import { useTurnoDeOfrecer } from '@/lib/turno-de-ofrecer';
+import { TarjetaQueOfrece, botonPrincipal, botonSecundario } from '@/components/common/TarjetaQueOfrece';
 
 /**
  * LA CAMPANA: LOS AVISOS DE ESTA PERSONA
@@ -273,15 +275,18 @@ export function OfrecerAvisos() {
         }
         setVer(false);
     };
-    if (!ver) return null;
+    // Una oferta cada vez, flotando abajo (`lib/turno-de-ofrecer.ts`): metida
+    // en la página partía la cabecera azul del Inicio.
+    const meToca = useTurnoDeOfrecer('avisos', ver);
+    if (!ver || !meToca) return null;
     return (
-        <section aria-label="Avisos en el teléfono" className="mb-4 flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 sm:flex-row sm:items-center print:hidden">
-            <BellRing className="h-6 w-6 shrink-0 text-indigo-700" aria-hidden />
-            <p className="flex-1 text-sm text-gray-800">
-                ¿Te avisamos en el teléfono cuando el liceo te necesite (una citación, por ejemplo), aunque la app esté cerrada?
-            </p>
-            <div className="flex gap-2">
-                <button type="button" onClick={cerrar} className="min-h-[44px] rounded-lg px-3 text-sm font-semibold text-gray-700 hover:bg-white">
+        <TarjetaQueOfrece
+            etiqueta="Avisos en el teléfono"
+            titulo="¿Te avisamos en el teléfono?"
+            texto="Cuando el liceo te necesite (una citación, por ejemplo), aunque la app esté cerrada."
+            icono={<BellRing className="h-5 w-5" />}
+        >
+                <button type="button" onClick={cerrar} className={botonSecundario}>
                     Ahora no
                 </button>
                 <button
@@ -299,11 +304,10 @@ export function OfrecerAvisos() {
                             cerrar();
                         }
                     }}
-                    className="min-h-[44px] rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                    className={botonPrincipal}
                 >
                     Sí, avisarme
                 </button>
-            </div>
-        </section>
+        </TarjetaQueOfrece>
     );
 }

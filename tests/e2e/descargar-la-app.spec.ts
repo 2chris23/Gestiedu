@@ -26,7 +26,11 @@ test.describe('La app sin Google Play', () => {
         test('APPDESC-UI-01: al entrar, «Descarga la app» con la última versión; la X la esconde', async ({ page }) => {
             await loginViaUI(page, 'est0575@testing.edu.ve');
             await expect(aviso(page)).toBeVisible({ timeout: 20000 });
-            await expect(aviso(page)).toContainText(/V\d+\.\d+/);
+            await expect(aviso(page)).toContainText(/Versión \d+\.\d+/);
+            // Flota abajo, fuera de la página: no parte la cabecera (lo vio Cristian).
+            expect(await aviso(page).evaluate((e) => getComputedStyle(e).position)).toBe('fixed');
+            // Una oferta cada vez.
+            await expect(page.getByRole('region', { name: /Avisos en el teléfono|Recorrido de la pantalla/ })).toHaveCount(0);
             const enlace = aviso(page).getByRole('link', { name: 'Descargar' });
             await expect(enlace).toHaveAttribute('href', /\/api\/app-movil\/com\.gestiedu\.institutotesting\/apk$/);
             // El enlace baja la APK de verdad.

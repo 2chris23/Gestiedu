@@ -1,12 +1,14 @@
 'use client';
 
 import * as React from 'react';
-import { Download, X } from 'lucide-react';
+import { Download } from 'lucide-react';
 import api from '@/lib/axios';
 import { BACKEND_URL } from '@/config/env';
 import { enLaApk } from '@/lib/avisos-al-telefono';
 import { elLiceoDeLaCookie } from '@/lib/la-puerta-del-liceo';
 import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
+import { useTurnoDeOfrecer } from '@/lib/turno-de-ofrecer';
+import { TarjetaQueOfrece, botonPrincipal, botonSecundario } from '@/components/common/TarjetaQueOfrece';
 
 /**
  * «DESCARGA LA APP» (mientras no esté en Google Play)
@@ -18,7 +20,8 @@ import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
  * tamaño. Ya instalada, la app se pone al día sola (`ActualizarLaApp`).
  *
  * No sale dentro de la APK, ni en un iPhone ni en un ordenador (allí una APK
- * no sirve). La X la esconde una semana; con una versión nueva, vuelve.
+ * no sirve). «Ahora no» la esconde una semana; con una versión nueva, vuelve.
+ * Flota abajo y sale sola, sin las otras ofertas a la vez (`lib/turno-de-ofrecer.ts`).
  */
 
 interface Ficha {
@@ -67,7 +70,8 @@ export function DescargarLaApp() {
         };
     }, []);
 
-    if (!ficha) return null;
+    const meToca = useTurnoDeOfrecer('descargar-la-app', Boolean(ficha));
+    if (!ficha || !meToca) return null;
 
     const url = ficha.url.startsWith('http') ? ficha.url : `${BACKEND_URL}${ficha.url}`;
     const megas = (ficha.tamano / 1024 / 1024).toFixed(1).replace('.', ',');
@@ -81,35 +85,20 @@ export function DescargarLaApp() {
     };
 
     return (
-        <aside
-            data-descargar-la-app
-            className="mb-4 flex items-center gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-3 lateral:hidden print:hidden"
+        <TarjetaQueOfrece
+            etiqueta="Descarga la app"
+            data-descargar-la-app="1"
+            titulo="Descarga la app"
+            texto={`Funciona sin conexión y te avisa de lo nuevo. Versión ${ficha.versionName} · ${megas} MB.`}
+            icono={<Download className="h-5 w-5" />}
         >
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white" aria-hidden>
-                <Download className="h-5 w-5" />
-            </span>
-            <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-gray-900">Descarga la app</p>
-                <p className="text-xs text-gray-700">
-                    Funciona sin conexión · V{ficha.versionName} · {megas} MB
-                </p>
-            </div>
-            <a
-                href={url}
-                download
-                className="flex min-h-[44px] shrink-0 items-center rounded-xl bg-blue-600 px-4 text-sm font-bold text-white active:bg-blue-700"
-            >
+            <button type="button" onClick={esconder} className={botonSecundario}>
+                Ahora no
+            </button>
+            <a href={url} download className={botonPrincipal}>
                 Descargar
             </a>
-            <button
-                type="button"
-                onClick={esconder}
-                aria-label="Ahora no"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-600 active:bg-blue-100"
-            >
-                <X className="h-5 w-5" aria-hidden />
-            </button>
-        </aside>
+        </TarjetaQueOfrece>
     );
 }
 
