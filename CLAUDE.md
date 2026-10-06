@@ -954,7 +954,19 @@ seguir (solo «Cerrar sesión»), y sigue sola donde quedó (decidido por Cristi
   internet de verdad** (`encodedBodySize`; con la API en otro origen, el bloque
   manda `Timing-Allow-Origin`).
 - **El libro, una sola hoja** que pasa siempre por encima (con cuatro en bucle,
-  la de abajo caía bajo la de la izquierda y «desaparecía»).
+  la de abajo caía bajo la de la izquierda y «desaparecía»). Su cara de atrás
+  lleva redondas las esquinas de la izquierda, como la página fija que tapa.
+- **Cerrar la app con la descarga a medias devuelve al login** (decidido por
+  Cristian), nunca al Inicio: `ArranqueYCandado` cierra la sesión al abrir si
+  `estaCompleta` es falso (BLOQUEO-UI-09). El plan y los bloques esperan 120 s
+  (`LENTO`): con el tope de 20 s, un servidor lento se tomaba por «sin conexión».
+- **Redis conectado consigo mismo.** Con Redis apagado en la misma máquina, un
+  reintento puede salir por el puerto 6379 y TCP lo conecta consigo mismo: el
+  cliente oía su eco, se daba por listo y cada `SCAN` era un bucle sin fin
+  (plan, cerrar sesión y renovar colgados; visto en el túnel). `vigilar` lo
+  corta y el `SCAN` para con un cursor que no es un número. Y si renovar da
+  401, la ruta borra las cookies: si no, el guardián devolvía del login al
+  Inicio sin fin (el esqueleto que no se iba).
 
 ## El arranque y el candado (octubre 2026)
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRefreshToken, setAccessTokenCookie } from '@/lib/auth-cookies';
+import { clearAuthCookies, getRefreshToken, setAccessTokenCookie } from '@/lib/auth-cookies';
 import { API_URL } from '@/config/env';
 import { cookies } from 'next/headers';
 
@@ -59,6 +59,10 @@ export async function POST(request: NextRequest) {
             // hacía que la app cerrara la sesión de alguien que no había hecho
             // nada: ver `lib/axios.ts`.
             const esUnNo = [400, 401, 403].includes(backendResponse.status);
+            // La sesión no vale: fuera también las cookies. Si no, el guardián
+            // veía la de acceso y devolvía del login al Inicio, el Inicio daba
+            // 401, y vuelta a empezar: el esqueleto del Inicio para siempre.
+            if (esUnNo) await clearAuthCookies();
             return NextResponse.json(
                 { message: esUnNo ? 'Token refresh failed' : 'El servidor no contesta' },
                 { status: esUnNo ? 401 : 503 }

@@ -20,6 +20,8 @@ import {
 import { PantallaDeBloqueo } from '@/components/arranque/PantallaDeBloqueo';
 import { quitarLaCortina } from '@/lib/cortina-del-arranque';
 import { useOcuparLaPantalla } from '@/lib/turno-de-ofrecer';
+import { estaCompleta, seEnsenaLaPrecarga } from '@/lib/precarga';
+import { useCerrarSesion } from '@/hooks/useCerrarSesion';
 
 /**
  * EL ARRANQUE Y EL CANDADO DE LA APP (octubre 2026, pedido por Cristian)
@@ -77,6 +79,13 @@ export function ArranqueYCandado() {
  */
 type Fase = 'arrancando' | 'logo' | 'bloqueo' | 'cortina' | 'libre';
 
+/** ¿Quedó a medias la descarga de la primera vez de quien tiene la sesión? */
+function laDescargaQuedoAMedias(): boolean {
+    if (!seEnsenaLaPrecarga()) return false;
+    const dueno = elDuenoDeAhora();
+    return Boolean(dueno) && !estaCompleta(dueno as string);
+}
+
 function yaArranco(): boolean {
     try {
         return sessionStorage.getItem(LLAVE_ARRANCO) === '1';
@@ -91,6 +100,7 @@ function ElCandado() {
     const [fase, setFase] = React.useState<Fase>(() => (yaArranco() ? 'cortina' : 'arrancando'));
     const [perfil, setPerfil] = React.useState<PerfilRecordado | null>(null);
     const hayAlguien = Boolean(user?.id);
+    const cerrarSesion = useCerrarSesion();
 
     // El perfil que se enseña: lo recordado (foto, logo, año) sobre lo de la sesión.
     React.useEffect(() => {
@@ -133,6 +143,13 @@ function ElCandado() {
         } catch {
             /* nada */
         }
+        if (useAuthStore.getState().user?.id && laDescargaQuedoAMedias()) {
+            // Cerró la app con la descarga de la primera vez sin acabar: al
+            // login otra vez, y la descarga empieza al entrar (pedido por
+            // Cristian: «así no nos enredamos»). Ni el Inicio ni su esqueleto.
+            void cerrarSesion({ perderLoPendiente: true }).finally(() => setFase('libre'));
+            return;
+        }
         if (useAuthStore.getState().user?.id) {
             esconderElIconoDeArranque();
             setFase('logo');
@@ -146,6 +163,7 @@ function ElCandado() {
             esconderElIconoDeArranque();
         }, 6000);
         return () => window.clearTimeout(porSiAcaso);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fase, isHydrated, decidir]);
 
     React.useEffect(() => {

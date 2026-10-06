@@ -71,6 +71,23 @@ function vigilar(cliente: Redis, nombre: string) {
     }
     caido = true;
   });
+  /**
+   * CONECTADO CONSIGO MISMO (2026-10-06)
+   *
+   * Con Redis apagado en la misma máquina, reintentar contra 127.0.0.1:6379
+   * cada pocos segundos acaba un día eligiendo como puerto de salida el 6379:
+   * TCP conecta el puerto consigo mismo y el cliente «habla con Redis» oyendo
+   * su propio eco. Se dio por listo, cada `SCAN` devolvía basura sin fin y el
+   * proceso se quedó con 1,4 núcleos ocupados: la descarga del teléfono, cerrar
+   * sesión y renovarla se colgaban (visto en el túnel). Se corta y se reintenta.
+   */
+  cliente.on('connect', () => {
+    const s = (cliente as unknown as { stream?: { localPort?: number; remotePort?: number; localAddress?: string; remoteAddress?: string; destroy: () => void } }).stream;
+    if (s && s.localPort === s.remotePort && s.localAddress === s.remoteAddress) {
+      console.warn(`⚠️  Redis (${nombre}): conectado consigo mismo (puerto ${s.localPort}); se corta.`);
+      s.destroy();
+    }
+  });
   cliente.on('ready', () => {
     if (caido) console.log(`✅ Redis (${nombre}) volvió`);
     else if (nombre === 'principal') console.log('✅ Redis connected successfully');
@@ -446,7 +463,8 @@ export class RedisCache {
           const [nextCursor, results] = await redis.scan(cursor, 'MATCH', redisPattern, 'COUNT', 1000);
           cursor = nextCursor;
           if (results && results.length) keysToDelete.push(...results);
-        } while (cursor !== '0');
+          // Un cursor que no es un número es una respuesta rota: sin esto, bucle sin fin.
+        } while (cursor !== '0' && /^\d+$/.test(String(cursor)));
         if (keysToDelete.length > 0) {
           await redis.del(...keysToDelete);
         }
@@ -491,7 +509,8 @@ export class RedisCache {
           for (const key of results || []) {
             if (coincideAlguno(key)) keysToDelete.push(key);
           }
-        } while (cursor !== '0');
+          // Un cursor que no es un número es una respuesta rota: sin esto, bucle sin fin.
+        } while (cursor !== '0' && /^\d+$/.test(String(cursor)));
         if (keysToDelete.length > 0) {
           await redis.del(...keysToDelete);
         }

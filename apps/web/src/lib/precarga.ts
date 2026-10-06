@@ -153,6 +153,13 @@ const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const BYTES_POR_LECTURA_AL_EMPEZAR = 4_000;
 
 /** ¿El fallo es «no hay conexión / el servidor no contesta» (se espera) o de verdad? */
+/**
+ * El plan y cada bloque preparan mucho en el servidor (el del admin, en frío,
+ * decenas de segundos): con el tope normal de 20 s, la espera se tomaba por
+ * «sin conexión» y se volvía a pedir desde cero, una y otra vez.
+ */
+const LENTO = { timeout: 120_000 };
+
 function esDeEsperar(e: unknown): boolean {
     const r = (e as { response?: { status?: number } })?.response;
     if (!r) return true;
@@ -268,7 +275,7 @@ async function bajarTodoMidiendo(o: Opciones, red: { bytes: () => number }): Pro
     // partes de la app no abrirían.
     const laCascara = mirarLaVersionDeLaAppYEsperar();
 
-    const plan = await hastaQueSalga(async () => (await api.post('/precarga/plan', { menu: o.menu })).data as Plan, () => vacio);
+    const plan = await hastaQueSalga(async () => (await api.post('/precarga/plan', { menu: o.menu }, LENTO)).data as Plan, () => vacio);
     if (plan === 'cancelada') return 'cancelada';
 
     // Otra versión del plan: los bloques ya no son los mismos. Lo ya guardado
@@ -361,7 +368,7 @@ async function bajarTodoMidiendo(o: Opciones, red: { bytes: () => number }): Pro
         while (!seCancelo && porBajar.length) {
             const i = porBajar.shift()!;
             const r = await hastaQueSalga(
-                async () => (await api.post('/precarga/bloque', { lecturas: bloques[i] })).data as { datos: Record<string, unknown>; fallos: Record<string, number> },
+                async () => (await api.post('/precarga/bloque', { lecturas: bloques[i] }, LENTO)).data as { datos: Record<string, unknown>; fallos: Record<string, number> },
                 () => avanceAhora()
             );
             if (r === 'cancelada') {
@@ -392,7 +399,7 @@ async function bajarTodoMidiendo(o: Opciones, red: { bytes: () => number }): Pro
         for (let i = 0; i < pendientes.length; i += porBloque) {
             const r = await hastaQueSalga(
                 async () =>
-                    (await api.post('/precarga/bloque', { lecturas: pendientes.slice(i, i + porBloque) })).data as {
+                    (await api.post('/precarga/bloque', { lecturas: pendientes.slice(i, i + porBloque) }, LENTO)).data as {
                         datos: Record<string, unknown>;
                         fallos: Record<string, number>;
                     },
@@ -437,7 +444,7 @@ export async function ponerseAlDia(dueno: string, menu: string[], hayConexion: (
         const porBloque = Math.max(1, r.porBloque || 150);
         for (let i = 0; i < r.lecturas.length; i += porBloque) {
             if (!hayConexion()) return 'sin-conexion';
-            const { data: b } = await api.post('/precarga/bloque', { lecturas: r.lecturas.slice(i, i + porBloque) });
+            const { data: b } = await api.post('/precarga/bloque', { lecturas: r.lecturas.slice(i, i + porBloque) }, LENTO);
             await guardarRespuestas(dueno, Object.entries((b?.datos ?? {}) as Record<string, unknown>));
             await apuntarLosFallos(dueno, b?.fallos, []);
         }

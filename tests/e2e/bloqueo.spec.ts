@@ -18,7 +18,8 @@ import { loginViaUI, loginApi, API_BASE, TENANT_SLUG, queryTenantDb } from './he
  *   BLOQUEO-UI-05  «Cerrar sesión» desde el bloqueo lleva al login y olvida a quién enseñaba;
  *   BLOQUEO-UI-06  con un Capacitor como el de la APK (sus addListener no son promesas), la app no se cae;
  *   BLOQUEO-UI-07  al abrir, el esqueleto del Inicio no se ve antes del libro (la cortina de antes de pintar);
- *   BLOQUEO-UI-08  sin nadie dentro, ni libro ni esqueleto: el login, ya entero.
+ *   BLOQUEO-UI-08  sin nadie dentro, ni libro ni esqueleto: el login, ya entero;
+ *   BLOQUEO-UI-09  cerrada con la descarga de la primera vez a medias: al abrir, el login.
  */
 
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -235,5 +236,34 @@ test.describe('La pantalla de bloqueo', () => {
         expect(await page.evaluate(() => document.documentElement.hasAttribute('data-arrancando'))).toBe(false);
         expect(fases.filter((f) => f === 'libro' || f === 'logo')).toEqual([]);
         await expect(page.locator('.libro')).toHaveCount(0);
+    });
+
+    test('BLOQUEO-UI-09: se cierra la app con la descarga a medias: al abrir, el login (nunca el Inicio)', async ({ page, context }) => {
+        // Lo pidió Cristian: «si cierra la app completamente vuelve otra vez a
+        // la pantalla login así no nos enredamos». Antes se quedaba en el
+        // esqueleto del Inicio.
+        await conHuellaDeMentira(context, 'si');
+        await context.addInitScript(() => localStorage.setItem('gestiedu:precarga-en-el-navegador', '1'));
+        // La descarga no pasa del primer bloque: queda a medias.
+        await context.route('**/precarga/bloque', (ruta) => ruta.abort('internetdisconnected'));
+        await loginViaUI(page, 'admin@testing.edu.ve');
+        await expect(page.locator('[data-precarga]')).toBeVisible({ timeout: 30000 });
+        await page.close();
+
+        const otra = await context.newPage();
+        let vioElInicio = false;
+        await otra.exposeFunction('apuntarInicio', () => (vioElInicio = true));
+        await otra.addInitScript(() => {
+            new MutationObserver(() => {
+                const m = document.querySelector('main');
+                if (m && m.getBoundingClientRect().height > 0 && getComputedStyle(m).visibility !== 'hidden' && !document.querySelector('[data-capa-del-candado]')) {
+                    (window as any).apuntarInicio();
+                }
+            }).observe(document, { subtree: true, childList: true, attributes: true });
+        });
+        await otra.goto('/dashboard');
+        await expect(otra.locator('input[type="email"]')).toBeVisible({ timeout: 20000 });
+        await expect(bloqueo(otra)).toHaveCount(0);
+        expect(vioElInicio).toBe(false);
     });
 });

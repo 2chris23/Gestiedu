@@ -47,7 +47,7 @@ export function LibroQueSeAbre({
                             <span className="absolute right-3 top-0 h-9 w-2.5 rounded-b-sm bg-[var(--acento)]" />
                             <span className="absolute inset-x-4 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-white/25" />
                         </div>
-                        <div className="libro-cara libro-cara-de-atras absolute inset-0 rounded-r-[10px] bg-white ring-1 ring-[#D6E2F5]">
+                        <div className="libro-cara libro-cara-de-atras absolute inset-0 rounded-l-[10px] bg-white shadow-[inset_-6px_0_10px_rgba(13,71,161,0.08)] ring-1 ring-[#D6E2F5]">
                             <Renglones />
                         </div>
                     </div>
@@ -63,13 +63,16 @@ export function LibroQueSeAbre({
                         un momento y vuelve de golpe a la derecha. Ese salto no se
                         ve porque cada cara es igual a la página fija que tapa: la
                         de delante, a la de la derecha; la de detrás, a la de la
-                        izquierda.
+                        izquierda. Por eso la de detrás lleva redondas las esquinas
+                        de la IZQUIERDA (las de fuera, una vez pasada): con las de
+                        la derecha, la hoja caía en la izquierda con la esquina en
+                        pico y se notaba el salto (lo vio Cristian).
                     */}
                     <div className="libro-hoja absolute inset-0">
                         <div className="libro-cara absolute inset-0 rounded-r-[10px] bg-white shadow-[inset_6px_0_10px_rgba(13,71,161,0.08)] ring-1 ring-[#D6E2F5]">
                             <Renglones />
                         </div>
-                        <div className="libro-cara libro-cara-de-atras absolute inset-0 rounded-r-[10px] bg-white ring-1 ring-[#D6E2F5]">
+                        <div className="libro-cara libro-cara-de-atras absolute inset-0 rounded-l-[10px] bg-white shadow-[inset_-6px_0_10px_rgba(13,71,161,0.08)] ring-1 ring-[#D6E2F5]">
                             <Renglones />
                         </div>
                     </div>
