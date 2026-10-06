@@ -104,6 +104,7 @@ export function ActualizarLaApp() {
     const [fase, setFase] = React.useState<Fase>('ofrecer');
     const [porcentaje, setPorcentaje] = React.useState(0);
     const [error, setError] = React.useState('');
+    const [miVersion, setMiVersion] = React.useState('');
     const esperandoPermiso = React.useRef(false);
     const laFicha = React.useRef<Ficha | null>(null);
     React.useEffect(() => {
@@ -175,6 +176,7 @@ export function ActualizarLaApp() {
         try {
             const info = await telefono.app.getInfo();
             const laMia = Number(info.build) || 0;
+            setMiVersion(info.version);
             const { data } = await api.get<Ficha>(`/app-movil/${encodeURIComponent(info.id)}/version`, { timeout: 8000 });
             if (!data || !(data.versionCode > laMia)) return;
             const lista = await bajarSola(data);
@@ -221,6 +223,57 @@ export function ActualizarLaApp() {
     const megas = (ficha.tamano / 1024 / 1024).toFixed(1).replace('.', ',');
     const cerrable = fase === 'ofrecer' || fase === 'lista' || fase === 'error' || fase === 'permiso' || fase === 'instalando';
 
+    /**
+     * LA VENTANA DE «ACTUALIZACIÓN DE VERSIÓN» (diseño que pidió Cristian)
+     *
+     * Título, la versión, lo nuevo en una lista numerada, un botón grande
+     * «Actualizar», el enlace para bajarla a mano si el botón falla y, abajo,
+     * la versión que tiene. La X la cierra hasta mañana («Ahora no»).
+     */
+    if (fase === 'ofrecer' || fase === 'lista') {
+        const novedades = (ficha.notas ?? '')
+            .split(/\r?\n|;\s*/)
+            .map((n) => n.trim())
+            .filter(Boolean);
+        return (
+            <Dialog open onOpenChange={(abierto) => !abierto && ahoraNo()}>
+                <DialogContent className="max-w-sm rounded-2xl px-6 pb-5 pt-7" onOpenAutoFocus={(e) => e.preventDefault()} data-actualizar-la-app>
+                    <DialogHeader>
+                        <DialogTitle className="text-center text-xl">Actualización de versión</DialogTitle>
+                        <DialogDescription className="text-center text-sm text-gray-600">
+                            V{ficha.versionName} · {megas} MB
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {novedades.length > 0 && (
+                        <ol className="max-h-48 list-decimal space-y-2 overflow-y-auto pl-6 pr-1 text-[15px] leading-relaxed text-gray-800">
+                            {novedades.map((n, i) => (
+                                <li key={i}>{n}</li>
+                            ))}
+                        </ol>
+                    )}
+                    {fase === 'lista' && <p className="text-center text-sm text-gray-600">Ya se bajó: solo falta instalarla.</p>}
+
+                    <button
+                        type="button"
+                        onClick={() => void bajar(ficha)}
+                        className="mt-1 min-h-[52px] w-full rounded-xl bg-blue-600 text-lg font-bold text-white active:bg-blue-700"
+                    >
+                        Actualizar
+                    </button>
+
+                    <p className="text-center text-sm text-gray-700">
+                        O descárgala desde este enlace:{' '}
+                        <a href={laUrl(ficha)} className="break-all font-medium text-blue-700 underline" download>
+                            {laUrl(ficha).replace(/^https?:\/\//, '')}
+                        </a>
+                    </p>
+                    {miVersion && <p className="text-center text-xs text-gray-600">Versión actual: {miVersion}</p>}
+                </DialogContent>
+            </Dialog>
+        );
+    }
+
     return (
         <Dialog open onOpenChange={(abierto) => !abierto && cerrable && ahoraNo()}>
             {/* Sin foco de entrada en un botón: en el teléfono salía «Ahora no»
@@ -235,26 +288,20 @@ export function ActualizarLaApp() {
                             ? 'Falta un permiso de Android'
                             : fase === 'instalando'
                               ? 'Confirma la instalación'
-                              : fase === 'lista'
-                                ? 'Actualización lista'
-                                : 'Hay una versión nueva de la app'}
+                              : fase === 'bajando'
+                                ? 'Descargando la versión nueva'
+                                : 'No se pudo actualizar'}
                     </DialogTitle>
                     <DialogDescription className="text-center">
                         {fase === 'permiso' &&
                             'Android pide permiso para que esta app instale su propia actualización. En la pantalla que se abre, permítelo («Permitir de esta fuente» o «Permitir siempre», según el teléfono) y vuelve: se seguirá sola.'}
                         {fase === 'instalando' &&
                             'Android te pregunta si quieres instalar la actualización. Al aceptar, la app se cierra y se abre la nueva. No se pierde nada. Si Google Play Protect pide revisarla antes, acepta: tarda unos segundos.'}
-                        {(fase === 'ofrecer' || fase === 'bajando') &&
+                        {fase === 'bajando' &&
                             `Versión ${ficha.versionName} · ${megas} MB. Se baja aquí mismo y Android te pedirá confirmar la instalación.`}
-                        {fase === 'lista' &&
-                            `La versión ${ficha.versionName} ya se bajó sola. Instálala cuando quieras: Android te pedirá confirmarlo y no se pierde nada.`}
                         {fase === 'error' && error}
                     </DialogDescription>
                 </DialogHeader>
-
-                {ficha.notas && (fase === 'ofrecer' || fase === 'lista') && (
-                    <p className="rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-700">{ficha.notas}</p>
-                )}
 
                 {fase === 'bajando' && (
                     <div aria-live="polite">
@@ -273,13 +320,11 @@ export function ActualizarLaApp() {
                 )}
 
                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                    {(fase === 'ofrecer' || fase === 'lista' || fase === 'error' || fase === 'permiso') && (
+                    {(fase === 'error' || fase === 'permiso') && (
                         <Button variant="outline" onClick={ahoraNo}>
                             Ahora no
                         </Button>
                     )}
-                    {fase === 'ofrecer' && <Button onClick={() => void bajar(ficha)}>Descargar e instalar</Button>}
-                    {fase === 'lista' && <Button onClick={() => void bajar(ficha)}>Instalar</Button>}
                     {fase === 'error' && <Button onClick={() => void bajar(ficha)}>Volver a intentarlo</Button>}
                     {fase === 'permiso' && (
                         <Button

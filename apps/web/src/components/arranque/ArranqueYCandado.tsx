@@ -19,6 +19,7 @@ import {
 } from '@/lib/el-candado';
 import { LibroQueSeAbre } from '@/components/arranque/LibroQueSeAbre';
 import { PantallaDeBloqueo } from '@/components/arranque/PantallaDeBloqueo';
+import { quitarLaCortina } from '@/lib/cortina-del-arranque';
 
 /**
  * EL ARRANQUE Y EL CANDADO DE LA APP (octubre 2026, pedido por Cristian)
@@ -56,6 +57,10 @@ const nada = () => () => {};
 export function ArranqueYCandado() {
     const activo = React.useSyncExternalStore(nada, seUsaElCandado, () => false);
     const enMarco = useEnElMarco();
+    // Sin candado aquí, la cortina de antes de pintar no tiene quién la quite.
+    React.useEffect(() => {
+        if (!seUsaElCandado() || enMarco) quitarLaCortina();
+    }, [enMarco]);
     if (!activo || enMarco) return null;
     return <ElCandado />;
 }
@@ -165,6 +170,12 @@ function ElCandado() {
 
     // Lo de detrás, sin poder tocarse ni leerse mientras hay algo encima.
     const tapa = fase !== 'libre';
+
+    // Ya está pintado el libro (o no hay nada que tapar): fuera la cortina
+    // de antes de pintar (`lib/cortina-del-arranque.ts`).
+    React.useEffect(() => {
+        quitarLaCortina();
+    }, []);
     React.useEffect(() => {
         if (!tapa) return;
         const otros = Array.from(document.body.children).filter((e) => !(e as HTMLElement).dataset.capaDelCandado);

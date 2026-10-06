@@ -96,14 +96,17 @@ function llaveEnBytes(base64: string): Uint8Array {
 export async function apuntarEsteTelefono(preguntar: boolean): Promise<EstadoDelPermiso> {
     const pref = await preferenciasDeAvisos();
     let estado = await estadoDelPermiso(pref);
-    if (estado === 'no-se-puede' || estado === 'denegado') return estado;
-    if (estado === 'sin-preguntar' && !preguntar) return estado;
+    if (estado === 'no-se-puede') return estado;
 
     if (enLaApk()) {
+        // En la APK el teléfono se apunta SIEMPRE, con permiso o sin él: el
+        // toque silencioso («lo tuyo cambió, ponte al día») es un mensaje de
+        // datos y Android no pide permiso para eso. Sin permiso, lo que se
+        // enseña en la pantalla Android lo calla solo.
         const plugin = pluginDeLaApk()!;
-        if (estado === 'sin-preguntar') {
+        if (estado === 'sin-preguntar' && preguntar) {
             const { receive } = await plugin.requestPermissions();
-            if (receive !== 'granted') return 'denegado';
+            estado = receive === 'granted' ? 'concedido' : 'denegado';
         }
         const token = await new Promise<string>((resolver, fallar) => {
             const reloj = window.setTimeout(() => fallar(new Error('Firebase no contestó')), 15000);
@@ -119,9 +122,11 @@ export async function apuntarEsteTelefono(preguntar: boolean): Promise<EstadoDel
         });
         await api.post('/avisos/telefonos', { tipo: 'FCM', destino: token, aparato: navigator.userAgent.slice(0, 120) });
         guardar(token);
-        return 'concedido';
+        return estado;
     }
 
+    if (estado === 'denegado') return estado;
+    if (estado === 'sin-preguntar' && !preguntar) return estado;
     if (estado === 'sin-preguntar') {
         estado = (await Notification.requestPermission()) === 'granted' ? 'concedido' : 'denegado';
         if (estado !== 'concedido') return estado;
@@ -139,6 +144,34 @@ export async function apuntarEsteTelefono(preguntar: boolean): Promise<EstadoDel
     });
     guardar(json.endpoint);
     return 'concedido';
+}
+
+/**
+ * EL TOQUE SILENCIOSO (solo la APK): cuando alguien guarda algo que es de esta
+ * persona, el servidor le manda a Firebase un mensaje SIN nada que enseñar
+ * (`data.gestiedu = 'datos-cambiaron'`, `avisos.service.ts`) y aquí se pone
+ * al día. Llega con la app abierta o en segundo plano; con la app cerrada del
+ * todo, Android no tiene dónde correrlo y se pone al día al abrirla.
+ */
+export const TOQUE_SILENCIOSO = 'datos-cambiaron';
+
+export function alLlegarUnToque(fn: () => void): () => void {
+    const plugin = enLaApk() ? pluginDeLaApk() : null;
+    if (!plugin) return () => undefined;
+    let quitar: (() => void) | null = null;
+    let quitado = false;
+    void Promise.resolve(
+        plugin.addListener('pushNotificationReceived', (n: { data?: Record<string, string> }) => {
+            if (n?.data?.gestiedu === TOQUE_SILENCIOSO) fn();
+        })
+    ).then((h) => {
+        if (quitado) h.remove();
+        else quitar = () => h.remove();
+    });
+    return () => {
+        quitado = true;
+        quitar?.();
+    };
 }
 
 /**

@@ -451,7 +451,41 @@ sola, igual que en el navegador (`lib/documentos.ts`).
 - **Para probar desde cualquier teléfono**: `npm run tunel` (Tailscale Funnel,
   https) y la APK con `--url=https://<pc>.ts.net/login?slug=<liceo>`. Sin cable
   ni `adb reverse`.
-- **Firebase**: el proyecto ya existe (Cristian, 2026-10-06). Falta que él
-  ponga `google-services.json` (fuera del repo; `preparar-liceo.mjs --firebase=<ruta>`)
-  y `FCM_CUENTA_DE_SERVICIO` en el `.env` del servidor. Con eso, el aviso
-  silencioso despierta la app cerrada para ponerse al día.
+- **Firebase, activo desde la 1.11** (2026-10-06). Las dos llaves viven FUERA
+  del repo, en `C:\Users\Windows\Cristian\firebase\`: `google-services.json`
+  (va dentro de la APK: `preparar-liceo.mjs --firebase=<ruta>`) y
+  `llave-servidor.json` (la cuenta de servicio; `FCM_CUENTA_DE_SERVICIO=<ruta>`
+  en el `.env` del servidor). Quien tenga la del servidor manda avisos en
+  nombre del proyecto: si se escapa, se borra en Firebase → Cuentas de
+  servicio y se genera otra.
+- **El toque silencioso**: cada escritura manda a la APK de los afectados un
+  mensaje de Firebase solo con datos (`data.gestiedu = 'datos-cambiaron'`,
+  sin nada que enseñar, uno por minuto como mucho) y la app pregunta qué
+  cambió (`ponerseAlDia`). Llega con la app abierta o en segundo plano; **con
+  la app cerrada del todo no corre nada** (Android no tiene dónde correr la
+  web): se pone al día al abrirla. NOTI-07. El teléfono se apunta aunque no
+  haya dado permiso de avisos: un mensaje de datos no lo necesita.
+
+## Repartir la APK sin Google Play (decidido por Cristian, 2026-10-06)
+
+- **En el navegador de un Android**, al entrar al sistema sale «Descarga la
+  app» con la última versión de SU liceo (`DescargarLaApp.tsx`,
+  `GET /api/app-movil/del-liceo/:slug`; el paquete sale del liceo con la misma
+  cuenta que `preparar-liceo.mjs`). La X la esconde una semana o hasta que
+  haya otra versión. En un ordenador, un iPhone o dentro de la APK, no sale
+  (APP-05, APPDESC-UI-01…03).
+- **Dentro de la APK**, una versión nueva sale en la ventana «Actualización
+  de versión»: la versión, lo nuevo numerado (las `--notas` de `npm run
+  publicar`, separadas por `;`), «Actualizar», el enlace para bajarla a mano
+  y la versión actual. La X la deja para mañana.
+
+## La APK no es el navegador: `addListener` no devuelve una promesa
+
+La 1.10 no abría en ningún teléfono («This page couldn't load», la pantalla
+de error de Next): `lib/el-candado.ts` hacía `App.addListener(...).then(...)`
+y dentro de la APK eso no es una promesa. En el navegador no hay Capacitor,
+así que las pruebas pasaban. **Toda llamada a un complemento va con
+`Promise.resolve(...)`**, y BLOQUEO-UI-06 imita un Capacitor como el de
+verdad (oyentes que no son promesas). Se arregló en el servidor: los
+teléfonos con la 1.10 se curan solos al abrir. Y `app/global-error.tsx`
+enseña ahora una pantalla en español si algo vuelve a tumbar la app.

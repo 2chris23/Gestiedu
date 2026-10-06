@@ -47,6 +47,11 @@ export default function LoginPage() {
         status?: string;
     } | null>(null);
     const [instituteNotFound, setInstituteNotFound] = useState(false);
+    /**
+     * Sin conexión NO es «el liceo no existe». Antes, un teléfono sin señal
+     * que abría la app por primera vez leía «Instituto No Encontrado».
+     */
+    const [sinConexion, setSinConexion] = useState(false);
     const [validatingInstitute, setValidatingInstitute] = useState(false);
     const [logoError, setLogoError] = useState(false);
 
@@ -80,14 +85,17 @@ export default function LoginPage() {
                 } else if (res.status === 404) {
                     setInstituteNotFound(true);
                     setInstituteData(null);
+                } else if (res.status >= 502 && res.status <= 504) {
+                    setSinConexion(true);
                 } else {
                     const err = await res.json().catch(() => ({}));
                     setError(err.error || 'Error al validar el instituto');
                 }
             })
             .catch(() => {
+                // Un error de red: no se llegó al servidor.
                 if (isMounted) {
-                    setInstituteNotFound(true);
+                    setSinConexion(true);
                 }
             })
             .finally(() => {
@@ -101,6 +109,22 @@ export default function LoginPage() {
             isMounted = false;
         };
     }, []);
+
+    // Al volver la conexión, se vuelve a intentar sola.
+    useEffect(() => {
+        if (!sinConexion) return;
+        const alVolver = () => window.location.reload();
+        window.addEventListener('online', alVolver);
+        const cada = window.setInterval(() => {
+            fetch('/api/health', { cache: 'no-store' })
+                .then((r) => r.ok && alVolver())
+                .catch(() => undefined);
+        }, 15_000);
+        return () => {
+            window.removeEventListener('online', alVolver);
+            window.clearInterval(cada);
+        };
+    }, [sinConexion]);
 
     /**
      * EL ICONITO DE LA PESTAÑA, EL DEL LICEO — Y SOLO EL NUESTRO
@@ -348,7 +372,21 @@ export default function LoginPage() {
                     </p>
                 </div>
 
-                {instituteNotFound ? (
+                {sinConexion && !instituteNotFound ? (
+                    <Card className="rounded-2xl px-5 py-8 text-center shadow-sm" data-login-sin-conexion>
+                        <h2 className="mb-2 text-lg font-bold text-gray-900">Sin conexión con el liceo</h2>
+                        <p className="mb-6 text-sm text-gray-600">
+                            Para entrar la primera vez hace falta internet. Cuando vuelva la conexión, esta pantalla se abre sola.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => window.location.reload()}
+                            className="min-h-[48px] rounded-xl bg-primary-600 px-6 text-sm font-bold text-white active:bg-primary-700"
+                        >
+                            Volver a intentar
+                        </button>
+                    </Card>
+                ) : instituteNotFound ? (
                     <Card className="rounded-2xl px-5 py-8 text-center shadow-sm">
                         <div className="mb-3 flex justify-center text-amber-500">
                             <svg className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">

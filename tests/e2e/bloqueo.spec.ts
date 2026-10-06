@@ -15,7 +15,9 @@ import { loginViaUI, loginApi, API_BASE, TENANT_SLUG, queryTenantDb } from './he
  *   BLOQUEO-UI-02  «Ingresar» con la huella abre; si se cancela, no;
  *   BLOQUEO-UI-03  al volver a la app: a los 30 s sigue abierta, al minuto pide;
  *   BLOQUEO-UI-04  sin bloqueo en el teléfono: el PIN de la app (crear, fallar, acertar);
- *   BLOQUEO-UI-05  «Cerrar sesión» desde el bloqueo lleva al login y olvida a quién enseñaba.
+ *   BLOQUEO-UI-05  «Cerrar sesión» desde el bloqueo lleva al login y olvida a quién enseñaba;
+ *   BLOQUEO-UI-06  con un Capacitor como el de la APK (sus addListener no son promesas), la app no se cae;
+ *   BLOQUEO-UI-07  al abrir, el esqueleto del Inicio no se ve antes del libro (la cortina de antes de pintar).
  */
 
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -152,5 +154,57 @@ test.describe('La pantalla de bloqueo', () => {
         await expect(otra.locator('input[type="email"]')).toBeVisible({ timeout: 20000 });
         expect(await otra.evaluate(() => localStorage.getItem('gestiedu:perfil-recordado'))).toBeNull();
         await expect(bloqueo(otra)).toHaveCount(0);
+    });
+
+    test('BLOQUEO-UI-06: con un Capacitor como el de la APK (addListener sin promesa), la app abre sin caerse', async ({ page, context }) => {
+        // En la APK, `addListener` devuelve el oyente, NO una promesa, y
+        // `SplashScreen.hide` puede no devolver nada. La 1.10 hacía `.then`
+        // sobre eso y la app entera caía al abrir («This page couldn't load»).
+        await context.addInitScript(() => {
+            const oyente = () => ({ remove: () => undefined });
+            (window as any).Capacitor = {
+                isNativePlatform: () => true,
+                getPlatform: () => 'android',
+                Plugins: {
+                    App: { addListener: oyente, getInfo: async () => ({ version: '1.10', build: '10' }) },
+                    SplashScreen: { hide: () => undefined },
+                    PushNotifications: {
+                        addListener: oyente,
+                        checkPermissions: async () => ({ receive: 'prompt' }),
+                        requestPermissions: async () => ({ receive: 'denied' }),
+                        register: async () => undefined,
+                    },
+                    NativeBiometric: { isAvailable: async () => ({ isAvailable: true }), verifyIdentity: async () => undefined },
+                },
+            };
+        });
+        const caidas: string[] = [];
+        context.on('page', (p) => p.on('pageerror', (e) => caidas.push(e.message)));
+        page.on('pageerror', (e) => caidas.push(e.message));
+
+        await loginViaUI(page, 'admin@testing.edu.ve');
+        const otra = await abrirLaApp(context);
+        await otra.waitForTimeout(5000);
+        await expect(otra.getByText(/couldn.t load/i)).toHaveCount(0);
+        expect(caidas, caidas.join('\n')).toEqual([]);
+    });
+
+    test('BLOQUEO-UI-07: al abrir la app, el esqueleto del Inicio no se ve antes del libro', async ({ page, context }) => {
+        // Lo vio Cristian en su teléfono: la página llega pintada del servidor
+        // y el libro sale cuando arranca React. Se retrasa el javascript 3 s
+        // (un teléfono lento) y en ese hueco no debe verse nada del Inicio.
+        await conHuellaDeMentira(context, 'si');
+        await loginViaUI(page, 'admin@testing.edu.ve');
+        const otra = await context.newPage();
+        await otra.route('**/_next/static/chunks/**', async (ruta) => {
+            await new Promise((r) => setTimeout(r, 3000));
+            await ruta.continue();
+        });
+        await otra.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+        expect(await otra.evaluate(() => document.documentElement.hasAttribute('data-arrancando'))).toBe(true);
+        await expect(otra.locator('main').first()).toBeHidden();
+        // Y en cuanto arranca, el libro y luego el bloqueo: nunca el Inicio a medias.
+        await expect(bloqueo(otra)).toBeVisible({ timeout: 30000 });
+        expect(await otra.evaluate(() => document.documentElement.hasAttribute('data-arrancando'))).toBe(false);
     });
 });

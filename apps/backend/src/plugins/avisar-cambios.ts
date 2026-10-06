@@ -6,6 +6,7 @@ import { RedisCache } from '../config/redis';
 import { conLiceo } from '../config/ambito-del-liceo';
 import { AQuienAfecta, resolverDestinatarios } from '../services/a-quien-afecta.service';
 import { avisarSiFalla } from '../utils/sin-callar';
+import { tocarLosTelefonosDeFondo } from '../services/avisos.service';
 
 /**
  * EL ESCÁNER DE LA PUERTA
@@ -197,6 +198,13 @@ async function avisarCambiosPlugin(server: FastifyInstance) {
 
         // Para los teléfonos: «¿qué cambió desde la última vez?» (`POST /precarga/cambios`).
         await apuntarElCambio(request, aviso, destinatarios).catch(avisarSiFalla('cambios-del-liceo'));
+        // Y a su APK, aunque esté en segundo plano: el toque silencioso de Firebase.
+        if (request.tenantPrisma) {
+            tocarLosTelefonosDeFondo(
+                request.tenantPrisma,
+                destinatarios ? [...destinatarios.personas, ...destinatarios.personal] : 'todos'
+            );
+        }
 
         try {
             if (destinatarios) {

@@ -12,6 +12,7 @@ import { guardarEstasPaginas } from '@/lib/paginas-guardadas';
 import { lasPorGuardar } from '@/lib/pantallas-sin-guardar';
 import { bajarTodo, estaCompleta, ponerseAlDia, seEnsenaLaPrecarga } from '@/lib/precarga';
 import { EVENTO_DATOS_CAMBIARON } from '@/providers/TiempoRealProvider';
+import { alLlegarUnToque } from '@/lib/avisos-al-telefono';
 
 /**
  * LA COPIA DEL TELÉFONO, AL DÍA SOLA (como WhatsApp)
@@ -28,8 +29,11 @@ import { EVENTO_DATOS_CAMBIARON } from '@/providers/TiempoRealProvider';
  * Si el servidor dice «demasiado viejo» (`todo`), la pasada entera, de fondo
  * y sin pantalla. Nada si el teléfono pide ahorrar datos.
  *
- * Con la app CERRADA del todo, el aviso silencioso de Firebase la despierta
- * para lo mismo (`docs/APP-MOVIL.md`).
+ *   · en la APK, con el toque silencioso de Firebase (`alLlegarUnToque`),
+ *     también con la app en segundo plano.
+ *
+ * Con la app CERRADA del todo no corre nada (Android no tiene dónde): se
+ * pone al día al abrirla, a los 5 s.
  */
 
 const CADA = 30 * 60 * 1000;
@@ -107,7 +111,11 @@ export function DescargaEnSegundoPlano() {
         };
         document.addEventListener('visibilitychange', alVolver);
         window.addEventListener(EVENTO_DATOS_CAMBIARON, alCambiar);
+        // El toque silencioso de Firebase (APK): lo mismo que el tiempo real,
+        // pero llega también con la app en segundo plano.
+        const sinToque = alLlegarUnToque(alCambiar);
         return () => {
+            sinToque();
             window.clearTimeout(primera);
             window.clearTimeout(juntando);
             window.clearInterval(cada);

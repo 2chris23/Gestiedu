@@ -13,6 +13,7 @@ import { AyudanteDeLaApp } from '@/components/common/AyudanteDeLaApp';
 import { ArranqueYCandado } from '@/components/arranque/ArranqueYCandado';
 import { MarcaDeArranque } from '@/components/common/MarcaDeArranque';
 import { GUARDIAN_DEL_ARRANQUE } from '@/lib/guardian-del-arranque';
+import { CORTINA_DEL_ARRANQUE } from '@/lib/cortina-del-arranque';
 import { COLOR_ANTES_DE_PINTAR } from '@/lib/tema-de-la-app';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -86,6 +87,8 @@ export default function RootLayout({
             <head>
                 {/* Nunca en blanco: corre aunque no llegue ningún archivo de la app. */}
                 <script dangerouslySetInnerHTML={{ __html: GUARDIAN_DEL_ARRANQUE }} />
+                {/* En la app: nada a la vista hasta que salga el libro. */}
+                <script dangerouslySetInnerHTML={{ __html: CORTINA_DEL_ARRANQUE }} />
                 {/* El color que eligió quien usa este teléfono, antes de pintar. */}
                 <script dangerouslySetInnerHTML={{ __html: COLOR_ANTES_DE_PINTAR }} />
             </head>

@@ -288,6 +288,10 @@ describe('La memoria rápida no mezcla liceos', () => {
         const MIRADAS: Record<string, string> = {
             'src/config/database.ts|tenantConnections':
                 'la clave es el liceo',
+            'src/services/avisos.service.ts|ultimoToque':
+                'la clave es el token de Firebase de UN teléfono y UNA app (cada liceo tiene su APK); solo guarda la hora del último toque, nada del liceo',
+            'src/services/avisos.service.ts|toqueEnEspera':
+                'la clave es el token de Firebase de UN teléfono y UNA app; solo dice que hay un toque pendiente',
             'src/config/database.ts|abriendo':
                 'la clave es el liceo: la conexión que se está abriendo para ESE liceo',
             'src/utils/fallos-del-servidor.ts|pendientes':

@@ -789,3 +789,9 @@ select,
 @media (prefers-reduced-motion: reduce) {
   .icono-que-flota, .logo-que-respira { animation: none !important; }
 }
+
+/* La cortina antes de pintar, en la app (`lib/cortina-del-arranque.ts`): nada
+   del armazón a la vista hasta que salga el libro del arranque. */
+html[data-arrancando],
+html[data-arrancando] body { background: #f9fafb; }
+html[data-arrancando] body > *:not([data-capa-del-candado]) { visibility: hidden !important; }

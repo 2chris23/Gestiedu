@@ -182,8 +182,12 @@ export async function verificarQueEsElDueno(liceo: string): Promise<Resultado> {
 
 /** Esconde el icono de arranque de Android (lo deja puesto `SplashScreen`). */
 export function esconderElIconoDeArranque(): void {
-    const plugin = capacitor()?.Plugins?.SplashScreen as { hide?: (o?: unknown) => Promise<void> } | undefined;
-    plugin?.hide?.({ fadeOutDuration: 200 }).catch(() => undefined);
+    const plugin = capacitor()?.Plugins?.SplashScreen as { hide?: (o?: unknown) => Promise<void> | void } | undefined;
+    try {
+        void Promise.resolve(plugin?.hide?.({ fadeOutDuration: 200 })).catch(() => undefined);
+    } catch {
+        /* sin icono que esconder */
+    }
 }
 
 /** Avisa cuando la app se va o vuelve (la de Capacitor y la del navegador). */
@@ -191,15 +195,26 @@ export function alSalirYVolver(alSalir: () => void, alVolver: () => void): () =>
     const vis = () => (document.visibilityState === 'hidden' ? alSalir() : alVolver());
     document.addEventListener('visibilitychange', vis);
     const app = capacitor()?.Plugins?.App as
-        | { addListener?: (e: string, f: (s: { isActive: boolean }) => void) => Promise<{ remove: () => void }> }
+        | { addListener?: (e: string, f: (s: { isActive: boolean }) => void) => Promise<{ remove: () => void }> | { remove: () => void } }
         | undefined;
     let quitar: (() => void) | null = null;
-    app?.addListener?.('appStateChange', (s) => (s.isActive ? alVolver() : alSalir()))
-        .then((h) => {
-            quitar = () => h.remove();
-        })
-        .catch(() => undefined);
+    let quitado = false;
+    // Dentro de la APK, `addListener` NO devuelve una promesa: devuelve el
+    // oyente ya puesto. Un `.then` a pelo tiraba la app entera al abrirla
+    // («This page couldn't load», 1.10). Siempre con `Promise.resolve`.
+    try {
+        void Promise.resolve(app?.addListener?.('appStateChange', (s) => (s.isActive ? alVolver() : alSalir())))
+            .then((h) => {
+                if (!h) return;
+                if (quitado) h.remove();
+                else quitar = () => h.remove();
+            })
+            .catch(() => undefined);
+    } catch {
+        /* sin el complemento: queda `visibilitychange` */
+    }
     return () => {
+        quitado = true;
         document.removeEventListener('visibilitychange', vis);
         quitar?.();
     };

@@ -23,7 +23,7 @@ jest.mock('web-push', () => ({
     },
 }));
 
-import { avisar, esperarEnvios } from '../../src/services/avisos.service';
+import { avisar, esperarEnvios, olvidarLosToques, tocarLosTelefonos } from '../../src/services/avisos.service';
 
 /**
  * LOS AVISOS: EN LA APP Y EN EL TELÉFONO
@@ -38,13 +38,15 @@ import { avisar, esperarEnvios } from '../../src/services/avisos.service';
  *            suscripción muerta (410) se borra sola; quien apagó los avisos
  *            al teléfono no los recibe (la campana sí);
  *   NOTI-06  la APK: el aviso va a Firebase con un permiso firmado con la
- *            cuenta de servicio; un token que Firebase da por muerto se borra.
+ *            cuenta de servicio; un token que Firebase da por muerto se borra;
+ *   NOTI-07  al escribir, la APK recibe el toque silencioso (solo datos, sin
+ *            qué cambió), como mucho uno por teléfono y minuto.
  */
 
 const SLUG = 'test-institute';
 const WEB = (n: string) => ({ tipo: 'WEB', destino: `https://fcm.googleapis.com/fcm/send/prueba-${n}-0123456789`, llaves: { p256dh: 'BPk-llave-publica', auth: 'secreto' } });
 
-describe('Los avisos (NOTI-01…06)', () => {
+describe('Los avisos (NOTI-01…07)', () => {
     let server: FastifyInstance;
     let prisma: PrismaClient;
     let admin: any;
@@ -159,7 +161,14 @@ describe('Los avisos (NOTI-01…06)', () => {
         expect(pref.body.data).toMatchObject({ alTelefono: false, webPush: 'BPublicaDePrueba' });
     });
 
-    it('NOTI-06: la APK recibe por Firebase, con el permiso firmado; un token muerto se borra', async () => {
+    /** El toque sale en `onResponse`, DESPUÉS de responder: se espera a que salga. */
+    const trasEscribir = async () => {
+        await new Promise((r) => setTimeout(r, 300));
+        await esperarEnvios();
+    };
+
+    /** Un Firebase de mentira (permiso y envíos), en un puerto propio. */
+    async function firebaseDeMentira() {
         const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
         const pedidos: Array<{ url: string; cuerpo: string; auth?: string }> = [];
         const google = http.createServer((req, res) => {
@@ -181,31 +190,82 @@ describe('Los avisos (NOTI-01…06)', () => {
         });
         await new Promise<void>((r) => google.listen(0, '127.0.0.1', r));
         const base = `http://127.0.0.1:${(google.address() as AddressInfo).port}`;
-        process.env.FCM_URL = base;
-        process.env.FCM_TOKEN_URL = `${base}/token`;
-        process.env.FCM_CUENTA_DE_SERVICIO = JSON.stringify({
-            project_id: 'gestiedu-prueba',
-            client_email: 'avisos@gestiedu-prueba.iam.gserviceaccount.com',
-            private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }),
-        });
+        return {
+            envios: () =>
+                pedidos.filter((p) => p.url === '/v1/projects/gestiedu-prueba/messages:send').map((p) => ({ ...p, json: JSON.parse(p.cuerpo) })),
+            /** Desde aquí el servidor «tiene Firebase». */
+            encender() {
+                process.env.FCM_URL = base;
+                process.env.FCM_TOKEN_URL = `${base}/token`;
+                process.env.FCM_CUENTA_DE_SERVICIO = JSON.stringify({
+                    project_id: 'gestiedu-prueba',
+                    client_email: 'avisos@gestiedu-prueba.iam.gserviceaccount.com',
+                    private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }),
+                });
+            },
+            apagar() {
+                delete process.env.FCM_URL;
+                delete process.env.FCM_TOKEN_URL;
+                delete process.env.FCM_CUENTA_DE_SERVICIO;
+                google.close();
+            },
+        };
+    }
+
+    it('NOTI-06: la APK recibe por Firebase, con el permiso firmado; un token muerto se borra', async () => {
+        const firebase = await firebaseDeMentira();
         try {
             const vivo = 'token-vivo-de-la-apk-0123456789abcdef';
             await api().post('/api/avisos/telefonos').set(como(mama, UserRole.TUTOR)).send({ tipo: 'FCM', destino: vivo, aparato: 'Motorola G13' }).expect(200);
             await api().post('/api/avisos/telefonos').set(como(mama, UserRole.TUTOR)).send({ tipo: 'FCM', destino: 'token-muerto-0123456789abcdef' }).expect(200);
+            await trasEscribir();
+            firebase.encender();
             await avisar(prisma, 'institute', null, { a: [mama.id], titulo: 'Citación', mensaje: 'x', alTelefono: { titulo: 'Citación del liceo', cuerpo: 'Martes 8:00' } });
             await esperarEnvios();
 
-            const envios = pedidos.filter((p) => p.url === '/v1/projects/gestiedu-prueba/messages:send');
+            const envios = firebase.envios();
             expect(envios).toHaveLength(2);
             expect(envios.every((p) => p.auth === 'Bearer permiso-de-prueba')).toBe(true);
-            const alVivo = JSON.parse(envios.find((p) => p.cuerpo.includes(vivo))!.cuerpo);
+            const alVivo = envios.find((p) => p.cuerpo.includes(vivo))!.json;
             expect(alVivo.message).toMatchObject({ token: vivo, notification: { title: 'Citación del liceo', body: 'Martes 8:00' } });
             expect((await prisma.suscripcionDeAviso.findMany({ select: { destino: true } })).map((s) => s.destino)).toEqual([vivo]);
         } finally {
-            delete process.env.FCM_URL;
-            delete process.env.FCM_TOKEN_URL;
-            delete process.env.FCM_CUENTA_DE_SERVICIO;
-            google.close();
+            firebase.apagar();
+        }
+    });
+
+    it('NOTI-07: al escribir, la APK recibe el toque silencioso (sin nada que enseñar), uno por minuto', async () => {
+        const firebase = await firebaseDeMentira();
+        olvidarLosToques();
+        try {
+            const deMama = 'token-de-mama-0123456789abcdef';
+            await api().post('/api/avisos/telefonos').set(como(mama, UserRole.TUTOR)).send({ tipo: 'FCM', destino: deMama }).expect(200);
+            await trasEscribir();
+            firebase.encender();
+
+            // Una escritura que no se acota a nadie: toca a todos los teléfonos del liceo.
+            await api().put('/api/avisos/preferencias').set(como(admin, UserRole.ADMIN)).send({ alTelefono: true }).expect(200);
+            await trasEscribir();
+            const toques = firebase.envios();
+            expect(toques).toHaveLength(1);
+            expect(toques[0].json.message).toEqual({
+                token: deMama,
+                data: { gestiedu: 'datos-cambiaron' },
+                android: { priority: 'high', collapse_key: 'datos-cambiaron', ttl: '3600s' },
+            });
+
+            // Otra escritura dentro del minuto: ahora no sale otro (sale uno al acabar el minuto).
+            await api().put('/api/avisos/preferencias').set(como(admin, UserRole.ADMIN)).send({ alTelefono: true }).expect(200);
+            await trasEscribir();
+            expect(firebase.envios()).toHaveLength(1);
+
+            // A quien no tiene la APK, nada.
+            olvidarLosToques();
+            expect(await tocarLosTelefonos(prisma, [papa.id])).toBe(0);
+            expect(await tocarLosTelefonos(prisma, [mama.id])).toBe(1);
+        } finally {
+            olvidarLosToques();
+            firebase.apagar();
         }
     });
 });

@@ -49,6 +49,14 @@ function esUnPaquete(paquete: string): boolean {
     return paquete.length <= 100 && PAQUETE.test(paquete);
 }
 
+/** `instituto-testing` → `com.gestiedu.institutotesting` (igual que `paqueteDe` en preparar-liceo.mjs). */
+export function paqueteDelLiceo(slug: string): string | null {
+    const limpio = String(slug ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+    if (!limpio || limpio.length > 60 || !/^[a-z]/.test(limpio)) return null;
+    const paquete = `com.gestiedu.${limpio}`;
+    return esUnPaquete(paquete) ? paquete : null;
+}
+
 async function leerLaFicha(paquete: string): Promise<FichaDeLaApp | null> {
     try {
         const crudo = JSON.parse(await readFile(path.join(laCarpetaDeLasApps(), `${paquete}.json`), 'utf-8'));
@@ -85,6 +93,29 @@ export async function appMovilRoutes(fastify: FastifyInstance) {
         return reply
             .header('Cache-Control', 'no-store')
             .send({ ...ficha, url: `/api/app-movil/${paquete}/apk` });
+    });
+
+    /**
+     * LA APP DE UN LICEO, POR SU NOMBRE CORTO (para el navegador)
+     *
+     * Mientras no esté en Google Play, la APK se reparte así: quien entra al
+     * sistema desde el navegador de un Android ve «Descarga la app» con la
+     * última versión. El navegador sabe el liceo, no el paquete: el paquete
+     * sale del liceo con la MISMA cuenta que `apps/movil/scripts/preparar-liceo.mjs`
+     * (`paqueteDe`). Sin APK publicada para ese liceo, 404 y no se ofrece nada.
+     */
+    fastify.get<{ Params: { slug: string } }>('/del-liceo/:slug', async (request, reply) => {
+        const paquete = paqueteDelLiceo(request.params.slug);
+        if (!paquete) {
+            return reply.status(400).send({ error: 'Ese no es el nombre de un liceo', code: 'LICEO_INVALIDO' });
+        }
+        const ficha = await leerLaFicha(paquete);
+        if (!ficha) {
+            return reply.status(404).send({ error: 'Ese liceo no tiene app publicada', code: 'NOT_FOUND' });
+        }
+        return reply
+            .header('Cache-Control', 'no-store')
+            .send({ ...ficha, paquete, url: `/api/app-movil/${paquete}/apk` });
     });
 
     fastify.get<{ Params: { paquete: string } }>('/:paquete/apk', async (request, reply) => {

@@ -768,11 +768,23 @@ desde el repositorio: es la identidad del liceo en Google Play. Todo en
 **Una versión nueva de la APK se baja desde la propia app.** `npm run
 publicar` (en `apps/movil`) sube el número, compila y deja la APK con su
 huella en `APP_MOVIL_DIR`; al abrirse, la app pregunta a
-`/api/app-movil/<paquete>/version` y ofrece «Descargar e instalar»: la baja
-dentro, comprueba la huella y abre el instalador de Android, que exige la
-misma firma (`ActualizarLaApp.tsx`, `ActualizarAppPlugin.java`). **No vale
-para Google Play**: allí se actualiza por Play y sin el permiso
-`REQUEST_INSTALL_PACKAGES`.
+`/api/app-movil/<paquete>/version` y saca la ventana «Actualización de
+versión» (diseño de Cristian: lo nuevo numerado, «Actualizar», el enlace y la
+versión actual): la baja dentro, comprueba la huella y abre el instalador de
+Android, que exige la misma firma (`ActualizarLaApp.tsx`,
+`ActualizarAppPlugin.java`). **No vale para Google Play**: allí se actualiza
+por Play y sin el permiso `REQUEST_INSTALL_PACKAGES`.
+
+**Sin Google Play por ahora (decidido):** en el navegador de un Android, al
+entrar sale «Descarga la app» con la última APK de su liceo
+(`DescargarLaApp.tsx`, `GET /api/app-movil/del-liceo/:slug`; APPDESC-UI-*).
+
+**En la APK, `addListener` de Capacitor NO devuelve una promesa.** Un `.then`
+a pelo tumbó la 1.10 entera al abrir («This page couldn't load»), y las
+pruebas pasaban porque en el navegador no hay Capacitor. Siempre
+`Promise.resolve(...)`; BLOQUEO-UI-06 imita el Capacitor de verdad. Si algo
+tumba la app, `app/global-error.tsx` lo dice en español. Y el login sin
+conexión dice «Sin conexión», no «Instituto no encontrado».
 
 Tres cosas de la APK que el navegador no enseña nunca (medidas en el
 emulador; `MainActivity.java` y `styles.xml`):
@@ -920,7 +932,9 @@ seguir (solo «Cerrar sesión»), y sigue sola donde quedó (decidido por Cristi
 - **Después, solo lo que cambió**: cada escritura se apunta en
   `cambios_del_liceo` (`plugins/avisar-cambios.ts`; 30 días) y el teléfono
   pregunta `POST /precarga/cambios {desde}` al abrir, al volver la conexión, al
-  avisar el tiempo real y cada 30 min (`DescargaEnSegundoPlano`). Los POST de
+  avisar el tiempo real, al llegar el **toque silencioso de Firebase** (APK
+  abierta o en segundo plano; cerrada del todo, al abrirla; NOTI-07) y cada
+  30 min (`DescargaEnSegundoPlano`). Los POST de
   `precarga` NO son cambios (si no, bucle). Una vez al día, la pasada entera de
   fondo (lo nuevo, como un alumno nuevo, llega ahí). CAMBIOS-01…05.
 - PRECARGA-01…06 (navegador) miden por rol el tiempo y los MB.
@@ -932,7 +946,11 @@ bloqueo** si hay sesión (como Zinli o el banco), o el login. «Ingresar» pide 
 huella o el bloqueo del teléfono; sin bloqueo, un **PIN de 4 de la app** que
 crea la persona una vez y **solo un admin** cambia o resetea desde la ficha
 (PIN-01…07). Al volver a la app pasado el tiempo de «Mi cuenta» (1 min por
-defecto), otra vez. Es la puerta de la casa; la caja fuerte sigue siendo el
+defecto), otra vez. **Antes del libro no se ve nada**: la página llega pintada
+del servidor y el libro sale cuando arranca React, así que en la app un guion
+del `<head>` pone una cortina (`lib/cortina-del-arranque.ts`, `data-arrancando`)
+que quita el candado al pintar; sin ella se veía el esqueleto del Inicio 2–3 s
+(BLOQUEO-UI-07). Es la puerta de la casa; la caja fuerte sigue siendo el
 servidor. Código en `components/arranque/`, `lib/el-candado.ts`,
 `lib/pin-de-la-app.ts`; BLOQUEO-UI-01…05.
 

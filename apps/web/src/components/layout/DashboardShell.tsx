@@ -11,6 +11,7 @@ import RecordarElPerfil from '@/components/arranque/RecordarElPerfil';
 import EnviarLoPendiente from '@/providers/EnviarLoPendiente';
 import CambiosSinEnviar from '@/components/common/CambiosSinEnviar';
 import ActualizarLaApp from '@/components/common/ActualizarLaApp';
+import DescargarLaApp from '@/components/common/DescargarLaApp';
 import { AsistenciaEnPantalla } from '@/components/asistencia/AsistenciaDelAlumno';
 import FondoQuieto from '@/components/layout/FondoQuieto';
 import { LogOut, GraduationCap, UserCircle } from 'lucide-react';
@@ -235,6 +236,8 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                     dedo pulsa la barra de gestos. */}
                 <div className="mx-auto max-w-7xl px-4 py-6 pb-[calc(7rem+var(--zona-segura-abajo))] sm:px-6 lg:px-8 lateral:pb-6 print:!p-0 print:max-w-none">
                     {!enMarco && <OfrecerAvisos />}
+                    {/* En el navegador de un Android: la APK del liceo, la última. */}
+                    {!enMarco && <DescargarLaApp />}
                     {children}
                 </div>
             </main>

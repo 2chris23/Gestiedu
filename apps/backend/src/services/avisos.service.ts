@@ -152,6 +152,9 @@ interface CuentaDeServicio {
 function cuentaDeFirebase(): CuentaDeServicio | null {
     const v = process.env.FCM_CUENTA_DE_SERVICIO;
     if (!v) return null;
+    // Las pruebas leen el `.env` de la máquina: nunca hablan con el Firebase
+    // de verdad, solo con uno de mentira (`FCM_URL`).
+    if (process.env.NODE_ENV === 'test' && !process.env.FCM_URL) return null;
     try {
         return JSON.parse(v.trim().startsWith('{') ? v : readFileSync(v, 'utf-8'));
     } catch {
@@ -190,27 +193,109 @@ async function permisoDeFirebase(cuenta: CuentaDeServicio): Promise<string> {
     return j.access_token;
 }
 
-async function porFirebase(token: string, carga: Carga): Promise<boolean> {
+/** Devuelve false si ese token ya no existe (hay que borrarlo). */
+async function aFirebase(token: string, mensaje: Record<string, unknown>): Promise<boolean> {
     const cuenta = cuentaDeFirebase();
     if (!cuenta) return true;
     const base = process.env.FCM_URL || 'https://fcm.googleapis.com';
     const r = await fetch(`${base}/v1/projects/${cuenta.project_id}/messages:send`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${await permisoDeFirebase(cuenta)}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            message: {
-                token,
-                notification: { title: carga.titulo, body: carga.cuerpo },
-                data: { enlace: carga.enlace },
-                android: { priority: 'high', notification: { click_action: 'FCM_PLUGIN_ACTIVITY' } },
-            },
-        }),
+        body: JSON.stringify({ message: { token, ...mensaje } }),
     });
     if (r.ok) return true;
     const texto = await r.text().catch(() => '');
     if (r.status === 404 || texto.includes('UNREGISTERED')) return false;
     logger.warn('Firebase no mandó el aviso', { status: r.status });
     return true;
+}
+
+const porFirebase = (token: string, carga: Carga) =>
+    aFirebase(token, {
+        notification: { title: carga.titulo, body: carga.cuerpo },
+        data: { enlace: carga.enlace },
+        android: { priority: 'high', notification: { click_action: 'FCM_PLUGIN_ACTIVITY' } },
+    });
+
+// ─── El toque silencioso: «lo tuyo cambió, ponte al día» ─────────────────────
+
+/**
+ * Cuando alguien escribe, a la APK de cada persona afectada le llega un
+ * mensaje de Firebase SIN nada que enseñar (solo datos): la app, abierta o en
+ * segundo plano, pregunta qué cambió (`POST /precarga/cambios`) y lo baja.
+ * Es lo que hace el tiempo real con la app abierta, pero sin socket.
+ *
+ * No lleva QUÉ cambió (ni siquiera el recurso): solo «hay algo». Lo de verdad
+ * se pide con la sesión de esa persona.
+ *
+ * **Un toque por teléfono por minuto** (`TOQUE_CADA_MS`): una tanda de treinta
+ * notas no son treinta toques. El que cae dentro del minuto no se pierde: sale
+ * uno al acabar el minuto. Y `collapse_key`: si el teléfono está apagado,
+ * Firebase guarda solo el último.
+ */
+export const TOQUE_SILENCIOSO = 'datos-cambiaron';
+const TOQUE_CADA_MS = Number(process.env.TOQUE_CADA_MS ?? 60_000);
+const ultimoToque = new Map<string, number>();
+const toqueEnEspera = new Set<string>();
+
+const mandarElToque = (token: string) =>
+    aFirebase(token, {
+        data: { gestiedu: TOQUE_SILENCIOSO },
+        android: { priority: 'high', collapse_key: TOQUE_SILENCIOSO, ttl: '3600s' },
+    });
+
+/** `a`: ids de usuario, o `'todos'` (el cambio no se pudo acotar). */
+export async function tocarLosTelefonos(prisma: any, a: string[] | 'todos'): Promise<number> {
+    if (!cuentaDeFirebase()) return 0;
+    if (Array.isArray(a) && a.length === 0) return 0;
+    const telefonos: Array<{ id: string; destino: string }> = await prisma.suscripcionDeAviso.findMany({
+        where: { tipo: 'FCM', ...(a === 'todos' ? {} : { userId: { in: [...new Set(a)] } }) },
+        select: { id: true, destino: true },
+    });
+    const ahora = Date.now();
+    if (ultimoToque.size > 20_000) {
+        for (const [k, t] of ultimoToque) if (ahora - t > TOQUE_CADA_MS) ultimoToque.delete(k);
+    }
+    const ya: Array<{ id: string; destino: string }> = [];
+    for (const t of telefonos) {
+        const hace = ahora - (ultimoToque.get(t.destino) ?? 0);
+        if (hace >= TOQUE_CADA_MS) {
+            ultimoToque.set(t.destino, ahora);
+            ya.push(t);
+        } else if (!toqueEnEspera.has(t.destino)) {
+            toqueEnEspera.add(t.destino);
+            const reloj = setTimeout(() => {
+                toqueEnEspera.delete(t.destino);
+                ultimoToque.set(t.destino, Date.now());
+                void mandarElToque(t.destino).catch(() => undefined);
+            }, TOQUE_CADA_MS - hace);
+            reloj.unref?.();
+        }
+    }
+    const muertos: string[] = [];
+    await Promise.all(
+        ya.map(async (t) => {
+            if (!(await mandarElToque(t.destino).catch(() => true))) muertos.push(t.id);
+        })
+    );
+    if (muertos.length) await prisma.suscripcionDeAviso.deleteMany({ where: { id: { in: muertos } } });
+    return ya.length;
+}
+
+/** Sin hacer esperar a quien escribió (`esperarEnvios()` lo espera en las pruebas). */
+export function tocarLosTelefonosDeFondo(prisma: any, a: string[] | 'todos'): void {
+    if (!cuentaDeFirebase()) return;
+    const envio = tocarLosTelefonos(prisma, a).catch((e) =>
+        logger.warn('No salió el toque a los teléfonos', { error: e instanceof Error ? e.message : String(e) })
+    );
+    pendientes.add(envio);
+    void envio.finally(() => pendientes.delete(envio));
+}
+
+/** Para las pruebas: olvida a quién se tocó. */
+export function olvidarLosToques(): void {
+    ultimoToque.clear();
+    toqueEnEspera.clear();
 }
 
 // ─── Lo que pide la app ──────────────────────────────────────────────────────
