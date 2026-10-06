@@ -242,4 +242,46 @@ test.describe('Con el servidor apagado', () => {
             }
         });
     });
+
+    /**
+     * FASE A: EL AVISO «SIN CONEXIÓN» NO DEBE PARPADEAR
+     *
+     * Con las rutas de autenticación de Next caídas (/api/auth/**) y la API arriba,
+     * useConexion no debe alternar entre conectado y desconectado.
+     * El aviso debe aparecer y mantenerse visible durante 40 segundos sin desaparecer.
+     */
+    test('APAGADO-04: con /api/auth/** abortado y la API arriba, el aviso no parpadea y permanece visible durante 40 s', async ({ page }) => {
+        test.setTimeout(90_000);
+
+        const urlWeb = `http://localhost:${DESTINO}`;
+
+        // 1. Iniciar sesión normalmente
+        await page.goto(`${urlWeb}/login?slug=${TENANT_SLUG}`);
+        await page.fill('input[type="email"]', 'admin@testing.edu.ve');
+        await page.fill('input[type="password"]', '123456');
+        await Promise.all([
+            page.waitForURL('**/dashboard**', { timeout: 60_000 }),
+            page.getByRole('button', { name: /^Ingresar$/ }).click(),
+        ]);
+        await expect(page.getByRole('button', { name: /Promedio general/i })).toBeVisible({ timeout: 30_000 });
+
+        // 2. Abortar solo las rutas de Next (/api/auth/**), dejando la API arriba
+        await page.route('**/api/auth/**', (route) => route.abort('connectionrefused'));
+
+        // 3. Forzar el refresco / recarga para que falle la autenticación en Next
+        // pero la página y la API sigan arriba.
+        await page.reload();
+
+        // 4. El aviso debe aparecer
+        const aviso = page.locator('[data-aviso="sin-conexion"]:visible');
+        await expect(aviso).toBeVisible({ timeout: 20_000 });
+
+        // 5. Verificar durante 40 segundos que no desaparece en ningún momento
+        const inicio = Date.now();
+        while (Date.now() - inicio < 40_000) {
+            await expect(aviso).toBeVisible();
+            await page.waitForTimeout(1_000);
+        }
+    });
 });
+

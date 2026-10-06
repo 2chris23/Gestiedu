@@ -41,6 +41,15 @@ let iniciado = false;
 const oyentes = new Set<Oyente>();
 let ultimoGuardado = 0;
 
+/** Ventana de tiempo (10 segundos) requerida sin fallos para volver a marcar que contesta. */
+const VENTANA_SIN_FALLOS_MS = 10_000;
+/** Respuestas exitosas seguidas necesarias tras un fallo para dar por recuperada la conexión. */
+const EXITOS_NECESARIOS = 2;
+
+let ultimoFallo = 0;
+let exitosSeguidos = 0;
+let temporizadorRebote: ReturnType<typeof setTimeout> | null = null;
+
 function avisar() {
     oyentes.forEach((o) => o());
 }
@@ -62,15 +71,45 @@ export function escucharElServidor(oyente: Oyente): () => void {
     return () => oyentes.delete(oyente);
 }
 
-/** Una respuesta del servidor, la que sea (también un 401 o un 404: contestó). */
+/**
+ * Una respuesta del servidor, la que sea (también un 401 o un 404: contestó).
+ *
+ * Anti-rebote (histéresis): tras un fallo, volver a «contesta: true» requiere
+ * al menos 2 respuestas buenas seguidas y ningún fallo en los últimos 10 s.
+ * Si ya hubo 2 respuestas pero aún no se completan los 10 s limpios, se espera
+ * el tiempo restante con un temporizador, confirmando que no haya fallado entretanto.
+ */
 export function elServidorContesto(): void {
     iniciar();
     const ahora = Date.now();
-    const cambia = !estado.contesta;
-    // Objeto nuevo solo si cambia: quien lo lee (useSyncExternalStore) compara
-    // por referencia, y uno nuevo en cada respuesta repintaría por nada.
-    if (cambia) estado = { contesta: true, ultimaRespuesta: ahora };
-    else estado.ultimaRespuesta = ahora;
+    exitosSeguidos++;
+
+    if (estado.contesta) {
+        estado.ultimaRespuesta = ahora;
+    } else {
+        const tiempoSinFallos = ahora - ultimoFallo;
+        if (exitosSeguidos >= EXITOS_NECESARIOS && tiempoSinFallos >= VENTANA_SIN_FALLOS_MS) {
+            if (temporizadorRebote) {
+                clearTimeout(temporizadorRebote);
+                temporizadorRebote = null;
+            }
+            estado = { contesta: true, ultimaRespuesta: ahora };
+            avisar();
+        } else if (exitosSeguidos >= EXITOS_NECESARIOS) {
+            if (!temporizadorRebote) {
+                const restante = Math.max(100, VENTANA_SIN_FALLOS_MS - tiempoSinFallos);
+                temporizadorRebote = setTimeout(() => {
+                    temporizadorRebote = null;
+                    const t = Date.now();
+                    if (!estado.contesta && exitosSeguidos >= EXITOS_NECESARIOS && t - ultimoFallo >= VENTANA_SIN_FALLOS_MS) {
+                        estado = { contesta: true, ultimaRespuesta: t };
+                        avisar();
+                    }
+                }, restante);
+            }
+        }
+    }
+
     // Se apunta en disco como mucho una vez cada diez segundos: esto pasa en
     // cada respuesta y escribir en cada una no aporta nada.
     if (ahora - ultimoGuardado > 10_000) {
@@ -81,14 +120,33 @@ export function elServidorContesto(): void {
             /* sin almacenamiento local: solo se pierde la hora del aviso */
         }
     }
-    if (cambia) avisar();
 }
 
 export function elServidorNoContesta(): void {
     iniciar();
+    ultimoFallo = Date.now();
+    exitosSeguidos = 0;
+    if (temporizadorRebote) {
+        clearTimeout(temporizadorRebote);
+        temporizadorRebote = null;
+    }
     if (!estado.contesta) return;
     estado = { ...estado, contesta: false };
     avisar();
+}
+
+/** Solo para reiniciar el estado en las pruebas unitarias. */
+export function _reiniciarEstadoParaPruebas(): void {
+    estado = { contesta: true, ultimaRespuesta: null };
+    iniciado = false;
+    oyentes.clear();
+    ultimoGuardado = 0;
+    ultimoFallo = 0;
+    exitosSeguidos = 0;
+    if (temporizadorRebote) {
+        clearTimeout(temporizadorRebote);
+        temporizadorRebote = null;
+    }
 }
 
 /**

@@ -2,9 +2,11 @@
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/axios';
-import { elEstadoDelServidor, escucharElServidor } from '@/lib/estado-del-servidor';
+import { API_URL } from '@/config/env';
+import { elEstadoDelServidor, escucharElServidor, elServidorContesto, elServidorNoContesta } from '@/lib/estado-del-servidor';
 import { conAzar } from '@/lib/azar';
+
+const API_BASE_URL = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
 
 /** Cada cuánto se vuelve a preguntar, mientras el servidor no contesta. */
 const CADA = 15_000;
@@ -18,9 +20,51 @@ export interface Conexion {
     ultimaRespuesta: number | null;
 }
 
-/** Pregunta mínima al servidor: si contesta, las interceptoras lo apuntan solas. */
+/**
+ * Pregunta periódica al liceo: comprueba los DOS caminos en paralelo.
+ * 1. La API de datos (/health).
+ * 2. El propio servidor de la web (/api/estoy, GET sin datos, no-store).
+ *
+ * Solo marca «contesta» si responden los dos caminos.
+ * Si cualquiera de los dos falla o no llega a tiempo (4 s), marca «no contesta».
+ */
 export async function preguntarAlServidor(): Promise<void> {
-    await api.get('/health', { timeout: 4000 }).catch(() => undefined);
+    const controlador = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const reloj = controlador ? setTimeout(() => controlador.abort(), 4000) : null;
+    const signal = controlador?.signal;
+
+    try {
+        const rutaWeb = typeof window !== 'undefined' ? '/api/estoy' : 'http://localhost:3000/api/estoy';
+        const consultarApi = fetch(`${API_BASE_URL}/health`, {
+            method: 'GET',
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-store' },
+            signal,
+        })
+            .then((r) => r.ok)
+            .catch(() => false);
+
+        const consultarWeb = fetch(rutaWeb, {
+            method: 'GET',
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-store' },
+            signal,
+        })
+            .then((r) => r.ok)
+            .catch(() => false);
+
+        const [apiOk, webOk] = await Promise.all([consultarApi, consultarWeb]);
+
+        if (apiOk && webOk) {
+            elServidorContesto();
+        } else {
+            elServidorNoContesta();
+        }
+    } catch {
+        elServidorNoContesta();
+    } finally {
+        if (reloj) clearTimeout(reloj);
+    }
 }
 
 /**
