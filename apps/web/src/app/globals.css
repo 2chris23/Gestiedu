@@ -763,6 +763,9 @@ select,
   will-change: transform, opacity;
 }
 .libro-tapa { animation: libro-tapa 0.9s cubic-bezier(0.65, 0, 0.35, 1) 0.2s both; }
+/* La tapa tiene dos caras: azul por fuera y, abierta, una hoja blanca por dentro. */
+.libro-cara { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.libro-cara-de-atras { transform: rotateY(180deg); }
 /* 4 hojas, 2,4 s cada una y una cada 0,6 s: siempre hay una pasando. */
 .libro-hoja { opacity: 0; animation: libro-hoja 2.4s cubic-bezier(0.45, 0, 0.25, 1) infinite both; }
 @media (prefers-reduced-motion: reduce) {

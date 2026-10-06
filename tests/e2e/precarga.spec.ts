@@ -18,6 +18,7 @@ import { API_BASE, TENANT_SLUG, loginApi, loginViaUI, queryTenantDb, representan
  *   PRECARGA-05 se corta la conexión a media descarga: «esperando», sin
  *               poder seguir (solo «Cerrar sesión»); vuelve y termina sola
  *   PRECARGA-06 la segunda vez que entra, la pantalla de carga no sale
+ *   PRECARGA-07 la primera vez, el libro sale antes que el esqueleto del Inicio
  *
  * El admin baja TODO (600 y pico fichas): su prueba abre sin conexión todas
  * las pantallas que no son fichas y 25 fichas al azar (de cada tipo de persona).
@@ -184,5 +185,21 @@ test.describe('Precarga: sin conexión, todo', () => {
         await page.reload();
         await page.waitForTimeout(4000);
         await expect(page.locator('[data-precarga]')).toHaveCount(0);
+    });
+
+    test('PRECARGA-07: la primera vez sale el libro, no el esqueleto del Inicio, aunque el servidor tarde', async ({ page }) => {
+        // Cristian lo vio en su teléfono: primero el esqueleto y luego el
+        // libro. El servidor tarda 4 s en todo lo que no es entrar (datos
+        // del teléfono): el libro tiene que estar antes de que conteste.
+        await conPrecarga(page);
+        await page.route('**/api/**', async (ruta) => {
+            const url = ruta.request().url();
+            if (ruta.request().method() === 'GET' && !/\/(auth|instituto|institutes\/(current|public))/.test(url)) {
+                await new Promise((r) => setTimeout(r, 4000));
+            }
+            await ruta.continue().catch(() => undefined);
+        });
+        await loginViaUI(page, 'est0575@testing.edu.ve');
+        await expect(page.locator('[data-precarga]')).toBeVisible({ timeout: 1500 });
     });
 });

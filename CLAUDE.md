@@ -937,7 +937,7 @@ seguir (solo «Cerrar sesión»), y sigue sola donde quedó (decidido por Cristi
   30 min (`DescargaEnSegundoPlano`). Los POST de
   `precarga` NO son cambios (si no, bucle). Una vez al día, la pasada entera de
   fondo (lo nuevo, como un alumno nuevo, llega ahí). CAMBIOS-01…05.
-- PRECARGA-01…06 (navegador) miden por rol el tiempo y los MB.
+- PRECARGA-01…06 (navegador) miden por rol el tiempo y los MB. PRECARGA-07: la primera vez el libro sale ANTES que el esqueleto del Inicio (lo decide lo guardado en el teléfono, no esperar al servidor).
 
 ## El arranque y el candado (octubre 2026)
 

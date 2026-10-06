@@ -7,6 +7,7 @@ import { useConexion } from '@/hooks/useConexion';
 import { usePagosActivos } from '@/hooks/usePagos';
 import { usePaeActivo } from '@/hooks/usePae';
 import { useCerrarSesion } from '@/hooks/useCerrarSesion';
+import { useAuthStore } from '@/store/auth.store';
 import { elMenuDe } from '@/lib/el-menu';
 import { elDuenoDeAhora } from '@/lib/el-dueno';
 import { bajarTodo, cuandoSeCompleto, enMegas, estaCompleta, seEnsenaLaPrecarga, type Avance } from '@/lib/precarga';
@@ -58,6 +59,22 @@ export function PrecargaAlEntrar() {
             cancelada.current = true;
         };
     }, []);
+
+    /**
+     * EL LIBRO, ANTES DE PINTAR EL INICIO
+     *
+     * La descarga espera a saber quién es y qué módulos tiene el liceo (dos
+     * preguntas al servidor), y hasta entonces se veía el esqueleto del
+     * Inicio y DESPUÉS el libro (lo vio Cristian en su teléfono). Si hay que
+     * descargar lo decide lo guardado en el teléfono, que se sabe ya: el
+     * libro sale antes de la primera pintada («Preparando la descarga…»).
+     */
+    const quien = useAuthStore((s) => s.user?.id);
+    React.useLayoutEffect(() => {
+        if (!quien || !seEnsenaLaPrecarga()) return;
+        const dueno = elDuenoDeAhora();
+        if (dueno && !estaCompleta(dueno)) setALaVista(true);
+    }, [quien]);
 
     React.useEffect(() => {
         if (!yo?.id || !yo.role || !menuSabido || corriendo.current) return;

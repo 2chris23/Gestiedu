@@ -31,22 +31,36 @@ export function LibroQueSeAbre({
                     <div className="absolute inset-0 rounded-r-[10px] bg-white shadow-[inset_6px_0_10px_rgba(13,71,161,0.08)] ring-1 ring-[#D6E2F5]">
                         <Renglones />
                     </div>
+                    {/*
+                        La tapa, del azul de la app, con la cinta del acento. Va
+                        DEBAJO de las hojas y por dentro es una hoja blanca: antes
+                        quedaba encima, azul, en el lado izquierdo, y cada hoja que
+                        pasaba caía debajo de ella y parecía desaparecer (lo vio
+                        Cristian). Mientras está cerrada no se ve ninguna hoja
+                        (empiezan transparentes), así que nada la tapa.
+                    */}
+                    <div className="libro-tapa absolute inset-0">
+                        <div className="libro-cara absolute inset-0 rounded-r-[10px] bg-[var(--azul-cabecera)] shadow-[0_6px_16px_rgba(4,24,64,0.25)]">
+                            <span className="absolute right-3 top-0 h-9 w-2.5 rounded-b-sm bg-[var(--acento)]" />
+                            <span className="absolute inset-x-4 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-white/25" />
+                        </div>
+                        <div className="libro-cara libro-cara-de-atras absolute inset-0 rounded-r-[10px] bg-white ring-1 ring-[#D6E2F5]">
+                            <Renglones />
+                        </div>
+                    </div>
                     <div className="absolute inset-0">
                         {[0, 1, 2, 3].map((i) => (
                             <div
                                 key={i}
                                 className="libro-hoja absolute inset-0 rounded-r-[10px] bg-[#FBFCFF] ring-1 ring-[#D6E2F5]"
-                                // Tras abrirse la tapa, una hoja cada 0,6 s (siempre hay una pasando).
+                                // Tras abrirse la tapa, una hoja cada 0,6 s: pasa de la
+                                // derecha a la izquierda y SE QUEDA ahí, encima de la
+                                // anterior, hasta que la siguiente cae sobre ella.
                                 style={{ animationDelay: `${1 + i * 0.6}s` }}
                             >
                                 <Renglones />
                             </div>
                         ))}
-                    </div>
-                    {/* La tapa, del azul de la app, con la cinta del acento. */}
-                    <div className="libro-tapa absolute inset-0 rounded-r-[10px] bg-[var(--azul-cabecera)] shadow-[0_6px_16px_rgba(4,24,64,0.25)]">
-                        <span className="absolute right-3 top-0 h-9 w-2.5 rounded-b-sm bg-[var(--acento)]" />
-                        <span className="absolute inset-x-4 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-white/25" />
                     </div>
                 </div>
                 {/* El lomo. */}
