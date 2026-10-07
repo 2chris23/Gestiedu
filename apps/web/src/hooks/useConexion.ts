@@ -29,16 +29,21 @@ export interface Conexion {
  * Si cualquiera de los dos falla o no llega a tiempo (4 s), marca «no contesta».
  */
 export async function preguntarAlServidor(): Promise<void> {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const controlador = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const reloj = controlador ? setTimeout(() => controlador.abort(), 4000) : null;
+    if (controlador) {
+        timeoutId = setTimeout(() => {
+            controlador.abort();
+        }, 8000);
+    }
     const signal = controlador?.signal;
 
     try {
         const rutaWeb = typeof window !== 'undefined' ? '/api/estoy' : 'http://localhost:3000/api/estoy';
+
         const consultarApi = fetch(`${API_BASE_URL}/health`, {
             method: 'GET',
             cache: 'no-store',
-            headers: { 'Cache-Control': 'no-store' },
             signal,
         })
             .then((r) => r.ok)
@@ -47,7 +52,6 @@ export async function preguntarAlServidor(): Promise<void> {
         const consultarWeb = fetch(rutaWeb, {
             method: 'GET',
             cache: 'no-store',
-            headers: { 'Cache-Control': 'no-store' },
             signal,
         })
             .then((r) => r.ok)
@@ -55,15 +59,20 @@ export async function preguntarAlServidor(): Promise<void> {
 
         const [apiOk, webOk] = await Promise.all([consultarApi, consultarWeb]);
 
+        // Si fue abortado (por navegación, desmontaje o tiempo de espera local), no alterar el estado a caído
+        if (signal?.aborted) return;
+
         if (apiOk && webOk) {
             elServidorContesto();
         } else {
             elServidorNoContesta();
         }
     } catch {
+        // En caso de excepción no controlada si la señal fue abortada, no marcar caído
+        if (signal?.aborted) return;
         elServidorNoContesta();
     } finally {
-        if (reloj) clearTimeout(reloj);
+        if (timeoutId) clearTimeout(timeoutId);
     }
 }
 

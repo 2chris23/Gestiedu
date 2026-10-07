@@ -15,7 +15,7 @@
  */
 
 export const BASE = 'gestiedu';
-export const VERSION_DE_LA_BASE = 2;
+export const VERSION_DE_LA_BASE = 3;
 
 export const CAJON_DESCARGADO = 'lo-descargado';
 export const CAJON_RESPUESTAS = 'respuestas';
@@ -58,7 +58,14 @@ export function abrirLaBase(): Promise<IDBDatabase | null> {
             const bd = peticion.result;
             if (!bd.objectStoreNames.contains(CAJON_DESCARGADO)) bd.createObjectStore(CAJON_DESCARGADO);
             if (!bd.objectStoreNames.contains(CAJON_RESPUESTAS)) {
-                bd.createObjectStore(CAJON_RESPUESTAS).createIndex('cuando', 'cuando');
+                bd.createObjectStore(CAJON_RESPUESTAS);
+            } else {
+                const store = peticion.transaction?.objectStore(CAJON_RESPUESTAS);
+                if (store?.indexNames.contains('cuando')) {
+                    try {
+                        store.deleteIndex('cuando');
+                    } catch {}
+                }
             }
             if (!bd.objectStoreNames.contains(CAJON_POR_ENVIAR)) {
                 bd.createObjectStore(CAJON_POR_ENVIAR, { keyPath: 'id' }).createIndex('dueno', 'dueno');

@@ -95,9 +95,24 @@ export function BarraInferiorMovil({ destinos }: Props) {
     const esElActivo = (href: string) =>
         href === '/dashboard' ? pathname === '/dashboard' : pathname === href || pathname.startsWith(href + '/');
 
-    const mitad = Math.ceil(destinos.length / 2);
-    const izquierda = destinos.slice(0, mitad);
-    const derecha = destinos.slice(mitad);
+    let izquierda: DestinoDeLaBarra[];
+    let derecha: DestinoDeLaBarra[];
+
+    if (destinos.length === 1) {
+        // Si hay un solo destino (el representante con «Mi cuenta»), va a la derecha
+        // —igual que en el alumno y el profesor— y la izquierda se compensa con un
+        // hueco del mismo ancho para que Inicio quede perfectamente centrado.
+        izquierda = [];
+        derecha = destinos;
+    } else {
+        const mitad = Math.ceil(destinos.length / 2);
+        izquierda = destinos.slice(0, mitad);
+        derecha = destinos.slice(mitad);
+    }
+
+    const ranuras = Math.max(izquierda.length, derecha.length);
+    const faltanIzquierda = ranuras - izquierda.length;
+    const faltanDerecha = ranuras - derecha.length;
     const enInicio = pathname === '/dashboard';
 
     const clasesDelBoton = (activo: boolean) =>
@@ -141,6 +156,10 @@ export function BarraInferiorMovil({ destinos }: Props) {
             }
         >
             <div className="mx-auto flex max-w-xl items-end justify-between px-1">
+                {Array.from({ length: faltanIzquierda }).map((_, i) => (
+                    <div key={`spacer-izq-${i}`} className="min-h-[52px] min-w-0 flex-1" aria-hidden />
+                ))}
+
                 {izquierda.map((d) => (
                     <Boton key={d.name} destino={d} />
                 ))}
@@ -170,6 +189,10 @@ export function BarraInferiorMovil({ destinos }: Props) {
 
                 {derecha.map((d) => (
                     <Boton key={d.name} destino={d} />
+                ))}
+
+                {Array.from({ length: faltanDerecha }).map((_, i) => (
+                    <div key={`spacer-der-${i}`} className="min-h-[52px] min-w-0 flex-1" aria-hidden />
                 ))}
             </div>
         </nav>

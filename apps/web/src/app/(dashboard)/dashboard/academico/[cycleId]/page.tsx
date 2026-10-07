@@ -167,6 +167,7 @@ export default function AcademicYearDashboard() {
         let totalStudents = 0;
         let totalCapacity = 0;
         let weightedSumAverage = 0;
+        let totalStudentsWithGrades = 0;
         let totalRisk = 0;
         let weightedSumAttendance = 0;
         let totalObservations = 0;
@@ -177,35 +178,40 @@ export default function AcademicYearDashboard() {
         statsArray.forEach(item => {
             const s = item.stats;
             const [currentStr, capacityStr] = s.occupancy.split('/');
-            const current = parseInt(currentStr);
-            const capacity = parseInt(capacityStr);
+            const current = parseInt(currentStr) || 0;
+            const capacity = parseInt(capacityStr) || 0;
 
-            const avg = s.average;
-            const attendance = parseInt(s.attendance.replace('%', ''));
+            const avg = typeof s.average === 'number' && s.average > 0 ? s.average : null;
+            const attendance = parseInt(String(s.attendance || '0').replace('%', '')) || 0;
 
             totalStudents += current;
             totalCapacity += capacity;
-            weightedSumAverage += avg * current;
+            if (avg !== null && current > 0) {
+                weightedSumAverage += avg * current;
+                totalStudentsWithGrades += current;
+            }
             totalRisk += s.riskCount;
             weightedSumAttendance += attendance * current;
             totalObservations += s.observations;
 
             if (current > 0) {
                 hasStudentData = true;
-                if (s.minAverage !== undefined) {
+                if (s.minAverage !== undefined && s.minAverage !== null && s.minAverage > 0) {
                     if (s.minAverage < globalMin) globalMin = s.minAverage;
+                }
+                if (s.maxAverage !== undefined && s.maxAverage !== null && s.maxAverage > 0) {
                     if (s.maxAverage > globalMax) globalMax = s.maxAverage;
                 }
             }
         });
 
-        const finalAvg = totalStudents > 0 ? (weightedSumAverage / totalStudents).toFixed(1) : '0.0';
+        const finalAvg = totalStudentsWithGrades > 0 ? Number((weightedSumAverage / totalStudentsWithGrades).toFixed(1)) : null;
         const finalAttendance = totalStudents > 0 ? Math.round(weightedSumAttendance / totalStudents) : 0;
 
         return {
-            average: Number(finalAvg),
-            minAverage: hasStudentData ? Number(globalMin.toFixed(1)) : 0,
-            maxAverage: hasStudentData ? Number(globalMax.toFixed(1)) : 0,
+            average: finalAvg,
+            minAverage: totalStudentsWithGrades > 0 && globalMin <= 20 ? Number(globalMin.toFixed(1)) : undefined,
+            maxAverage: totalStudentsWithGrades > 0 && globalMax > 0 ? Number(globalMax.toFixed(1)) : undefined,
             riskCount: totalRisk,
             occupancy: `${totalStudents}/${totalCapacity}`,
             attendance: `${finalAttendance}%`,

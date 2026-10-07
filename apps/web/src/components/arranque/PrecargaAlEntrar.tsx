@@ -78,14 +78,17 @@ export function PrecargaAlEntrar() {
     }, [quien]);
 
     React.useEffect(() => {
-        if (!yo?.id || !yo.role || !menuSabido || corriendo.current) return;
+        if (!yo?.id || !yo.role || corriendo.current) return;
         if (!seEnsenaLaPrecarga()) return;
+        if (!menuSabido) return;
         const dueno = elDuenoDeAhora();
         if (!dueno) return;
         const completa = estaCompleta(dueno);
         // Ya hecha: de fondo, una vez al día como mucho (lo de cada cambio lo
-        // trae `DescargaEnSegundoPlano`).
-        if (completa && (Date.now() - cuandoSeCompleto(dueno) < UN_DIA || !hayConexion)) return;
+        // trae `DescargaEnSegundoPlano`), y aquí sí esperamos a que el menú esté sabido.
+        if (completa) {
+            if (Date.now() - cuandoSeCompleto(dueno) < UN_DIA || !hayConexion) return;
+        }
         corriendo.current = true;
         // Solo la primera vez, con el libro.
         if (!completa) setALaVista(true);
@@ -121,10 +124,19 @@ export function PrecargaAlEntrar() {
     const esperando = fase === 'esperando';
     const total = avance?.bytesTotales ?? null;
     // El % va por lecturas (exacto desde el principio), no por MB (calculados).
-    const proporcion = avance && avance.lecturasTotales ? Math.min(1, avance.lecturasHechas / avance.lecturasTotales) : null;
+    const proporcion =
+        avance?.porcentaje !== undefined
+            ? Math.min(1, avance.porcentaje / 100)
+            : avance && avance.lecturasTotales
+              ? Math.min(1, avance.lecturasHechas / avance.lecturasTotales)
+              : null;
     const detalle =
         fase === 'empezando'
             ? 'Preparando la descarga…'
+            : fase === 'preparando'
+              ? (avance?.porcentaje !== undefined
+                  ? `Preparando tu paquete… ${avance.porcentaje} %`
+                  : 'Preparando tu paquete…')
             : fase === 'paginas'
               ? 'Terminando…'
               : avance && total

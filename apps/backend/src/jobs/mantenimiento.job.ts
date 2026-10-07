@@ -3,6 +3,7 @@ import { logger } from '../utils/logger';
 import { platformPrisma, getTenantPrisma } from '../config/database';
 import { conLiceo } from '../config/ambito-del-liceo';
 import { tirarLoQueNoSirve } from '../services/mantenimiento.service';
+import { actualizarPaquetesDeNoche } from '../services/paquete-de-precarga.service';
 import { latido } from '../utils/latido-de-tareas';
 import { avisarSiFalla } from '../utils/sin-callar';
 
@@ -26,7 +27,8 @@ export async function setupMantenimientoJob(_server: FastifyInstance) {
                 try {
                     const prisma = await getTenantPrisma(liceo.id);
                     const r = await conLiceo(liceo.id, () => tirarLoQueNoSirve(prisma));
-                    if (r.papelera + r.avisos + r.sesiones + r.cambios > 0) logger.info('Mantenimiento: tirado lo viejo', { instituteId: liceo.id, ...r });
+                    if (r.papelera + r.avisos + r.sesiones + r.cambios + r.paquetes > 0) logger.info('Mantenimiento: tirado lo viejo', { instituteId: liceo.id, ...r });
+                    await conLiceo(liceo.id, () => actualizarPaquetesDeNoche(_server, liceo.id, prisma)).catch(avisarSiFalla('actualizar-paquetes-noche'));
                 } catch (error) {
                     fallo = error;
                     logger.warn('Mantenimiento: no se pudo con un liceo', {

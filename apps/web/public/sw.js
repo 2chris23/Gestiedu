@@ -517,7 +517,13 @@ self.addEventListener('message', (evento) => {
         evento.waitUntil(
             (async () => {
                 let guardadas = 0;
-                for (const d of [...new Set(mensaje.direcciones)]) if (await guardarLaPagina(d).catch(() => false)) guardadas++;
+                const unicas = [...new Set(mensaje.direcciones)];
+                const LOTE = 4;
+                for (let i = 0; i < unicas.length; i += LOTE) {
+                    const grupo = unicas.slice(i, i + LOTE);
+                    const res = await Promise.all(grupo.map((d) => guardarLaPagina(d).catch(() => false)));
+                    for (const ok of res) if (ok) guardadas++;
+                }
                 if (respuesta) respuesta.postMessage({ guardadas });
             })()
         );

@@ -163,7 +163,7 @@ export default function SubjectSectionStudentsModal({
                                                                 : "bg-rose-50 text-rose-700 border border-rose-200"
                                                 )}
                                             >
-                                                {hasGrade ? `${avg.toFixed(1)} pts` : 'Sin calificar'}
+                                                {hasGrade ? `${avg.toFixed(1)} pts` : 'Sin notas'}
                                             </span>
                                         </div>
                                     </div>

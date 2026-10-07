@@ -58,7 +58,8 @@ export async function getTeacherDashboard(request: FastifyRequest, reply: Fastif
     const userId = user?.userId;
     if (!userId) throw createError(400, ERROR_MESSAGES.TENANT_NOT_FOUND);
     const db = getTenantDb(request);
-    const dashboard = await dashboardService.getTeacherDashboard(userId, db);
+    const instituteId = (request as any).institute?.id ?? user.instituteId;
+    const dashboard = await dashboardService.getTeacherDashboard(userId, db, instituteId);
     return reply.status(200).send({ success: true, message: SUCCESS_MESSAGES.FETCH_SUCCESS, data: dashboard });
   } catch (error) {
     throw error;

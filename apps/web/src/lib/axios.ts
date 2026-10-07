@@ -175,7 +175,11 @@ api.interceptors.request.use(
              */
             const token = await conseguirCredencial();
             if (token) {
-                config.headers.Authorization = `Bearer ${token}`;
+                if (typeof (config.headers as any)?.set === 'function') {
+                    (config.headers as any).set('Authorization', `Bearer ${token}`);
+                } else {
+                    config.headers.Authorization = `Bearer ${token}`;
+                }
             }
 
             // El liceo sí se lee de la cookie: no es una credencial, solo dice
@@ -189,8 +193,13 @@ api.interceptors.request.use(
 
             const slug = cookies['institute_slug'];
             // Si la petición ya dice de qué liceo es, manda la petición.
-            if (slug && !config.headers['X-Institute-Slug']) {
-                config.headers['X-Institute-Slug'] = slug;
+            const yaTieneSlug = config.headers['X-Institute-Slug'] || (typeof (config.headers as any)?.get === 'function' && (config.headers as any).get('X-Institute-Slug'));
+            if (slug && !yaTieneSlug) {
+                if (typeof (config.headers as any)?.set === 'function') {
+                    (config.headers as any).set('X-Institute-Slug', slug);
+                } else {
+                    config.headers['X-Institute-Slug'] = slug;
+                }
             }
         }
 
@@ -226,6 +235,10 @@ api.interceptors.response.use(
     },
     async (error) => {
         const originalRequest = error.config;
+        // Peticiones canceladas o abortadas (unmount de componentes o cambio de pantalla) no son fallo
+        if (error?.name === 'CanceledError' || error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') {
+            return Promise.reject(error);
+        }
 
         // ¿Contestó el servidor (aunque fuera para decir que no), o no llegó nada?
         if (esQueNoContesta(error)) {
@@ -249,7 +262,11 @@ api.interceptors.response.use(
                     if (success) {
                         originalRequest._retry = true;
                         if (token && originalRequest.headers) {
-                            originalRequest.headers.Authorization = `Bearer ${token}`;
+                            if (typeof (originalRequest.headers as any)?.set === 'function') {
+                                (originalRequest.headers as any).set('Authorization', `Bearer ${token}`);
+                            } else {
+                                originalRequest.headers.Authorization = `Bearer ${token}`;
+                            }
                         }
                         resolve(api.request(originalRequest));
                     } else {

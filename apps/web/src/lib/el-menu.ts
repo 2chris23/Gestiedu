@@ -23,6 +23,11 @@ import {
  * veces se desincroniza a la primera, y el que se queda viejo no da ningún
  * error: simplemente deja de ofrecer una pantalla.
  *
+ * NOTA DE SINCRONIZACIÓN (Fase B):
+ * Esta lista está COPIADA en el servidor en `services/paquete-de-precarga.service.ts`
+ * (`elMenuDelRol`). Ambos archivos deben mantenerse idénticos para que el paquete
+ * preparado de antemano contenga exactamente las pantallas que el menú ofrece.
+ *
  * Los roles tienen que coincidir con el enum `UserRole` del servidor
  * (ADMIN | TEACHER | STUDENT | TUTOR). Ponerlos en español rompe el filtro en
  * silencio.

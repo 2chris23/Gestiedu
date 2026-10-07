@@ -90,6 +90,7 @@ export interface TeacherDashboardDto {
         id: string;
         fullName: string;
         specialization: string | null;
+        isGuideTeacher?: boolean;
     };
     classrooms: Array<{
         id: string;
@@ -110,7 +111,31 @@ export interface TeacherDashboardDto {
         totalStudents: number;
         totalClassrooms: number;
         pendingGrades: number;
+        promedioGeneral?: number | null;
+        averageAttendance?: number;
+        studentsAtRisk?: number;
+        isGuideTeacher?: boolean;
     };
+    eventsCalendar?: {
+        currentPeriod?: {
+            id: string;
+            name: string;
+            startDate: string;
+            endDate: string;
+            daysLeft: number | null;
+        } | null;
+        events: Array<{
+            id: string;
+            title: string;
+            description?: string | null;
+            date: string;
+            startTime?: string | null;
+            endTime?: string | null;
+            scope?: string | null;
+            isHoliday?: boolean;
+        }>;
+    };
+    activeAcademicYear?: string | null;
 }
 
 export interface StudentDashboardDto {

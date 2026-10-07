@@ -5,6 +5,7 @@ import { CreateUserInput, UpdateUserInput, UserFiltersInput, PaginationInput } f
 import { logger } from '../utils/logger';
 import { incrementTeacherCount, decrementTeacherCount } from '../middleware/plan-limits.middleware';
 import { avisarSiFalla } from '../utils/sin-callar';
+import { encargarElPaquete } from '../services/paquete-de-precarga.service';
 
 interface CreateTeacherRequest {
   Body: CreateUserInput;
@@ -105,6 +106,7 @@ export async function createTeacher(
     const instituteId = (request as any).institute?.id ?? (request.user as any)?.instituteId;
     if (instituteId) {
       incrementTeacherCount(instituteId).catch(avisarSiFalla('teachers.controller'));
+      encargarElPaquete(instituteId, teacher.id).catch(avisarSiFalla('encargar-paquete-nuevo-profesor'));
     }
 
     return reply.status(201).send({

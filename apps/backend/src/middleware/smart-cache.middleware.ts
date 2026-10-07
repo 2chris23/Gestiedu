@@ -142,6 +142,8 @@ function isCacheable(request: FastifyRequest, role: string): boolean {
     const url = request.url;
     if (url.includes('/api/superadmin')) return false;
     if (url.includes('/api/auth')) return false;
+    // La precarga tiene su propio almacenamiento en BD, streams binarios y progreso dinamico.
+    if (url.includes('/api/precarga')) return false;
     // Recién publicada una versión de la app, se tiene que ver ya, no a los cinco minutos.
     if (url.startsWith('/api/app-movil')) return false;
     // El QR del alumno cambia cada 10 s: uno guardado es un código caducado.

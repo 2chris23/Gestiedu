@@ -1001,9 +1001,15 @@ export const getClassroomStats = async (request: FastifyRequest, reply: FastifyR
       }
     }) : 0;
 
-    // 2. Asistencia promedio de los estudiantes de la sección
+    // 2. Asistencia promedio de los estudiantes de la sección (filtrada por lapso si se indica)
     let attendancePercentage = 0;
     if (studentIds.length > 0) {
+      const params: any[] = [...studentIds];
+      let dateCondition = '';
+      if (obsPeriodFilter.gte && obsPeriodFilter.lte) {
+        params.push(obsPeriodFilter.gte, obsPeriodFilter.lte);
+        dateCondition = ` AND a."date" >= $${params.length - 1} AND a."date" <= $${params.length}`;
+      }
       const attendanceQuery = `
         SELECT
           CAST(COALESCE(
@@ -1012,9 +1018,9 @@ export const getClassroomStats = async (request: FastifyRequest, reply: FastifyR
             0
           ) AS FLOAT) as "attendancePercentage"
         FROM daily_attendance a
-        WHERE a."studentId" IN (${studentIds.map((_, i) => `$${i + 1}`).join(',')})
+        WHERE a."studentId" IN (${studentIds.map((_, i) => `$${i + 1}`).join(',')})${dateCondition}
       `;
-      const result = await prisma.$queryRawUnsafe<Array<{ attendancePercentage: number }>>(attendanceQuery, ...studentIds);
+      const result = await prisma.$queryRawUnsafe<Array<{ attendancePercentage: number }>>(attendanceQuery, ...params);
       attendancePercentage = Math.round(Number(result[0]?.attendancePercentage || 0));
     }
 
@@ -1023,6 +1029,7 @@ export const getClassroomStats = async (request: FastifyRequest, reply: FastifyR
     let minAverage = 0;
     let maxAverage = 0;
     let riskCount = 0;
+    let studentsWithGrades = 0;
 
     if (studentIds.length > 0) {
       let minPassing = 10;
@@ -1069,7 +1076,6 @@ export const getClassroomStats = async (request: FastifyRequest, reply: FastifyR
       });
 
       let sumStudentAverages = 0;
-      let studentsWithGrades = 0;
       let currentMin = 20;
       let currentMax = 0;
 
@@ -1097,9 +1103,9 @@ export const getClassroomStats = async (request: FastifyRequest, reply: FastifyR
     }
 
     return reply.status(200).send({
-      average,
-      minAverage,
-      maxAverage,
+      average: studentsWithGrades > 0 ? average : null,
+      minAverage: studentsWithGrades > 0 ? minAverage : null,
+      maxAverage: studentsWithGrades > 0 ? maxAverage : null,
       riskCount,
       occupancy: `${totalStudents}/${totalCapacity}`,
       attendance: `${attendancePercentage}%`,

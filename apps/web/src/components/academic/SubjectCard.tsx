@@ -34,7 +34,7 @@ interface SubjectCardProps {
 export function SubjectCard({ id, name, color, code, stats, teacher, hoursPerWeek, sectionHref }: SubjectCardProps) {
     // Función para obtener el color del promedio (verde brillante a rojo fuerte)
     const getGradeColor = (average: number | null): string => {
-        if (average === null) return '#6B7280'; // gray-500 para "Sin calificar"
+        if (average === null) return '#6B7280'; // gray-500 para "Sin notas"
 
         // Escala de 0-20 puntos
         // 0pts = rojo fuerte (#DC2626 - red-600)
@@ -122,7 +122,7 @@ export function SubjectCard({ id, name, color, code, stats, teacher, hoursPerWee
                                 className="text-2xl font-bold"
                                 style={{ color: gradeColor }}
                             >
-                                {displayStats.average !== null ? `${displayStats.average.toFixed(1)}pts` : 'Sin calificar'}
+                                {displayStats.average !== null ? `${displayStats.average.toFixed(1)}pts` : 'Sin notas'}
                             </div>
                         </div>
 

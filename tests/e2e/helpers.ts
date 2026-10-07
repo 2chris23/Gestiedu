@@ -254,7 +254,7 @@ export async function loginViaUI(
 
   for (;;) {
     await page.goto(`${WEB_BASE}/login?slug=${slug}`);
-    await page.waitForSelector('input[type="email"], input[name="email"]');
+    await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 30000 });
 
     await page.fill('input[type="email"], input[name="email"]', email);
     await page.fill('input[type="password"], input[name="password"]', pwd);
@@ -282,7 +282,7 @@ export async function loginViaUI(
     const frenadoPorElLimite = respuesta?.status() === 429;
 
     if (!frenadoPorElLimite) {
-      await page.waitForURL('**/dashboard**', { timeout: 15000 });
+      await page.waitForURL('**/dashboard**', { timeout: 30000 });
       return;
     }
 

@@ -34,9 +34,18 @@ export function PuntajeDelAlumno({ studentId }: { studentId: string }) {
                     {alcances.map((a) => (
                         <li key={a.alcance} className="rounded-xl border border-amber-200 bg-white p-3">
                             <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">{a.nombre}</p>
-                            <p className="mt-1 flex items-baseline gap-2">
+                            <p className="mt-1 flex flex-wrap items-baseline gap-2">
                                 <span className="text-2xl font-extrabold text-gray-900">{a.puntaje.toFixed(1)}</span>
                                 <span className="text-sm text-gray-600">puntos</span>
+                                {a.puestoAno !== undefined && a.puestoAno <= 10 ? (
+                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">
+                                        {a.puestoAno}.º de tu año
+                                    </span>
+                                ) : a.puestoLiceo !== undefined && a.puestoLiceo <= 10 ? (
+                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">
+                                        {a.puestoLiceo}.º del liceo
+                                    </span>
+                                ) : null}
                             </p>
                             <p
                                 className={cn(

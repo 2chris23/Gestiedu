@@ -9,6 +9,7 @@ import { SESSION_CONFIG } from '../utils/constants';
 import { validatePassword } from '../utils/password-validator'; // ✅ SECURITY: Password policy
 import { logger } from '../utils/logger';
 import { avisarSiFalla } from '../utils/sin-callar';
+import { encargarElPaquete } from './paquete-de-precarga.service';
 
 // =====================================================
 // SESIONES PERSISTENTES ("Recordar sesión")
@@ -129,7 +130,12 @@ class AuthService {
       throw AppErrors.UserInactive();
     }
 
-    return this.abrirSesion(user, db, { keepSession, rememberMe }, instituteContextId, deviceMeta);
+    const sesion = await this.abrirSesion(user, db, { keepSession, rememberMe }, instituteContextId, deviceMeta);
+    const liceo = String(instituteContextId ?? user.instituteId ?? (user.institute as any)?.id ?? '');
+    if (liceo && user.id) {
+      encargarElPaquete(liceo, user.id).catch(avisarSiFalla('encargar-paquete-login'));
+    }
+    return sesion;
   }
 
   /**

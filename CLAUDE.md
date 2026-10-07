@@ -840,8 +840,9 @@ arrancar si el sábado no se sacó). El promedio es **el de la boleta**; la
 asistencia y las observaciones, solo las del período, y una felicitación
 (`POSITIVE`…) no resta. Pesos del liceo en Configuración → Académica (80/20/5
 por defecto; `MAPA` §8h). El admin ve el liceo o un año; **el alumno y su
-representante ven SOLO su puntaje y cuántos puestos subió** —ni su puesto ni a
-nadie: el servidor no lo manda—; el profesor, 403. CUADRO-01…09, CUADRO-UI-01/02.
+representante ven su puntaje, cuántos puestos subió y su puesto solo si es
+≤ 10 (en su año o en el liceo)** —a nadie más: el servidor no lo manda—;
+el profesor, 403. CUADRO-01…09, CUADRO-UI-01/02.
 
 ## El recorrido guiado (como la app rial)
 

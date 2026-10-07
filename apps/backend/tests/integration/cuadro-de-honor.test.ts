@@ -7,6 +7,7 @@ import { createTestServer, createTestPrismaClient, createTestUser, generateTestT
 import { platformPrisma } from '../../src/config/database';
 import { sacarLaFoto, sacarLaFotoSiFalta } from '../../src/services/cuadro-de-honor.service';
 import { RedisCache } from '../../src/config/redis';
+import { conLiceo } from '../../src/config/ambito-del-liceo';
 
 /**
  * EL CUADRO DE HONOR, DE PUNTA A PUNTA (CUADRO-04…08, 2026-10-04)
@@ -139,23 +140,52 @@ describe('El cuadro de honor (CUADRO)', () => {
         expect(lapso.puntaje).toBeGreaterThan(70);
     }, 120000);
 
-    it('CUADRO-07: el alumno y su representante ven SU puntaje, sin puesto ni a nadie más; el profesor y otro alumno, 403', async () => {
+    it('CUADRO-07: el alumno y su representante ven su puntaje y el puesto solo si es <= 10; el 10.º lo recibe, el 11.º no; profesor y otro alumno 403', async () => {
         const suyo = await get(ana, UserRole.STUDENT, `/api/cuadro-de-honor/alumno/${ana.id}`).expect(200);
-        for (const a of suyo.body.alcances) {
+        expect(suyo.body.alcances[0]).toHaveProperty('puestoAno');
+        expect(suyo.body.alcances[0].puestoAno).toBeLessThanOrEqual(10);
+        expect(JSON.stringify(suyo.body)).not.toContain(beto.id);
+
+        // El 11.º NO recibe puestoAno ni puestoLiceo
+        await (prisma as any).puntajeDelCuadro.updateMany({
+            where: { studentId: beto.id },
+            data: { puestoAno: 11, puestoLiceo: 11 },
+        });
+        await conLiceo('institute', () => RedisCache.clearPattern('*')).catch(() => undefined);
+        const del11 = await get(beto, UserRole.STUDENT, `/api/cuadro-de-honor/alumno/${beto.id}`).expect(200);
+        for (const a of del11.body.alcances) {
             expect(a).not.toHaveProperty('puestoAno');
             expect(a).not.toHaveProperty('puestoLiceo');
         }
-        expect(JSON.stringify(suyo.body)).not.toContain(beto.id);
-        await get(tutor, UserRole.TUTOR, `/api/cuadro-de-honor/alumno/${ana.id}`).expect(200);
+
+        // El 10.º SÍ recibe puestoAno y puestoLiceo
+        await (prisma as any).puntajeDelCuadro.updateMany({
+            where: { studentId: beto.id },
+            data: { puestoAno: 10, puestoLiceo: 10 },
+        });
+        await conLiceo('institute', () => RedisCache.clearPattern('*')).catch(() => undefined);
+        const del10 = await get(beto, UserRole.STUDENT, `/api/cuadro-de-honor/alumno/${beto.id}`).expect(200);
+        expect(del10.body.alcances[0]).toHaveProperty('puestoAno', 10);
+        expect(del10.body.alcances[0]).toHaveProperty('puestoLiceo', 10);
+
+        // El tutor de Ana ve el puesto de Ana (<= 10) pero no puede ver a Beto
+        const delTutor = await get(tutor, UserRole.TUTOR, `/api/cuadro-de-honor/alumno/${ana.id}`).expect(200);
+        expect(delTutor.body.alcances[0]).toHaveProperty('puestoAno');
         await get(tutor, UserRole.TUTOR, `/api/cuadro-de-honor/alumno/${beto.id}`).expect(403);
         await get(beto, UserRole.STUDENT, `/api/cuadro-de-honor/alumno/${ana.id}`).expect(403);
         await get(profe, UserRole.TEACHER, `/api/cuadro-de-honor/alumno/${ana.id}`).expect(403);
         for (const [u, rol] of [[ana, UserRole.STUDENT], [tutor, UserRole.TUTOR], [profe, UserRole.TEACHER]] as const) {
             expect([401, 403]).toContain((await get(u, rol, '/api/cuadro-de-honor')).status);
         }
-        // El admin sí ve el puesto.
-        const delAdmin = await get(admin, UserRole.ADMIN, `/api/cuadro-de-honor/alumno/${ana.id}`).expect(200);
-        expect(delAdmin.body.alcances[0]).toHaveProperty('puestoAno');
+        // El admin ve el puesto siempre, incluso si es el 11.º
+        await (prisma as any).puntajeDelCuadro.updateMany({
+            where: { studentId: beto.id },
+            data: { puestoAno: 11, puestoLiceo: 11 },
+        });
+        await conLiceo('institute', () => RedisCache.clearPattern('*')).catch(() => undefined);
+        const delAdmin = await get(admin, UserRole.ADMIN, `/api/cuadro-de-honor/alumno/${beto.id}`).expect(200);
+        expect(delAdmin.body.alcances[0]).toHaveProperty('puestoAno', 11);
+        expect(delAdmin.body.alcances[0]).toHaveProperty('puestoLiceo', 11);
     }, 120000);
 
     it('CUADRO-09: una felicitación no resta; una observación sí, y solo la del período', async () => {

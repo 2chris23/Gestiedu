@@ -159,6 +159,17 @@ export function _reiniciarEstadoParaPruebas(): void {
  */
 export function esQueNoContesta(error: any): boolean {
     if (!error) return false;
+    // Si la petición fue cancelada o abortada (por navegación, desmontaje o señal), NO es que el servidor no conteste
+    if (
+        error.name === 'AbortError' ||
+        error.name === 'CanceledError' ||
+        error.code === 'ERR_CANCELED' ||
+        error.__CANCEL__ ||
+        (error.isAxiosError && error.code === 'ERR_CANCELED') ||
+        (typeof error.message === 'string' && /aborted|canceled|cancelled/i.test(error.message))
+    ) {
+        return false;
+    }
     if (error.name === 'SinConexion' || error.name === 'SinServidor') return true;
     if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK' || error.code === 'ETIMEDOUT') return true;
     const r = error.response;

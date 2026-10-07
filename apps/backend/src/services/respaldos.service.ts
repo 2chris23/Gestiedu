@@ -213,7 +213,13 @@ async function volcar(quien: string, carpeta: string, direccion: () => string, e
     try {
         const { env: pgEnv, dbName } = extraerEntornoPg(direccion());
         const args = ['--format=custom', '--no-owner', '--no-acl', '--file', archivo];
-        if (esquema) args.push(`--schema=${esquema}`);
+        if (esquema) {
+            args.push(`--schema=${esquema}`);
+            // Los datos del paquete de precarga se rehacen solos; no engordan el respaldo.
+            args.push(`--exclude-table-data=${esquema}.paquetes_de_precarga`);
+        } else if (quien !== RESPALDO_DE_LA_PLATAFORMA) {
+            args.push('--exclude-table-data=paquetes_de_precarga');
+        }
         if (dbName) {
             args.push('--dbname', dbName);
         }

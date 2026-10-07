@@ -3,7 +3,12 @@
 import { Card } from '@/components/ui';
 import { CifraCompacta, RejillaDeCifras, type ColorDeCifra } from '@/components/dashboard/CifraCompacta';
 import { AccesosDelLiceo } from '@/components/dashboard/AccesosDelLiceo';
-import { InicioDelAdminMovil } from '@/components/dashboard/InicioDelAdminMovil';
+import {
+    InicioDelAdminMovil,
+    InicioDelProfesorMovil,
+    InicioDelAlumnoMovil,
+    InicioDelRepresentanteMovil,
+} from '@/components/dashboard';
 import { StatusBadge } from '@/components/dashboard/StatusBadge';
 import { diferido } from '@/components/common/Diferido';
 import { useAuthStore } from '@/store/auth.store';
@@ -147,13 +152,38 @@ interface StudentDashboardData {
 
 // Lo que el servidor le da a un profesor: lo suyo, no lo del liceo entero.
 interface TeacherDashboardData {
+    teacher?: { id: string; firstName: string; lastName: string; specialization?: string };
     classrooms: Array<{ id: string; name: string; studentCount: number }>;
     upcomingActivities: Array<{ id: string; title: string; dueDate: string }>;
     stats: {
         totalStudents: number;
         totalClassrooms: number;
         pendingGrades: number;
+        promedioGeneral?: number | null;
+        averageAttendance?: number;
+        studentsAtRisk?: number;
+        isGuideTeacher?: boolean;
     };
+    eventsCalendar?: {
+        currentPeriod?: {
+            id: string;
+            name: string;
+            startDate: string;
+            endDate: string;
+            daysLeft: number | null;
+        } | null;
+        events: Array<{
+            id: string;
+            title: string;
+            description?: string | null;
+            date: string;
+            startTime?: string | null;
+            endTime?: string | null;
+            scope?: string | null;
+            isHoliday?: boolean;
+        }>;
+    };
+    activeAcademicYear?: string | null;
 }
 
 interface Cifra {
@@ -222,6 +252,13 @@ export default function DashboardPage() {
         staleTime: 2 * 60 * 1000,
     });
 
+    const { data: tutorData, isLoading: isLoadingTutor, isError: isErrorTutor } = useQuery({
+        queryKey: ['panelDelRepresentante'],
+        queryFn: async () => (await api.get('/dashboard/tutor')).data.data as { children: any[] },
+        enabled: rol === 'TUTOR',
+        retry: false,
+    });
+
     // Datos de evolución REALES: promedio del estudiante por lapso (calculado en el backend)
     const evolutionData = (studentStats?.periodAverages ?? []).map((p) => ({
         label: p.periodName,
@@ -229,12 +266,19 @@ export default function DashboardPage() {
     }));
 
     const cargandoCifras =
-        rol === 'STUDENT' ? isLoadingStudent : rol === 'TEACHER' ? isLoadingTeacher : isLoadingAdmin;
+        rol === 'STUDENT'
+            ? isLoadingStudent
+            : rol === 'TEACHER'
+            ? isLoadingTeacher
+            : rol === 'TUTOR'
+            ? isLoadingTutor
+            : isLoadingAdmin;
 
     const tieneError =
         (rol === 'ADMIN' && isErrorAdmin) ||
         (rol === 'TEACHER' && isErrorTeacher) ||
-        (rol === 'STUDENT' && isErrorStudent);
+        (rol === 'STUDENT' && isErrorStudent) ||
+        (rol === 'TUTOR' && isErrorTutor);
 
     const estaCargando =
         !tieneError &&
@@ -243,7 +287,8 @@ export default function DashboardPage() {
             cargandoCifras ||
             (rol === 'ADMIN' && !adminData) ||
             (rol === 'TEACHER' && !teacherData) ||
-            (rol === 'STUDENT' && !studentStats));
+            (rol === 'STUDENT' && !studentStats) ||
+            (rol === 'TUTOR' && !tutorData));
 
     if (estaCargando) {
         return <CargandoDashboard />;
@@ -262,32 +307,34 @@ export default function DashboardPage() {
         if (rol === 'TEACHER' && teacherData) {
             return [
                 {
-                    titulo: 'Mis estudiantes',
-                    valor: teacherData.stats.totalStudents,
-                    icono: Users,
+                    titulo: 'Promedio general',
+                    valor: teacherData.stats.promedioGeneral !== null && teacherData.stats.promedioGeneral !== undefined
+                        ? teacherData.stats.promedioGeneral.toFixed(1)
+                        : '—',
+                    icono: TrendingUp,
                     color: 'indigo',
-                    pie: 'En mis secciones',
+                    pie: teacherData.activeAcademicYear || 'Ciclo actual',
                 },
                 {
-                    titulo: 'Mis secciones',
-                    valor: teacherData.stats.totalClassrooms,
-                    icono: School,
+                    titulo: 'Asistencia',
+                    valor: `${teacherData.stats.averageAttendance ?? 0}%`,
+                    icono: Clock,
                     color: 'cian',
-                    pie: 'Donde doy clase',
+                    pie: 'Últimos 30 días',
+                },
+                {
+                    titulo: 'En riesgo',
+                    valor: teacherData.stats.studentsAtRisk ?? 0,
+                    icono: AlertTriangle,
+                    color: 'coral',
+                    pie: 'Con materias reprobadas',
                 },
                 {
                     titulo: 'Por calificar',
                     valor: teacherData.stats.pendingGrades,
-                    icono: AlertTriangle,
+                    icono: Calendar,
                     color: 'ambar',
                     pie: 'Actividades sin notas',
-                },
-                {
-                    titulo: 'Próximas',
-                    valor: teacherData.upcomingActivities.length,
-                    icono: Calendar,
-                    color: 'menta',
-                    pie: 'Actividades por venir',
                 },
             ];
         }
@@ -330,7 +377,6 @@ export default function DashboardPage() {
 
     // El admin en el teléfono tiene su Inicio propio (InicioDelAdminMovil);
     // lo de abajo queda para el ordenador.
-    const soloOrdenador = rol === 'ADMIN' ? 'hidden lateral:block' : '';
     const [ah, am, ad] = hoy.split('-').map(Number);
     const hoyLeido =
         ah && am && ad
@@ -339,6 +385,7 @@ export default function DashboardPage() {
 
     return (
         <div className="space-y-6">
+            {/* INICIO EN EL TELÉFONO (lateral:hidden): una pieza por rol */}
             {rol === 'ADMIN' && adminData && (
                 <InicioDelAdminMovil
                     conPagos={Boolean(pagos?.enabled)}
@@ -354,210 +401,214 @@ export default function DashboardPage() {
                     }}
                 />
             )}
-            {/*
-                LA CABECERA ES LA FECHA
-
-                Aquí ponía «¡Hola, Nombre! 👋» a `text-3xl` y debajo «Bienvenido
-                al panel de control de…». Dos líneas que no dicen nada —quien
-                entró ya sabe quién es y dónde está— y que en un teléfono se
-                comen lo primero que se ve.
-            */}
-            <div className={`flex items-center justify-between gap-3 ${soloOrdenador}`}>
-                <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">Panel</h1>
-                <p className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600 shadow-sm sm:text-sm">
-                    <Calendar size={16} aria-hidden />
-                    {/* En 390 px, «lunes, 21 de septiembre de 2026» se come media
-                        cabecera para decir lo mismo que «lun, 21 sept». */}
-                    <span className="first-letter:uppercase sm:hidden">{comoSeLeeLaFecha(hoy, true)}</span>
-                    <span className="hidden first-letter:uppercase sm:inline">{comoSeLeeLaFecha(hoy)}</span>
-                </p>
-            </div>
-
-            {/* Los cuatro números, en 2 × 2 en el teléfono. */}
-            {(cifras.length > 0 || cargandoCifras) && (
-                <div className={`empty:hidden ${soloOrdenador}`} data-recorrido="inicio-cifras">
-                <RejillaDeCifras>
-                    {(cifras.length > 0
-                        ? cifras
-                        : ([
-                              { titulo: ' ', valor: '', icono: Users, color: 'indigo' },
-                              { titulo: ' ', valor: '', icono: Users, color: 'menta' },
-                              { titulo: ' ', valor: '', icono: Users, color: 'coral' },
-                              { titulo: ' ', valor: '', icono: Users, color: 'morado' },
-                          ] as Cifra[])
-                    ).map((c, i) => (
-                        <CifraCompacta
-                            key={`${c.titulo}-${i}`}
-                            titulo={c.titulo}
-                            valor={c.valor}
-                            icono={c.icono}
-                            color={c.color}
-                            pie={c.pie}
-                            cargando={cargandoCifras}
-                        />
-                    ))}
-                </RejillaDeCifras>
-                </div>
-            )}
-
-            {/* Lo que antes estaba escondido en la cortina lateral. Al personal,
-                arriba: es por donde empieza su día (en el teléfono, sin barra
-                lateral, es el único camino a Configuración, Usuarios…). Al
-                alumno y al representante les queda un solo acceso (Calendario),
-                y ponerlo delante de SU horario y de SUS representados era
-                hacerles bajar para ver lo que vinieron a ver: va al final. */}
-            {!esFamilia && (
-                <div className={`empty:hidden ${soloOrdenador}`} data-recorrido="accesos">
-                    <AccesosDelLiceo rol={rol} conPagos={Boolean(pagos?.enabled)} />
-                </div>
-            )}
-
-            {/* Panel Ejecutivo para Administradores: 2 Widgets al 50% */}
-            {rol === 'ADMIN' && adminData && (
-                <section aria-label="Supervisión Institucional" className="hidden space-y-5 lateral:block">
-                    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 items-start">
-                        {/* WIDGET 1: Calendario y Actividades Escolares */}
-                        <div className="empty:hidden" data-recorrido="calendario-del-liceo">
-                            <CalendarioActividadesWidget data={adminData.eventsCalendar} />
-                        </div>
-
-                        {/* WIDGET 2: Cuadro de Honor / Ranking de Alumnos */}
-                        <div className="empty:hidden" data-recorrido="cuadro-de-honor">
-                            <CuadroDeHonorWidget />
-                        </div>
-                    </div>
-                </section>
-            )}
-
-
-            {/* El alumno: su horario de hoy y lo que le falta. */}
-            {rol === 'STUDENT' && (
-                <div className="empty:hidden" data-recorrido="mi-dia">
-                <MiDiaDeClases
-                    studentId={user?.id ?? ''}
-                    classroomId={studentStats?.student?.currentSection?.id}
-                    nombre={`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim()}
-                    seccion={studentStats?.student?.currentSection?.name}
+            {rol === 'TEACHER' && teacherData && (
+                <InicioDelProfesorMovil
+                    datos={{
+                        teacherId: user?.id ?? '',
+                        teacherName: user ? `${user.firstName} ${user.lastName}`.trim() : undefined,
+                        activeAcademicYear: teacherData.activeAcademicYear,
+                        stats: teacherData.stats,
+                        eventsCalendar: teacherData.eventsCalendar,
+                        hoyLeido,
+                        todayStr: hoy,
+                    }}
                 />
-                </div>
+            )}
+            {rol === 'STUDENT' && studentStats && (
+                <InicioDelAlumnoMovil
+                    datos={{
+                        studentId: user?.id ?? yo?.id ?? '',
+                        studentName: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim(),
+                        section: studentStats.student?.currentSection,
+                        kpis: studentStats.kpis,
+                    }}
+                />
+            )}
+            {rol === 'TUTOR' && tutorData && (
+                <InicioDelRepresentanteMovil
+                    datos={{
+                        children: tutorData.children ?? [],
+                        conPagos: Boolean(pagos?.enabled),
+                    }}
+                />
             )}
 
-            {/* El alumno: su puntaje del cuadro de honor y cuántos puestos subió
-                (solo eso: ni su puesto ni a los demás). */}
-            {rol === 'STUDENT' && yo?.id && (
-                <div className="empty:hidden" data-recorrido="mi-puntaje">
-                    <PuntajeDelAlumno studentId={yo.id} />
+            {/* EN EL ORDENADOR (hidden lateral:block): el diseño completo de escritorio */}
+            <div className="hidden lateral:block space-y-6">
+                <div className="flex items-center justify-between gap-3">
+                    <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">Panel</h1>
+                    <p className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600 shadow-sm sm:text-sm">
+                        <Calendar size={16} aria-hidden />
+                        <span className="first-letter:uppercase sm:hidden">{comoSeLeeLaFecha(hoy, true)}</span>
+                        <span className="hidden first-letter:uppercase sm:inline">{comoSeLeeLaFecha(hoy)}</span>
+                    </p>
                 </div>
-            )}
 
-            {/* El alumno de los últimos años: su labor social (solo si le toca). */}
-            {rol === 'STUDENT' && yo?.id && <LaborSocialDelAlumno studentId={yo.id} />}
+                {/* Los cuatro números */}
+                {(cifras.length > 0 || cargandoCifras) && (
+                    <div className="empty:hidden" data-recorrido="inicio-cifras">
+                        <RejillaDeCifras>
+                            {(cifras.length > 0
+                                ? cifras
+                                : ([
+                                      { titulo: ' ', valor: '', icono: Users, color: 'indigo' },
+                                      { titulo: ' ', valor: '', icono: Users, color: 'menta' },
+                                      { titulo: ' ', valor: '', icono: Users, color: 'coral' },
+                                      { titulo: ' ', valor: '', icono: Users, color: 'morado' },
+                                  ] as Cifra[])
+                            ).map((c, i) => (
+                                <CifraCompacta
+                                    key={`${c.titulo}-${i}`}
+                                    titulo={c.titulo}
+                                    valor={c.valor}
+                                    icono={c.icono}
+                                    color={c.color}
+                                    pie={c.pie}
+                                    cargando={cargandoCifras}
+                                />
+                            ))}
+                        </RejillaDeCifras>
+                    </div>
+                )}
 
-            {/* Representante: sus representados y lo que les falta. */}
-            {rol === 'TUTOR' && (
-                <div className="empty:hidden" data-recorrido="citaciones-del-representante">
-                    <CitacionesDelRepresentante />
-                </div>
-            )}
-            {rol === 'TUTOR' && (
-                <div className="empty:hidden" data-recorrido="mis-representados">
-                    <MisRepresentados />
-                </div>
-            )}
+                {/* Accesos del personal en escritorio */}
+                {!esFamilia && (
+                    <div className="empty:hidden" data-recorrido="accesos">
+                        <AccesosDelLiceo rol={rol} conPagos={Boolean(pagos?.enabled)} />
+                    </div>
+                )}
 
-            {/* Representante: estado de pago de sus representados (si el liceo usa pagos) */}
-            {rol === 'TUTOR' && (
-                <div className="empty:hidden" data-recorrido="pagos-del-representante">
-                    <PagosDelRepresentante />
-                </div>
-            )}
-
-            {/* Charts Section */}
-            {rol === 'STUDENT' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Evolution Chart */}
-                    <Card className="p-4 sm:p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                            <TrendingUp size={20} className="text-blue-600" />
-                            Evolución del Promedio
-                        </h3>
-                        {isLoadingStudent ? (
-                            <div className="h-[250px] flex items-center justify-center text-gray-500">
-                                Cargando promedios...
+                {/* Panel Ejecutivo para Administradores en escritorio: 2 Widgets al 50% */}
+                {rol === 'ADMIN' && adminData && (
+                    <section aria-label="Supervisión Institucional" className="space-y-5">
+                        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 items-start">
+                            <div className="empty:hidden" data-recorrido="calendario-del-liceo">
+                                <CalendarioActividadesWidget data={adminData.eventsCalendar} />
                             </div>
-                        ) : evolutionData.length > 0 ? (
-                            <TrendChart
-                                data={evolutionData}
-                                type="area"
-                                height={250}
-                                color="#3b82f6"
-                            />
-                        ) : (
-                            <div className="h-[250px] flex items-center justify-center text-gray-500">
-                                Aún no hay calificaciones por lapso
+                            <div className="empty:hidden" data-recorrido="cuadro-de-honor">
+                                <CuadroDeHonorWidget />
                             </div>
-                        )}
-                    </Card>
-
-                    {/* Subjects Status */}
-                    <Card className="p-4 sm:p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                            <BookOpen size={20} className="text-purple-600" />
-                            Estado de Materias
-                        </h3>
-                        <div className="space-y-3">
-                            {isLoadingStudent ? (
-                                <p className="text-gray-500 text-center py-8">Cargando materias...</p>
-                            ) : studentStats?.subjects?.length ? (
-                                studentStats.subjects.map((subject) => (
-                                    <div
-                                        key={subject.id}
-                                        className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <span
-                                                className="w-3 h-3 rounded-full shrink-0"
-                                                style={{ backgroundColor: subject.color }}
-                                            />
-                                            <div>
-                                                <p className="text-sm font-medium text-gray-900">{subject.name}</p>
-                                                <p className="text-xs text-gray-500">
-                                                    Promedio: {subject.average.toFixed(1)}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <StatusBadge
-                                            status={subject.average >= 10 ? 'approved' : 'failed'}
-                                            size="sm"
-                                        />
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-gray-500 text-center py-8">
-                                    Aún no hay calificaciones registradas
-                                </p>
-                            )}
                         </div>
-                    </Card>
-                </div>
-            )}
+                    </section>
+                )}
 
-            {esFamilia && (
-                <div className="empty:hidden" data-recorrido="accesos">
-                    <AccesosDelLiceo rol={rol} conPagos={Boolean(pagos?.enabled)} />
-                </div>
-            )}
+                {/* El alumno: su horario de hoy y lo que le falta */}
+                {rol === 'STUDENT' && (
+                    <div className="empty:hidden" data-recorrido="mi-dia">
+                        <MiDiaDeClases
+                            studentId={user?.id ?? ''}
+                            classroomId={studentStats?.student?.currentSection?.id}
+                            nombre={`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim()}
+                            seccion={studentStats?.student?.currentSection?.name}
+                        />
+                    </div>
+                )}
 
-            {/*
-                AQUÍ HABÍA DOS TARJETAS QUE NO ERAN NADA
+                {/* El alumno: su puntaje del cuadro de honor y cuántos puestos subió */}
+                {rol === 'STUDENT' && yo?.id && (
+                    <div className="empty:hidden" data-recorrido="mi-puntaje">
+                        <PuntajeDelAlumno studentId={yo.id} />
+                    </div>
+                )}
 
-                «Horario de Hoy · Calendario interactivo · Próximamente» y
-                «Avisos Recientes · No hay avisos recientes», las dos con un
-                icono grande y 250 px de alto. En un teléfono eran media
-                pantalla de bajar para leer que algo no existe todavía. Cuando
-                el calendario del panel y los avisos existan, se pintan con sus
-                datos; mientras tanto, no ocupan sitio.
-            */}
+                {/* El alumno de los últimos años: su labor social */}
+                {rol === 'STUDENT' && yo?.id && <LaborSocialDelAlumno studentId={yo.id} />}
+
+                {/* Representante: citaciones */}
+                {rol === 'TUTOR' && (
+                    <div className="empty:hidden" data-recorrido="citaciones-del-representante">
+                        <CitacionesDelRepresentante />
+                    </div>
+                )}
+
+                {/* Representante: representados */}
+                {rol === 'TUTOR' && (
+                    <div className="empty:hidden" data-recorrido="mis-representados">
+                        <MisRepresentados />
+                    </div>
+                )}
+
+                {/* Representante: pagos */}
+                {rol === 'TUTOR' && (
+                    <div className="empty:hidden" data-recorrido="pagos-del-representante">
+                        <PagosDelRepresentante />
+                    </div>
+                )}
+
+                {/* Charts Section para alumno en escritorio */}
+                {rol === 'STUDENT' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <Card className="p-4 sm:p-6">
+                            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                <TrendingUp size={20} className="text-blue-600" />
+                                Evolución del Promedio
+                            </h3>
+                            {isLoadingStudent ? (
+                                <div className="h-[250px] flex items-center justify-center text-gray-500">
+                                    Cargando promedios...
+                                </div>
+                            ) : evolutionData.length > 0 ? (
+                                <TrendChart
+                                    data={evolutionData}
+                                    type="area"
+                                    height={250}
+                                    color="#3b82f6"
+                                />
+                            ) : (
+                                <div className="h-[250px] flex items-center justify-center text-gray-500">
+                                    Aún no hay calificaciones por lapso
+                                </div>
+                            )}
+                        </Card>
+
+                        <Card className="p-4 sm:p-6">
+                            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                <BookOpen size={20} className="text-purple-600" />
+                                Estado de Materias
+                            </h3>
+                            <div className="space-y-3">
+                                {isLoadingStudent ? (
+                                    <p className="text-gray-500 text-center py-8">Cargando materias...</p>
+                                ) : studentStats?.subjects?.length ? (
+                                    studentStats.subjects.map((subject) => (
+                                        <div
+                                            key={subject.id}
+                                            className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <span
+                                                    className="w-3 h-3 rounded-full shrink-0"
+                                                    style={{ backgroundColor: subject.color }}
+                                                />
+                                                <div>
+                                                    <p className="text-sm font-medium text-gray-900">{subject.name}</p>
+                                                    <p className="text-xs text-gray-500">
+                                                        Promedio: {subject.average.toFixed(1)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <StatusBadge
+                                                status={subject.average >= 10 ? 'approved' : 'failed'}
+                                                size="sm"
+                                            />
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-gray-500 text-center py-8">
+                                        Aún no hay calificaciones registradas
+                                    </p>
+                                )}
+                            </div>
+                        </Card>
+                    </div>
+                )}
+
+                {esFamilia && (
+                    <div className="empty:hidden" data-recorrido="accesos">
+                        <AccesosDelLiceo rol={rol} conPagos={Boolean(pagos?.enabled)} />
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

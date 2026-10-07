@@ -18,6 +18,7 @@ import {
   decrementTeacherCount,
 } from '../middleware/plan-limits.middleware';
 import { avisarSiFalla } from '../utils/sin-callar';
+import { encargarElPaquete } from '../services/paquete-de-precarga.service';
 
 /**
  * Lo que piden los documentos del Ministerio (nacionalidad, lugar y entidad de
@@ -238,8 +239,11 @@ export async function createUser(
 
     if (user.role === UserRole.STUDENT) {
       incrementStudentCount(instituteId).catch(avisarSiFalla('users.controller'));
-    } else if (user.role === UserRole.TEACHER) {
-      incrementTeacherCount(instituteId).catch(avisarSiFalla('users.controller'));
+    } else if (user.role === UserRole.TEACHER || user.role === UserRole.ADMIN) {
+      if (user.role === UserRole.TEACHER) {
+        incrementTeacherCount(instituteId).catch(avisarSiFalla('users.controller'));
+      }
+      encargarElPaquete(instituteId, user.id).catch(avisarSiFalla('encargar-paquete-nuevo-personal'));
     }
 
     return reply.status(201).send({ user });

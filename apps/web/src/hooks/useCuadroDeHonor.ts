@@ -57,7 +57,10 @@ export function usePuntajeDelAlumno(studentId: string | null | undefined) {
         queryFn: async () => (await api.get(`/cuadro-de-honor/alumno/${encodeURIComponent(studentId!)}`)).data as PuntajeDelAlumno,
         enabled: Boolean(studentId),
         staleTime: 30 * 60 * 1000,
-        retry: false,
+        retry: (failureCount, error: any) => {
+            if (error?.response?.status === 403 || error?.response?.status === 401) return false;
+            return failureCount < 2;
+        },
     });
 }
 

@@ -26,11 +26,12 @@ export function guardarEstasPaginas(direcciones: string[]): void {
  */
 export async function guardarEstasPaginasYEsperar(direcciones: string[], tope = 120_000): Promise<number> {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return 0;
-    const registro = await Promise.race([
+    const reg = await Promise.race([
         navigator.serviceWorker.ready,
+        // Sin ayudante activo (desarrollo, http) `ready` no llega nunca: 5 s y se sigue.
         new Promise<null>((r) => setTimeout(() => r(null), 5000)),
-    ]).catch(() => null);
-    const activo = registro?.active;
+    ]);
+    const activo = reg?.active;
     if (!activo) return 0;
     return new Promise<number>((resolver) => {
         const canal = new MessageChannel();
@@ -56,11 +57,12 @@ export function mirarLaVersionDeLaApp(): void {
  */
 export async function mirarLaVersionDeLaAppYEsperar(tope = 120_000): Promise<void> {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
-    const registro = await Promise.race([
+    const reg = await Promise.race([
         navigator.serviceWorker.ready,
+        // Sin ayudante activo (desarrollo, http) `ready` no llega nunca: 5 s y se sigue.
         new Promise<null>((r) => setTimeout(() => r(null), 5000)),
-    ]).catch(() => null);
-    const activo = registro?.active;
+    ]);
+    const activo = reg?.active;
     if (!activo) return;
     await new Promise<void>((resolver) => {
         const canal = new MessageChannel();

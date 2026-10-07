@@ -2568,3 +2568,26 @@ model CambioDelLiceo {
   @@index([momento])
   @@map("cambios_del_liceo")
 }
+
+/// EL PAQUETE DE PRECARGA PREPARADO DE ANTEMANO (Fase B, octubre 2026)
+///
+/// El servidor arma de antemano el paquete de lecturas de cada usuario y lo
+/// guarda aquí comprimido en gzip. El teléfono lo baja como un solo archivo a
+/// la velocidad del internet. `marca` dice desde qué cambio está al día;
+/// `huella` vigila si cambiaron los permisos o secciones de esa persona.
+model PaqueteDePrecarga {
+  id        String    @id @default(cuid())
+  usuarioId String    @unique
+  contenido Bytes
+  marca     BigInt
+  version   String
+  huella    String
+  bytes     Int
+  lecturas  Int
+  armadoEn  DateTime  @default(now()) @db.Timestamptz(6)
+  usadoEn   DateTime? @db.Timestamptz(6)
+
+  @@index([usadoEn])
+  @@map("paquetes_de_precarga")
+}
+

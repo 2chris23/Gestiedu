@@ -15,10 +15,20 @@ import {
 } from '../services/precarga.service';
 import { lasSeccionesDelProfesor, precalentarLosPromedios } from '../services/precalentar-promedios.service';
 import { avisarSiFalla } from '../utils/sin-callar';
+import { redis } from '../config/redis';
+import {
+    fijarServidorParaPaquetes,
+    encargarElPaquete,
+    laHuella,
+    obtenerProgreso,
+    estaArmandose,
+    elMenuDe,
+} from '../services/paquete-de-precarga.service';
 
 /**
  * LA PRECARGA EN UN PAQUETE (ver `services/precarga.service.ts`)
  *
+ *   GET  /api/precarga/paquete                el paquete preparado de antemano (gzip directo)
  *   POST /api/precarga/plan    { menu }       qué hay que bajar (páginas y lecturas)
  *   POST /api/precarga/bloque  { lecturas }   esas lecturas, hechas como esa persona
  *   POST /api/precarga/cambios { desde, menu } lo que cambió desde el cambio N (solo eso se vuelve a bajar)
@@ -50,6 +60,130 @@ function lasDeQuienPide(request: FastifyRequest): Record<string, string> {
 const A_LA_VEZ = 6;
 
 export async function precargaRoutes(fastify: FastifyInstance) {
+    fijarServidorParaPaquetes(fastify);
+
+    fastify.get(
+        '/precarga/paquete',
+        {
+            preHandler: [authenticate],
+            compress: false,
+        } as any,
+        async (request: FastifyRequest, reply: FastifyReply) => {
+            const quien = yo(request);
+            const liceo = suLiceo(request);
+            const prisma = request.tenantPrisma;
+
+            // 1. Si se está armando ahora mismo: 202 con progreso
+            if (estaArmandose(liceo, quien.id)) {
+                const prog = obtenerProgreso(liceo, quien.id);
+                return reply.status(202).send({
+                    armando: true,
+                    hechas: prog?.hechas ?? 0,
+                    total: prog?.total ?? 0,
+                });
+            }
+
+            // 2. Buscar si hay paquete guardado
+            const paquete = await prisma.paqueteDePrecarga.findUnique({
+                where: { usuarioId: quien.id },
+            });
+
+            if (!paquete) {
+                // No hay: encargar uno nuevo y devolver 404
+                encargarElPaquete(liceo, quien.id, fastify).catch(avisarSiFalla('encargar-paquete-404'));
+                return reply.status(404).send({
+                    error: 'No hay paquete preparado para este usuario',
+                    code: 'SIN_PAQUETE',
+                });
+            }
+
+            // 3. Comprobar huella y que su marca siga dentro de la retención de cambios (30 días)
+            const huellaAhora = await laHuella(prisma, { id: quien.id, role: quien.role });
+            const hace30Dias = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+            // Verificar si los cambios intermedios siguen disponibles o fueron purgados por mantenimiento
+            const primerCambio = await (prisma as any).cambioDelLiceo.aggregate({ _min: { id: true } }).catch(() => null);
+            const minCambioId = primerCambio?._min?.id;
+            const cambiosPurgados = minCambioId !== null && minCambioId !== undefined && BigInt(paquete.marca) < BigInt(minCambioId);
+
+            if (paquete.huella !== huellaAhora || paquete.armadoEn < hace30Dias || cambiosPurgados) {
+                // Desactualizado o fuera de retención: encargar uno nuevo y devolver 404
+                encargarElPaquete(liceo, quien.id, fastify).catch(avisarSiFalla('encargar-paquete-desactualizado'));
+                return reply.status(404).send({
+                    error: 'El paquete está desactualizado',
+                    code: 'PAQUETE_DESACTUALIZADO',
+                });
+            }
+
+            // 4. Paquete válido y vigente: servir como application/octet-stream
+            const totalBytes = paquete.contenido.length;
+
+            // Apuntar usadoEn en segundo plano
+            prisma.paqueteDePrecarga
+                .update({
+                    where: { id: paquete.id },
+                    data: { usadoEn: new Date() },
+                })
+                .catch(avisarSiFalla('paquete-usadoEn'));
+
+            reply.header('Accept-Ranges', 'bytes');
+            reply.header('Content-Type', 'application/octet-stream');
+            reply.header('X-Paquete-Marca', paquete.marca.toString());
+            reply.header('X-Paquete-Version', paquete.version);
+            reply.header('X-Paquete-Lecturas', paquete.lecturas.toString());
+
+            let paginasStr = '';
+            if (redis && redis.status === 'ready') {
+                paginasStr = (await redis.get(`paquete:paginas:${quien.id}`).catch(() => null)) || '';
+            }
+            if (!paginasStr) {
+                try {
+                    const usuarioObj = await prisma.user.findUnique({ where: { id: quien.id }, select: { id: true, role: true } });
+                    if (usuarioObj) {
+                        const [pagosConfig, paeConfig] = await Promise.all([
+                            prisma.paymentSettings.findUnique({ where: { id: 'liceo' }, select: { enabled: true } }).catch(() => null),
+                            prisma.paeConfig.findUnique({ where: { id: 'liceo' }, select: { enabled: true } }).catch(() => null),
+                        ]);
+                        const menu = elMenuDe(usuarioObj.role, Boolean(pagosConfig?.enabled), Boolean(paeConfig?.enabled));
+                        const pantallas = await lasPantallasDe(prisma, usuarioObj as any, menu.map((m) => m.href));
+                        const plan = elPlanDeLasPantallas(pantallas, usuarioObj.role);
+                        paginasStr = JSON.stringify(plan.paginas);
+                        if (redis && redis.status === 'ready') {
+                            redis.setex(`paquete:paginas:${quien.id}`, 30 * 86400, paginasStr).catch(avisarSiFalla('cache-paginas-paquete'));
+                        }
+                    }
+                } catch {}
+            }
+            if (paginasStr) {
+                reply.header('X-Paquete-Paginas', paginasStr);
+            }
+
+            const rangeHeader = request.headers.range;
+            if (rangeHeader) {
+                const match = rangeHeader.match(/^bytes=(\d+)-(\d+)?$/);
+                if (match) {
+                    const start = parseInt(match[1], 10);
+                    const end = match[2] ? parseInt(match[2], 10) : totalBytes - 1;
+
+                    if (start < totalBytes && end >= start) {
+                        const actualEnd = Math.min(end, totalBytes - 1);
+                        const trozo = paquete.contenido.subarray(start, actualEnd + 1);
+                        reply.status(206);
+                        reply.header('Content-Range', `bytes ${start}-${actualEnd}/${totalBytes}`);
+                        reply.header('Content-Length', trozo.length);
+                        return reply.send(trozo);
+                    } else {
+                        reply.status(416);
+                        reply.header('Content-Range', `bytes */${totalBytes}`);
+                        return reply.send();
+                    }
+                }
+            }
+
+            reply.header('Content-Length', totalBytes);
+            return reply.status(200).send(paquete.contenido);
+        }
+    );
     fastify.post(
         '/precarga/plan',
         {

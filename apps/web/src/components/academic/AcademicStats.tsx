@@ -127,9 +127,9 @@ function Celda({ cifra, className }: { cifra: Cifra; className?: string }) {
 
 interface AcademicStatsProps {
     stats?: {
-        average: number;
-        minAverage?: number;
-        maxAverage?: number;
+        average: number | null;
+        minAverage?: number | null;
+        maxAverage?: number | null;
         riskCount: number;
         occupancy: string;
         attendance: string;
@@ -166,9 +166,9 @@ export default function AcademicStats({
     const asistenciaMinima = config?.asistenciaMinima ?? 80;
     const enLaEscala = (nota: number) => ((nota - escalaMin) / Math.max(1, escalaMax - escalaMin)) * 100;
 
-    const promedio = Number(data.average) || 0;
-    const hayPromedio = promedio > 0;
-    const conRango = !isStudentView && data.minAverage !== undefined && data.minAverage > 0;
+    const promedio = typeof data.average === 'number' && !isNaN(data.average) && data.average > 0 ? data.average : null;
+    const hayPromedio = promedio !== null;
+    const conRango = !isStudentView && hayPromedio && data.minAverage !== undefined && data.minAverage !== null && data.minAverage > 0;
     const [ocupados, puestos] = String(data.occupancy || '0/0')
         .split('/')
         .map((n) => parseInt(n, 10) || 0);
@@ -263,7 +263,7 @@ export default function AcademicStats({
                         hayPromedio && promedio < aprueba ? 'text-red-600' : 'text-gray-900'
                     )}
                 >
-                    {data.average}
+                    {hayPromedio ? data.average : '—'}
                 </span>
                 {hayPromedio && (
                     <BarraDeLaCifra

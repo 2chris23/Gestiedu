@@ -290,6 +290,10 @@ describe('La memoria rápida no mezcla liceos', () => {
                 'la clave es el liceo',
             'src/services/precalentar-promedios.service.ts|PRECALENTADO':
                 'la clave empieza por el liceo; solo guarda cuándo se precalentó (una hora), nada de nadie',
+            'src/services/paquete-de-precarga.service.ts|candadosEnMemoria':
+                'la clave es «liceo|usuario»; solo dice que su paquete se está armando',
+            'src/services/paquete-de-precarga.service.ts|progresoEnMemoria':
+                'la clave es «liceo|usuario»; solo guarda cuántas lecturas van (dos números)',
             'src/services/precarga.service.ts|PESOS':
                 'la clave es el liceo; solo guarda cuánto pesa de media cada tipo de lectura (un número), nada de nadie',
             'src/services/avisos.service.ts|ultimoToque':

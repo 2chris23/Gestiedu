@@ -71,10 +71,22 @@ export async function buildServer(): Promise<FastifyInstance> {
     origin: config.cors.origin,
     credentials: true,
     methods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Origin', 'Accept', 'X-Institute-ID', 'X-Institute-Slug', 'X-Cambio', 'X-Hecho-En'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Origin', 'Accept', 'X-Institute-ID', 'X-Institute-Slug', 'X-Cambio', 'X-Hecho-En', 'Cache-Control', 'Range'],
     // `Retry-After`: el teléfono la lee para no reintentar antes de tiempo
     // (sin exponerla, el navegador la esconde y todos volvían a la vez).
-    exposedHeaders: ['Content-Length', 'Content-Type', 'X-Cache-Status', 'X-Cambio', 'Retry-After'],
+    exposedHeaders: [
+      'Content-Length',
+      'Content-Type',
+      'X-Cache-Status',
+      'X-Cambio',
+      'Retry-After',
+      'Accept-Ranges',
+      'Content-Range',
+      'X-Paquete-Marca',
+      'X-Paquete-Version',
+      'X-Paquete-Lecturas',
+      'X-Paquete-Paginas',
+    ],
   });
 
   // ✅ SECURITY: Registrar plugin de seguridad con Helmet (AFTER CORS)
@@ -441,6 +453,9 @@ export async function buildServer(): Promise<FastifyInstance> {
       frontend: 'http://localhost:3000',
     };
   });
+
+  const { fijarServidorParaPaquetes } = await import('./services/paquete-de-precarga.service');
+  fijarServidorParaPaquetes(server);
 
   return server;
 }

@@ -4,6 +4,7 @@ import { join } from 'path';
 // Importado (y no solo leído) para que la compilación lo copie a `dist`.
 import moldesGrabados from '../precarga/lecturas-por-pantalla.json';
 import { instituteTimezone, todayInTimezone } from '../utils/school-time';
+import { RedisCache } from '../config/redis';
 
 /**
  * LA PRECARGA EN UN PAQUETE (octubre 2026, pedido por Cristian)
@@ -564,7 +565,7 @@ export function elPlanDeLasPantallas(pantallas: Pantalla[], rol: string): Plan {
             yaHayPagina.add(p.molde);
             paginas.push(url);
         }
-        const suyas = moldes.pantallas[llaveDelMolde(rol, p)];
+        const suyas = moldes.pantallas[llaveDelMolde(rol, p)] ?? (p.variante ? moldes.pantallas[`${rol}:${p.molde}`] : undefined);
         if (!suyas) {
             sinGrabar.add(p.molde);
             continue;
@@ -632,6 +633,7 @@ export interface LoQueCambio {
     /** Demasiado viejo (o demasiados cambios): toca bajar todo otra vez. */
     todo: boolean;
     lecturas: string[];
+    paginas?: string[];
 }
 
 /**
@@ -651,9 +653,42 @@ export async function loQueCambioDesde(prisma: any, yo: { id: string; role: stri
     const extremos = await prisma.cambioDelLiceo.aggregate({ _min: { id: true }, _max: { id: true } });
     const minimo: number | null = extremos._min.id;
     const marca: number = extremos._max.id ?? desde;
+
+    const tz = await instituteTimezone(prisma);
+    const hoyActual = todayInTimezone(tz);
+
+    const paq = await prisma.paqueteDePrecarga.findUnique({
+        where: { usuarioId: yo.id },
+        select: { armadoEn: true },
+    }).catch(() => null);
+
+    const diaArmado = paq?.armadoEn ? todayInTimezone(tz, paq.armadoEn) : null;
+    const cambioDeDia = diaArmado !== null && diaArmado !== hoyActual;
+
+    // Obtener paginas de cache si existe
+    // Por `RedisCache` (la llave lleva el liceo, MEZCLA-*) y por menú: si el
+    // liceo activa Pagos, las páginas ya no son las mismas.
+    const llavePaginas = `precarga:paginas:${yo.id}:${huella(JSON.stringify(menu ?? null))}`;
+    const guardarPaginas = (p: string[]) => void RedisCache.set(llavePaginas, p, 30 * 86400);
+    const paginasCache = (await RedisCache.get<string[]>(llavePaginas)) ?? undefined;
+
+    if (marca <= desde) {
+        if (!cambioDeDia && paginasCache) {
+            return { marca, todo: false, lecturas: [], paginas: paginasCache };
+        }
+        const pantallas = await lasPantallasDe(prisma, yo, menu);
+        const plan = elPlanDeLasPantallas(pantallas, yo.role);
+        guardarPaginas(plan.paginas);
+        const lecturas = cambioDeDia ? plan.lecturas.filter((l) => l.includes(hoyActual)) : [];
+        return { marca, todo: false, lecturas, paginas: plan.paginas };
+    }
+
     // Ya se tiraron cambios que este teléfono no vio: no se sabe qué fue.
-    if (minimo !== null && desde < minimo - 1) return { marca, todo: true, lecturas: [] };
-    if (marca <= desde) return { marca, todo: false, lecturas: [] };
+    if (minimo !== null && desde < minimo - 1) {
+        const pantallas = await lasPantallasDe(prisma, yo, menu);
+        const plan = elPlanDeLasPantallas(pantallas, yo.role);
+        return { marca, todo: true, lecturas: [], paginas: plan.paginas };
+    }
 
     const filas: Array<{ ids: string[]; destinatarios: string[]; todos: boolean }> = await prisma.cambioDelLiceo.findMany({
         where: { id: { gt: desde } },
@@ -661,14 +696,28 @@ export async function loQueCambioDesde(prisma: any, yo: { id: string; role: stri
         orderBy: { id: 'asc' },
         take: TOPE_DE_CAMBIOS + 1,
     });
-    if (filas.length > TOPE_DE_CAMBIOS) return { marca, todo: true, lecturas: [] };
+    if (filas.length > TOPE_DE_CAMBIOS) {
+        const pantallas = await lasPantallasDe(prisma, yo, menu);
+        const plan = elPlanDeLasPantallas(pantallas, yo.role);
+        return { marca, todo: true, lecturas: [], paginas: plan.paginas };
+    }
 
     const suyas = filas.filter((f) => f.todos || f.destinatarios.includes(yo.id));
-    if (suyas.length === 0) return { marca, todo: false, lecturas: [] };
-    const idsQueCambiaron = new Set(suyas.flatMap((f) => f.ids));
+    if (suyas.length === 0) {
+        if (!cambioDeDia && paginasCache) {
+            return { marca, todo: false, lecturas: [], paginas: paginasCache };
+        }
+        const pantallas = await lasPantallasDe(prisma, yo, menu);
+        const plan = elPlanDeLasPantallas(pantallas, yo.role);
+        guardarPaginas(plan.paginas);
+        const lecturas = cambioDeDia ? plan.lecturas.filter((l) => l.includes(hoyActual)) : [];
+        return { marca, todo: false, lecturas, paginas: plan.paginas };
+    }
 
     const pantallas = await lasPantallasDe(prisma, yo, menu);
     const plan = elPlanDeLasPantallas(pantallas, yo.role);
+    guardarPaginas(plan.paginas);
+    const idsQueCambiaron = new Set(suyas.flatMap((f) => f.ids));
     const comun = pantallas[0]?.ctx ?? {};
     const deTodos = new Set<string>(
         ['anio', 'ciclo', 'hoy', 'lunes', 'viernes', 'domingo'].map((k) => comun[k]).filter((v): v is string => typeof v === 'string')
@@ -676,10 +725,11 @@ export async function loQueCambioDesde(prisma: any, yo: { id: string; role: stri
     for (const l of Array.isArray(comun.lapsos) ? comun.lapsos : []) deTodos.add(l);
 
     const lecturas = plan.lecturas.filter((l) => {
+        if (cambioDeDia && l.includes(hoyActual)) return true;
         const ids = losIdsDe(l, deTodos);
         return ids.length === 0 || ids.some((id) => idsQueCambiaron.has(id));
     });
-    return { marca, todo: false, lecturas };
+    return { marca, todo: false, lecturas, paginas: plan.paginas };
 }
 
 /** El último cambio apuntado (para que el plan diga desde cuándo está al día). */

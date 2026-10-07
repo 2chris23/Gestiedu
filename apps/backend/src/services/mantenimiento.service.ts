@@ -35,6 +35,7 @@ export interface LoQueSeTiro {
     sesiones: number;
     cambios: number;
     cambiosDelLiceo: number;
+    paquetes: number;
 }
 
 export async function tirarLoQueNoSirve(prisma: PrismaClient, ahora = new Date()): Promise<LoQueSeTiro> {
@@ -50,5 +51,21 @@ export async function tirarLoQueNoSirve(prisma: PrismaClient, ahora = new Date()
     const sesiones = await p.refreshToken.deleteMany({ where: { expiresAt: { lt: haceDias(7, ahora) } } });
     const cambios = await p.cambioRecibido.deleteMany({ where: { recibidoEn: { lt: haceDias(dias('CAMBIOS_DIAS', 90), ahora) } } });
     const delLiceo = await p.cambioDelLiceo?.deleteMany({ where: { momento: { lt: haceDias(dias('CAMBIOS_DEL_LICEO_DIAS', 30), ahora) } } });
-    return { papelera, avisos: avisos?.count ?? 0, sesiones: sesiones?.count ?? 0, cambios: cambios?.count ?? 0, cambiosDelLiceo: delLiceo?.count ?? 0 };
+    const cortePaquetes = haceDias(7, ahora);
+    const paquetes = await p.paqueteDePrecarga?.deleteMany({
+        where: {
+            OR: [
+                { usadoEn: { lt: cortePaquetes } },
+                { usadoEn: null, armadoEn: { lt: cortePaquetes } },
+            ],
+        },
+    });
+    return {
+        papelera,
+        avisos: avisos?.count ?? 0,
+        sesiones: sesiones?.count ?? 0,
+        cambios: cambios?.count ?? 0,
+        cambiosDelLiceo: delLiceo?.count ?? 0,
+        paquetes: paquetes?.count ?? 0,
+    };
 }

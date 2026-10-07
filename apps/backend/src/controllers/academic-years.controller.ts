@@ -460,11 +460,26 @@ export const deleteAcademicYear = async (request: FastifyRequest, reply: Fastify
 export const getAcademicYearStats = async (request: FastifyRequest, reply: FastifyReply) => {
   try {
     const { id } = request.params as { id: string };
+    const { periodId } = request.query as { periodId?: string };
     const prisma = request.tenantPrisma;
 
     // 1. Validate Year Exists
     const year = await prisma.academicYear.findUnique({ where: { id } });
     if (!year) return reply.status(404).send({ error: 'Año escolar no encontrado' });
+
+    let periodDateFilter: { gte: Date; lte: Date } | undefined;
+    if (periodId) {
+      const period = await prisma.period.findFirst({
+        where: { id: periodId, academicYearId: id },
+        select: { id: true, startDate: true, endDate: true },
+      });
+      if (period) {
+        periodDateFilter = {
+          gte: period.startDate,
+          lte: period.endDate,
+        };
+      }
+    }
 
     // 2. Aggregate stats efficiently by Grade using direct DB queries
     const yearStats: Record<number, {
@@ -515,14 +530,15 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
       }
     });
 
-    // Contar observaciones creadas en este ciclo escolar agrupadas por año/grado
+    // Contar observaciones creadas en este ciclo escolar agrupadas por año/grado (filtradas por lapso si se indica)
     const observations = await prisma.observation.findMany({
       where: {
         student: {
           studentClassrooms: {
             some: { academicYearId: id, isActive: true }
           }
-        }
+        },
+        ...(periodDateFilter ? { date: periodDateFilter } : {}),
       },
       select: {
         id: true,
@@ -549,12 +565,14 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
     const studentSubjectGrades = await prisma.grade.groupBy({
       by: ['studentId', 'subjectId'],
       where: {
-        period: { academicYearId: id },
+        ...(periodId ? { periodId } : { period: { academicYearId: id } }),
         score: { not: null },
         ...NOTAS_QUE_CUENTAN,
       },
       _avg: { score: true }
     });
+
+    const gradeEvaluatedStudents = new Map<number, number>();
 
     if (studentSubjectGrades.length > 0) {
       const studentIds = Array.from(new Set(studentSubjectGrades.map(sg => sg.studentId)));
@@ -608,6 +626,7 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
         if (grade && yearStats[grade]) {
           const avg = data.count > 0 ? (data.sum / data.count) : 0;
           yearStats[grade].sumAverages += avg;
+          gradeEvaluatedStudents.set(grade, (gradeEvaluatedStudents.get(grade) || 0) + 1);
 
           if (yearStats[grade].minAverage === 0 || avg < yearStats[grade].minAverage) {
             yearStats[grade].minAverage = avg;
@@ -629,7 +648,8 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
     const attendanceGroups = await prisma.dailyAttendance.groupBy({
       by: ['classroomId', 'status'],
       where: {
-        classroom: { academicYearId: id }
+        classroom: { academicYearId: id },
+        ...(periodDateFilter ? { date: periodDateFilter } : {}),
       },
       _count: { id: true }
     });
@@ -670,15 +690,18 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
     // 4. Format Output instantáneo
     const result: any[] = [];
     for (const stat of Object.values(yearStats)) {
-      const avg = stat.sumAverages > 0 && stat.totalStudents > 0 ? (stat.sumAverages / stat.totalStudents) : 0;
+      const evaluatedCount = gradeEvaluatedStudents.get(stat.grade) || 0;
+      const avg = evaluatedCount > 0 ? (stat.sumAverages / evaluatedCount) : null;
+      const minAvg = evaluatedCount > 0 ? stat.minAverage : null;
+      const maxAvg = evaluatedCount > 0 ? stat.maxAverage : null;
       const attendance = stat.sumAttendance > 0 ? Math.round(stat.sumAttendance) : 0;
 
       result.push({
         grade: stat.grade,
         stats: {
-          average: Number(avg.toFixed(1)),
-          minAverage: Number(stat.minAverage.toFixed(1)),
-          maxAverage: Number(stat.maxAverage.toFixed(1)),
+          average: avg !== null ? Number(avg.toFixed(1)) : null,
+          minAverage: minAvg !== null ? Number(minAvg.toFixed(1)) : null,
+          maxAverage: maxAvg !== null ? Number(maxAvg.toFixed(1)) : null,
           riskCount: stat.riskCount,
           occupancy: `${stat.totalStudents}/${stat.totalCapacity}`,
           attendance: `${attendance}%`,

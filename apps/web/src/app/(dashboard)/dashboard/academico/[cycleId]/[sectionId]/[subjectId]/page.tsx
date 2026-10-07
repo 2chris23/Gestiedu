@@ -129,7 +129,7 @@ export default function SectionSubjectDashboard() {
         const obs = currentSubjectStats?.stats?.observations ?? 0;
 
         return {
-            average: avg || 0,
+            average: avg && avg > 0 ? avg : null,
             minAverage: minScore > 0 ? Math.round(minScore * 10) / 10 : undefined,
             maxAverage: maxScore > 0 ? Math.round(maxScore * 10) / 10 : undefined,
             riskCount: atRisk,
@@ -556,7 +556,7 @@ export default function SectionSubjectDashboard() {
                                                 </span>
                                             ) : (
                                                 <span className="inline-flex rounded bg-gray-100 px-2 py-0.5 text-sm font-medium text-gray-500">
-                                                    Sin calificar
+                                                    Sin notas
                                                 </span>
                                             ),
                                     },

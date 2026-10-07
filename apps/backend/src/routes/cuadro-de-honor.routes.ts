@@ -9,8 +9,8 @@ import { CICLO, ultimasFotos } from '../services/cuadro-de-honor.service';
  *   GET /                  el admin: el top del liceo o de un año, de un lapso o del ciclo
  *   GET /alumno/:studentId el alumno (lo suyo), su representante y el admin:
  *                          su puntaje, el desglose y cuántos puestos subió.
- *                          Al alumno y al representante NUNCA el puesto ni a
- *                          los demás (lo decidió Cristian); el admin, sí.
+ *                          Al alumno y su representante su puesto solo si es <= 10
+ *                          (en su año o en el liceo); el admin, todo.
  *
  * Se lee la foto del último sábado (`cuadro-de-honor.service.ts`): no se
  * calcula nada al abrir la pantalla.
@@ -153,7 +153,12 @@ export async function cuadroDeHonorRoutes(fastify: FastifyInstance) {
                                 puntosAsistencia: num(f.puntosAsistencia),
                                 resta: num(f.resta),
                             },
-                            ...(esAdmin ? { puestoAno: f.puestoAno, puestoLiceo: f.puestoLiceo } : {}),
+                            ...(esAdmin || (f.puestoAno !== null && f.puestoAno !== undefined && f.puestoAno <= 10)
+                                ? { puestoAno: f.puestoAno }
+                                : {}),
+                            ...(esAdmin || (f.puestoLiceo !== null && f.puestoLiceo !== undefined && f.puestoLiceo <= 10)
+                                ? { puestoLiceo: f.puestoLiceo }
+                                : {}),
                         };
                     }),
             });

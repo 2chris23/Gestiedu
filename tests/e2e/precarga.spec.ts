@@ -1,5 +1,5 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
-import { API_BASE, TENANT_SLUG, loginApi, loginViaUI, queryTenantDb, representanteConUnHijo } from './helpers';
+import { API_BASE, TENANT_SLUG, loginApi, loginViaUI, queryTenantDb, representanteConUnHijo, WEB_BASE } from './helpers';
 
 /**
  * PRECARGA: SIN CONEXIÓN, TODO — EN UN PAQUETE (`lib/precarga.ts`)
@@ -54,7 +54,7 @@ async function conLaPrecarga(page: Page, correo: string, tope: number): Promise<
     const inicio = Date.now();
     await loginViaUI(page, correo);
     await expect(page.locator('[data-precarga]')).toBeVisible({ timeout: 30_000 });
-    await expect.poll(() => estado(page), { timeout: tope, intervals: [2000] }).toBe('listo');
+    await expect.poll(() => estado(page), { timeout: tope, intervals: [250] }).toBe('listo');
     return Date.now() - inicio;
 }
 
@@ -118,6 +118,7 @@ test.describe('Precarga: sin conexión, todo', () => {
     test.describe.configure({ timeout: 45 * 60 * 1000 });
 
     test('PRECARGA-01: el profesor, sin conexión, abre todo lo suyo', async ({ page, context }) => {
+        test.setTimeout(600_000);
         const correo = await profesorDeVerdad();
         await medir('profesor', await conLaPrecarga(page, correo, 15 * 60 * 1000), page);
         const pantallas = await lasPantallas(correo, await elMenu(page));
@@ -144,6 +145,7 @@ test.describe('Precarga: sin conexión, todo', () => {
     });
 
     test('PRECARGA-04: el admin baja todo; sin conexión, todo lo que no es ficha y 25 fichas', async ({ page, context }) => {
+        test.setTimeout(40 * 60 * 1000);
         await medir('admin', await conLaPrecarga(page, 'admin@testing.edu.ve', 40 * 60 * 1000), page);
         const pantallas = await lasPantallas('admin@testing.edu.ve', await elMenu(page));
         const fichas = pantallas.filter((p) => p.molde === '/dashboard/usuarios/{id}');
@@ -165,6 +167,7 @@ test.describe('Precarga: sin conexión, todo', () => {
     test('PRECARGA-05: sin conexión a media descarga espera y no deja seguir; al volver, termina', async ({ page }) => {
         // Se corta el paquete (como si se fuera la señal) hasta que se diga.
         let cortado = true;
+        await page.route('**/api/precarga/paquete', (ruta) => ruta.fulfill({ status: 404, contentType: 'application/json', body: '{}' }));
         await page.route('**/api/precarga/bloque', (ruta) => (cortado ? ruta.abort('internetdisconnected') : ruta.continue()));
         await conPrecarga(page);
         await loginViaUI(page, 'est0575@testing.edu.ve');
@@ -206,5 +209,88 @@ test.describe('Precarga: sin conexión, todo', () => {
         await expect(page.locator('[data-precarga] .libro-hoja')).toHaveCount(1);
         // Ninguna oferta («¿Te avisamos?») encima del libro.
         await expect(page.getByRole('region', { name: /Avisos en el teléfono|Descarga la app|Recorrido/ })).toHaveCount(0);
+    });
+
+    test('PRECARGA-08: con el paquete en 404, baja por el camino de reserva (plan y bloques) y termina en listo', async ({ page }) => {
+        await conPrecarga(page);
+        let intentoPaquete = false;
+        await page.route('**/api/precarga/paquete', (ruta) => {
+            intentoPaquete = true;
+            return ruta.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'No hay paquete' }) });
+        });
+        await loginViaUI(page, 'est0575@testing.edu.ve');
+        await expect(page.locator('[data-precarga]')).toBeVisible({ timeout: 30_000 });
+        await expect.poll(() => estado(page), { timeout: 3 * 60 * 1000, intervals: [2000] }).toBe('listo');
+        expect(intentoPaquete).toBe(true);
+    });
+
+    test('PRECARGA-09: descarga del admin a 38 Mbps con CPU ×4 tarda ≤ 10 s y sin aviso de conexión', async ({ browser }) => {
+        test.setTimeout(180_000);
+        // 1. Que el paquete esté armado de antemano
+        const s = await loginApi('admin@testing.edu.ve');
+        const h = { Authorization: `Bearer ${s.accessToken}`, 'X-Institute-Slug': TENANT_SLUG };
+        const t0 = Date.now();
+        for (;;) {
+            const r = await fetch(`${API_BASE}/precarga/paquete`, { headers: h });
+            if (r.status === 200) { break; }
+            if (Date.now() - t0 > 240_000) throw new Error('el paquete no se armó');
+            await new Promise((x) => setTimeout(x, 2000));
+        }
+
+        // Contexto de navegador completamente limpio y nuevo (Punto 1: sin ayudante ni caché previa)
+        const context = await browser.newContext({
+            serviceWorkers: 'allow',
+        });
+        const page = await context.newPage();
+
+        try {
+            await context.addInitScript(() => localStorage.setItem('gestiedu:precarga-en-el-navegador', '1'));
+            const cdp = await context.newCDPSession(page);
+            await page.goto(`${WEB_BASE}/login?slug=${TENANT_SLUG}`);
+            await page.waitForSelector('input[type="email"]');
+            await cdp.send('Network.enable');
+            await cdp.send('Network.emulateNetworkConditions', {
+                offline: false,
+                latency: 70,
+                downloadThroughput: 38e6 / 8,
+                uploadThroughput: 4.8e6 / 8,
+            });
+            await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.CPU || 4) });
+
+            let salioAvisoSinConexion = false;
+            page.on('console', (m) => {
+                console.log('BROWSER:', m.text());
+            });
+
+            await page.fill('input[type="email"]', 'admin@testing.edu.ve');
+            await page.fill('input[type="password"]', '123456');
+            const inicio = Date.now();
+            await page.locator('button[type="submit"]').click();
+            await expect(page.locator('[data-precarga]')).toBeVisible({ timeout: 30_000 });
+
+            let ultima = '';
+            await expect.poll(async () => {
+                const e = await page.evaluate(() => {
+                    const h = JSON.parse(localStorage.getItem('gestiedu:precarga') || 'null');
+                    const av = document.querySelector('[data-aviso="sin-conexion"]') ? '+AVISO' : '';
+                    return (h?.completa ? 'listo' : (document.querySelector('[data-precarga]')?.getAttribute('data-precarga') ?? 'oculta')) + av;
+                });
+                if (e.includes('+AVISO')) salioAvisoSinConexion = true;
+                if (e !== ultima) { console.log('FASE', e, ((Date.now() - inicio) / 1000).toFixed(1), 's'); ultima = e; }
+                return e;
+            }, { timeout: 30_000, intervals: [100] }).toBe('listo');
+
+            const duracionMs = Date.now() - inicio;
+            const duracionS = duracionMs / 1000;
+            console.log(`PRECARGA-09 COMPLETADA en ${duracionS.toFixed(2)} s (meta ≤ 10 s)`);
+
+            const metricas = await page.evaluate(() => (window as any).__medicionPrecarga);
+            console.log('PRECARGA-09 METRICAS DETALLE:', JSON.stringify(metricas));
+
+            expect(salioAvisoSinConexion).toBe(false);
+            expect(duracionS).toBeLessThanOrEqual(10);
+        } finally {
+            await context.close();
+        }
     });
 });

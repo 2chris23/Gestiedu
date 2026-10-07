@@ -218,6 +218,7 @@ test.describe('Con el servidor apagado', () => {
                     page.getByRole('button', { name: /^Ingresar$/ }).click(),
                 ]);
                 await expect(page.getByText('Estudiantes').first()).toBeVisible({ timeout: 30_000 });
+                await page.waitForTimeout(2000);
                 const antes = await page.locator('main').innerText();
 
                 await puerta.cerrar();
