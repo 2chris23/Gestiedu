@@ -43,6 +43,7 @@ interface TeacherScheduleEditorProps {
     teacherId: string;
     initialBlocks: any[];
     assignments: any[];
+    readOnly?: boolean;
 }
 
 import HorarioPorDias from '@/components/schedule/HorarioPorDias';
@@ -133,19 +134,20 @@ function BlockCard({
     );
 }
 
-/** Asignación arrastrable de la barra lateral. */
-function DraggableAssignment({ assignment }: { assignment: any }) {
+/** Asignación de la barra lateral (arrastrable si no es solo lectura). */
+function DraggableAssignment({ assignment, readOnly = false }: { assignment: any; readOnly?: boolean }) {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
         id: `assignment-${assignment.id}`,
         data: { type: 'sidebar-assignment', assignment },
+        disabled: readOnly,
     });
 
     return (
         <div
             ref={setNodeRef}
-            {...listeners}
-            {...attributes}
-            className={`p-2 rounded-md shadow-sm text-xs cursor-grab active:cursor-grabbing border ${isDragging ? 'opacity-50' : 'opacity-100'}`}
+            {...(readOnly ? {} : listeners)}
+            {...(readOnly ? {} : attributes)}
+            className={`p-2 rounded-md shadow-sm text-xs border ${readOnly ? '' : 'cursor-grab active:cursor-grabbing'} ${isDragging ? 'opacity-50' : 'opacity-100'}`}
             style={{
                 backgroundColor: assignment.subject?.color ? `${assignment.subject.color}20` : '#f3f4f6',
                 borderColor: assignment.subject?.color || '#e5e7eb',
@@ -165,6 +167,7 @@ function DraggableBlock({
     hasConflict,
     stackIndex = 0,
     stackSize = 1,
+    readOnly = false,
 }: {
     block: EditorBlock;
     onRemove: () => void;
@@ -172,12 +175,14 @@ function DraggableBlock({
     hasConflict?: boolean;
     stackIndex?: number;
     stackSize?: number;
+    readOnly?: boolean;
 }) {
     // El id es el del BLOQUE, no el de la celda: si dos bloques comparten celda,
     // con el id de la celda se pisarían y solo uno sería arrastrable.
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
         id: `grid-${block.id}`,
         data: { type: 'grid-block', block },
+        disabled: readOnly,
     });
 
     const stacked = stackSize > 1;
@@ -191,16 +196,16 @@ function DraggableBlock({
     return (
         <div
             ref={setNodeRef}
-            {...listeners}
-            {...attributes}
-            onClick={block.isPersonal ? onEdit : undefined}
-            className={`${stacked ? 'absolute left-1 right-1' : 'absolute inset-1'} group cursor-grab active:cursor-grabbing ${
+            {...(readOnly ? {} : listeners)}
+            {...(readOnly ? {} : attributes)}
+            onClick={block.isPersonal && !readOnly ? onEdit : undefined}
+            className={`${stacked ? 'absolute left-1 right-1' : 'absolute inset-1'} group ${readOnly ? '' : 'cursor-grab active:cursor-grabbing'} ${
                 isDragging ? 'opacity-40' : ''
             }`}
             style={{ zIndex: isDragging ? 10 : 1, ...position }}
         >
             <BlockCard block={block} hasConflict={hasConflict} compact={stacked} />
-            {!block.isPersonal && (
+            {!block.isPersonal && !readOnly && (
                 <button
                     type="button"
                     onPointerDown={(e) => e.stopPropagation()}
@@ -225,6 +230,7 @@ function DroppableCell({
     onEdit,
     onCreatePersonal,
     hasConflict,
+    readOnly = false,
 }: {
     id: string;
     cellBlocks: EditorBlock[];
@@ -232,15 +238,16 @@ function DroppableCell({
     onEdit: (block: EditorBlock) => void;
     onCreatePersonal: () => void;
     hasConflict?: boolean;
+    readOnly?: boolean;
 }) {
-    const { isOver, setNodeRef } = useDroppable({ id });
+    const { isOver, setNodeRef } = useDroppable({ id, disabled: readOnly });
     // Dos o más bloques en la misma celda son, por definición, un choque.
     const shared = cellBlocks.length > 1;
 
     return (
         <div
             ref={setNodeRef}
-            className={`relative h-16 transition-colors group/cell ${isOver ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-300' : ''}`}
+            className={`relative h-16 transition-colors group/cell ${!readOnly && isOver ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-300' : ''}`}
             title={shared ? 'Choque: el profesor está en dos sitios a la vez. Arrastra uno de los bloques a otra hora.' : undefined}
         >
             {cellBlocks.length > 0 ? (
@@ -253,9 +260,10 @@ function DroppableCell({
                         onRemove={() => onRemove(b)}
                         onEdit={() => onEdit(b)}
                         hasConflict={hasConflict || shared}
+                        readOnly={readOnly}
                     />
                 ))
-            ) : (
+            ) : !readOnly ? (
                 <button
                     type="button"
                     onClick={onCreatePersonal}
@@ -264,7 +272,7 @@ function DroppableCell({
                 >
                     <Plus size={14} />
                 </button>
-            )}
+            ) : null}
         </div>
     );
 }
@@ -273,6 +281,7 @@ export default function TeacherScheduleEditor({
     teacherId,
     initialBlocks,
     assignments,
+    readOnly = false,
 }: TeacherScheduleEditorProps) {
     const [blocks, setBlocks] = useState<EditorBlock[]>([]);
     const [deletedIds, setDeletedIds] = useState<string[]>([]);
@@ -637,27 +646,29 @@ export default function TeacherScheduleEditor({
         <>
             <DndContext onDragStart={(e) => setActiveDragData(e.active.data.current)} onDragEnd={handleDragEnd}>
                 <div className="flex flex-col lg:flex-row gap-6">
-                    {/* Barra lateral: asignaciones arrastrables con bloques restantes */}
+                    {/* Barra lateral: asignaciones con bloques */}
                     <div className="w-full lg:w-64 shrink-0">
                         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sticky top-6">
                             <h3 className="font-bold text-gray-800 mb-4 flex items-center justify-between">
-                                <span>Por colocar</span>
-                                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
-                                    {totalRemaining}
-                                </span>
+                                <span>{readOnly ? 'Materias y Secciones' : 'Por colocar'}</span>
+                                {!readOnly && (
+                                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
+                                        {totalRemaining}
+                                    </span>
+                                )}
                             </h3>
 
                             <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
-                                {pending.length > 0 ? (
-                                    pending.map((assignment) => (
+                                {(readOnly ? assignmentsWithRemaining : pending).length > 0 ? (
+                                    (readOnly ? assignmentsWithRemaining : pending).map((assignment) => (
                                         <div key={assignment.id} className="flex flex-col gap-1">
                                             <div className="flex justify-between items-center text-xs px-1 text-gray-500">
-                                                <span>Restantes:</span>
-                                                <span className="font-bold text-amber-600">
-                                                    {assignment.remaining} / {assignment.weeklyBlocks || 0}
+                                                <span>{readOnly ? 'Bloques:' : 'Restantes:'}</span>
+                                                <span className={`font-bold ${readOnly ? 'text-gray-700' : 'text-amber-600'}`}>
+                                                    {readOnly ? `${assignment.weeklyBlocks || 0} h/sem` : `${assignment.remaining} / ${assignment.weeklyBlocks || 0}`}
                                                 </span>
                                             </div>
-                                            <DraggableAssignment assignment={assignment} />
+                                            <DraggableAssignment assignment={assignment} readOnly={readOnly} />
                                         </div>
                                     ))
                                 ) : (
@@ -671,60 +682,64 @@ export default function TeacherScheduleEditor({
                                 )}
                             </div>
 
-                            <div className="mt-4 pt-4 border-t border-gray-100">
-                                <div className="flex items-center gap-2 text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-2">
-                                    <UserCog size={14} className="shrink-0 text-slate-400" />
-                                    <span>
-                                        {personalCount === 0
-                                            ? 'Pulsa el + de una hora libre para reservarla al profesor.'
-                                            : `${personalCount} ${personalCount === 1 ? 'hora reservada' : 'horas reservadas'}. Pulsa una para editarla.`}
-                                    </span>
-                                </div>
-                            </div>
+                            {!readOnly && (
+                                <>
+                                    <div className="mt-4 pt-4 border-t border-gray-100">
+                                        <div className="flex items-center gap-2 text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-2">
+                                            <UserCog size={14} className="shrink-0 text-slate-400" />
+                                            <span>
+                                                {personalCount === 0
+                                                    ? 'Pulsa el + de una hora libre para reservarla al profesor.'
+                                                    : `${personalCount} ${personalCount === 1 ? 'hora reservada' : 'horas reservadas'}. Pulsa una para editarla.`}
+                                            </span>
+                                        </div>
+                                    </div>
 
-                            {sharedCellCount > 0 && (
-                                <div className="mt-3 flex items-start gap-2 text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
-                                    <AlertCircle size={14} className="shrink-0 mt-px" />
-                                    <span>
-                                        {sharedCellCount}{' '}
-                                        {sharedCellCount === 1 ? 'hora tiene' : 'horas tienen'} al profesor en dos
-                                        sitios a la vez (en rojo). Arrastra uno de los bloques a otra hora para
-                                        resolverlo.
-                                    </span>
-                                </div>
+                                    {sharedCellCount > 0 && (
+                                        <div className="mt-3 flex items-start gap-2 text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
+                                            <AlertCircle size={14} className="shrink-0 mt-px" />
+                                            <span>
+                                                {sharedCellCount}{' '}
+                                                {sharedCellCount === 1 ? 'hora tiene' : 'horas tienen'} al profesor en dos
+                                                sitios a la vez (en rojo). Arrastra uno de los bloques a otra hora para
+                                                resolverlo.
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
+                                        <button
+                                            type="button"
+                                            onClick={handleAutoFill}
+                                            disabled={autoFill.isPending || totalRemaining === 0}
+                                            title={
+                                                totalRemaining === 0
+                                                    ? 'No quedan bloques por colocar'
+                                                    : 'Reparte al azar los bloques pendientes en huecos libres'
+                                            }
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-xs font-bold hover:from-purple-700 hover:to-indigo-700 shadow-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                        >
+                                            {autoFill.isPending ? <Loader2 size={16} className="animate-spin" /> : <Shuffle size={16} />}
+                                            Ordenar al azar
+                                        </button>
+                                        <button
+                                            onClick={handleSave}
+                                            disabled={!isDirty || bulkUpdate.isPending}
+                                            className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                                                isDirty
+                                                    ? 'bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer'
+                                                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                            }`}
+                                        >
+                                            {bulkUpdate.isPending ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                                            Guardar Cambios
+                                        </button>
+                                    </div>
+                                </>
                             )}
-
-                            <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
-                                <button
-                                    type="button"
-                                    onClick={handleAutoFill}
-                                    disabled={autoFill.isPending || totalRemaining === 0}
-                                    title={
-                                        totalRemaining === 0
-                                            ? 'No quedan bloques por colocar'
-                                            : 'Reparte al azar los bloques pendientes en huecos libres'
-                                    }
-                                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-xs font-bold hover:from-purple-700 hover:to-indigo-700 shadow-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                                >
-                                    {autoFill.isPending ? <Loader2 size={16} className="animate-spin" /> : <Shuffle size={16} />}
-                                    Ordenar al azar
-                                </button>
-                                <button
-                                    onClick={handleSave}
-                                    disabled={!isDirty || bulkUpdate.isPending}
-                                    className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                                        isDirty
-                                            ? 'bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer'
-                                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                    }`}
-                                >
-                                    {bulkUpdate.isPending ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                                    Guardar Cambios
-                                </button>
-                            </div>
                         </div>
 
-                        {conflicts.length > 0 && (
+                        {!readOnly && conflicts.length > 0 && (
                             <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-3">
                                 <div className="flex items-center gap-2 text-red-700 font-bold text-xs mb-2">
                                     <AlertCircle size={14} />
@@ -853,6 +868,7 @@ export default function TeacherScheduleEditor({
                                                                 )
                                                             }
                                                             hasConflict={conflictCells.has(cellId)}
+                                                            readOnly={readOnly}
                                                         />
                                                     </div>
                                                 );
@@ -866,7 +882,7 @@ export default function TeacherScheduleEditor({
                 </div>
 
                 <DragOverlay>
-                    {activeDragData?.block ? (
+                    {!readOnly && (activeDragData?.block ? (
                         <div className="w-32 h-14">
                             <BlockCard block={activeDragData.block} dragging />
                         </div>
@@ -874,21 +890,23 @@ export default function TeacherScheduleEditor({
                         <div className="w-40">
                             <DraggableAssignment assignment={activeDragData.assignment} />
                         </div>
-                    ) : null}
+                    ) : null)}
                 </DragOverlay>
             </DndContext>
 
-            <PersonalBlockModal
-                open={Boolean(modalDraft)}
-                draft={modalDraft}
-                dayLabel={modalDraft ? dayLabelOf(modalDraft.dayOfWeek) : ''}
-                isSaving={personal.create.isPending || personal.update.isPending}
-                isDeleting={personal.remove.isPending}
-                conflicts={modalConflicts}
-                onClose={() => setModalDraft(null)}
-                onSave={handleSavePersonal}
-                onDelete={handleDeletePersonal}
-            />
+            {!readOnly && (
+                <PersonalBlockModal
+                    open={Boolean(modalDraft)}
+                    draft={modalDraft}
+                    dayLabel={modalDraft ? dayLabelOf(modalDraft.dayOfWeek) : ''}
+                    isSaving={personal.create.isPending || personal.update.isPending}
+                    isDeleting={personal.remove.isPending}
+                    conflicts={modalConflicts}
+                    onClose={() => setModalDraft(null)}
+                    onSave={handleSavePersonal}
+                    onDelete={handleDeletePersonal}
+                />
+            )}
         </>
     );
 }

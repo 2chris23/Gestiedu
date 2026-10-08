@@ -1,7 +1,8 @@
 'use client';
 
 import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
     Calendar, Clock, Users, BookOpen, Edit,
@@ -11,6 +12,7 @@ import {
 import Link from 'next/link';
 import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { useScheduleSummary } from '@/hooks/useSchedules';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { cn } from '@/lib/utils';
 
 const GRADE_NAMES: Record<number, string> = {
@@ -22,9 +24,18 @@ const GRADE_NAMES: Record<number, string> = {
 };
 
 export default function HorariosPage() {
+    const router = useRouter();
+    const { yo, cargando: cargandoYo } = useQuienSoy();
     const [view, setView] = useState<'sections' | 'teachers'>('sections');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedYearId, setSelectedYearId] = useState<string>('');
+
+    // Si el usuario es profesor, solo mira su propio horario: redirigir de inmediato
+    useEffect(() => {
+        if (!cargandoYo && yo?.role === 'TEACHER' && yo.id) {
+            router.replace(`/dashboard/horarios/profesor/${yo.id}`);
+        }
+    }, [cargandoYo, yo, router]);
 
     const { data: academicYears, isLoading: isLoadingYears } = useAcademicYears();
 
@@ -88,6 +99,15 @@ export default function HorariosPage() {
         if (set.size === 0) return [1, 2, 3, 4, 5];
         return Array.from(set).sort((a, b) => a - b);
     }, [sections]);
+
+    if (cargandoYo || yo?.role === 'TEACHER') {
+        return (
+            <div className="flex items-center justify-center py-20">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                <span className="ml-3 text-gray-500">Cargando horario...</span>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">

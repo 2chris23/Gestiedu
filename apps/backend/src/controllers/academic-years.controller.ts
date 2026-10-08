@@ -160,7 +160,21 @@ export const createAcademicYear = async (request: FastifyRequest, reply: Fastify
 
 export const getAcademicYears = async (request: FastifyRequest, reply: FastifyReply) => {
   try {
+    const where: any = {};
+    if (request.user?.role === 'TEACHER') {
+      const profesorId = request.user.userId;
+      where.classrooms = {
+        some: {
+          OR: [
+            { teacherId: profesorId },
+            { subjects: { some: { teacherId: profesorId } } },
+          ],
+        },
+      };
+    }
+
     const years = await request.tenantPrisma.academicYear.findMany({
+      where,
       orderBy: { startDate: 'desc' },
       include: {
         _count: {
@@ -490,7 +504,7 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
       minAverage: number;
       maxAverage: number;
       riskCount: number;
-      sumAttendance: number;
+      sumAttendance: number | null;
       observationsCount: number;
     }> = {};
 
@@ -503,7 +517,7 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
         minAverage: 0,
         maxAverage: 0,
         riskCount: 0,
-        sumAttendance: 0,
+        sumAttendance: null,
         observationsCount: 0
       };
     });
@@ -683,7 +697,7 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
 
     gradeAttendanceAccum.forEach((accum, grade) => {
       if (yearStats[grade]) {
-        yearStats[grade].sumAttendance = accum.count > 0 ? (accum.sumRates / accum.count) : 0;
+        yearStats[grade].sumAttendance = accum.count > 0 ? (accum.sumRates / accum.count) : null;
       }
     });
 
@@ -694,7 +708,9 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
       const avg = evaluatedCount > 0 ? (stat.sumAverages / evaluatedCount) : null;
       const minAvg = evaluatedCount > 0 ? stat.minAverage : null;
       const maxAvg = evaluatedCount > 0 ? stat.maxAverage : null;
-      const attendance = stat.sumAttendance > 0 ? Math.round(stat.sumAttendance) : 0;
+      const attendance = (stat.sumAttendance !== null && stat.sumAttendance !== undefined)
+        ? `${Math.round(stat.sumAttendance)}%`
+        : null;
 
       result.push({
         grade: stat.grade,
@@ -704,7 +720,7 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
           maxAverage: maxAvg !== null ? Number(maxAvg.toFixed(1)) : null,
           riskCount: stat.riskCount,
           occupancy: `${stat.totalStudents}/${stat.totalCapacity}`,
-          attendance: `${attendance}%`,
+          attendance,
           observations: stat.observationsCount
         }
       });

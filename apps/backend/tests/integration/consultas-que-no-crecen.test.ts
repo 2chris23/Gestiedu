@@ -73,6 +73,7 @@ describe('Las pantallas no hacen una consulta por alumno (N1)', () => {
         ['N1-14 resumen final de la sección (admin)', () => admin, () => `/api/classrooms/${aula.id}/resumen-final`],
         ['N1-15 consejo de sección (admin)', () => admin, () => `/api/classrooms/${aula.id}/consejos/${lapso.id}`],
         ['N1-16 cuadro de honor (admin)', () => admin, () => '/api/cuadro-de-honor?alcance=ciclo'],
+        ['N1-17 cuadro general de la sección guía (profesor)', () => profesor, () => `/api/classrooms/${aula.id}/cuadro-general`],
     ];
 
     async function contar(quien: any, url: string) {

@@ -7,7 +7,7 @@ import Link from 'next/link';
 
 interface SubjectStats {
     average: number | null;
-    attendance: number;
+    attendance: number | null;
     observations: number;
     atRiskStudents: number;
 }
@@ -61,7 +61,7 @@ export function SubjectCard({ id, name, color, code, stats, teacher, hoursPerWee
     // Default stats if not provided
     const displayStats = stats || {
         average: null,
-        attendance: 0,
+        attendance: null,
         observations: 0,
         atRiskStudents: 0
     };
@@ -130,7 +130,11 @@ export function SubjectCard({ id, name, color, code, stats, teacher, hoursPerWee
                         <div className="flex flex-col items-center justify-center gap-1 p-3 bg-gray-50 rounded-lg">
                             <TrendingUp className="w-5 h-5 text-blue-600" />
                             <div className="text-xs text-gray-500">Asistencia</div>
-                            <div className="font-semibold text-lg text-gray-900">{displayStats.attendance}%</div>
+                            <div className="font-semibold text-lg text-gray-900">
+                                {displayStats.attendance !== null && displayStats.attendance !== undefined
+                                    ? `${displayStats.attendance}%`
+                                    : '—'}
+                            </div>
                         </div>
                     </div>
 

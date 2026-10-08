@@ -56,10 +56,9 @@ test.describe.serial('Selector de lapso en pantallas académicas', () => {
             await resLapso2;
             await page.waitForTimeout(500);
 
-            // En Segundo Lapso: promedio no es 0 sino "—", 0 en riesgo, 0% asistencia, 0 observaciones
-            await expect(resumen.getByText('—')).toBeVisible();
+            // En Segundo Lapso: promedio no es 0 sino "—", 0 en riesgo, asistencia "—", 0 observaciones
+            await expect(resumen.getByText('—')).toHaveCount(2);
             await expect(resumen.getByText('0', { exact: true })).toHaveCount(2); // 0 observaciones / riesgo
-            await expect(resumen.getByText('0%')).toBeVisible();
         } catch (e) {
             await captureEvidence(testInfo, page, 'LAPSO-ANO', 'Fallo en selector de lapso en año', e);
             throw e;
@@ -99,9 +98,8 @@ test.describe.serial('Selector de lapso en pantallas académicas', () => {
             await resLapso2;
             await page.waitForTimeout(500);
 
-            // Debe mostrar «—», nunca 0
-            await expect(resumen.getByText('—')).toBeVisible();
-            await expect(resumen.getByText('0%')).toBeVisible();
+            // Debe mostrar «—» para promedio y asistencia, nunca 0 ni 0%
+            await expect(resumen.getByText('—')).toHaveCount(2);
 
             // En la lista de estudiantes debe mostrar «Sin notas» y nunca «Sin calificar» ni «0»
             await expect(page.getByText('Sin notas').first()).toBeVisible();

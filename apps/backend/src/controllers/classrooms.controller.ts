@@ -1002,7 +1002,7 @@ export const getClassroomStats = async (request: FastifyRequest, reply: FastifyR
     }) : 0;
 
     // 2. Asistencia promedio de los estudiantes de la sección (filtrada por lapso si se indica)
-    let attendancePercentage = 0;
+    let attendancePercentage: number | null = null;
     if (studentIds.length > 0) {
       const params: any[] = [...studentIds];
       let dateCondition = '';
@@ -1012,6 +1012,7 @@ export const getClassroomStats = async (request: FastifyRequest, reply: FastifyR
       }
       const attendanceQuery = `
         SELECT
+          COUNT(a.id) as "totalCount",
           CAST(COALESCE(
             (COUNT(CASE WHEN a.status IN ('PRESENT', 'LATE') THEN 1 END) * 100.0) /
             NULLIF(COUNT(a.id), 0),
@@ -1020,8 +1021,11 @@ export const getClassroomStats = async (request: FastifyRequest, reply: FastifyR
         FROM daily_attendance a
         WHERE a."studentId" IN (${studentIds.map((_, i) => `$${i + 1}`).join(',')})${dateCondition}
       `;
-      const result = await prisma.$queryRawUnsafe<Array<{ attendancePercentage: number }>>(attendanceQuery, ...params);
-      attendancePercentage = Math.round(Number(result[0]?.attendancePercentage || 0));
+      const result = await prisma.$queryRawUnsafe<Array<{ totalCount: string | number; attendancePercentage: number }>>(attendanceQuery, ...params);
+      const totalCount = Number(result[0]?.totalCount || 0);
+      if (totalCount > 0) {
+        attendancePercentage = Math.round(Number(result[0]?.attendancePercentage || 0));
+      }
     }
 
     // 3. Calificaciones y Promedios
@@ -1108,7 +1112,7 @@ export const getClassroomStats = async (request: FastifyRequest, reply: FastifyR
       maxAverage: studentsWithGrades > 0 ? maxAverage : null,
       riskCount,
       occupancy: `${totalStudents}/${totalCapacity}`,
-      attendance: `${attendancePercentage}%`,
+      attendance: attendancePercentage !== null ? `${attendancePercentage}%` : null,
       observations: observationsCount
     });
 

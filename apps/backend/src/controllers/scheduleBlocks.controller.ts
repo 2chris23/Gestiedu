@@ -942,6 +942,14 @@ export async function getTeacherScheduleBlocks(
         });
         const resolvedTeacherId = teacherUser ? teacherUser.id : teacherId;
 
+        // Si el usuario es TEACHER, solo puede consultar su propio horario
+        if (request.user?.role === 'TEACHER' && resolvedTeacherId !== request.user.userId) {
+            return reply.status(403).send({
+                error: 'Solo puedes consultar tu propio horario',
+                code: 'FORBIDDEN',
+            });
+        }
+
         const blocks = await prisma.scheduleBlock.findMany({
             where: {
                 OR: [
@@ -1312,8 +1320,28 @@ export async function getTeacherClassroomSubjects(
         const { teacherId } = request.params;
         const prisma = request.tenantPrisma;
 
+        // Resolver teacherId por id o email
+        const teacherUser = await prisma.user.findFirst({
+            where: {
+                OR: [
+                    { id: teacherId },
+                    { email: teacherId }
+                ]
+            },
+            select: { id: true }
+        });
+        const resolvedTeacherId = teacherUser ? teacherUser.id : teacherId;
+
+        // Si el usuario es TEACHER, solo puede consultar sus propias asignaciones
+        if (request.user?.role === 'TEACHER' && resolvedTeacherId !== request.user.userId) {
+            return reply.status(403).send({
+                error: 'Solo puedes consultar tus propias asignaciones',
+                code: 'FORBIDDEN',
+            });
+        }
+
         const assignments = await prisma.classroomSubject.findMany({
-            where: { teacherId },
+            where: { teacherId: resolvedTeacherId },
             include: {
                 subject: { select: { id: true, name: true, code: true, color: true } },
                 classroom: { select: { id: true, name: true, grade: true, section: true, slug: true } },

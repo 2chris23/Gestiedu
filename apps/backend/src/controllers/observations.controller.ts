@@ -400,6 +400,16 @@ export async function getClassroomObservations(
 
     const where: any = { ...baseClassroomFilter };
 
+    if (request.user?.role === 'TEACHER') {
+      const cls = await prisma.classroom.findUnique({
+        where: { id: classroomId },
+        select: { teacherId: true },
+      });
+      if (cls?.teacherId !== request.user.userId) {
+        where.createdById = request.user.userId;
+      }
+    }
+
     if (subjectId) {
       let finalSubjectId = subjectId;
       const sub = await prisma.subject.findFirst({
@@ -613,21 +623,27 @@ export async function getSubjectObservations(
       if (endDate) dateFilter.lte = new Date(endDate);
     }
 
-    const observations = await prisma.observation.findMany({
-      where: {
-        subjectId: targetSubjectId,
-        ...(dateFilter.gte ? { date: dateFilter } : {}),
-        OR: [
-          { classroomId },
-          {
-            student: {
-              studentClassrooms: {
-                some: { classroomId, isActive: true },
-              },
+    const whereSubject: any = {
+      subjectId: targetSubjectId,
+      ...(dateFilter.gte ? { date: dateFilter } : {}),
+      OR: [
+        { classroomId },
+        {
+          student: {
+            studentClassrooms: {
+              some: { classroomId, isActive: true },
             },
           },
-        ],
-      },
+        },
+      ],
+    };
+
+    if (request.user?.role === 'TEACHER') {
+      whereSubject.createdById = request.user.userId;
+    }
+
+    const observations = await prisma.observation.findMany({
+      where: whereSubject,
       include: {
         student: {
           select: {

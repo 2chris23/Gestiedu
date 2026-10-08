@@ -132,7 +132,7 @@ interface AcademicStatsProps {
         maxAverage?: number | null;
         riskCount: number;
         occupancy: string;
-        attendance: string;
+        attendance?: string | null;
         observations: number;
     };
     isStudentView?: boolean;
@@ -156,7 +156,7 @@ export default function AcademicStats({
         maxAverage: 0,
         riskCount: 0,
         occupancy: '0/0',
-        attendance: '0%',
+        attendance: null,
         observations: 0,
     };
 
@@ -172,7 +172,8 @@ export default function AcademicStats({
     const [ocupados, puestos] = String(data.occupancy || '0/0')
         .split('/')
         .map((n) => parseInt(n, 10) || 0);
-    const asistencia = parseFloat(String(data.attendance || '0').replace('%', '').replace(',', '.')) || 0;
+    const hayAsistencia = data.attendance !== null && data.attendance !== undefined && data.attendance !== '' && data.attendance !== '—';
+    const asistencia = hayAsistencia ? parseFloat(String(data.attendance).replace('%', '').replace(',', '.')) || 0 : null;
 
     const resto: Cifra[] = [
         {
@@ -195,16 +196,19 @@ export default function AcademicStats({
         },
         {
             titulo: 'Asistencia',
-            valor: data.attendance,
+            valor: hayAsistencia ? String(data.attendance) : '—',
             detalle: isStudentView ? 'Asistencia acumulada' : 'Asistencia promedio',
             icono: Calendar,
             tono: 'indigo',
-            barra: {
-                lleno: asistencia,
-                color: asistencia >= asistenciaMinima ? 'bien' : asistencia >= asistenciaMinima - 10 ? 'aviso' : 'mal',
-                marca: asistenciaMinima,
-                dice: `${asistencia} %; el mínimo del liceo es ${asistenciaMinima} %`,
-            },
+            barra:
+                asistencia !== null
+                    ? {
+                          lleno: asistencia,
+                          color: asistencia >= asistenciaMinima ? 'bien' : asistencia >= asistenciaMinima - 10 ? 'aviso' : 'mal',
+                          marca: asistenciaMinima,
+                          dice: `${asistencia} %; el mínimo del liceo es ${asistenciaMinima} %`,
+                      }
+                    : undefined,
         },
         ...(!isStudentView
             ? [

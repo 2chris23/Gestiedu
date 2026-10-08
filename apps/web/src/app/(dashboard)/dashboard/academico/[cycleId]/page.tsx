@@ -395,6 +395,7 @@ export default function AcademicYearDashboard() {
                                 onDeleteSection={handleDeleteSection}
                                 academicYearId={year.id}
                                 yearSlug={year.name}
+                                isAdmin={isAdmin}
                                 stats={gradeStats[grade]?.stats}
                             />
                         ))}

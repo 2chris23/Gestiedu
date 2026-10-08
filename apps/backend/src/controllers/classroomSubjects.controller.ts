@@ -79,15 +79,18 @@ export async function getClassroomSubjects(
         // Calcular skip para paginación
         const skip = (page - 1) * limit;
 
+        const where: any = { classroomId };
+        if (request.user?.role === 'TEACHER') {
+            where.teacherId = request.user.userId;
+        }
+
         // Obtener total de registros
         const total = await request.tenantPrisma.classroomSubject.count({
-            where: { classroomId },
+            where,
         });
 
         const subjects = await request.tenantPrisma.classroomSubject.findMany({
-            where: {
-                classroomId,
-            },
+            where,
             include: {
                 subject: {
                     select: {
@@ -232,6 +235,13 @@ export async function getClassroomSubjectDetail(
             return reply.status(404).send({
                 error: 'Materia no encontrada en esta sección',
                 code: 'CLASSROOM_SUBJECT_NOT_FOUND',
+            });
+        }
+
+        if (request.user?.role === 'TEACHER' && classroomSubject.teacherId !== request.user.userId) {
+            return reply.status(403).send({
+                error: 'No tienes permiso para ver esta materia',
+                code: 'FORBIDDEN',
             });
         }
 
@@ -803,8 +813,13 @@ export async function getClassroomSubjectsStats(
         const periodId = request.query?.periodId || undefined;
 
         // Obtener materias asignadas
+        const classroomSubjectsWhere: any = { classroomId };
+        if (request.user?.role === 'TEACHER') {
+            classroomSubjectsWhere.teacherId = request.user.userId;
+        }
+
         const classroomSubjects = await request.tenantPrisma.classroomSubject.findMany({
-            where: { classroomId },
+            where: classroomSubjectsWhere,
             include: {
                 subject: {
                     select: {
@@ -889,7 +904,7 @@ export async function getClassroomSubjectsStats(
                 const presentCount = attendanceRecords.filter(a => a.status === 'PRESENT' || a.status === 'LATE').length;
                 const attendance = attendanceRecords.length > 0
                     ? Math.round((presentCount / attendanceRecords.length) * 100)
-                    : 0;
+                    : null;
 
                 // Obtener observaciones filtradas por materia y lapso
                 const observations = await request.tenantPrisma.observation.count({

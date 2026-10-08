@@ -86,6 +86,12 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = fa
             pista: 'Por sección y por profesor',
         },
         {
+            name: 'Mi sección guía',
+            href: '/dashboard/mi-seccion-guia',
+            roles: ['TEACHER'],
+            pista: 'Cuadro general y notas de tus alumnos',
+        },
+        {
             name: 'Eventos',
             href: '/dashboard/eventos',
             roles: ['ADMIN'],

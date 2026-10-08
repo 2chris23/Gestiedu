@@ -221,7 +221,7 @@ describe('Cifras y estadísticas por lapso (Fase C+)', () => {
         expect(g1.stats.observations).toBe(1);
     });
 
-    it('devuelve average: null, 0% asistencia y 0 observaciones para un lapso sin datos en el año', async () => {
+    it('devuelve average: null, asistencia null y 0 observaciones para un lapso sin datos en el año', async () => {
         const res = await request(server.server)
             .get(`/api/academic-years/${year.id}/stats?periodId=${lapso2.id}`)
             .set(auth(admin.id, UserRole.ADMIN));
@@ -231,7 +231,7 @@ describe('Cifras y estadísticas por lapso (Fase C+)', () => {
         expect(g1).toBeDefined();
         expect(g1.stats.average).toBeNull();
         expect(g1.stats.riskCount).toBe(0);
-        expect(g1.stats.attendance).toBe('0%');
+        expect(g1.stats.attendance).toBeNull();
         expect(g1.stats.observations).toBe(0);
     });
 
@@ -247,7 +247,7 @@ describe('Cifras y estadísticas por lapso (Fase C+)', () => {
         expect(res.body.observations).toBe(1);
     });
 
-    it('devuelve average: null y 0% de asistencia en la sección para un lapso sin notas ni asistencias', async () => {
+    it('devuelve average: null y asistencia null en la sección para un lapso sin notas ni asistencias', async () => {
         const res = await request(server.server)
             .get(`/api/classrooms/${seccion.id}/stats?periodId=${lapso2.id}`)
             .set(auth(admin.id, UserRole.ADMIN));
@@ -257,7 +257,7 @@ describe('Cifras y estadísticas por lapso (Fase C+)', () => {
         expect(res.body.minAverage).toBeNull();
         expect(res.body.maxAverage).toBeNull();
         expect(res.body.riskCount).toBe(0);
-        expect(res.body.attendance).toBe('0%');
+        expect(res.body.attendance).toBeNull();
         expect(res.body.observations).toBe(0);
     });
 });
