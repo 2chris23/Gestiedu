@@ -30,6 +30,8 @@ import CabeceraMovil from '@/components/layout/CabeceraMovil';
 import UserAvatar from '@/components/ui/UserAvatar';
 import Image from 'next/image';
 import { esDocumento } from '@/lib/documentos';
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/axios';
 import { useCerrarSesion } from '@/hooks/useCerrarSesion';
 import { useEnElMarco } from '@/lib/en-el-marco';
 
@@ -65,6 +67,17 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
     const { data: pagos } = usePagosActivos();
     const { data: comedor } = usePaeActivo(user?.role === 'ADMIN');
 
+    const { data: seccionesGuia } = useQuery({
+        queryKey: ['misSeccionesGuia'],
+        queryFn: async () => {
+            const { data } = await api.get('/classrooms/mis-secciones-guia');
+            return data as any[];
+        },
+        enabled: user?.role === 'TEACHER',
+        staleTime: 5 * 60 * 1000,
+    });
+    const esGuia = Boolean(seccionesGuia && seccionesGuia.length > 0);
+
     // Mantener la sesión activa de forma transparente mientras la pestaña esté abierta
     useSessionKeepAlive();
     // Dentro del recorrido invisible de la precarga, nada de lo que trabaja de fondo.
@@ -73,7 +86,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
 
     const handleLogout = useCerrarSesion();
 
-    const menu = elMenuDe(user?.role, Boolean(pagos?.enabled), Boolean(comedor?.enabled));
+    const menu = elMenuDe(user?.role, Boolean(pagos?.enabled), Boolean(comedor?.enabled), esGuia);
 
     const destinosDeLaBarra = losDeLaBarra(user?.role, Boolean(pagos?.enabled)).flatMap((href) => {
         if (href === MI_CUENTA) return [{ name: 'Mi cuenta', href, icon: UserCircle, alPulsar: abrirMiCuenta }];

@@ -42,7 +42,7 @@ export interface DestinoDelMenuServidor {
     pista?: string;
 }
 
-export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = false): DestinoDelMenuServidor[] {
+export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = false, esGuia = false): DestinoDelMenuServidor[] {
     const todos: DestinoDelMenuServidor[] = [
         {
             name: 'Inicio',
@@ -52,13 +52,13 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = fa
         {
             name: 'Académico',
             href: '/dashboard/academico',
-            roles: ['ADMIN', 'TEACHER'],
+            roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'],
             pista: 'Ciclos, secciones y alumnos',
         },
         {
             name: 'Materias',
             href: '/dashboard/materias',
-            roles: ['ADMIN', 'TEACHER'],
+            roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'],
             pista: 'Las materias del liceo',
         },
         {
@@ -82,14 +82,24 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = fa
         {
             name: 'Horarios',
             href: '/dashboard/horarios',
-            roles: ['ADMIN', 'TEACHER'],
+            roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'],
             pista: 'Por sección y por profesor',
         },
+        ...(esGuia
+            ? [
+                  {
+                      name: 'Mi sección guía',
+                      href: '/dashboard/mi-seccion-guia',
+                      roles: ['TEACHER'],
+                      pista: 'Cuadro general y notas de tus alumnos',
+                  },
+              ]
+            : []),
         {
-            name: 'Mi sección guía',
-            href: '/dashboard/mi-seccion-guia',
-            roles: ['TEACHER'],
-            pista: 'Cuadro general y notas de tus alumnos',
+            name: 'Actividades',
+            href: '/dashboard/actividades',
+            roles: ['STUDENT', 'TUTOR'],
+            pista: 'Lo hecho y lo pendiente',
         },
         {
             name: 'Eventos',
@@ -149,8 +159,8 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = fa
     return todos.filter((d) => !rol || d.roles.includes(rol));
 }
 
-export function elMenuDelRol(rol: string | undefined, conPagos = false, conPae = false): string[] {
-    return elMenuDe(rol, conPagos, conPae).map((d) => d.href);
+export function elMenuDelRol(rol: string | undefined, conPagos = false, conPae = false, esGuia = false): string[] {
+    return elMenuDe(rol, conPagos, conPae, esGuia).map((d) => d.href);
 }
 
 // ── La huella de lo que puede ver un usuario ─────────────────────────────────
@@ -339,7 +349,14 @@ export async function armarElPaquete(
     ]);
     const conPagos = Boolean(pagosConfig?.enabled);
     const conPae = Boolean(paeConfig?.enabled);
-    const menu = elMenuDelRol(usuario.role, conPagos, conPae);
+    let esGuia = false;
+    if (usuario.role === 'TEACHER') {
+        const guiaCount = await prisma.classroom.count({
+            where: { teacherId: usuario.id, isActive: true },
+        });
+        esGuia = guiaCount > 0;
+    }
+    const menu = elMenuDelRol(usuario.role, conPagos, conPae, esGuia);
 
     // 3. Precalentar promedios si es admin o profesor
     if (usuario.role === 'ADMIN' || usuario.role === 'TEACHER') {
@@ -556,7 +573,14 @@ export async function actualizarPaquetesDeNoche(
         }
 
         const huellaAhora = await laHuella(p, usuario);
-        const menu = elMenuDelRol(usuario.role, conPagos, conPae);
+        let esGuia = false;
+        if (usuario.role === 'TEACHER') {
+            const guiaCount = await p.classroom.count({
+                where: { teacherId: usuario.id, isActive: true },
+            });
+            esGuia = guiaCount > 0;
+        }
+        const menu = elMenuDelRol(usuario.role, conPagos, conPae, esGuia);
 
         // Si cambió la huella: rehacer entero
         if (huellaAhora !== paq.huella) {

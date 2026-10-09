@@ -102,8 +102,9 @@ cierra, llega SIGPIPE y el proceso muere. Cuesta horas de pruebas falsas en rojo
 - **Estudiante:** solo ve lo suyo — sus datos, sus clases, sus actividades, sus notas.
   No sube, no edita, no agrega nada. **Ni su propio perfil**: eso lo hace el admin.
 - **Tutor:** solo ve a los alumnos que tutela.
-- **Profesor:** pone notas, asistencia, plan de evaluación y observaciones **solo de las
-  clases que imparte**; ve los promedios solo de sus secciones guía. No edita datos
+- **Profesor:** pone notas, asistencia y plan de evaluación **solo de las
+  clases que imparte**; ve los promedios y todas las observaciones de sus secciones guía,
+  mientras que de las demás clases solo ve las observaciones que él mismo creó. No edita datos
   personales (ni correo, ni nombre, ni los suyos).
 - **Admin:** lo demás.
 

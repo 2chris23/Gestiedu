@@ -25,6 +25,7 @@ interface Representado {
     avatar: string | null;
     classroom: string | null;
     average: number;
+    hasGrades?: boolean;
     attendancePercentage: number;
     relationship: string;
 }
@@ -112,8 +113,8 @@ export function MisRepresentados() {
                                     tiene; pintarla con el 10 fijo mentiría en los
                                     liceos que aprueban con otra. */}
                                 <dd className="text-lg font-bold text-gray-900">
-                                    {hijo.average > 0 ? hijo.average.toFixed(1) : '—'}
-                                    {hijo.average <= 0 && <span className="ml-1 text-xs font-normal text-gray-600">sin notas aún</span>}
+                                    {(hijo.hasGrades !== undefined ? hijo.hasGrades : hijo.average > 0) ? hijo.average.toFixed(1) : '—'}
+                                    {!(hijo.hasGrades !== undefined ? hijo.hasGrades : hijo.average > 0) && <span className="ml-1 text-xs font-normal text-gray-600">sin notas aún</span>}
                                 </dd>
                             </div>
                             <div className="rounded-xl bg-gray-50 px-3 py-2">

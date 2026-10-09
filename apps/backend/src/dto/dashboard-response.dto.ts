@@ -198,6 +198,21 @@ export interface TutorDashboardDto {
     children: Array<{
         id: string;
         fullName: string;
+        firstName?: string;
+        lastName?: string;
+        avatar: string | null;
+        classroom: string | null;
+        classroomId?: string | null;
+        shift?: string | null;
+        average: number;
+        attendancePercentage: number;
+        relationship: string;
+    }>;
+    representados?: Array<{
+        id: string;
+        fullName: string;
+        firstName?: string;
+        lastName?: string;
         avatar: string | null;
         classroom: string | null;
         classroomId?: string | null;

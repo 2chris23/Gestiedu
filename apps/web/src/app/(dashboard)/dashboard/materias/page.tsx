@@ -19,9 +19,25 @@ import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
 import { PaletteColorSelector } from '@/components/ui/PaletteColorSelector';
 import { Lista } from '@/components/ui/lista';
 import { toast } from 'sonner';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
+import MateriasDelAlumno from '@/components/subject/MateriasDelAlumno';
 import CargandoMaterias from './loading';
 
 export default function MateriasPage() {
+    const { yo, cargando } = useQuienSoy();
+
+    if (cargando) {
+        return <CargandoMaterias />;
+    }
+
+    if (yo?.role === 'STUDENT' || yo?.role === 'TUTOR') {
+        return <MateriasDelAlumno />;
+    }
+
+    return <AdminMateriasPage />;
+}
+
+function AdminMateriasPage() {
     const [page, setPage] = useState(1);
     const [limit] = useState(20);
     const [searchTerm, setSearchTerm] = useState('');

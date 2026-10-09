@@ -4,6 +4,7 @@ import { gradesService, redondearComoElMPPE } from './grades.service';
 import { getAcademicConfig } from './promotion/close-cycle.service';
 import { AppErrors } from '../middleware/error.middleware';
 import { apreciacionesDelAlumno, MOMENTO_FINAL } from './apreciaciones.service';
+import { bulkSubjectAveragesConDatos } from './bulk-averages.service';
 
 /**
  * LA BOLETA DEL ALUMNO
@@ -70,6 +71,53 @@ export interface BoletaDelAlumno {
 
 const media = (valores: number[]): number | null =>
     valores.length === 0 ? null : Math.round((valores.reduce((a, b) => a + b, 0) / valores.length) * 100) / 100;
+
+/**
+ * LA CUENTA OFICIAL DE LA BOLETA (REVISION-FASE-E, punto 3)
+ *
+ * Fuente única de verdad para el cálculo del promedio general de la boleta:
+ *   1. Para cada materia no cualitativa, cada lapso con notas se redondea
+ *      según la regla del liceo (MPPE: 0,50 o más sube al entero).
+ *   2. La definitiva de la materia es la media de esos lapsos, redondeada otra vez.
+ *   3. Si reprobó y presentó revisión, la nota de revisión es la que cuenta.
+ *   4. El promedio definitivo es la media de las definitivas que cuentan, a 2 decimales.
+ */
+export function calcularPromedioBoletaDesdeLapsos(
+    materiasConLapsos: Array<{
+        lapsos: number[];
+        revision?: number | null;
+        cualitativa?: boolean;
+    }>,
+    redondeo: 'MPPE' | 'NINGUNO' = 'MPPE',
+    notaMinima: number = 10
+): number | null {
+    const definitivas: number[] = [];
+
+    for (const m of materiasConLapsos) {
+        if (m.cualitativa) continue;
+        if (!m.lapsos || m.lapsos.length === 0) continue;
+
+        const notasDelLapsoValidas = m.lapsos.map((p) =>
+            redondeo === 'MPPE' ? redondearComoElMPPE(p) : p
+        );
+
+        const definitiva = notasDelLapsoValidas.length > 0
+            ? (redondeo === 'MPPE'
+                ? redondearComoElMPPE(notasDelLapsoValidas.reduce((a, b) => a + b, 0) / notasDelLapsoValidas.length)
+                : Math.round((notasDelLapsoValidas.reduce((a, b) => a + b, 0) / notasDelLapsoValidas.length) * 100) / 100)
+            : null;
+
+        if (definitiva === null) continue;
+
+        const revision = definitiva < notaMinima ? (m.revision ?? null) : null;
+        const queCuenta = revision ?? definitiva;
+        if (queCuenta !== null) {
+            definitivas.push(queCuenta);
+        }
+    }
+
+    return media(definitivas);
+}
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -138,6 +186,22 @@ export async function boletaDelAlumno(
     );
 
     const apreciaciones = await apreciacionesDelAlumno(prisma, studentId, inscripcion.academicYearId);
+    const aulaSeccionId = inscripcion.classroom?.id;
+    const cuantitativas = materiasDeLaSeccion.filter((m) => m.evaluacion !== 'CUALITATIVA');
+    const calculadosPorLapso = new Map<string, Map<string, { promedio: number; conNotas: boolean }>>();
+    if (aulaSeccionId && cuantitativas.length > 0 && lapsos.length > 0) {
+        await Promise.all(
+            lapsos.map(async (l) => {
+                const res = await bulkSubjectAveragesConDatos(prisma, {
+                    classroomId: aulaSeccionId,
+                    studentIds: [studentId],
+                    subjectIds: cuantitativas.map((m) => m.id),
+                    periodId: l.id,
+                });
+                calculadosPorLapso.set(l.id, res.get(studentId) ?? new Map());
+            })
+        );
+    }
 
     const materias = await Promise.all(
         materiasDeLaSeccion.map(async (m) => {
@@ -159,19 +223,34 @@ export async function boletaDelAlumno(
             }
             const notas: Record<string, number | null> = {};
             const notasDelLapsoValidas: number[] = [];
+            const porLapsoEnBloque = Boolean(aulaSeccionId && calculadosPorLapso.size > 0);
+            const definitivaF = (n: number) => (redondeo === 'MPPE' ? redondearComoElMPPE(n) : n);
 
-            // Consultar los lapsos de esta materia en paralelo
-            await Promise.all(
-                lapsos.map(async (l) => {
-                    const d = await gradesService.promedioDeLaMateria(prisma, studentId, m.id, l.id, undefined, redondeo);
-                    if (d.conNotas) {
-                        notas[l.id] = d.promedio;
-                        notasDelLapsoValidas.push(d.promedio);
+            if (porLapsoEnBloque) {
+                for (const l of lapsos) {
+                    const dato = calculadosPorLapso.get(l.id)?.get(m.id);
+                    if (dato && dato.conNotas) {
+                        const redon = definitivaF(dato.promedio);
+                        notas[l.id] = redon;
+                        notasDelLapsoValidas.push(redon);
                     } else {
                         notas[l.id] = null;
                     }
-                })
-            );
+                }
+            } else {
+                // Consultar los lapsos de esta materia en paralelo
+                await Promise.all(
+                    lapsos.map(async (l) => {
+                        const d = await gradesService.promedioDeLaMateria(prisma, studentId, m.id, l.id, undefined, redondeo);
+                        if (d.conNotas) {
+                            notas[l.id] = d.promedio;
+                            notasDelLapsoValidas.push(d.promedio);
+                        } else {
+                            notas[l.id] = null;
+                        }
+                    })
+                );
+            }
 
             // La definitiva es la media de los lapsos que tienen nota; se calcula en memoria sin volver a consultar la BD
             const definitiva = notasDelLapsoValidas.length > 0

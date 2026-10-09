@@ -85,11 +85,12 @@ const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[]; patron?: RegExp 
     // Cada quien lo suyo: el servidor da solo los pagos de quien pregunta.
     { prefijo: '/dashboard/mis-pagos', roles: ['TEACHER', 'ADMIN'] },
     { prefijo: '/dashboard/comedor', roles: ['ADMIN'] },
-    { prefijo: '/dashboard/academico', roles: ['ADMIN', 'TEACHER'] },
-    { prefijo: '/dashboard/materias', roles: ['ADMIN', 'TEACHER'] },
+    { prefijo: '/dashboard/academico', roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
+    { prefijo: '/dashboard/materias', roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
     { prefijo: '/dashboard/materias-pendientes', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/labor-social', roles: ['ADMIN', 'TEACHER'] },
-    { prefijo: '/dashboard/horarios', roles: ['ADMIN', 'TEACHER'] },
+    { prefijo: '/dashboard/horarios', roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
+    { prefijo: '/dashboard/actividades', roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
     { prefijo: '/dashboard/clase-en-vivo', roles: ['ADMIN', 'TEACHER'] },
     /**
      * ESTAS CUATRO FALTABAN
@@ -111,7 +112,7 @@ const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[]; patron?: RegExp 
     { prefijo: '/dashboard/horario', roles: ['ADMIN', 'TEACHER'] },
     // La materia vista por el alumno o su representante. El personal trabaja
     // la clase en la Clase en Vivo; esto es solo mirar lo de UN alumno.
-    { prefijo: '/dashboard/mi-clase', roles: ['STUDENT', 'TUTOR'] },
+    { prefijo: '/dashboard/mi-clase', roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
 ];
 
 function rolDeLaSesion(request: NextRequest): Rol | null {

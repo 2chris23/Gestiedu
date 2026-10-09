@@ -142,7 +142,7 @@ export function InicioDelAlumnoMovil({ datos }: { datos: DatosDelAlumnoMovil }) 
 
     return (
         <InicioMovil
-            tituloCifra="Promedio general"
+            tituloCifra="Promedio hasta hoy"
             cifra={datos.kpis.globalAverage}
             sufijoCifra="/ 20"
             etiquetaSecundaria={

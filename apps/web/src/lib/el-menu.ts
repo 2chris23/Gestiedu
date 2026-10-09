@@ -42,7 +42,7 @@ export interface DestinoDelMenu {
     pista?: string;
 }
 
-export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = false): DestinoDelMenu[] {
+export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = false, esGuia = false): DestinoDelMenu[] {
     const todos: DestinoDelMenu[] = [
         {
             name: 'Inicio',
@@ -54,14 +54,14 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = fa
             name: 'Académico',
             href: '/dashboard/academico',
             icon: BookOpen,
-            roles: ['ADMIN', 'TEACHER'],
+            roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'],
             pista: 'Ciclos, secciones y alumnos',
         },
         {
             name: 'Materias',
             href: '/dashboard/materias',
             icon: Library,
-            roles: ['ADMIN', 'TEACHER'],
+            roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'],
             pista: 'Las materias del liceo',
         },
         {
@@ -89,15 +89,26 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = fa
             name: 'Horarios',
             href: '/dashboard/horarios',
             icon: Calendar,
-            roles: ['ADMIN', 'TEACHER'],
+            roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'],
             pista: 'Por sección y por profesor',
         },
+        ...(esGuia
+            ? [
+                  {
+                      name: 'Mi sección guía',
+                      href: '/dashboard/mi-seccion-guia',
+                      icon: Users,
+                      roles: ['TEACHER'],
+                      pista: 'Cuadro general y notas de tus alumnos',
+                  },
+              ]
+            : []),
         {
-            name: 'Mi sección guía',
-            href: '/dashboard/mi-seccion-guia',
-            icon: Users,
-            roles: ['TEACHER'],
-            pista: 'Cuadro general y notas de tus alumnos',
+            name: 'Actividades',
+            href: '/dashboard/actividades',
+            icon: ClipboardCheck,
+            roles: ['STUDENT', 'TUTOR'],
+            pista: 'Lo hecho y lo pendiente',
         },
         {
             name: 'Eventos',
@@ -210,6 +221,6 @@ export function losDeLaBarra(rol: string | undefined, conPagos: boolean): string
 }
 
 /** Lo que se ofrece como acceso en el panel: todo el menú menos Inicio. */
-export function losAccesosDe(rol: string | undefined, conPagos: boolean): DestinoDelMenu[] {
-    return elMenuDe(rol, conPagos).filter((d) => d.href !== '/dashboard');
+export function losAccesosDe(rol: string | undefined, conPagos: boolean, conPae = false, esGuia = false): DestinoDelMenu[] {
+    return elMenuDe(rol, conPagos, conPae, esGuia).filter((d) => d.href !== '/dashboard');
 }

@@ -31,6 +31,15 @@ export interface ObservacionDeMiClase {
     profesor: string | null;
 }
 
+export interface BloqueHorarioMateria {
+    id: string;
+    dia: number;
+    diaTexto: string;
+    horaInicio: string;
+    horaFin: string;
+    aula: string | null;
+}
+
 export interface MiClase {
     alumnoId: string;
     inicioDelLapso: string | null;
@@ -41,6 +50,7 @@ export interface MiClase {
     lapso: string;
     lapsoDeHoy: string;
     lapsos: { numero: string; name: string }[];
+    horario?: BloqueHorarioMateria[];
     plan: {
         membrete: Record<string, string | null> | null;
         filas: Partial<EvaluationPlanRow>[];

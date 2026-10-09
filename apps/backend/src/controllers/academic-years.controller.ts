@@ -171,6 +171,30 @@ export const getAcademicYears = async (request: FastifyRequest, reply: FastifyRe
           ],
         },
       };
+    } else if (request.user?.role === 'STUDENT') {
+      const studentId = request.user.userId;
+      where.classrooms = {
+        some: {
+          studentClassrooms: {
+            some: { studentId },
+          },
+        },
+      };
+    } else if (request.user?.role === 'TUTOR') {
+      const tutorId = request.user.userId;
+      where.classrooms = {
+        some: {
+          studentClassrooms: {
+            some: {
+              student: {
+                studentTutorings: {
+                  some: { tutorId },
+                },
+              },
+            },
+          },
+        },
+      };
     }
 
     const years = await request.tenantPrisma.academicYear.findMany({
@@ -480,6 +504,10 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
     // 1. Validate Year Exists
     const year = await prisma.academicYear.findUnique({ where: { id } });
     if (!year) return reply.status(404).send({ error: 'Año escolar no encontrado' });
+
+    if (request.user?.role === 'STUDENT' || request.user?.role === 'TUTOR') {
+      return reply.status(403).send({ error: 'Las estadísticas del ciclo escolar son solo del personal', code: 'FORBIDDEN' });
+    }
 
     let periodDateFilter: { gte: Date; lte: Date } | undefined;
     if (periodId) {

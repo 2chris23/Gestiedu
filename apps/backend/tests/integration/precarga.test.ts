@@ -214,7 +214,7 @@ describe('La precarga en un paquete', () => {
             const m = { exports: {} as any };
             const fn = new Function('require', 'module', 'exports', transpiled.outputText);
             fn(() => ({}), m, m.exports);
-            return m.exports.elMenuDe as (rol?: string, conPagos?: boolean, conPae?: boolean) => Array<{ href: string }>;
+            return m.exports.elMenuDe as (rol?: string, conPagos?: boolean, conPae?: boolean, esGuia?: boolean) => Array<{ href: string }>;
         };
 
         const menuWeb = cargarMenuWeb();
@@ -225,14 +225,23 @@ describe('La precarga en un paquete', () => {
             [false, true],
             [true, true],
         ] as const;
+        const casosGuia = [false, true];
 
         for (const rol of roles) {
             for (const [conPagos, conPae] of opciones) {
-                const deServidor = elMenuDelRol(rol, conPagos, conPae);
-                const deWeb = menuWeb(rol, conPagos, conPae).map((d) => d.href);
-                expect(deServidor).toEqual(deWeb);
+                for (const esGuia of casosGuia) {
+                    const deServidor = elMenuDelRol(rol, conPagos, conPae, esGuia);
+                    const deWeb = menuWeb(rol, conPagos, conPae, esGuia).map((d) => d.href);
+                    expect(deServidor).toEqual(deWeb);
+                }
             }
         }
+
+        // Comprobar explícitamente profesor guía vs profesor no guía
+        expect(elMenuDelRol('TEACHER', false, false, true)).toContain('/dashboard/mi-seccion-guia');
+        expect(elMenuDelRol('TEACHER', false, false, false)).not.toContain('/dashboard/mi-seccion-guia');
+        expect(menuWeb('TEACHER', false, false, true).map((d) => d.href)).toContain('/dashboard/mi-seccion-guia');
+        expect(menuWeb('TEACHER', false, false, false).map((d) => d.href)).not.toContain('/dashboard/mi-seccion-guia');
     });
 
     it('PAQUETE-07: se arma, se sirve completo, con Range devuelve 206 y el trozo justo, y otro usuario recibe el suyo, nunca el ajeno', async () => {

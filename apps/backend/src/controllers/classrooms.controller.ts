@@ -169,6 +169,26 @@ export const getClassrooms = async (request: FastifyRequest, reply: FastifyReply
         { teacherId: profesorId },
         { subjects: { some: { teacherId: profesorId } } },
       ];
+    } else if (request.user?.role === 'STUDENT') {
+      const studentId = request.user.userId;
+      where.studentClassrooms = {
+        some: {
+          studentId,
+          ...(academicYearId ? {} : { isActive: true }),
+        },
+      };
+    } else if (request.user?.role === 'TUTOR') {
+      const tutorId = request.user.userId;
+      where.studentClassrooms = {
+        some: {
+          ...(academicYearId ? {} : { isActive: true }),
+          student: {
+            studentTutorings: {
+              some: { tutorId },
+            },
+          },
+        },
+      };
     }
 
     const classrooms = await request.tenantPrisma.classroom.findMany({

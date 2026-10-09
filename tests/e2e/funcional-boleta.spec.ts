@@ -78,4 +78,32 @@ test.describe('La boleta', () => {
             throw error;
         }
     });
+
+    test('BOL-UI-04: el promedio en Inicio del alumno coincide exactamente con Académico', async ({ page }, testInfo) => {
+        try {
+            await page.setViewportSize({ width: 390, height: 844 });
+            const alumno = await loginApi('est0575@testing.edu.ve', '123456');
+            await injectSessionCookies(page, alumno);
+            await page.goto(`${WEB_BASE}/dashboard`);
+
+            // Esperar que cargue el inicio
+            await expect(page.getByText('Promedio hasta hoy')).toBeVisible({ timeout: 30000 });
+            // Verificar que en Inicio sale 15.5
+            await expect(page.getByText('15.5').first()).toBeVisible({ timeout: 15000 });
+
+            // Ir a Académico
+            await page.goto(`${WEB_BASE}/dashboard/academico`);
+
+            // Verificar que en 1.er Lapso dice 15.5
+            await expect(page.getByText('15.5').first()).toBeVisible({ timeout: 15000 });
+
+            // Cambiar a Ciclo Completo
+            await page.getByRole('button', { name: /Ciclo completo/ }).click();
+            await expect(page.getByText('15.5').first()).toBeVisible({ timeout: 15000 });
+        } catch (error) {
+            await captureEvidence(testInfo, page, 'BOL-UI-04', 'Paridad de promedios Inicio y Academico', error);
+            throw error;
+        }
+    });
 });
+

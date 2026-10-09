@@ -50,6 +50,7 @@ import { matriculaRoutes } from './matricula.routes';
 import { consejoRoutes } from './consejo.routes';
 import { personalRoutes } from './personal.routes';
 import { paeRoutes } from './pae.routes';
+import { boletaRoutes } from './boleta.routes';
 
 // Función para registrar todas las rutas
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
@@ -104,6 +105,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
 
   // Rutas por roles específicos
   await fastify.register(studentsRoutes, { prefix: '/api/students' });
+  await fastify.register(boletaRoutes, { prefix: '/api/boleta' });
   await fastify.register(teachersRoutes, { prefix: '/api/teachers' });
 
   // Rutas de comunicación

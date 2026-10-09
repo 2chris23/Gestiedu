@@ -171,6 +171,12 @@ Durante la auditoría y construcción de este mapa, se contrastaron las fórmula
    - *Regla incumplida:* el principio de la sección 1 — cada nivel es la media aritmética de las **entidades** del nivel inferior (una materia, una vez), no de sus filas.
    - *Solución aplicada:* se agrupa por par único (materia, lapso) antes de calcular, y se piden solo las notas del año en curso. Vigilado por `NUM-01` en `tests/integration/decia-hacerlo-y-no-lo-hacia.test.ts`, que comprueba los dos números: que sale 15 y que **no** sale 17,5.
 
+6. **Un solo promedio general del estudiante: el de la boleta oficial (15,5 para `est0575`):**
+   - *Discrepancia detectada:* La alumna `est0575` (Daniela Díaz, 5.º D) tiene 15 materias evaluadas en el 1.er Lapso. Anteriormente, la tarjeta de Inicio indicaba 15,3 (calculado como media decimal continua sin redondeo oficial MPPE) mientras que la pantalla de Académico y la Boleta indicaban 15,5 (con el redondeo del liceo, `redondeoDeDefinitivas: 'MPPE'`).
+   - *Decisión y unificación:* La misma pregunta tiene que dar **un solo número**. Vale **el de la boleta** (15,5: cada materia con el redondeo del liceo, `redondeoDeDefinitivas`). Es el número oficial, el que sale en papel oficial del liceo y el mismo que ya utiliza el cuadro de honor («el promedio es el de la boleta», `CLAUDE.md`).
+   - *Solución aplicada:* El Inicio del alumno (`/api/dashboard/student`), el del representante (`/api/dashboard/tutor`, tanto por hijo como el global) y la pantalla de Académico utilizan la misma cuenta oficial de la boleta (`calcularPromedioBoletaDesdeLapsos` / `boletaDelAlumno` en `boleta.service.ts`), garantizando que dan exactamente el mismo número sin desvíos y respetando el límite estricto de consultas en bloque (`< 42` en el servidor).
+   - *Cálculo exacto para `est0575`:* En el 1.er Lapso, las 15 materias redondeadas al entero oficial (0,50 o más sube al entero) dan 8 materias con 15 y 7 materias con 16: (8 × 15 + 7 × 16) / 15 = (120 + 112) / 15 = 232 / 15 = 15,466... La boleta redondea a centésimas (15,47) y mostrada a una décima da **15,5** en todas las vistas: Inicio del alumno, Inicio del representante y Académico del alumno.
+
 ---
 
 ## 8. Horarios y Eventos del Liceo

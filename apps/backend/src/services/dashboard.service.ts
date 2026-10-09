@@ -6,6 +6,8 @@ import { getAcademicConfig, DEFAULT_ACADEMIC_CONFIG } from './promotion/close-cy
 import { bulkSubjectAveragesConDatos } from './bulk-averages.service';
 import { NOTAS_QUE_CUENTAN } from './apreciaciones.service';
 import { instituteTimezone, todayInTimezone } from '../utils/school-time';
+import { platformPrisma } from '../config/database';
+import { boletaDelAlumno, BoletaDelAlumno, calcularPromedioBoletaDesdeLapsos } from './boleta.service';
 
 /**
  * QUÉ PERIODO SE MIRA: EL LAPSO EN CURSO, Y APARTE EL CICLO
@@ -148,7 +150,7 @@ async function materiasDelAlumnoConPromedio(
     });
 
     const subjectIds = [...new Set([...grades.map((g: any) => g.subjectId), ...classActSubjectIds])];
-    const subjects = await db.subject.findMany({ where: { id: { in: subjectIds } }, select: { id: true, name: true, color: true } });
+    const subjects = await db.subject.findMany({ where: { id: { in: subjectIds } }, select: { id: true, name: true, color: true, evaluacion: true } });
 
     /**
      * EN BLOQUE: EL MISMO NÚMERO, CON 4 CONSULTAS EN VEZ DE ~20 POR MATERIA
@@ -172,6 +174,7 @@ async function materiasDelAlumnoConPromedio(
             subjectColor: s.color || '#666',
             average: suyos?.get(s.id)?.promedio ?? 0,
             conNotas: suyos?.get(s.id)?.conNotas ?? false,
+            cualitativa: s.evaluacion === 'CUALITATIVA',
         }));
     }
 
@@ -191,6 +194,7 @@ async function materiasDelAlumnoConPromedio(
             subjectColor: s.color || '#666',
             average: level2.promedio,
             conNotas: level2.conNotas,
+            cualitativa: s.evaluacion === 'CUALITATIVA',
         };
     }));
 }
@@ -886,16 +890,6 @@ export class DashboardService {
      * Dashboard para Estudiantes (IMPLEMENTADO)
      */
     async getStudentDashboard(userId: string, db: PrismaClient, instituteId?: string): Promise<StudentDashboardDto> {
-        let minPassing = 10;
-        if (instituteId) {
-            try {
-                const config = await getAcademicConfig(instituteId);
-                minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
-            } catch {
-                minPassing = 10;
-            }
-        }
-
         const student = await db.user.findUnique({
             where: { id: userId, role: UserRole.STUDENT },
             include: {
@@ -926,13 +920,31 @@ export class DashboardService {
         const activeClassroomId = student.studentClassrooms?.[0]?.classroomId || null;
         const anioActivoId = student.studentClassrooms?.[0]?.academicYearId || null;
 
+        let resolvedInstituteId = instituteId;
+        if (!resolvedInstituteId) {
+            const inst = await platformPrisma.institute.findFirst({ select: { id: true } });
+            resolvedInstituteId = inst?.id ?? '';
+        }
+
+        let minPassing = 10;
+        let configRedondeo: 'MPPE' | 'NINGUNO' = 'MPPE';
+        if (resolvedInstituteId) {
+            try {
+                const config = await getAcademicConfig(resolvedInstituteId);
+                minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
+                configRedondeo = config.redondeoDeDefinitivas || 'MPPE';
+            } catch {
+                minPassing = 10;
+            }
+        }
+
         // Asistencia y observaciones se miran POR LAPSO EN CURSO, y aparte por
         // ciclo. Antes se contaban desde siempre: un alumno de 5º año arrastraba
         // sus cinco años en el mismo porcentaje, así que el número no decía nada
         // del momento y además crecía el trabajo cada año que pasaba.
         const ventana = await ventanaDelLapsoYCiclo(db, anioActivoId);
 
-        const [gradesStats, attendanceStats, observationsCount, periodAverages] = await Promise.all([
+        const [gradesStats, attendanceStats, observationsCount, periodData] = await Promise.all([
             materiasDelAlumnoConPromedio(db, userId, activeClassroomId, ventana.lapsosDelCiclo),
 
             (async () => {
@@ -989,7 +1001,7 @@ export class DashboardService {
                 }
 
                 const avgByPeriod = new Map<string, number[]>();
-                let calculados: Array<{ periodId: string; promedio: number; conNotas: boolean }>;
+                let calculados: Array<{ periodId: string; subjectId: string; promedio: number; conNotas: boolean }>;
                 if (activeClassroomId) {
                     // Una pasada en bloque por lapso (tres, no una por materia y lapso).
                     const materiasPorLapso = new Map<string, string[]>();
@@ -1008,6 +1020,7 @@ export class DashboardService {
                             const suyos = r.get(userId);
                             return subjectIds.map((id) => ({
                                 periodId,
+                                subjectId: id,
                                 promedio: suyos?.get(id)?.promedio ?? 0,
                                 conNotas: suyos?.get(id)?.conNotas ?? false,
                             }));
@@ -1020,7 +1033,7 @@ export class DashboardService {
                             const d = await gradesService.promedioDeLaMateria(
                                 db as PrismaClient, userId, par.subjectId, par.periodId
                             );
-                            return { periodId: par.periodId, promedio: d.promedio, conNotas: d.conNotas };
+                            return { periodId: par.periodId, subjectId: par.subjectId, promedio: d.promedio, conNotas: d.conNotas };
                         })
                     );
                 }
@@ -1032,15 +1045,27 @@ export class DashboardService {
                     }
                 }
 
-                return periods.map(p => {
+                const periodAverages = periods.map(p => {
                     const grades = avgByPeriod.get(p.id) || [];
                     const average = grades.length > 0
                         ? grades.reduce((a, b) => a + b, 0) / grades.length
                         : 0;
                     return { periodId: p.id, periodName: p.name, average: Math.round(average * 10) / 10 };
                 });
+
+                const lapsosPorMateria = new Map<string, number[]>();
+                for (const c of calculados) {
+                    if (c.conNotas) {
+                        if (!lapsosPorMateria.has(c.subjectId)) lapsosPorMateria.set(c.subjectId, []);
+                        lapsosPorMateria.get(c.subjectId)!.push(c.promedio);
+                    }
+                }
+
+                return { periodAverages, lapsosPorMateria };
             })()
         ]);
+
+        const { periodAverages, lapsosPorMateria } = periodData;
 
         const subjects = (gradesStats && Array.isArray(gradesStats) && gradesStats.length > 0)
             ? gradesStats.map(s => ({
@@ -1050,17 +1075,33 @@ export class DashboardService {
                 color: s.subjectColor || '#666',
                 status: (s.average || 0) >= minPassing ? 'Aprobado' : 'Reprobado',
                 hasGrades: (s as any).conNotas !== false,
+                cualitativa: (s as any).cualitativa ?? false,
             }))
             : [];
 
-        // Un 0 es una nota: la materia con todo en 0 cuenta en el promedio y
-        // como reprobada. Lo que no cuenta es la materia SIN notas (CERO-*).
-        // El mismo número que ve el representante (`promedioGeneral`, REP-01).
-        const globalAverage = promedioGeneral(
-            subjects.map((s: any) => ({ average: s.average, conNotas: s.hasGrades }))
-        ).promedio;
+        // REVISION-FASE-E (punto 3): el promedio del estudiante en Inicio es
+        // exactamente el mismo de la boleta (`calcularPromedioBoletaDesdeLapsos`), la misma cuenta oficial.
+        const materiasParaBoleta = [...lapsosPorMateria.entries()].map(([subjectId, lapsos]) => {
+            const s = subjects.find((subj: any) => subj.id === subjectId);
+            return {
+                lapsos,
+                cualitativa: s?.cualitativa ?? false,
+            };
+        });
 
-        const failedSubjects = subjects.filter(s => s.hasGrades && s.average < minPassing).length;
+        const promedioBoleta = calcularPromedioBoletaDesdeLapsos(
+            materiasParaBoleta,
+            configRedondeo,
+            minPassing
+        );
+
+        const globalAverage = promedioBoleta !== null
+            ? promedioBoleta
+            : promedioGeneral(
+                subjects.map((s: any) => ({ average: s.average, conNotas: s.hasGrades }))
+            ).promedio;
+
+        const failedSubjects = subjects.filter(s => !s.cualitativa && s.hasGrades && s.average < minPassing).length;
 
         const upcomingActivities = activeClassroomId ? await db.activity.findMany({
             where: { dueDate: { gte: new Date() }, isActive: true, classroomId: activeClassroomId },
@@ -1164,41 +1205,48 @@ export class DashboardService {
 
         if (!tutor) throw new Error('Tutor no encontrado');
 
+        let resolvedInstituteId = instituteId;
+        if (!resolvedInstituteId) {
+            const inst = await platformPrisma.institute.findFirst({ select: { id: true } });
+            resolvedInstituteId = inst?.id ?? '';
+        }
+        const hoy = todayInTimezone(await instituteTimezone(db));
+
         const childrenWithStats = await Promise.all(
             tutor.children.map(async (child: any) => {
-                // El representante ve cómo va su hijo AHORA: lapso en curso para la
-                // asistencia, ciclo en curso para el promedio. Antes se sumaba toda
-                // la vida escolar del alumno, así que un quinto año arrastraba sus
-                // cinco años y el número no servía para decidir nada.
+                const childStudentId = child.student.id;
+                const childAcademicYearId = child.student.studentClassrooms?.[0]?.academicYearId ?? null;
                 const ventanaHijo = await ventanaDelLapsoYCiclo(
                     db,
-                    child.student.studentClassrooms?.[0]?.academicYearId ?? null
+                    childAcademicYearId
                 );
 
-                const [stats] = await (async () => {
-                    // El MISMO cálculo que el panel del alumno (REP-01).
-                    const suAula = child.student.studentClassrooms?.[0]?.classroom?.id ?? null;
-                    const [materias, asistencia] = await Promise.all([
-                        materiasDelAlumnoConPromedio(db, child.student.id, suAula, ventanaHijo.lapsosDelCiclo),
-                        asistenciaEnLaVentana(db, child.student.id, ventanaHijo.lapso),
-                    ]);
-                    const general = promedioGeneral(materias);
-                    return [{
-                        average: general.promedio,
-                        // Un 0 es una nota: el aviso de promedio bajo mira si
-                        // HAY notas, no si el promedio pasa de 0 (CERO-07).
-                        hasGrades: general.conNotas,
-                        attendancePercentage: asistencia.porcentaje,
-                        // Sin ningún registro en el lapso no hay dato que juzgar (REP-02).
-                        hasAttendance: asistencia.registros > 0,
-                    }];
-                })();
+                // REVISION-FASE-E (punto 3): cada hijo muestra el promedio de la boleta
+                // oficial (`boletaDelAlumno`), consultado en paralelo y sin N+1 con la sección.
+                const [boleta, asistencia] = await Promise.all([
+                    (async () => {
+                        try {
+                            return await boletaDelAlumno(db, resolvedInstituteId, childStudentId, {
+                                academicYearId: childAcademicYearId || undefined,
+                                hoy,
+                            });
+                        } catch {
+                            return null;
+                        }
+                    })(),
+                    asistenciaEnLaVentana(db, childStudentId, ventanaHijo.lapso),
+                ]);
 
                 const childClassroom = child.student.studentClassrooms?.[0]?.classroom;
+                const boletaPromedio = boleta?.promedios?.definitivo ?? null;
+                const hasGrades = boletaPromedio !== null;
+                const average = boletaPromedio !== null ? boletaPromedio : 0;
 
                 return {
-                    id: child.student.id,
+                    id: childStudentId,
                     fullName: `${child.student.firstName} ${child.student.lastName}`,
+                    firstName: child.student.firstName,
+                    lastName: child.student.lastName,
                     avatar: child.student.avatar,
                     classroom: childClassroom
                         ? `${childClassroom.grade}° ${childClassroom.section}`
@@ -1206,10 +1254,10 @@ export class DashboardService {
                     // La sección, para poder abrir SU horario y su calendario.
                     classroomId: childClassroom?.id ?? null,
                     shift: childClassroom?.shift ?? null,
-                    average: parseFloat(Number(stats?.average || 0).toFixed(1)),
-                    hasGrades: !!stats?.hasGrades,
-                    attendancePercentage: Math.round(Number(stats?.attendancePercentage || 0)),
-                    hasAttendance: !!stats?.hasAttendance,
+                    average,
+                    hasGrades,
+                    attendancePercentage: Math.round(Number(asistencia?.porcentaje || 0)),
+                    hasAttendance: (asistencia?.registros ?? 0) > 0,
                     relationship: child.relationship
                 };
             })
@@ -1230,6 +1278,7 @@ export class DashboardService {
         return {
             tutor: { id: tutor.id, fullName: `${tutor.firstName} ${tutor.lastName}` },
             children: childrenWithStats,
+            representados: childrenWithStats,
             alerts
         };
     }

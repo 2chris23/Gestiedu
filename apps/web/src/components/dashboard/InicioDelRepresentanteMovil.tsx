@@ -13,6 +13,7 @@ export interface RepresentadoItem {
     avatar: string | null;
     classroom: string | null;
     average: number;
+    hasGrades?: boolean;
     attendancePercentage: number;
     relationship: string;
 }
@@ -26,7 +27,7 @@ export function InicioDelRepresentanteMovil({ datos }: { datos: DatosDelRepresen
     const hijos = datos.children || [];
 
     // Promedio general de sus representados con notas
-    const hijosConNotas = hijos.filter((h) => h.average > 0);
+    const hijosConNotas = hijos.filter((h) => (h.hasGrades !== undefined ? h.hasGrades : h.average > 0));
     const promedioGeneral =
         hijosConNotas.length > 0
             ? Math.round((hijosConNotas.reduce((sum, h) => sum + h.average, 0) / hijosConNotas.length) * 10) / 10
