@@ -158,6 +158,16 @@ copia fuera del servidor (R2). `/health` dice si el último fue bien. Antes la
 plataforma no se respaldaba: perdido el disco, los archivos de los liceos no se
 podían volver a enganchar (RESP-07).
 
+**Simulacro del 2026-10-11** (`DESPLIEGUE.md` §8): cada respaldo se recuperó en
+bases nuevas y salió idéntico, tabla por tabla. Hubo que corregir dos cosas:
+- **En un servidor nuevo, el liceo no volvía.** Las extensiones de búsqueda no
+  van en el archivo de un esquema; `restaurarLiceo` las crea antes
+  (BASE-COMP-06).
+- **Los teléfonos no se enteraban de la restauración.** `restore:tenant`
+  apunta la restauración (`apuntarLaRestauracion`): los teléfonos lo bajan todo
+  otra vez y la numeración de los cambios no vuelve atrás (CAMBIOS-06). También
+  vacía la memoria rápida de ese liceo.
+
 ## Varios procesos y muchos liceos
 
 Nada que importe vive ya en la memoria de UN proceso: con `--scale backend=N` todo

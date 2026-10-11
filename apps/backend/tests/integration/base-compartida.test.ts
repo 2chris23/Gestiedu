@@ -184,4 +184,47 @@ describe('La base compartida: borrar y respaldar un liceo (BASE-COMP)', () => {
             rmSync(carpeta, { recursive: true, force: true });
         }
     }, 180000);
+
+    /**
+     * EL DÍA DEL DESASTRE (simulacro del 2026-10-11): el servidor se perdió y se
+     * devuelve el liceo en una base NUEVA. El respaldo es su esquema y las
+     * extensiones de búsqueda no van dentro: `pg_restore` fallaba en los
+     * índices (`gin_trgm_ops` no existe). Restaurar en la misma base lo tapaba.
+     */
+    it('BASE-COMP-06: el respaldo de un liceo se devuelve en un servidor nuevo, con sus índices de búsqueda', async () => {
+        const bin = process.env.PG_BIN_DIR || (process.platform === 'win32' ? 'C:/Program Files/PostgreSQL/17/bin' : '');
+        if (process.platform === 'win32' && !existsSync(path.join(bin, 'pg_restore.exe'))) {
+            console.warn('BASE-COMP-06 saltada: no hay pg_restore (PG_BIN_DIR)');
+            return;
+        }
+        if (process.platform === 'win32') process.env.PG_BIN_DIR = bin;
+        const { restaurarLiceo } = await import('../../src/services/respaldos.service');
+        const nueva = `${base}_nueva`;
+        await en(base, async (c) => {
+            // Como al dar de alta un liceo (`createTenantSchema`).
+            await c.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA pg_catalog`);
+            await c.query(`CREATE TABLE tenant_bc_b.personas (nombre text)`);
+            await c.query(`INSERT INTO tenant_bc_b.personas VALUES ('Daniela')`);
+            await c.query(`CREATE INDEX personas_nombre_trgm ON tenant_bc_b.personas USING gin (nombre gin_trgm_ops)`);
+        });
+        const carpeta = mkdtempSync(path.join(tmpdir(), 'desastre-'));
+        try {
+            const fila = await platformPrisma.institute.findUnique({ where: { id: ids.b } });
+            const r = await respaldarLiceo(fila as any, carpeta);
+            expect(r.ok).toBe(true);
+
+            await en('postgres', (c) => c.query(`CREATE DATABASE "${nueva}"`));
+            await restaurarLiceo(r.archivo!, urlDe(nueva));
+
+            const devuelto = await en(nueva, async (c) => ({
+                nombres: (await c.query('SELECT nombre FROM tenant_bc_b.personas')).rows.map((x) => x.nombre),
+                indices: (await c.query(`SELECT indexname FROM pg_indexes WHERE schemaname = 'tenant_bc_b'`)).rows.map((x) => x.indexname),
+            }));
+            expect(devuelto.nombres).toEqual(['Daniela']);
+            expect(devuelto.indices).toContain('personas_nombre_trgm');
+        } finally {
+            rmSync(carpeta, { recursive: true, force: true });
+            await en('postgres', (c) => c.query(`DROP DATABASE IF EXISTS "${nueva}" WITH (FORCE)`)).catch(() => undefined);
+        }
+    }, 180000);
 });

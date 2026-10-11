@@ -386,6 +386,36 @@ npm run restore:tenant -- --slug=liceo-bolivar --confirmar
 Restaurar **borra lo que el liceo tenga ahora**: todo lo trabajado desde ese
 respaldo se pierde. Por eso, sin `--confirmar`, el comando solo explica qué haría.
 
+Al terminar, el comando:
+- **apunta la restauración en los cambios del liceo**, de modo que cada teléfono lo baja todo otra vez (CAMBIOS-06). Si no lo hiciera:
+  - los teléfonos seguirían enseñando lo que se acaba de deshacer;
+  - la numeración de los cambios volvería atrás, y los teléfonos no pedirían los cambios nuevos;
+- **vacía la memoria rápida de ese liceo**, y solo la de ese liceo.
+
+**Después, reinicia la API** (`docker compose restart backend`): ningún proceso debe seguir con lo de antes en su memoria.
+
+Restaura también un liceo suspendido.
+
+**Simulacro del 2026-10-11**, con los cuatro liceos de este PC:
+
+| Paso | Resultado |
+|---|---|
+| Respaldo de todos | 8 s, 43 MB |
+| Plataforma, recuperada en una base nueva | 8 tablas idénticas |
+| `instituto-testing`, recuperado en una base nueva | 48.018 filas idénticas, 2,6 s |
+| `test-load-5k`, recuperado en una base nueva | 2,5 millones de filas idénticas, 55 s |
+| `test-institute-b`, recuperado en una base nueva | idéntico |
+| Copia dañada (sin notas, sin asistencia, 635 nombres cambiados) y restaurada encima | 78 tablas idénticas al original |
+| Copia de fuera: cifrada con una llave de prueba y descifrada con `respaldo:descifrar` | byte por byte igual |
+
+**El simulacro destapó un fallo:** en un servidor nuevo, el respaldo de un liceo de la base compartida **no se podía devolver**.
+- Las extensiones de búsqueda (`pg_trgm`, `unaccent`) no son de ningún esquema, así que no van en el archivo.
+- `pg_restore` fallaba en los índices de búsqueda.
+- Restaurar en la misma base lo tapaba, porque ahí las extensiones ya estaban.
+- Ahora `restaurarLiceo` las crea antes (BASE-COMP-06).
+
+**Repite el simulacro antes de cada piloto y cada pocos meses.** Un respaldo que nadie ha devuelto no es un respaldo.
+
 **La base de la plataforma también se guarda**, cada noche y la primera, en
 `_plataforma__<fecha>.dump` (ningún liceo puede llamarse así). Es la que dice
 qué base es de qué liceo y con qué llave se entra: sin ella, los archivos de los

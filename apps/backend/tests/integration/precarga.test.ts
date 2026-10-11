@@ -31,7 +31,8 @@ import { armarElPaquete, actualizarPaquetesDeNoche, elMenuDelRol } from '../../s
  *   CAMBIOS-02  al que le toca, le vuelve lo que nombra ese id;
  *   CAMBIOS-03  al alumno no se le cuela nada de otro alumno;
  *   CAMBIOS-04  con la marca de antes de lo que ya se tiró: «baja todo»;
- *   CAMBIOS-05  pedir el plan o un bloque NO es un cambio (si no, un bucle).
+ *   CAMBIOS-05  pedir el plan o un bloque NO es un cambio (si no, un bucle);
+ *   CAMBIOS-06  tras restaurar un respaldo, «baja todo» y la numeración no vuelve atrás.
  */
 
 const SLUG = 'test-institute';
@@ -202,6 +203,30 @@ describe('La precarga en un paquete', () => {
         await request(server.server).post('/api/precarga/cambios').set(cab(tok.admin)).send({ desde: 0 });
         await new Promise((r) => setTimeout(r, 300));
         expect(await (prisma as any).cambioDelLiceo.count()).toBe(antes);
+    });
+
+    it('CAMBIOS-06: tras restaurar un respaldo, el teléfono que iba por delante lo baja todo y no se salta los cambios nuevos', async () => {
+        const { apuntarLaRestauracion } = await import('../../src/services/precarga.service');
+        const pedir = (desde: number) => request(server.server).post('/api/precarga/cambios').set(cab(tok.tutor)).send({ desde, menu: ['/dashboard'] });
+        const delServidor = (await (prisma as any).cambioDelLiceo.aggregate({ _max: { id: true } }))._max.id ?? 0;
+        // El teléfono vio 50 cambios que el respaldo ya no tiene.
+        const delTelefono = delServidor + 50;
+        expect((await pedir(delTelefono)).body.todo).toBe(true);
+
+        // La restauración se apunta y la numeración sigue desde donde iba.
+        const marca = await apuntarLaRestauracion(prisma, delTelefono);
+        expect(marca).toBe(delTelefono + 1);
+        expect((await pedir(delTelefono)).body.todo).toBe(true);
+        expect((await pedir(delServidor)).body.todo).toBe(true);
+
+        // Ya al día: lo que se escribe después llega como siempre, con un número mayor.
+        const put = await request(server.server).put(`/api/users/${id.alumnoA}`).set(cab(tok.admin)).send({ firstName: 'Restaurado' });
+        expect(put.status).toBe(200);
+        await new Promise((r) => setTimeout(r, 300));
+        const r = await pedir(marca);
+        expect(r.body.todo).toBe(false);
+        expect(r.body.marca).toBeGreaterThan(marca);
+        expect(r.body.lecturas).toContain(`/users/${id.alumnoA}`);
     });
 
     it('MENU-PARIDAD: elMenuDelRol del servidor coincide exactamente con elMenuDe del cliente web', () => {

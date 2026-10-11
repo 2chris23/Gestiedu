@@ -672,7 +672,15 @@ export async function loQueCambioDesde(prisma: any, yo: { id: string; role: stri
     const guardarPaginas = (p: string[]) => void RedisCache.set(llavePaginas, p, 30 * 86400);
     const paginasCache = (await RedisCache.get<string[]>(llavePaginas)) ?? undefined;
 
-    if (marca <= desde) {
+    // El teléfono vio cambios que el servidor ya no tiene: se restauró un
+    // respaldo. Lo que guarda es de después y ya no existe: todo otra vez.
+    if (marca < desde) {
+        const pantallas = await lasPantallasDe(prisma, yo, menu);
+        const plan = elPlanDeLasPantallas(pantallas, yo.role);
+        return { marca, todo: true, lecturas: [], paginas: plan.paginas };
+    }
+
+    if (marca === desde) {
         if (!cambioDeDia && paginasCache) {
             return { marca, todo: false, lecturas: [], paginas: paginasCache };
         }
@@ -690,13 +698,13 @@ export async function loQueCambioDesde(prisma: any, yo: { id: string; role: stri
         return { marca, todo: true, lecturas: [], paginas: plan.paginas };
     }
 
-    const filas: Array<{ ids: string[]; destinatarios: string[]; todos: boolean }> = await prisma.cambioDelLiceo.findMany({
+    const filas: Array<{ ids: string[]; destinatarios: string[]; todos: boolean; recurso: string; accion: string }> = await prisma.cambioDelLiceo.findMany({
         where: { id: { gt: desde } },
-        select: { ids: true, destinatarios: true, todos: true },
+        select: { ids: true, destinatarios: true, todos: true, recurso: true, accion: true },
         orderBy: { id: 'asc' },
         take: TOPE_DE_CAMBIOS + 1,
     });
-    if (filas.length > TOPE_DE_CAMBIOS) {
+    if (filas.length > TOPE_DE_CAMBIOS || filas.some((f) => f.recurso === RESTAURADO.recurso && f.accion === RESTAURADO.accion)) {
         const pantallas = await lasPantallasDe(prisma, yo, menu);
         const plan = elPlanDeLasPantallas(pantallas, yo.role);
         return { marca, todo: true, lecturas: [], paginas: plan.paginas };
@@ -730,6 +738,25 @@ export async function loQueCambioDesde(prisma: any, yo: { id: string; role: stri
         return ids.length === 0 || ids.some((id) => idsQueCambiaron.has(id));
     });
     return { marca, todo: false, lecturas, paginas: plan.paginas };
+}
+
+/**
+ * DESPUÉS DE RESTAURAR UN RESPALDO
+ *
+ * Los teléfonos guardan lo de DESPUÉS del respaldo (lo que se acaba de deshacer)
+ * y una marca más alta que la del archivo. Sin esto, la numeración de los
+ * cambios volvía atrás: los cambios nuevos salían con números que el teléfono
+ * ya había pasado, y no los pedía nunca. Se sigue numerando desde donde iba
+ * (`antes`, la marca de antes de restaurar) y se apunta la restauración: quien
+ * pregunte desde antes de ella lo baja todo otra vez.
+ */
+export const RESTAURADO = { recurso: 'respaldo', accion: 'restaurado' } as const;
+
+export async function apuntarLaRestauracion(prisma: any, antes: number): Promise<number> {
+    const id = Math.max(antes, await laUltimaMarca(prisma)) + 1;
+    await prisma.cambioDelLiceo.create({ data: { id, ...RESTAURADO, todos: true } });
+    await prisma.$executeRawUnsafe(`SELECT setval(pg_get_serial_sequence('cambios_del_liceo', 'id'), ${id})`);
+    return id;
 }
 
 /** El último cambio apuntado (para que el plan diga desde cuándo está al día). */
