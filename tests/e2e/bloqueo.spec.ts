@@ -19,7 +19,8 @@ import { loginViaUI, loginApi, API_BASE, TENANT_SLUG, queryTenantDb } from './he
  *   BLOQUEO-UI-06  con un Capacitor como el de la APK (sus addListener no son promesas), la app no se cae;
  *   BLOQUEO-UI-07  al abrir, el esqueleto del Inicio no se ve antes del libro (la cortina de antes de pintar);
  *   BLOQUEO-UI-08  sin nadie dentro, ni libro ni esqueleto: el login, ya entero;
- *   BLOQUEO-UI-09  cerrada con la descarga de la primera vez a medias: al abrir, el login.
+ *   BLOQUEO-UI-09  cerrada con la descarga de la primera vez a medias: al abrir, el login;
+ *   BLOQUEO-UI-10  abierta pasados 15 min: tras la huella, el Inicio y no el login.
  */
 
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -265,5 +266,26 @@ test.describe('La pantalla de bloqueo', () => {
         await expect(otra.locator('input[type="email"]')).toBeVisible({ timeout: 20000 });
         await expect(bloqueo(otra)).toHaveCount(0);
         expect(vioElInicio).toBe(false);
+    });
+
+    test('BLOQUEO-UI-10: abierta pasados 15 min (la llave corta caducó): tras la huella, el Inicio, no el login', async ({ page, context }) => {
+        // Lo vio Cristian en su teléfono: entraba, cerraba la app, al rato la
+        // abría, la huella iba bien… y debajo salía el login pidiendo correo y
+        // contraseña. La APK abre en `/login`; sin la cookie corta el guardián
+        // dejaba pasar al login, la sesión se renovaba por detrás y el
+        // formulario se quedaba en pantalla. Reproducido en el emulador.
+        await conHuellaDeMentira(context, 'si');
+        await loginViaUI(page, 'est0575@testing.edu.ve');
+        await expect(page.locator('main')).toBeVisible({ timeout: 30000 });
+        await page.close();
+        // Pasaron los 15 minutos: la cookie corta ya no está; la larga, sí.
+        await context.clearCookies({ name: 'access_token' });
+
+        const otra = await context.newPage();
+        await otra.goto(`/login?slug=${TENANT_SLUG}`);
+        await bloqueo(otra).getByRole('button', { name: 'Ingresar' }).click();
+        await expect(bloqueo(otra)).toHaveCount(0);
+        await expect(otra).toHaveURL(/\/dashboard/, { timeout: 20000 });
+        await expect(otra.locator('input[type="email"]')).toHaveCount(0);
     });
 });

@@ -15,6 +15,8 @@ import NotFound from '@/app/not-found';
 import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
 import { quitarLaCortina } from '@/lib/cortina-del-arranque';
 import { esconderElIconoDeArranque } from '@/lib/el-candado';
+import { elDuenoDeAhora } from '@/lib/el-dueno';
+import { estaCompleta, seEnsenaLaPrecarga } from '@/lib/precarga';
 import { abrirConLaHuella, guardarLaLlave, hayHuella, hayLlaveGuardada, olvidarLaLlave } from '@/lib/la-huella';
 
 const loginSchema = z.object({
@@ -34,6 +36,30 @@ const getSubdomainFromBrowser = () =>
 export default function LoginPage() {
     const router = useRouter();
     const setAuth = useAuthStore((state) => state.login);
+
+    /**
+     * CON SESIÓN, AQUÍ NO SE QUEDA NADIE
+     *
+     * La APK abre siempre en `/login`. Con la llave corta viva, el guardián
+     * (`proxy.ts`) manda al Inicio; pero pasados sus 15 minutos ya no existe,
+     * el guardián deja pasar al login, la app renueva la sesión por detrás… y
+     * el login se quedaba en pantalla. Cristian lo vio así: la huella abría el
+     * candado y debajo aparecía el formulario, como si hubiera que entrar otra
+     * vez (la sesión seguía viva). Medido en el emulador, 2026-10-11.
+     *
+     * Salvo con la descarga de la primera vez a medias: esa sesión la cierra el
+     * candado al abrir (decidido por Cristian) y no hay que ir al Inicio.
+     */
+    const hayAlguien = useAuthStore((s) => Boolean(s.user?.id));
+    const sesionLeida = useAuthStore((s) => s.isHydrated);
+    useEffect(() => {
+        if (!sesionLeida || !hayAlguien) return;
+        if (seEnsenaLaPrecarga()) {
+            const dueno = elDuenoDeAhora();
+            if (dueno && !estaCompleta(dueno)) return;
+        }
+        router.replace('/dashboard');
+    }, [sesionLeida, hayAlguien, router]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
 

@@ -16,7 +16,9 @@ import { API_BASE, WEB_BASE, TENANT_SLUG, loginApi, injectSessionCookies, captur
  */
 
 const PANTALLAS_DE_ADMIN = ['/dashboard/usuarios', '/dashboard/configuracion', '/dashboard/eventos'];
-const PANTALLAS_DE_PERSONAL = ['/dashboard/academico', '/dashboard/materias', '/dashboard/horarios'];
+// Académico, Materias y Horarios ya son también del alumno (fase E, cada uno
+// con lo suyo: lo ajeno lo niega el servidor). Del personal quedan estas.
+const PANTALLAS_DE_PERSONAL = ['/dashboard/observaciones', '/dashboard/clase-en-vivo', '/dashboard/plan-de-evaluacion'];
 
 async function entraA(page: any, ruta: string) {
     await page.goto(`${WEB_BASE}${ruta}`);
