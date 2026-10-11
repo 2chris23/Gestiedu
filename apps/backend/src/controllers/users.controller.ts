@@ -110,7 +110,7 @@ export async function createUser(
   try {
     const userData = request.body;
     const instituteId = requireTenant(request, reply);
-    if (!instituteId) return;
+    if (!instituteId) return reply;
 
     // Verificar si ya existe un usuario con el mismo email
     const existingUser = await request.tenantPrisma.user.findUnique({
@@ -327,8 +327,10 @@ export async function getUsers(
       where.role = toPrismaUserRole(role as any);
     }
 
+    // Los inscritos en esa sección. `users` no tiene columna `classroomId`:
+    // filtrar así era un 500 (barrido de privacidad, 2026-10-11).
     if (classroomId) {
-      where.classroomId = classroomId;
+      where.studentClassrooms = { some: { classroomId, isActive: true } };
     }
 
     if (isActive !== undefined) {
@@ -1018,7 +1020,7 @@ export async function updateUser(
     const { id } = request.params;
     const updateData = request.body;
     const instituteId = requireTenant(request, reply);
-    if (!instituteId) return;
+    if (!instituteId) return reply;
 
     // Verificar permisos
     const reqUser = request.user as RequestUser;
@@ -1242,7 +1244,7 @@ export async function archiveUser(
   try {
     const { id } = request.params;
     const instituteId = requireTenant(request, reply);
-    if (!instituteId) return;
+    if (!instituteId) return reply;
 
     const existingUser = await request.tenantPrisma.user.findFirst({
       where: { id, instituteId },
@@ -1344,7 +1346,7 @@ export async function unarchiveUser(
   try {
     const { id } = request.params;
     const instituteId = requireTenant(request, reply);
-    if (!instituteId) return;
+    if (!instituteId) return reply;
 
     const existingUser = await request.tenantPrisma.user.findFirst({
       where: { id, instituteId },
@@ -1456,7 +1458,7 @@ export async function deleteUser(
   try {
     const { id } = request.params;
     const instituteId = requireTenant(request, reply);
-    if (!instituteId) return;
+    if (!instituteId) return reply;
 
     // Verificar que el usuario existe Y pertenece al instituto del request
     const existingUser = await request.tenantPrisma.user.findFirst({

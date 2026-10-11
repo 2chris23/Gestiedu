@@ -19,10 +19,11 @@ export function useStudents(
 /**
  * Hook para obtener estudiantes disponibles (sin sección asignada)
  */
-export function useAvailableStudents(search?: string, academicYearId?: string) {
+export function useAvailableStudents(search?: string, academicYearId?: string, habilitado = true) {
     return useQuery({
         queryKey: ['students', 'available', search, academicYearId],
         queryFn: () => studentsService.getAvailableStudents(search, academicYearId),
+        enabled: habilitado,
         staleTime: 2 * 60 * 1000,
     });
 }

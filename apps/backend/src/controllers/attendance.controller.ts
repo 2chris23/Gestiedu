@@ -727,7 +727,7 @@ export async function getStudentAttendance(
 ) {
   try {
     const { studentId } = request.params;
-    const { startDate, endDate, subjectId } = request.query;
+    const { startDate, endDate } = request.query;
 
     // Verificar que el estudiante existe
     const student = await request.tenantPrisma.user.findFirst({
@@ -771,9 +771,8 @@ export async function getStudentAttendance(
       studentId,
     };
 
-    if (subjectId) {
-      where.subjectId = subjectId;
-    }
+    // `subjectId` no se filtra: la asistencia es del DÍA, no de una materia
+    // (`daily_attendance` no tiene esa columna). Filtrarlo era un 500.
 
     if (startDate && endDate) {
       where.date = {

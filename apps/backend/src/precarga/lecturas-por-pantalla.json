@@ -396,8 +396,6 @@
       "/payments/settings",
       "/schedules/classroom/{seccion}",
       "/sessions/live-overview?classroomId={seccion}&date={hoy}",
-      "/students/available",
-      "/students/available?academicYearId={anio}",
       "/students?classroomId={seccion}&isActive=true&limit=20&page=1"
     ],
     "TEACHER:/dashboard/academico/{ciclo}/{seccionSlug}#IMPARTE": [
@@ -419,8 +417,6 @@
       "/payments/settings",
       "/schedules/classroom/{seccion}",
       "/sessions/live-overview?classroomId={seccion}&date={hoy}",
-      "/students/available",
-      "/students/available?academicYearId={anio}",
       "/students?classroomId={seccion}&isActive=true&limit=20&page=1"
     ],
     "TEACHER:/dashboard/academico/{ciclo}/{seccionSlug}/{materia}": [

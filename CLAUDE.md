@@ -120,6 +120,16 @@ podía asomarse a una sección ajena con solo cambiar el id de la dirección. El
 de la casa; la de la caja fuerte es el servidor: aunque alguien falsee la cookie, la
 pantalla se abre vacía.
 
+**El barrido de privacidad** (`barrido-de-privacidad.test.ts`, 2026-10-11)
+recorre CADA `GET` de la API —también las que se añadan— como alumno y como
+representante, con ids de un compañero, de otra sección, de la actividad con
+notas… y se pone en rojo si una respuesta trae el id (la cédula) o el correo
+de otro alumno. Con el admin como control: si a él no le salen, el barrido no
+mira nada. Hecho también sobre `instituto-testing` (8.449 peticiones y el
+profesor): sin fugas del alumno ni del representante. Encontró que el profesor
+recibía los alumnos sin sección (`/students/available`, ahora solo el admin) y
+cinco 500 por filtros que no existían.
+
 **Dos preguntas, no una.** `authenticate` dice *quién eres*; `requireTeacher` /
 `requireAdmin`, *qué rol tienes*; y `assertClassroomScope` / `canSeeStudent`, *si eso
 es tuyo*. Una ruta de escritura que solo lleva `authenticate` está abierta: así

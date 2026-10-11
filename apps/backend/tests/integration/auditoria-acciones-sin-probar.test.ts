@@ -335,6 +335,16 @@ describe('Acciones de la API que no tenían ninguna prueba', () => {
         expect(res.status).toBe(403);
     });
 
+    // Barrido de privacidad (2026-10-11): el profesor recibía nombre y correo
+    // de alumnos sin sección, que no son suyos. Inscribir es del admin.
+    it('ALU-02b: un profesor tampoco: inscribir es del admin', async () => {
+        const res = await request(server.server)
+            .get('/api/students/available')
+            .set(auth(tokenProfeA));
+
+        expect(res.status).toBe(403);
+    });
+
     it('ALU-03: el expediente completo lo ve el propio alumno, no otro', async () => {
         await request(server.server)
             .get(`/api/students/${alumnoA.id}/complete-history`)

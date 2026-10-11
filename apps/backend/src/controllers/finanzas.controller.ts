@@ -274,7 +274,7 @@ const nominaParaLaPantalla = (n: Nomina, ajustes: any) => ({
 export async function getResumen(request: FastifyRequest<{ Querystring: { academicYearId?: string } }>, reply: FastifyReply) {
     try {
         const delLiceo = await moduloActivo(request, reply);
-        if (!delLiceo) return;
+        if (!delLiceo) return reply;
         const prisma = prismaDe(request);
         const ciclo = await elCiclo(request);
         const config = await configuracionDelCiclo(prisma, ciclo.id, delLiceo);
@@ -399,7 +399,7 @@ export async function getResumen(request: FastifyRequest<{ Querystring: { academ
 /** GET /api/finanzas/mes?academicYearId=&mes=AAAA-MM — fondos, gastos y nómina de cada día. */
 export async function getMes(request: FastifyRequest<{ Querystring: { academicYearId?: string; mes?: string } }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const mes = String(request.query?.mes ?? '');
         if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) return reply.status(400).send({ error: 'Mes inválido (AAAA-MM)', code: 'MES_INVALIDO' });
         const prisma = prismaDe(request);
@@ -449,7 +449,7 @@ export async function getMes(request: FastifyRequest<{ Querystring: { academicYe
 export async function getReporteDelMes(request: FastifyRequest<{ Querystring: { academicYearId?: string; mes?: string } }>, reply: FastifyReply) {
     try {
         const delLiceo = await moduloActivo(request, reply);
-        if (!delLiceo) return;
+        if (!delLiceo) return reply;
         const mes = String(request.query?.mes ?? '');
         if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) return reply.status(400).send({ error: 'Mes inválido (AAAA-MM)', code: 'MES_INVALIDO' });
         const prisma = prismaDe(request);
@@ -537,7 +537,7 @@ const CONCEPTOS_DE_FONDO = ['SALDO_INICIAL', 'DONACION', 'OTRO'];
 /** GET /api/finanzas/fondos?academicYearId= — los del ciclo (por fecha). */
 export async function getFondos(request: FastifyRequest<{ Querystring: { academicYearId?: string } }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const ciclo = await elCiclo(request);
         const filas = await prismaDe(request).fondoDelLiceo.findMany({
             where: { fecha: { gte: ciclo.startDate, lte: ciclo.endDate } },
@@ -552,7 +552,7 @@ export async function getFondos(request: FastifyRequest<{ Querystring: { academi
 /** POST /api/finanzas/fondos — agregar fondos (el saldo con que se empieza, una donación…). */
 export async function crearFondo(request: FastifyRequest<{ Body: any }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const prisma = prismaDe(request);
         const b: any = request.body ?? {};
         if (!CONCEPTOS_DE_FONDO.includes(b.concepto)) return reply.status(400).send({ error: 'Concepto inválido', code: 'CONCEPTO_INVALIDO' });
@@ -579,7 +579,7 @@ export async function crearFondo(request: FastifyRequest<{ Body: any }>, reply: 
 }
 
 async function anular(request: FastifyRequest<{ Params: { id: string }; Body: { motivo?: string } }>, reply: FastifyReply, modelo: 'fondoDelLiceo' | 'gasto', entidad: string) {
-    if (!(await moduloActivo(request, reply))) return;
+    if (!(await moduloActivo(request, reply))) return reply;
     const motivo = limpio(request.body?.motivo, 200);
     if (!motivo || motivo.length < 3) return reply.status(400).send({ error: 'Indica el motivo de la anulación', code: 'MOTIVO_REQUERIDO' });
     const hecho = await prismaDe(request)[modelo].updateMany({
@@ -613,7 +613,7 @@ async function categoriasDelLiceo(prisma: any): Promise<string[]> {
 /** GET /api/finanzas/gastos?academicYearId= */
 export async function getGastos(request: FastifyRequest<{ Querystring: { academicYearId?: string } }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const prisma = prismaDe(request);
         const ciclo = await elCiclo(request);
         const [filas, categorias] = await Promise.all([
@@ -632,7 +632,7 @@ export async function getGastos(request: FastifyRequest<{ Querystring: { academi
 /** POST /api/finanzas/gastos */
 export async function crearGasto(request: FastifyRequest<{ Body: any }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const prisma = prismaDe(request);
         const b: any = request.body ?? {};
         const concepto = limpio(b.concepto, 120);
@@ -680,7 +680,7 @@ export async function anularGasto(request: FastifyRequest<{ Params: { id: string
 /** PUT /api/finanzas/categorias { categorias: string[] } */
 export async function guardarCategorias(request: FastifyRequest<{ Body: { categorias?: unknown[] } }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const lista = [...new Set((request.body?.categorias ?? []).map((c) => limpio(c, 40)).filter((c): c is string => !!c && c.length >= 2))];
         if (lista.length < 1 || lista.length > 20) return reply.status(400).send({ error: 'Entre 1 y 20 categorías', code: 'CATEGORIAS_INVALIDAS' });
         await prismaDe(request).paymentSettings.upsert({ where: { id: 'liceo' }, create: { id: 'liceo', categoriasDeGasto: lista }, update: { categoriasDeGasto: lista } });
@@ -693,7 +693,7 @@ export async function guardarCategorias(request: FastifyRequest<{ Body: { catego
 /** POST /api/finanzas/comprobantes — la foto de una factura (multipart, una imagen). */
 export async function subirComprobante(request: FastifyRequest, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const archivo = await (request as any).file({ limits: { fileSize: PESO_MAXIMO_DE_SUBIDA, files: 1 } });
         if (!archivo) return reply.status(400).send({ error: 'No llegó ninguna imagen', code: 'COMPROBANTE_INVALIDO' });
         const original: Buffer = await archivo.toBuffer();
@@ -709,7 +709,7 @@ export async function subirComprobante(request: FastifyRequest, reply: FastifyRe
 /** GET /api/finanzas/comprobantes/:id — la imagen (solo el admin). */
 export async function getComprobante(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const fila = await prismaDe(request).comprobante.findUnique({ where: { id: request.params.id } });
         if (!fila) return reply.status(404).send({ error: 'No encontrado' });
         return reply
@@ -729,7 +729,7 @@ export async function getComprobante(request: FastifyRequest<{ Params: { id: str
 export async function getPersonal(request: FastifyRequest<{ Querystring: { academicYearId?: string } }>, reply: FastifyReply) {
     try {
         const config = await moduloActivo(request, reply);
-        if (!config) return;
+        if (!config) return reply;
         const prisma = prismaDe(request);
         const ciclo = await elCiclo(request);
         const traidos = await prepararLaNomina(prisma, ciclo);
@@ -752,7 +752,7 @@ export async function getPersonal(request: FastifyRequest<{ Querystring: { acade
 export async function getPersona(request: FastifyRequest<{ Params: { id: string }; Querystring: { academicYearId?: string } }>, reply: FastifyReply) {
     try {
         const config = await moduloActivo(request, reply);
-        if (!config) return;
+        if (!config) return reply;
         const prisma = prismaDe(request);
         const ciclo = await elCiclo(request);
         const { nomina, ajustes, filas } = await cuentasDeLaNomina(prisma, ciclo, await hoyDelLiceo(prisma), request.params.id);
@@ -795,7 +795,7 @@ export async function getPersona(request: FastifyRequest<{ Params: { id: string 
 /** POST /api/finanzas/personal — otra persona (sin cuenta): la limpieza, el vigilante… */
 export async function crearPersona(request: FastifyRequest<{ Body: any }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const b: any = request.body ?? {};
         const nombre = limpio(b.nombre, 120);
         const cargo = limpio(b.cargo, 60);
@@ -815,7 +815,7 @@ export async function crearPersona(request: FastifyRequest<{ Body: any }>, reply
 /** PUT /api/finanzas/personal/:id — cargo, activo, guardar para próximos ciclos (y el nombre, si no tiene cuenta). */
 export async function editarPersona(request: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const prisma = prismaDe(request);
         const b: any = request.body ?? {};
         const actual = await prisma.personal.findUnique({ where: { id: request.params.id } });
@@ -849,7 +849,7 @@ export async function editarPersona(request: FastifyRequest<{ Params: { id: stri
 /** PUT /api/finanzas/personal/:id/acuerdo?academicYearId= — cuánto, cada cuánto, qué día, sus vacaciones. */
 export async function guardarAcuerdo(request: FastifyRequest<{ Params: { id: string }; Querystring: { academicYearId?: string }; Body: any }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const prisma = prismaDe(request);
         const ciclo = await elCiclo(request);
         if (estaCerrado(ciclo)) return reply.status(409).send(CICLO_CERRADO);
@@ -887,7 +887,7 @@ export async function guardarAcuerdo(request: FastifyRequest<{ Params: { id: str
 /** PUT /api/finanzas/nomina?academicYearId= — lo del liceo: día de pago de todos, vacaciones, bono. */
 export async function guardarNomina(request: FastifyRequest<{ Querystring: { academicYearId?: string }; Body: any }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const prisma = prismaDe(request);
         const ciclo = await elCiclo(request);
         if (estaCerrado(ciclo)) return reply.status(409).send(CICLO_CERRADO);
@@ -915,7 +915,7 @@ export async function guardarNomina(request: FastifyRequest<{ Querystring: { aca
  */
 export async function aplicarATodos(request: FastifyRequest<{ Querystring: { academicYearId?: string }; Body: any }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const prisma = prismaDe(request);
         const ciclo = await elCiclo(request);
         if (estaCerrado(ciclo)) return reply.status(409).send(CICLO_CERRADO);
@@ -952,7 +952,7 @@ export async function aplicarATodos(request: FastifyRequest<{ Querystring: { aca
 export async function pagarAlPersonal(request: FastifyRequest<{ Params: { id: string }; Querystring: { academicYearId?: string }; Body: any }>, reply: FastifyReply) {
     try {
         const delLiceo = await moduloActivo(request, reply);
-        if (!delLiceo) return;
+        if (!delLiceo) return reply;
         const prisma = prismaDe(request);
         const ciclo = await elCiclo(request);
         if (estaCerrado(ciclo)) return reply.status(409).send(CICLO_CERRADO);
@@ -1009,7 +1009,7 @@ export async function pagarAlPersonal(request: FastifyRequest<{ Params: { id: st
 /** POST /api/finanzas/pagos-al-personal/:id/anular */
 export async function anularPagoAlPersonal(request: FastifyRequest<{ Params: { id: string }; Body: { motivo?: string } }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const prisma = prismaDe(request);
         const motivo = limpio(request.body?.motivo, 200);
         if (!motivo || motivo.length < 3) return reply.status(400).send({ error: 'Indica el motivo de la anulación', code: 'MOTIVO_REQUERIDO' });
@@ -1035,7 +1035,7 @@ export async function anularPagoAlPersonal(request: FastifyRequest<{ Params: { i
 export async function getReciboDelPersonal(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
     try {
         const config = await moduloActivo(request, reply);
-        if (!config) return;
+        if (!config) return reply;
         const prisma = prismaDe(request);
         const pago = await prisma.pagoAlPersonal.findUnique({
             where: { id: request.params.id },
@@ -1073,7 +1073,7 @@ export async function getReciboDelPersonal(request: FastifyRequest<{ Params: { i
 export async function getMisPagos(request: FastifyRequest<{ Querystring: { academicYearId?: string } }>, reply: FastifyReply) {
     try {
         const config = await moduloActivo(request, reply);
-        if (!config) return;
+        if (!config) return reply;
         const prisma = prismaDe(request);
         const persona = await prisma.personal.findUnique({ where: { userId: idDe(request) }, select: { id: true } });
         if (!persona) return reply.send({ tiene: false });

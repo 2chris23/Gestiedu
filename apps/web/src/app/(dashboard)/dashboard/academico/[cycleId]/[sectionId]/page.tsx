@@ -87,9 +87,13 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     const targetYearId = classroom?.academicYearId || classroom?.academicYear?.id;
 
     const debouncedSearchAvailable = useDebouncedValue(searchAvailableTerm, 350);
+    const { yo } = useQuienSoy();
+    // La lista de alumnos sin sección (para inscribir) es del admin: el
+    // profesor recibía nombres y correos de alumnos que no son suyos.
     const { data: availableStudentsData, isLoading: isLoadingAvailable } = useAvailableStudents(
         debouncedSearchAvailable,
-        targetYearId
+        targetYearId,
+        yo?.role === 'ADMIN'
     );
 
     const students = studentsData?.students || studentsData?.users || [];
@@ -100,7 +104,6 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     const { data: scheduleData } = useClassroomSchedule(classroomId || '');
     const scheduleBlocks = transformScheduleData(scheduleData);
     const { user } = useAuthStore();
-    const { yo } = useQuienSoy();
 
     const filteredStudents = useMemo(() => {
         if (!searchTerm) return students;

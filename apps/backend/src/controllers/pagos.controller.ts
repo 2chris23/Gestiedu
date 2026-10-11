@@ -303,7 +303,7 @@ export async function getPaymentsOverview(
 ) {
     try {
         const delLiceo = await moduloActivo(request, reply);
-        if (!delLiceo) return;
+        if (!delLiceo) return reply;
         const prisma = request.tenantPrisma as any;
         const ciclo = await cicloActivo(prisma, request.query?.academicYearId);
         if (!ciclo) return reply.status(404).send({ error: 'No hay un ciclo escolar activo', code: 'NO_ACTIVE_YEAR' });
@@ -542,7 +542,7 @@ export async function getStudentPayments(
 ) {
     try {
         const delLiceo = await moduloActivo(request, reply);
-        if (!delLiceo) return;
+        if (!delLiceo) return reply;
         const { studentId } = request.params;
         // Misma respuesta para "no existe" y "no es tuyo".
         if (!(await puedeVerPagosDe(request, studentId))) return reply.status(404).send({ error: 'Estudiante no encontrado' });
@@ -571,7 +571,7 @@ export async function getStudentPayments(
 export async function getMyChildrenPayments(request: FastifyRequest, reply: FastifyReply) {
     try {
         const delLiceo = await moduloActivo(request, reply);
-        if (!delLiceo) return;
+        if (!delLiceo) return reply;
         const prisma = request.tenantPrisma as any;
         const ciclo = await cicloActivo(prisma);
         if (!ciclo) return reply.send({ children: [] });
@@ -601,7 +601,7 @@ export async function updateStudentPlan(
 ) {
     try {
         const config = await moduloActivo(request, reply);
-        if (!config) return;
+        if (!config) return reply;
         const prisma = request.tenantPrisma as any;
         const { studentId } = request.params;
         const { dueDay = null, exempt = false, exemptReason = null, descuentoPct = 0, descuentoMotivo = null } = request.body ?? {};
@@ -662,7 +662,7 @@ export async function registerPayment(
 ) {
     try {
         const delLiceo = await moduloActivo(request, reply);
-        if (!delLiceo) return;
+        if (!delLiceo) return reply;
         const prisma = request.tenantPrisma as any;
         const { studentId } = request.params;
         const b = request.body;
@@ -794,7 +794,7 @@ export async function annulPayment(
 ) {
     try {
         const config = await moduloActivo(request, reply);
-        if (!config) return;
+        if (!config) return reply;
         const prisma = request.tenantPrisma as any;
         const motivo = String(request.body?.reason ?? '').replace(/[<>]/g, '').trim().slice(0, 200);
         if (motivo.length < 3) return reply.status(400).send({ error: 'Indica el motivo de la anulación', code: 'ANNUL_REASON_REQUIRED' });
@@ -845,7 +845,7 @@ export async function annulPayment(
 export async function getPaymentReceipt(request: FastifyRequest<{ Params: { paymentId: string } }>, reply: FastifyReply) {
     try {
         const delLiceo = await moduloActivo(request, reply);
-        if (!delLiceo) return;
+        if (!delLiceo) return reply;
         const prisma = request.tenantPrisma as any;
         const pago = await prisma.payment.findUnique({
             where: { id: request.params.paymentId },
@@ -899,7 +899,7 @@ export async function getPaymentReceipt(request: FastifyRequest<{ Params: { paym
 export async function getPaymentCycles(request: FastifyRequest, reply: FastifyReply) {
     try {
         const delLiceo = await moduloActivo(request, reply);
-        if (!delLiceo) return;
+        if (!delLiceo) return reply;
         const prisma = request.tenantPrisma as any;
         const ciclos = await prisma.academicYear.findMany({
             orderBy: { startDate: 'desc' },
@@ -932,7 +932,7 @@ export async function getPaymentsMonth(
 ) {
     try {
         const delLiceo = await moduloActivo(request, reply);
-        if (!delLiceo) return;
+        if (!delLiceo) return reply;
         const mes = String(request.query?.month ?? '');
         if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) return reply.status(400).send({ error: 'Mes inválido (AAAA-MM)', code: 'MES_INVALIDO' });
         const prisma = request.tenantPrisma as any;
@@ -1036,7 +1036,7 @@ async function admins(prisma: any): Promise<string[]> {
 /** POST /api/payments/comprobantes — la captura (multipart). Admin o representante. */
 export async function subirCaptura(request: FastifyRequest, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const rol = rolDe(request);
         if (rol !== UserRole.ADMIN && rol !== UserRole.TUTOR) return reply.status(403).send({ error: 'No autorizado', code: 'FORBIDDEN' });
         const archivo = await (request as any).file({ limits: { fileSize: PESO_MAXIMO_DE_SUBIDA, files: 1 } });
@@ -1055,7 +1055,7 @@ export async function subirCaptura(request: FastifyRequest, reply: FastifyReply)
 /** GET /api/payments/reportes/:id/captura — el admin, o el representante que la subió. */
 export async function getCaptura(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const prisma = request.tenantPrisma as any;
         const r = await prisma.pagoReportado.findUnique({ where: { id: request.params.id }, select: { comprobanteId: true, reportadoPorId: true } });
         if (!r?.comprobanteId || (rolDe(request) !== UserRole.ADMIN && r.reportadoPorId !== idDe(request))) return reply.status(404).send({ error: 'No encontrado' });
@@ -1071,7 +1071,7 @@ export async function getCaptura(request: FastifyRequest<{ Params: { id: string 
 export async function reportarPago(request: FastifyRequest<{ Params: { studentId: string }; Body: any }>, reply: FastifyReply) {
     try {
         const delLiceo = await moduloActivo(request, reply);
-        if (!delLiceo) return;
+        if (!delLiceo) return reply;
         if (rolDe(request) !== UserRole.TUTOR) return reply.status(403).send({ error: 'Solo el representante reporta sus pagos', code: 'FORBIDDEN' });
         const prisma = request.tenantPrisma as any;
         const { studentId } = request.params;
@@ -1131,7 +1131,7 @@ export async function reportarPago(request: FastifyRequest<{ Params: { studentId
 /** GET /api/payments/reportes?estado=PENDIENTE — los reportados, para el admin. */
 export async function getReportes(request: FastifyRequest<{ Querystring: { estado?: string } }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const prisma = request.tenantPrisma as any;
         const estado = ['PENDIENTE', 'CONFIRMADO', 'RECHAZADO'].includes(String(request.query?.estado)) ? String(request.query.estado) : 'PENDIENTE';
         const filas = await prisma.pagoReportado.findMany({ where: { estado }, orderBy: { createdAt: 'asc' }, take: 200 });
@@ -1192,7 +1192,7 @@ async function cobrarComoAdmin(request: FastifyRequest, studentId: string, cuerp
 /** POST /api/payments/reportes/:id/confirmar — el admin: es un pago de verdad. */
 export async function confirmarReporte(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const prisma = request.tenantPrisma as any;
         const r = await prisma.pagoReportado.findUnique({ where: { id: request.params.id } });
         if (!r || r.estado !== 'PENDIENTE') return reply.status(404).send({ error: 'No hay un pago reportado pendiente con ese número' });
@@ -1234,7 +1234,7 @@ export async function confirmarReporte(request: FastifyRequest<{ Params: { id: s
 /** POST /api/payments/reportes/:id/rechazar { motivo } — y se le dice por qué. */
 export async function rechazarReporte(request: FastifyRequest<{ Params: { id: string }; Body: { motivo?: string } }>, reply: FastifyReply) {
     try {
-        if (!(await moduloActivo(request, reply))) return;
+        if (!(await moduloActivo(request, reply))) return reply;
         const prisma = request.tenantPrisma as any;
         const motivo = String(request.body?.motivo ?? '').replace(/[<>]/g, '').trim().slice(0, 200);
         if (motivo.length < 3) return reply.status(400).send({ error: 'Indica por qué se rechaza (lo verá el representante)', code: 'MOTIVO_REQUERIDO' });

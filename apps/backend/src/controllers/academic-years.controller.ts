@@ -838,6 +838,9 @@ export const getPromotionContext = async (request: FastifyRequest, reply: Fastif
     );
     return reply.status(200).send(context);
   } catch (error) {
+    if (error instanceof Error && error.message === 'Academic year not found') {
+      return reply.status(404).send({ error: 'Ese año escolar no existe' });
+    }
     request.log.error(error);
     return reply.status(500).send({ error: 'Error al obtener el contexto de promoción' });
   }

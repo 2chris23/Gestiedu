@@ -155,7 +155,9 @@ const studentsRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
     },
-    preHandler: [authenticate, requireTeacher] // ADMIN + TEACHER (no STUDENT/TUTOR)
+    // Solo el admin inscribe: al profesor le daba nombre y correo de alumnos
+    // que no son suyos (barrido de privacidad, 2026-10-11).
+    preHandler: [authenticate, requireAdmin]
   }, getAvailableStudents as any);
 
   // GET /api/students/:id - Get student by ID
