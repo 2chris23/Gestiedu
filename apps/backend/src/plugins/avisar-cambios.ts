@@ -58,8 +58,12 @@ declare module 'fastify' {
     interface FastifyRequest {
         /** Lo rellena el controlador que sabe a quién afecta lo que acaba de escribir. */
         aQuienAfecta?: AQuienAfecta;
+        /** A quién le tocó, resuelto en `onSend` y reusado en `onResponse` (null = a todos). */
+        destinatariosDelCambio?: Destinatarios | null;
     }
 }
+
+type Destinatarios = Awaited<ReturnType<typeof resolverDestinatarios>>;
 
 /** De la dirección de la petición sale el nombre de lo que cambió. */
 function recursoDeLaUrl(url: string): string | null {
@@ -144,8 +148,14 @@ async function avisarCambiosPlugin(server: FastifyInstance) {
      * de antes de guardar. Vería su propio cambio desaparecido.
      *
      * Limpiando lo suyo antes de responder, eso no puede pasar: cuando recibe el
-     * "guardado", su copia ya no existe. Lo de los demás sigue yendo después,
-     * que no corre prisa.
+     * "guardado", su copia ya no existe.
+     *
+     * Y LA DE LOS DEMÁS TAMBIÉN, en la misma pasada. Iba después de responder,
+     * y el profesor que ponía una nota y el alumno que abría su horario en ese
+     * instante se cruzaban: el alumno recibía la copia de antes, sin la nota,
+     * durante los cinco minutos que dura (HORAV-07 lo cazaba una vez de cada
+     * cuatro). Cuesta lo mismo: el recorrido de las claves es UNO para todos, y
+     * a quién afecta se resolvía igual, solo que más tarde.
      */
     server.addHook('onSend', async (request: FastifyRequest, reply: FastifyReply, payload) => {
         if (!METODOS_QUE_ESCRIBEN.has(request.method)) return payload;
@@ -153,10 +163,42 @@ async function avisarCambiosPlugin(server: FastifyInstance) {
 
         const instituteId = (request as any).institute?.id ?? (request.user as any)?.instituteId;
         const quien = (request.user as any)?.userId ?? (request.user as any)?.id;
-        if (!instituteId || !quien) return payload;
+        if (!instituteId) return payload;
 
+        const esUnCambio =
+            recursoDeLaUrl(request.url) !== null &&
+            !reply.getHeader('x-doble-envio') &&
+            reply.getHeader('x-cambio') !== 'repetido';
+
+        let destinatarios: Destinatarios | null = null;
+        if (esUnCambio) {
+            try {
+                destinatarios = await conLiceo(instituteId, () =>
+                    resolverDestinatarios(request.tenantPrisma, request.aQuienAfecta)
+                );
+            } catch (error) {
+                // Si no se puede acotar, se limpia a todos: caro, pero nunca deja a
+                // nadie mirando un dato viejo.
+                logger.debug('No se pudo acotar a quién afecta el cambio', {
+                    url: request.url,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+            request.destinatariosDelCambio = destinatarios;
+        }
+
+        if (esUnCambio && !destinatarios) {
+            await conLiceo(instituteId, () => RedisCache.clearPattern(`cache:${instituteId}:*`)).catch(
+                avisarSiFalla('avisar-cambios')
+            );
+            return payload;
+        }
+
+        const personas = new Set<string>(destinatarios ? [...destinatarios.personas, ...destinatarios.personal] : []);
+        if (quien) personas.add(quien);
+        if (personas.size === 0) return payload;
         await conLiceo(instituteId, () =>
-            RedisCache.clearPattern(`cache:${instituteId}:*:${quien}:*`)
+            RedisCache.clearPatterns([...personas].map((id) => `cache:${instituteId}:*:${id}:*`))
         ).catch(avisarSiFalla('avisar-cambios'));
         return payload;
     });
@@ -182,19 +224,8 @@ async function avisarCambiosPlugin(server: FastifyInstance) {
             momento: Date.now(),
         };
 
-        let destinatarios = null;
-        try {
-            destinatarios = await conLiceo(instituteId, () =>
-                resolverDestinatarios(request.tenantPrisma, request.aQuienAfecta)
-            );
-        } catch (error) {
-            // Si no se puede acotar, se avisa a todos: caro, pero nunca deja a
-            // nadie mirando un dato viejo.
-            logger.debug('No se pudo acotar a quién afecta el cambio', {
-                recurso,
-                error: error instanceof Error ? error.message : String(error),
-            });
-        }
+        // Ya resuelto en `onSend` (y lo guardado de esa gente, ya limpio).
+        const destinatarios = request.destinatariosDelCambio ?? null;
 
         // Para los teléfonos: «¿qué cambió desde la última vez?» (`POST /precarga/cambios`).
         await apuntarElCambio(request, aviso, destinatarios).catch(avisarSiFalla('cambios-del-liceo'));
@@ -208,19 +239,8 @@ async function avisarCambiosPlugin(server: FastifyInstance) {
 
         try {
             if (destinatarios) {
-                const todos = [...new Set([...destinatarios.personas, ...destinatarios.personal])];
-
-                // Solo se tira lo guardado de esta gente. Lo de los demás sigue
-                // sirviendo: sus datos no cambiaron.
-                //
-                // Va en una sola llamada a propósito: borrar de uno en uno
-                // recorría las claves guardadas una vez por cada persona
-                // avisada, y una nota afecta a diez o quince. Ahora se recorre
-                // una vez para todas.
-                await conLiceo(instituteId, () =>
-                    RedisCache.clearPatterns(todos.map((id) => `cache:${instituteId}:*:${id}:*`))
-                ).catch(avisarSiFalla('avisar-cambios'));
-
+                // Lo guardado de esta gente ya se tiró en `onSend`, antes de
+                // responder, en una sola pasada para todos. Aquí, el aviso.
                 if (io) {
                     for (const id of destinatarios.personas) {
                         io.to(buzonDe(instituteId, id)).emit('datos:cambiaron', aviso);
@@ -231,9 +251,6 @@ async function avisarCambiosPlugin(server: FastifyInstance) {
                     }
                 }
             } else {
-                await conLiceo(instituteId, () =>
-                    RedisCache.clearPattern(`cache:${instituteId}:*`)
-                ).catch(avisarSiFalla('avisar-cambios'));
                 io?.to(`institute:${instituteId}`).emit('datos:cambiaron', aviso);
             }
         } catch (error) {
