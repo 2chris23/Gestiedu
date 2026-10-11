@@ -1007,7 +1007,10 @@ React, así que en la app un guion del `<head>` pone una cortina
 login; sin ella se veía el esqueleto del Inicio 2–3 s (BLOQUEO-UI-07). Mientras
 la descarga, el logo o el bloqueo ocupan la pantalla, **ninguna oferta sale
 encima** (`useOcuparLaPantalla`, `lib/turno-de-ofrecer.ts`). Es la puerta de la
-casa; la caja fuerte sigue siendo el servidor. Código en `components/arranque/`,
+casa; la caja fuerte sigue siendo el servidor. **La APK abre en `/login`**: con
+alguien dentro, el login manda al Inicio él mismo; pasados los 15 min de la
+llave corta, el guardián ya no lo hacía y tras la huella salía el formulario
+(BLOQUEO-UI-10). Código en `components/arranque/`,
 `lib/el-candado.ts`, `lib/pin-de-la-app.ts`; BLOQUEO-UI-01…08.
 
 ## Probar desde cualquier teléfono: el túnel
