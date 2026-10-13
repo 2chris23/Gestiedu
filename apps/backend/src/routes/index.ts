@@ -35,6 +35,7 @@ import { schoolTimeRoutes } from './school-time.routes';
 import { appMovilRoutes } from './app-movil.routes';
 import { asistenciaQrRoutes } from './asistencia-qr.routes';
 import { pinDeLaAppRoutes } from './pin-de-la-app.routes';
+import { contrasenaPorElAdminRoutes } from './contrasena-por-el-admin.routes';
 import { precargaRoutes } from './precarga.routes';
 import { apreciacionesRoutes } from './apreciaciones.routes';
 import { revisionRoutes } from './revision.routes';
@@ -61,6 +62,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(usersRoutes, { prefix: '/api/users' });
   // El PIN de la app (teléfonos sin bloqueo): /api/auth/pin y /api/users/:id/pin.
   await fastify.register(pinDeLaAppRoutes, { prefix: '/api' });
+  await fastify.register(contrasenaPorElAdminRoutes, { prefix: '/api' });
   await fastify.register(precargaRoutes, { prefix: '/api' });
 
   // Rutas académicas

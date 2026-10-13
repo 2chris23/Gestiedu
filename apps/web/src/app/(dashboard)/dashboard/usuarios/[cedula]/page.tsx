@@ -20,6 +20,7 @@ import Link from 'next/link';
 import { RepresentantesDelAlumno } from '@/components/users/RepresentantesDelAlumno';
 import { TelefonoDeAsistencia } from '@/components/users/TelefonoDeAsistencia';
 import { PinDeLaAppDelUsuario } from '@/components/users/PinDeLaAppDelUsuario';
+import { ContrasenaDelUsuario } from '@/components/users/ContrasenaDelUsuario';
 import { CambiarCedula } from '@/components/users/CambiarCedula';
 import { EditarDatosPersonales } from '@/components/users/EditarDatosPersonales';
 import { InscripcionDelAlumno } from '@/components/users/InscripcionDelAlumno';
@@ -507,6 +508,7 @@ export default function UserProfilePage({ params }: PageProps) {
                             )}
                             {user.role === 'student' && <RepresentantesDelAlumno studentId={user.cedula} />}
                             {user.role === 'student' && <TelefonoDeAsistencia studentId={user.cedula} />}
+                            <ContrasenaDelUsuario userId={user.cedula} nombre={user.name?.split(' ')[0]} />
                             <PinDeLaAppDelUsuario userId={user.cedula} />
                             {user.role === 'tutor' && (
                                 <div className="pt-4 border-t border-gray-100 mt-2">

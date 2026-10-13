@@ -581,6 +581,13 @@ siempre al logo que subía el liceo (FAV-01/02).
   anulados en la memoria rápida), no a los quince minutos.
 - Cada token de acceso lleva su propio número de serie (`jwtid`): dos sesiones
   abiertas en el mismo segundo ya no salen idénticas letra por letra.
+- **Quien perdió su contraseña**: el admin le pone una nueva en su ficha
+  («Cambiar contraseña», con «Generar una» fácil de dictar), `PUT
+  /users/:id/contrasena`. Cierra todas sus sesiones y anula la huella de sus
+  teléfonos; queda en el registro (sin la contraseña) y se le avisa. La suya,
+  el admin la cambia en «Mi cuenta» (pide la actual). Editar el usuario con
+  `password` responde 400 `CONTRASENA_EN_OTRO_SITIO`: antes se descartaba
+  callado y parecía cambiada (CONTRA-01…06, CONTRA-UI-01).
 
 ## En el teléfono
 

@@ -151,9 +151,22 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [authenticate, requireAdmin, validateBody(zCreateUserSchema), checkPlanLimits]
   }, createUser as any);
 
+  // La contraseña NO se cambia editando el usuario: el validador la quitaba
+  // callado y el admin creía que la había cambiado. Se dice dónde se cambia
+  // (PUT /users/:id/contrasena, que además cierra sus sesiones).
+  const sinContrasena = async (request: any, reply: any) => {
+    const p = request.body?.password;
+    if (typeof p === 'string' && p.trim() !== '') {
+      return reply.status(400).send({
+        error: 'La contraseña se cambia con «Cambiar contraseña», en la ficha del usuario.',
+        code: 'CONTRASENA_EN_OTRO_SITIO',
+      });
+    }
+  };
+
   fastify.put('/:id', {
     schema: updateUserSchema,
-    preHandler: [authenticate, requireAdmin, validateBody(zUpdateUserSchema)]
+    preHandler: [authenticate, requireAdmin, sinContrasena, validateBody(zUpdateUserSchema)]
   }, updateUser as any);
 
   // Cambiar la cédula (la escolar por la de identidad, o corregirla). Arrastra
