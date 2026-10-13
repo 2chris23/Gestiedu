@@ -162,7 +162,7 @@ export function InicioMovil({
             <section
                 aria-label={etiquetaAria}
                 data-diseno="cabecera-azul"
-                className="relative -mx-4 -mt-6 overflow-hidden bg-[linear-gradient(180deg,var(--cab-fondo-hex)_0%,var(--cab-medio-hex)_55%,var(--cab-hondo-hex)_100%)] px-5 pb-[50px] pt-2 sm:-mx-6"
+                className="relative -mx-4 -mt-6 overflow-hidden bg-[linear-gradient(180deg,var(--franja-arriba)_0%,var(--franja-medio)_55%,var(--franja-abajo)_100%)] px-5 pb-[50px] pt-2 sm:-mx-6"
             >
                 <h1 className="sr-only">Panel</h1>
                 <span aria-hidden className="pointer-events-none absolute inset-0">
@@ -244,7 +244,7 @@ export function EsqueletoDelInicioMovil() {
     const barra = 'rounded-full motion-safe:animate-latir';
     return (
         <div className="lateral:hidden" aria-busy="true" aria-label="Cargando el Inicio">
-            <div className="-mx-4 -mt-6 bg-[linear-gradient(180deg,var(--cab-fondo-hex)_0%,var(--cab-medio-hex)_55%,var(--cab-hondo-hex)_100%)] px-5 pb-[50px] pt-4 sm:-mx-6">
+            <div className="-mx-4 -mt-6 bg-[linear-gradient(180deg,var(--franja-arriba)_0%,var(--franja-medio)_55%,var(--franja-abajo)_100%)] px-5 pb-[50px] pt-4 sm:-mx-6">
                 <div className={`h-4 w-32 bg-cabecera-texto/20 ${barra}`} />
                 <div className={`mt-4 h-12 w-40 bg-cabecera-texto/20 ${barra}`} />
                 <div className={`mt-4 h-7 w-56 bg-cabecera-texto/[0.14] ${barra}`} />

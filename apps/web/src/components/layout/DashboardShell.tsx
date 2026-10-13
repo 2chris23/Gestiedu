@@ -58,7 +58,7 @@ interface DashboardShellProps {
  * raya oscura alrededor.
  */
 const CRISTAL =
-    'rounded-[24px] border border-cabecera-texto/[0.14] bg-cabecera shadow-[0_16px_48px_rgba(4,24,64,0.22)]';
+    'rounded-[24px] border border-cabecera-texto/[0.14] bg-cabecera shadow-[0_16px_48px_rgba(4,24,64,0.22)] dark:bg-[linear-gradient(180deg,var(--franja-arriba)_0%,var(--franja-medio)_60%,var(--franja-abajo)_100%)]';
 
 export default function DashboardShell({ user, children }: DashboardShellProps) {
     const pathname = usePathname();
@@ -121,7 +121,11 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
         <div
             className={cn(
                 'marco-del-ordenador min-h-screen bg-gray-50 lateral:bg-[rgb(var(--lienzo-de-la-app))] print:min-h-0 print:!bg-white',
-                esInicio && 'lateral:h-screen lateral:overflow-hidden'
+                // En una sola pantalla, sin bajar, solo donde cabe (desde 1280 px de
+                // ancho, xl): en una tableta o un portátil estrecho el calendario y
+                // el cuadro de honor van uno debajo del otro, y apretados a media
+                // altura se montaban uno encima del otro.
+                esInicio && 'xl:lateral:h-screen xl:lateral:overflow-hidden'
             )}
             suppressHydrationWarning={true}
         >
@@ -195,7 +199,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 className={cn(
                     'transicion-lateral min-h-screen lateral:ml-[calc(var(--ancho-lateral)+16px)] lateral:flex lateral:flex-col lateral:gap-2 lateral:pr-2 print:min-h-0 print:!m-0 print:!block print:!p-0',
                     esInicio
-                        ? 'lateral:my-2 lateral:py-0 lateral:h-[calc(100vh-16px)] lateral:min-h-0'
+                        ? 'lateral:py-2 xl:lateral:my-2 xl:lateral:py-0 xl:lateral:h-[calc(100vh-16px)] xl:lateral:min-h-0'
                         : 'lateral:py-2'
                 )}
             >
@@ -209,7 +213,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 )}
                 {/* La hoja. Sin `overflow`, a propósito: las cabeceras pegadas
                     (`sticky`) de las tablas dejarían de pegarse. */}
-                <div className={cn('lateral:flex-1 print:!rounded-none print:!bg-white print:!shadow-none', esInicio && 'lateral:flex lateral:flex-col lateral:min-h-0')}>
+                <div className={cn('lateral:flex-1 print:!rounded-none print:!bg-white print:!shadow-none', esInicio && 'xl:lateral:flex xl:lateral:flex-col xl:lateral:min-h-0')}>
                     {/* El hueco de abajo es la barra del teléfono MÁS la del
                         sistema: sin él, lo último de cada pantalla queda donde el
                         dedo pulsa la barra de gestos. */}
@@ -218,7 +222,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                         className={cn(
                             'mx-auto max-w-7xl pb-[calc(7rem+var(--zona-segura-abajo))] print:!p-0 print:max-w-none',
                             esInicio
-                                ? 'px-4 py-6 sm:px-6 lateral:!m-0 lateral:!p-0 lateral:!w-full lateral:!max-w-none lateral:flex-1 lateral:flex lateral:flex-col lateral:min-h-0'
+                                ? 'px-4 py-6 sm:px-6 lateral:!m-0 lateral:!p-0 lateral:!w-full lateral:!max-w-none xl:lateral:flex-1 xl:lateral:flex xl:lateral:flex-col xl:lateral:min-h-0'
                                 : 'px-4 py-6 sm:px-6 lg:px-8 lateral:max-w-[1600px] lateral:pb-6 lateral:pt-6'
                         )}
                     >

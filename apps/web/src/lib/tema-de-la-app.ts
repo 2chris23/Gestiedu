@@ -62,7 +62,9 @@ export function elegirAcento(acento: Acento): void {
  */
 export function colorDeLaCabecera(): string {
     if (typeof window === 'undefined') return ACENTOS[ACENTO_POR_DEFECTO].color;
-    const v = getComputedStyle(document.documentElement).getPropertyValue('--azul-cabecera').trim();
+    // El de arriba de la franja del Inicio: en claro es la cabecera; en
+    // oscuro, el color elegido oscurecido (como Rial).
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--franja-arriba').trim();
     return v || ACENTOS[ACENTO_POR_DEFECTO].color;
 }
 

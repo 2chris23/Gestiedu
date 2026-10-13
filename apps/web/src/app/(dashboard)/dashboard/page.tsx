@@ -141,9 +141,9 @@ export default function DashboardPage() {
                 debajo. Sin «Ir a»: repetía la barra lateral, que en el
                 ordenador está siempre a la vista (lo pidió Cristian).
             */}
-            <div className="hidden !mt-0 lateral:flex lateral:flex-1 lateral:flex-col lateral:min-h-0">
+            <div className="hidden !mt-0 lateral:flex lateral:flex-col xl:lateral:flex-1 xl:lateral:min-h-0">
                 {rol === 'ADMIN' && adminData && (
-                    <section aria-label="Lo que viene y el cuadro de honor" className="grid grid-cols-1 items-stretch gap-3.5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] lateral:flex-1 lateral:min-h-0">
+                    <section aria-label="Lo que viene y el cuadro de honor" className="grid grid-cols-1 items-stretch gap-3.5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] xl:lateral:flex-1 xl:lateral:min-h-0">
                         <div data-recorrido="calendario-del-liceo" className="h-full min-h-0">
                             <CalendarioActividadesWidget data={adminData.eventsCalendar} className="h-full" />
                         </div>

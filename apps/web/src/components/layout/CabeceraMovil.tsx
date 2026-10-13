@@ -113,7 +113,7 @@ export function CabeceraMovil({
             <header
                 className={
                     azul
-                        ? 'zona-segura-arriba sticky top-0 z-40 bg-cabecera lateral:hidden print:!hidden'
+                        ? 'zona-segura-arriba sticky top-0 z-40 bg-cabecera dark:bg-[var(--franja-arriba)] lateral:hidden print:!hidden'
                         : 'zona-segura-arriba sticky top-0 z-40 border-b border-gray-200 bg-white lateral:hidden print:!hidden'
                 }
             >

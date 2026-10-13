@@ -173,7 +173,21 @@ function variablesDeLaCabecera(c) {
     v['--cab-medio-hex'] = c.medio;
     v['--cab-hondo-hex'] = c.hondo;
     v['--cab-tinta-hex'] = c.tinta;
+    // La franja del Inicio (arriba, medio, abajo): en claro, el degradado de
+    // siempre de la cabecera.
+    v['--franja-arriba'] = c.fondo;
+    v['--franja-medio'] = c.medio;
+    v['--franja-abajo'] = c.hondo;
     return v;
+}
+
+/** El color de la franja del Inicio en oscuro: hondo, para que la letra blanca se lea. */
+function franjaOscura(fondo) {
+    // El tono más vivo (hasta el 80 % del color) en que la letra gris clara
+    // (#B3B3B3) aún pasa 4,5:1: el azul sale vivo y el amarillo, más hondo.
+    let t = 0.8;
+    while (t > 0.2 && contraste('#B3B3B3', mezcla(fondo, '#000000', t)) < 4.6) t -= 0.02;
+    return { arriba: mezcla(fondo, '#000000', t), medio: mezcla(fondo, '#000000', t * 0.45) };
 }
 
 /** En oscuro la cabecera es una caja más, como la barra de Spotify; el color queda en lo activo. */
@@ -183,7 +197,15 @@ function variablesDeLaCabeceraOscura(a) {
     // El icono de la página activa, sobre la pastilla oscura: el acento, o
     // su tono claro si no se ve (el violeta sobre #2A2A2A).
     const hondoDelAcento = contraste(a.acento, '#2A2A2A') >= 3 ? a.acento : c.tintaOscura;
-    return { ...variablesDeLaCabecera(hondo), '--acento-hondo': hondoDelAcento };
+    return {
+        ...variablesDeLaCabecera(hondo),
+        '--acento-hondo': hondoDelAcento,
+        // Como la app de Rial (lo pidió Cristian): en oscuro, la franja del
+        // Inicio lleva el color elegido, oscurecido, y se apaga hacia el negro.
+        '--franja-arriba': franjaOscura(c.fondo).arriba,
+        '--franja-medio': franjaOscura(c.fondo).medio,
+        '--franja-abajo': OSCURO.caja,
+    };
 }
 
 function escalaComoVariables(prefijo, escala, oscuro) {
@@ -320,5 +342,6 @@ module.exports = {
     mezcla,
     escalaDe,
     deColorOscuro,
+    franjaOscura,
     NEUTRO_OSCURO,
 };

@@ -67,6 +67,18 @@ describe('El color de la app', () => {
         }
     });
 
+    it('TEMA-08: en oscuro, la franja del Inicio lleva el color elegido (como Rial) y su letra se lee', () => {
+        for (const [id, a] of Object.entries<any>(paleta.ACENTOS)) {
+            const { arriba, medio } = paleta.franjaOscura(a.cabecera.fondo);
+            for (const [donde, fondo] of [['arriba', arriba], ['medio', medio]]) {
+                expect([id, donde, 'blanca', paleta.contraste('#FFFFFF', fondo) >= 4.5]).toEqual([id, donde, 'blanca', true]);
+                expect([id, donde, 'suave', paleta.contraste('#B3B3B3', fondo) >= 4.5]).toEqual([id, donde, 'suave', true]);
+            }
+            // Y no es negro: se ve el color.
+            expect([id, arriba.toLowerCase() !== '#000000']).toEqual([id, true]);
+        }
+    });
+
     it('TEMA-05: elegir un color pone su marca en el <html> y se recuerda', () => {
         expect(acentoGuardado()).toBe('azul');
         elegirAcento('amarillo');
