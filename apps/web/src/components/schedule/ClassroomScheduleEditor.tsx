@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useConfirm } from '@/hooks/useConfirm';
 import {
     DndContext,
+    useDndContext,
     useDraggable,
     useDroppable,
     DragEndEvent,
@@ -76,7 +77,7 @@ function DraggableSubject({ subject, id }: { subject: any, id: string }) {
             {...listeners}
             {...attributes}
             className={`p-2 rounded-md shadow-sm text-xs font-bold cursor-grab active:cursor-grabbing border ${isDragging ? 'opacity-50' : 'opacity-100'}`}
-            style={{ backgroundColor: subject?.subject?.color ? `${subject.subject.color}20` : '#f3f4f6', borderColor: subject?.subject?.color || '#e5e7eb', color: '#1f2937' }}
+            style={{ backgroundColor: subject?.subject?.color ? `${subject.subject.color}20` : '#f3f4f6', borderColor: subject?.subject?.color || '#e5e7eb', color: '#1f2937', touchAction: 'pan-y' }}
         >
             {subject?.subject?.name || 'Materia'}
         </div>
@@ -84,7 +85,13 @@ function DraggableSubject({ subject, id }: { subject: any, id: string }) {
 }
 
 // Draggable Grid Block Component
-function DraggableGridBlock({ block, onRemove }: { block: any, onRemove: () => void }) {
+/**
+ * Una clase puesta en la semana. Se arrastra a otro hueco (o a la lista, para
+ * quitarla) y, al tocarla, sale «Quitar» encima de toda ella: la ✕ que solo
+ * salía pasando el ratón no existía en una tableta (Cristian: «pueda darle
+ * click y me salga el botón de borrar»).
+ */
+function DraggableGridBlock({ block, onRemove, tocada, alTocar }: { block: any, onRemove: () => void, tocada: boolean, alTocar: () => void }) {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
         id: `grid-${block.cellId}`,
         data: { type: 'grid-block', block }
@@ -95,36 +102,51 @@ function DraggableGridBlock({ block, onRemove }: { block: any, onRemove: () => v
             ref={setNodeRef}
             {...listeners}
             {...attributes}
-            className={`absolute inset-1 rounded-md p-1.5 shadow-sm text-[10px] flex flex-col justify-between group overflow-hidden cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-50' : 'opacity-100'}`}
-            style={{ backgroundColor: block.color ? `${block.color}20` : '#f3f4f6', borderLeft: `3px solid ${block.color || '#6366f1'}`, zIndex: isDragging ? 10 : 1 }}
+            onClick={(e) => { e.stopPropagation(); alTocar(); }}
+            className={`absolute inset-1 rounded-md p-1.5 shadow-sm text-[10px] flex flex-col justify-between group overflow-hidden cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-50' : 'opacity-100'} ${tocada ? 'ring-2 ring-red-400' : ''}`}
+            style={{ backgroundColor: block.color ? `${block.color}20` : '#f3f4f6', borderLeft: `3px solid ${block.color || '#6366f1'}`, zIndex: isDragging ? 10 : 1, touchAction: 'pan-y' }}
         >
             <div className="font-bold text-gray-800 line-clamp-1 pointer-events-none">{block.subjectName}</div>
             <div className="text-gray-500 line-clamp-1 pointer-events-none">{block.teacherName}</div>
 
-            <button aria-label={`Quitar ${block.subjectName} de esta hora`}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); onRemove(); }}
-                className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-100 p-0.5 rounded transition-opacity z-20 cursor-pointer"
-            >
-                <X size={12} />
-            </button>
+            {tocada ? (
+                <button aria-label={`Quitar ${block.subjectName} de esta hora`}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); onRemove(); }}
+                    className="absolute inset-0 z-20 flex items-center justify-center gap-1 bg-red-600 text-xs font-bold text-white"
+                >
+                    <Trash2 size={14} aria-hidden /> Quitar
+                </button>
+            ) : (
+                <button aria-label={`Quitar ${block.subjectName} de esta hora`}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); onRemove(); }}
+                    className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-100 p-0.5 rounded transition-opacity z-20 cursor-pointer"
+                >
+                    <X size={12} />
+                </button>
+            )}
         </div>
     );
 }
 
 // Droppable Cell Component
-function DroppableCell({ id, block, onRemove }: { id: string, block?: any, onRemove: () => void }) {
+function DroppableCell({ id, block, onRemove, tocada, alTocar }: { id: string, block?: any, onRemove: () => void, tocada: boolean, alTocar: (id: string | null) => void }) {
     const { isOver, setNodeRef } = useDroppable({
         id: id,
     });
+    // Mientras se arrastra, los huecos libres se marcan: se ve dónde cabe.
+    const arrastrando = Boolean(useDndContext().active);
 
     return (
         <div
             ref={setNodeRef}
-            className={`min-h-[60px] p-1 border border-gray-100 relative transition-colors ${isOver ? 'bg-indigo-50 border-indigo-300' : 'bg-white hover:bg-gray-50'}`}
+            onClick={() => alTocar(null)}
+            className={`min-h-[60px] p-1 border border-gray-100 relative transition-colors ${isOver ? 'bg-indigo-50 border-indigo-300 ring-2 ring-inset ring-indigo-500' : arrastrando && !block ? 'bg-indigo-50/50 outline-dashed outline-1 -outline-offset-4 outline-indigo-300' : 'bg-white hover:bg-gray-50'}`}
         >
             {block && (
-                <DraggableGridBlock block={block} onRemove={onRemove} />
+                <DraggableGridBlock block={block} onRemove={onRemove} tocada={tocada} alTocar={() => alTocar(tocada ? null : id)} />
             )}
         </div>
     );
@@ -142,16 +164,25 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
      * para desplazar y el arrastre se cancela. Ratón y dedo van aparte: con el
      * ratón basta moverlo 6 px; con el dedo hay que mantenerlo pulsado un
      * momento, y así deslizar la lista sigue siendo deslizar la lista.
+     *
+     * Y con el dedo, dos formas de coger (octubre 2026; Cristian: «es
+     * sencillo, agarro un bloque de la izquierda y lo coloco en la tabla»):
+     * llevarlo DE LADO lo coge al instante (8 px), y mantenerlo pulsado un
+     * momento también. Subir o bajar el dedo (más de 10 px) sigue siendo
+     * desplazar la lista o la semana. Antes solo valía mantenerlo pulsado, y
+     * quien lo arrastraba sin esperar movía la lista y creía que no servía.
      */
     const sensores = useSensors(
         useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-        useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: { y: 10 }, distance: { x: 8 } } }),
         useSensor(KeyboardSensor)
     );
     const [blocks, setBlocks] = useState<any[]>([]);
     const [deletedIds, setDeletedIds] = useState<string[]>([]);
     const [isDirty, setIsDirty] = useState(false);
     const [activeDragData, setActiveDragData] = useState<any>(null);
+    /** La clase tocada en la semana: la que enseña «Quitar». */
+    const [tocada, setTocada] = useState<string | null>(null);
     const [isRandomizeModalOpen, setIsRandomizeModalOpen] = useState(false);
     const confirmDialog = useConfirm();
 
@@ -185,6 +216,13 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
 
     const handleDragStart = (event: any) => {
         setActiveDragData(event.active.data.current);
+        setTocada(null);
+        // Un toque suave en el teléfono: ya la tienes en la mano.
+        try {
+            navigator.vibrate?.(12);
+        } catch {
+            /* sin vibración: nada */
+        }
     };
 
     /** Poner una materia en un hueco (arrastrándola o tocándola y tocando el hueco). */
@@ -659,7 +697,9 @@ export default function ClassroomScheduleEditor({ classroomId, initialBlocks, su
                                                 <DroppableCell
                                                     id={cellId}
                                                     block={block}
-                                                    onRemove={() => handleRemoveBlock(cellId)}
+                                                    onRemove={() => { handleRemoveBlock(cellId); setTocada(null); }}
+                                                    tocada={tocada === cellId}
+                                                    alTocar={setTocada}
                                                 />
                                             </div>
                                         );

@@ -149,11 +149,12 @@ export function BarraInferiorMovil({ destinos }: Props) {
             aria-label="Navegación principal"
             data-recorrido="menu"
             className="zona-segura-abajo fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white shadow-[0_-1px_8px_rgba(15,23,42,0.06)] transition-transform duration-200 ease-out lateral:hidden print:!hidden"
-            style={
-                escondida
-                    ? { transform: 'translateY(calc(100% - var(--zona-segura-abajo)))' }
-                    : undefined
-            }
+            style={{
+                // Tumbado, los botones de Android van a un lado: que no tapen la barra.
+                paddingLeft: 'var(--zona-segura-izquierda)',
+                paddingRight: 'var(--zona-segura-derecha)',
+                ...(escondida ? { transform: 'translateY(calc(100% - var(--zona-segura-abajo)))' } : {}),
+            }}
         >
             <div className="mx-auto flex max-w-xl items-end justify-between px-1">
                 {Array.from({ length: faltanIzquierda }).map((_, i) => (

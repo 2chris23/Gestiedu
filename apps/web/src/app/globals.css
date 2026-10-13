@@ -280,6 +280,8 @@
 
   body {
     overscroll-behavior: none;
+    padding-left: var(--zona-segura-izquierda);
+    padding-right: var(--zona-segura-derecha);
   }
 
   /**
@@ -439,6 +441,10 @@
        paleta-de-colores.js, uno por cada color que se puede elegir. */
     --zona-segura-arriba: env(safe-area-inset-top, 0px);
     --zona-segura-abajo: env(safe-area-inset-bottom, 0px);
+    /* Tumbado, Android pone sus botones (atrás, inicio) en un lado: ahí
+       tampoco va nada (lo vio un amigo de Cristian en el editor de horario). */
+    --zona-segura-izquierda: env(safe-area-inset-left, 0px);
+    --zona-segura-derecha: env(safe-area-inset-right, 0px);
   }
 
   /* ── LA BARRA LATERAL DEL ORDENADOR (lib/barra-lateral.ts) ──────────────
