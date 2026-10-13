@@ -101,7 +101,8 @@ function BarraDeLaCifra({ barra }: { barra: Barra }) {
 /**
  * Todas las celdas llevan las MISMAS cuatro filas —rótulo, cifra, barra y
  * pie— aunque alguna vaya vacía: así los rótulos, las cifras y las barras
- * quedan a la misma altura de una celda a otra y todo va centrado. Antes cada
+ * quedan a la misma altura de una celda a otra, todo a la izquierda (centrado
+ * se veía feo, dijo Cristian). Antes cada
  * una se centraba con lo que tenía y el «Promedio» (con su rango debajo) se
  * subía respecto de las demás.
  */
@@ -109,10 +110,10 @@ function Celda({ cifra, className, grande = false }: { cifra: Cifra; className?:
     const Icono = cifra.icono;
     return (
         <div
-            className={cn('flex min-w-0 flex-col items-center justify-center bg-white px-2.5 py-2 text-center sm:px-3', className)}
+            className={cn('flex min-w-0 flex-col justify-center bg-white px-2.5 py-2 sm:px-3', className)}
             title={cifra.detalle}
         >
-            <span className="flex max-w-full items-center justify-center gap-1 text-xs font-medium text-gray-500 sm:gap-1.5">
+            <span className="flex max-w-full items-center gap-1 text-xs font-medium text-gray-500 sm:gap-1.5">
                 {/* En el teléfono, sin icono: con él «Observaciones» no cabía
                     (y con la letra del teléfono agrandada, tampoco otras). */}
                 <Icono className={cn('hidden h-3.5 w-3.5 shrink-0 sm:block', TONOS[cifra.tono])} aria-hidden />
