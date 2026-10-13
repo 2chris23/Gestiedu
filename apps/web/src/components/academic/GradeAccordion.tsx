@@ -20,12 +20,14 @@ interface GradeAccordionProps {
         average: number;
         riskCount: number;
         occupancy: string;
-        attendance: string;
+        attendance: string | null;
         observations: number;
     };
+    /** El inicio del lapso elegido: si aún no llega, las cifras dicen «Sin registrar». */
+    inicioDelLapso?: string | null;
 }
 
-export default function GradeAccordion({ grade, classrooms, onAddSection, onEditSection, onDeleteSection, academicYearId, yearSlug, isAdmin = true, stats }: GradeAccordionProps) {
+export default function GradeAccordion({ grade, classrooms, onAddSection, onEditSection, onDeleteSection, academicYearId, yearSlug, isAdmin = true, stats, inicioDelLapso }: GradeAccordionProps) {
     const [isOpen, setIsOpen] = useState(false);
 
     return (
@@ -76,15 +78,15 @@ export default function GradeAccordion({ grade, classrooms, onAddSection, onEdit
                     {/* Year-level Stats Panel */}
                     <div className="px-6 py-5 border-t border-b border-gray-100 bg-gray-50/30">
                         {stats ? (
-                            <AcademicStats stats={stats} />
+                            <AcademicStats stats={stats} inicioDelLapso={inicioDelLapso} />
                         ) : (
                             <AcademicStats stats={{
                                 average: 0,
                                 riskCount: 0,
                                 occupancy: `0/0`,
-                                attendance: `0%`,
+                                attendance: null,
                                 observations: 0
-                            }} />
+                            }} inicioDelLapso={inicioDelLapso} />
                         )}
                     </div>
 

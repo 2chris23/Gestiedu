@@ -258,6 +258,7 @@ export default function AcademicYearDashboard() {
         if (hoyDelLiceo >= inicio) return 'ACTIVE';
         return 'UPCOMING';
     })();
+    const inicioDelLapso = (year.periods || []).find((p) => p.id === lapsoId)?.startDate;
     const ESTADOS = {
         ACTIVE: { texto: 'En curso', clase: 'sm:bg-emerald-50 text-emerald-700 ring-emerald-200' },
         UPCOMING: { texto: 'Próximo', clase: 'sm:bg-blue-50 text-blue-700 ring-blue-200' },
@@ -347,7 +348,7 @@ export default function AcademicYearDashboard() {
 
                     <AcademicStats
                         stats={globalStats || undefined}
-                        inicioDelLapso={(year.periods || []).find((p) => p.id === lapsoId)?.startDate}
+                        inicioDelLapso={inicioDelLapso}
                         className="mt-3"
                     />
                 </div>
@@ -396,6 +397,7 @@ export default function AcademicYearDashboard() {
                                 yearSlug={year.name}
                                 isAdmin={isAdmin}
                                 stats={gradeStats[grade]?.stats}
+                                inicioDelLapso={inicioDelLapso}
                             />
                         ))}
                     </div>
