@@ -248,14 +248,15 @@ function AdminMateriasPage() {
                                         >
                                             {m.name.charAt(0)}
                                         </span>
-                                        <span className="min-w-0 truncate font-medium text-gray-900 group-hover:text-indigo-600">
-                                            {m.name}
+                                        {/* El nombre en dos líneas si hace falta y «Apreciación» debajo: en una
+                                            sola línea no dejaban encoger la tabla, y en una tableta se salía de
+                                            ancho (Editar y Eliminar quedaban fuera). */}
+                                        <span className="flex min-w-0 flex-col items-start gap-1">
+                                            <span className="break-words font-medium text-gray-900 group-hover:text-indigo-600">{m.name}</span>
+                                            {m.evaluacion === 'CUALITATIVA' && (
+                                                <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800">Apreciación</span>
+                                            )}
                                         </span>
-                                        {m.evaluacion === 'CUALITATIVA' && (
-                                            <span className="shrink-0 rounded-full bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800">
-                                                Apreciación
-                                            </span>
-                                        )}
                                     </Link>
                                 ),
                             },

@@ -182,7 +182,9 @@ export function TablaAdaptable<T>({
                 pantalla grande se comporta como en un teléfono, que es lo
                 correcto: lo que importa es el sitio que tiene, no el que tiene
                 la pantalla. ══════════════════════════════════════════════ */}
-            <div className="hidden overflow-hidden rounded-lg border border-linea bg-tarjeta shadow-1 @2xl:block">
+            {/* `relative`: el `sr-only` de una cabecera (que es `absolute`) se queda
+                dentro de la caja; si no, ensanchaba la PÁGINA (como en el carril). */}
+            <div className="relative hidden overflow-hidden rounded-lg border border-linea bg-tarjeta shadow-1 @2xl:block">
                 <table className="w-full border-collapse">
                     <thead>
                         <tr className="border-b border-linea bg-lienzo-hundido/60">

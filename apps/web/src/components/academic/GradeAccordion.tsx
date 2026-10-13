@@ -30,13 +30,13 @@ export default function GradeAccordion({ grade, classrooms, onAddSection, onEdit
 
     return (
         <div className={`
-            border rounded-xl bg-white shadow-sm transition-all duration-300
-            ${isOpen ? 'ring-2 ring-indigo-50 border-indigo-100 relative z-20' : 'border-gray-200 hover:border-indigo-200 relative z-0'}
+            border rounded-xl bg-white transition-all duration-300
+            ${isOpen ? 'border-indigo-200 shadow-md relative z-20' : 'border-gray-200 hover:border-indigo-200 shadow-sm relative z-0'}
         `}>
             {/* Header / Trigger */}
             <div
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center justify-between p-5 cursor-pointer bg-white select-none"
+                className={`flex items-center justify-between p-5 cursor-pointer bg-white select-none rounded-t-xl transition-colors ${!isOpen ? 'rounded-b-xl' : ''}`}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
@@ -72,7 +72,7 @@ export default function GradeAccordion({ grade, classrooms, onAddSection, onEdit
 
             {/* Content Body */}
             {isOpen && (
-                <div className="animate-in slide-in-from-top-2 duration-300 bg-white">
+                <div className="animate-in slide-in-from-top-2 duration-300 bg-white rounded-b-xl">
                     {/* Year-level Stats Panel */}
                     <div className="px-6 py-5 border-t border-b border-gray-100 bg-gray-50/30">
                         {stats ? (
@@ -88,7 +88,7 @@ export default function GradeAccordion({ grade, classrooms, onAddSection, onEdit
                         )}
                     </div>
 
-                    <div className="p-6 bg-gray-50/50">
+                    <div className="p-6 bg-gray-50/50 rounded-b-xl">
                         <div className="flex items-center justify-between mb-5">
                             <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
                                 <Users className="w-4 h-4" /> Secciones

@@ -58,19 +58,26 @@ function AccesoBoton({ href, name, Icono }: { href: string; name: string; Icono:
     );
 }
 
-function TarjetaMetrica({ tarjeta }: { tarjeta: TarjetaMetricaMovil }) {
+/**
+ * Una tarjeta de cristal sobre el azul. `grande`: la del ordenador (la del
+ * diseño «Escritorio — Inicio Admin»), sin la barrita: allí van tres en fila
+ * y la cifra se lee sola.
+ */
+export function TarjetaMetrica({ tarjeta, grande = false }: { tarjeta: TarjetaMetricaMovil; grande?: boolean }) {
     const contenido = (
         <>
             <span className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
+                <span className={grande ? 'flex items-center gap-2.5' : 'flex items-center gap-2'}>
                     {tarjeta.icono}
-                    <span className="text-[13px] font-semibold">{tarjeta.titulo}</span>
+                    <span className={grande ? 'text-sm font-semibold' : 'text-[13px] font-semibold'}>{tarjeta.titulo}</span>
                 </span>
                 {tarjeta.href && <ChevronRight className="h-4 w-4 text-[#90CAF9]" aria-hidden />}
             </span>
             <span className="flex flex-col gap-0.5">
-                <span className="text-2xl font-extrabold tracking-[-0.5px]">{tarjeta.valor}</span>
-                {tarjeta.porcentajeBarra !== undefined && (
+                <span className={grande ? 'text-[30px] font-extrabold leading-tight tracking-[-0.5px]' : 'text-2xl font-extrabold tracking-[-0.5px]'}>
+                    {tarjeta.valor}
+                </span>
+                {!grande && tarjeta.porcentajeBarra !== undefined && (
                     <span aria-hidden className="my-1 h-1.5 overflow-hidden rounded-full bg-white/15">
                         <span
                             className="block h-full rounded-full transition-[width] duration-700 ease-suave"
@@ -81,13 +88,14 @@ function TarjetaMetrica({ tarjeta }: { tarjeta: TarjetaMetricaMovil }) {
                         />
                     </span>
                 )}
-                <span className="text-xs font-medium text-[#BBDEFB]">{tarjeta.subtitulo}</span>
+                <span className={grande ? 'text-xs font-medium text-[#E3F2FD]' : 'text-xs font-medium text-[#BBDEFB]'}>{tarjeta.subtitulo}</span>
             </span>
         </>
     );
 
-    const clases =
-        'flex flex-col gap-2.5 rounded-[20px] border border-white/[0.16] bg-white/10 p-3.5 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_8px_24px_rgba(4,24,64,0.25)] backdrop-blur-md transition-transform active:scale-[0.98]';
+    const clases = grande
+        ? 'flex flex-col justify-between gap-3.5 rounded-[22px] border border-white/[0.14] bg-white/10 p-4 text-white transition-colors hover:bg-white/[0.14]'
+        : 'flex flex-col gap-2.5 rounded-[20px] border border-white/[0.16] bg-white/10 p-3.5 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_8px_24px_rgba(4,24,64,0.25)] backdrop-blur-md transition-transform active:scale-[0.98]';
 
     if (tarjeta.href) {
         return (
@@ -97,6 +105,40 @@ function TarjetaMetrica({ tarjeta }: { tarjeta: TarjetaMetricaMovil }) {
         );
     }
     return <div className={clases}>{contenido}</div>;
+}
+
+/** El ojo del promedio: se recuerda en este aparato (teléfono y ordenador, la misma llave). */
+export function usePromedioOculto(): [boolean, () => void] {
+    const [oculto, setOculto] = React.useState(false);
+
+    React.useEffect(() => {
+        try {
+            setOculto(localStorage.getItem(LLAVE_PROMEDIO_OCULTO) === '1');
+        } catch {
+            /* sin almacén */
+        }
+    }, []);
+
+    const alternar = React.useCallback(() => {
+        setOculto((v) => {
+            try {
+                localStorage.setItem(LLAVE_PROMEDIO_OCULTO, v ? '0' : '1');
+            } catch {
+                /* sin almacén */
+            }
+            return !v;
+        });
+    }, []);
+
+    return [oculto, alternar];
+}
+
+/** «13.1», «—» sin dato, «••.•» oculto. */
+export function laCifraComoSeLee(cifra: number | null | string | undefined, oculto: boolean): string {
+    if (oculto) return '••.•';
+    if (cifra === null || cifra === undefined || cifra === '') return '—';
+    if (typeof cifra === 'number') return cifra.toFixed(1);
+    return cifra;
 }
 
 export function InicioMovil({
@@ -111,33 +153,8 @@ export function InicioMovil({
     children,
     etiquetaAria = 'El liceo hoy',
 }: InicioMovilProps) {
-    const [oculto, setOculto] = React.useState(false);
-
-    React.useEffect(() => {
-        try {
-            setOculto(localStorage.getItem(LLAVE_PROMEDIO_OCULTO) === '1');
-        } catch {
-            /* sin almacén */
-        }
-    }, []);
-
-    const alternar = () => {
-        setOculto((v) => {
-            try {
-                localStorage.setItem(LLAVE_PROMEDIO_OCULTO, v ? '0' : '1');
-            } catch {
-                /* sin almacén */
-            }
-            return !v;
-        });
-    };
-
-    const valorFormateado = (() => {
-        if (oculto) return '••.•';
-        if (cifra === null || cifra === undefined || cifra === '') return '—';
-        if (typeof cifra === 'number') return cifra.toFixed(1);
-        return cifra;
-    })();
+    const [oculto, alternar] = usePromedioOculto();
+    const valorFormateado = laCifraComoSeLee(cifra, oculto);
 
     return (
         <div className="lateral:hidden">

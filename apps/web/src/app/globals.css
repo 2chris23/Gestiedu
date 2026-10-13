@@ -438,6 +438,76 @@
     --zona-segura-abajo: env(safe-area-inset-bottom, 0px);
   }
 
+  /* ── LA BARRA LATERAL DEL ORDENADOR (lib/barra-lateral.ts) ──────────────
+     Su ancho es UNA variable: la barra y el margen del contenido la leen a
+     la vez, así que se mueven juntos. Recogida, solo los iconos. La pone un
+     guion del <head> antes de pintar: sin él, la página arrancaba abierta y
+     se cerraba delante de quien la miraba. */
+  :root {
+    --ancho-lateral: 264px;
+    /* El logo del liceo, grande (lo pidió Cristian). En un portátil de 768 px
+       de alto se come el menú: ahí, algo menor. */
+    --logo-cabecera: 192px;
+    --logo-baldosa: 146px;
+  }
+  @media (max-height: 820px) {
+    :root {
+      --logo-cabecera: 132px;
+      --logo-baldosa: 100px;
+    }
+  }
+  /* EL FONDO DE LAS TRES CAJAS DEL ORDENADOR. El azul de la app con luces
+     que se desvanecen, como el Inicio del teléfono; las cajas azules son de
+     cristal (blanco translúcido con un borde suave, como las tarjetas de
+     Asistencia): con un azul oscuro de fondo, el borde de cada caja era una
+     raya dura. Las luces van fijas detrás (::before) para que la barra, que
+     también es fija y translúcida, no vea moverse el degradado al bajar. */
+  @media (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (min-height: 600px) {
+    .marco-del-ordenador {
+      isolation: isolate;
+      background-color: #F8FAFC;
+    }
+    /* La barra de desplazamiento, fina y del color de la app (Cristian: «no la
+       predeterminada del navegador»). La de la página va sobre el fondo; las de dentro (tablas, listas), sobre blanco. */
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: #c3d2e6 transparent;
+    }
+    html {
+      scrollbar-color: #94a3b8 transparent;
+    }
+    .marco-del-ordenador::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        radial-gradient(800px circle at 100% 0%, rgba(227, 242, 253, 0.5), transparent 70%),
+        radial-gradient(600px circle at 0% 100%, rgba(241, 245, 249, 0.8), transparent 70%),
+        #F8FAFC;
+    }
+  }
+  html[data-lateral="recogida"] {
+    --ancho-lateral: 76px;
+  }
+  .transicion-lateral {
+    transition:
+      width 240ms cubic-bezier(0.22, 1, 0.36, 1),
+      margin-left 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  /* Con el teclado (Ctrl+B) no se anima: lo que se hace cien veces al día
+     tiene que ser inmediato. */
+  html[data-lateral-al-instante] .transicion-lateral,
+  html[data-lateral-al-instante] .transicion-lateral * {
+    transition: none !important;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .transicion-lateral {
+      transition: none;
+    }
+  }
+
   /* El hueco de arriba, para lo que se pega al borde superior. */
   .zona-segura-arriba {
     padding-top: var(--zona-segura-arriba);

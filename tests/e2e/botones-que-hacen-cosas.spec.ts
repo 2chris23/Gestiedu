@@ -218,7 +218,9 @@ test.describe('Los botones, pulsados de verdad', () => {
             await loginViaUI(page, 'admin@testing.edu.ve', CLAVE);
             await irA(page, '/dashboard');
 
-            await page.getByRole('button', { name: /Cerrar Sesión/i }).first().click();
+            // En el ordenador se sale desde el menú de tu nombre, abajo de la barra.
+            await page.locator('#barra-lateral [data-recorrido="mi-cuenta"]').click();
+            await page.getByRole('menuitem', { name: 'Cerrar sesión' }).click();
             await page.waitForTimeout(3000);
 
             // Se sale a la pantalla de entrar...

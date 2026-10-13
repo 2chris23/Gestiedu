@@ -1,8 +1,11 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Calendar, ChevronLeft, ChevronRight, Clock, Bookmark, CalendarDays } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Bookmark, Clock } from 'lucide-react';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
+import { esDiaEntero } from '@/hooks/useSchoolEvents';
+import { LoDeHoy } from '@/components/dashboard/LoDeHoy';
+import { cn } from '@/lib/utils';
 
 interface CalendarEvent {
     id: string;
@@ -28,6 +31,7 @@ interface CalendarioActividadesProps {
         currentPeriod?: PeriodInfo | null;
         events: CalendarEvent[];
     };
+    className?: string;
 }
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -55,23 +59,6 @@ function monthGrid(monthDate: Date): Date[] {
     return days;
 }
 
-function formatoFechaCompleta(ymd: string): string {
-    try {
-        const [y, m, d] = ymd.split('-').map(Number);
-        if (!y || !m || !d) return ymd;
-        const fecha = new Date(y, m - 1, d);
-        const str = fecha.toLocaleDateString('es-VE', {
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-        });
-        return str.charAt(0).toUpperCase() + str.slice(1);
-    } catch {
-        return ymd;
-    }
-}
-
 function formatoFechaDiaMes(ymd: string): string {
     try {
         const [y, m, d] = ymd.split('-').map(Number);
@@ -88,7 +75,7 @@ function formatoFechaDiaMes(ymd: string): string {
     }
 }
 
-export function CalendarioActividadesWidget({ data }: CalendarioActividadesProps) {
+export function CalendarioActividadesWidget({ data, className }: CalendarioActividadesProps) {
     const today = useSchoolToday();
     const [selectedDate, setSelectedDate] = useState<string>(today);
 
@@ -125,11 +112,8 @@ export function CalendarioActividadesWidget({ data }: CalendarioActividadesProps
         setSelectedDate(today);
     };
 
-    const selectedEvents = eventsByDate.get(selectedDate) || [];
-    const isSelectedHoliday = selectedEvents.some((e) => e.isHoliday);
+    const delDia = eventsByDate.get(selectedDate) || [];
 
-    const fechaHoyTexto = formatoFechaCompleta(today);
-    const fechaSeleccionadaTexto = formatoFechaDiaMes(selectedDate);
     const lapsoTexto = currentPeriod?.name || 'Lapso Activo';
     const lapsoCierreTexto =
         currentPeriod?.daysLeft !== null && currentPeriod?.daysLeft !== undefined
@@ -142,173 +126,169 @@ export function CalendarioActividadesWidget({ data }: CalendarioActividadesProps
     });
     const mesAnoTexto = rawMesAno.charAt(0).toUpperCase() + rawMesAno.slice(1);
 
+    const cuantosHoy = (eventsByDate.get(today) || []).length;
+
     return (
-        <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-xs transition-all hover:shadow-sm">
-            {/* Cabecera del Widget: Día, Mes, Año y Lapso Escolar Activo */}
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-                <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+        <section
+            aria-labelledby="calendario-del-liceo"
+            className={cn(
+                'flex flex-col justify-between rounded-[28px] bg-white p-4 lateral:p-5 shadow-[0_1px_2px_rgba(13,71,161,0.06),0_8px_24px_rgba(13,71,161,0.05)]',
+                className
+            )}
+        >
+            {/* Cabecera: el mes que se mira y el lapso en el que estamos */}
+            <div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
+                <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#E3F2FD] text-[#0D47A1]">
                         <Calendar className="h-5 w-5" aria-hidden="true" />
-                    </div>
+                    </span>
                     <div className="min-w-0">
-                        <h3 className="text-sm font-bold text-gray-900 truncate">
-                            {fechaHoyTexto}
+                        <h3 id="calendario-del-liceo" className="truncate text-base font-extrabold text-[#0B1B33]">
+                            {mesAnoTexto}
                         </h3>
-                        <p className="text-xs text-gray-500">Fecha institucional actual</p>
+                        <p className="truncate text-[11px] text-[#5B6B82]">Eventos y días sin clases</p>
                     </div>
                 </div>
-
-                {/* Indicador del Lapso en el que estamos */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-0.5 text-xs font-bold text-violet-800 border border-violet-200">
-                        <Bookmark className="h-3.5 w-3.5" aria-hidden="true" />
+                <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#E3F2FD] px-2.5 py-1 text-[11px] font-bold text-[#0D47A1]">
+                        <Bookmark className="h-3 w-3" aria-hidden="true" />
                         {lapsoTexto}
                     </span>
                     {lapsoCierreTexto && (
-                        <span className="hidden sm:inline-block text-xs font-semibold text-violet-700 bg-violet-100/70 px-2 py-0.5 rounded-md">
+                        <span className="rounded-full bg-[var(--acento-suave)] px-2.5 py-1 text-[11px] font-bold text-[var(--acento-hondo)]">
                             {lapsoCierreTexto}
                         </span>
                     )}
                 </div>
             </div>
 
-            {/* Contenido: 1. Calendario a ancho completo */}
-            <div className="space-y-2">
-                {/* Navegación del Mes */}
-                <div className="flex items-center justify-between px-0.5">
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-gray-900">
-                            {mesAnoTexto}
-                        </span>
-                        <button
-                            type="button"
-                            onClick={handleTodayMonth}
-                            className="rounded px-1.5 py-0.5 text-xs font-bold text-violet-700 hover:bg-violet-100 transition-colors"
-                        >
-                            Ir a hoy
-                        </button>
-                    </div>
-                    <div className="flex items-center gap-1">
-                        <button
-                            type="button"
-                            onClick={handlePrevMonth}
-                            aria-label="Mes anterior"
-                            className="flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 transition-colors"
-                        >
-                            <ChevronLeft className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleNextMonth}
-                            aria-label="Mes siguiente"
-                            className="flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 transition-colors"
-                        >
-                            <ChevronRight className="h-3.5 w-3.5" />
-                        </button>
-                    </div>
+            {/* Ir a hoy y los meses */}
+            <div className="flex items-center justify-between border-t border-[#EDF1F7] pt-2.5 shrink-0">
+                <button
+                    type="button"
+                    onClick={handleTodayMonth}
+                    className="-ml-1.5 min-h-[32px] rounded-full px-2 text-xs font-bold text-[#0D47A1] transition-colors hover:bg-[#E3F2FD]"
+                >
+                    Ir a hoy
+                </button>
+                <div className="flex items-center gap-1.5">
+                    <button
+                        type="button"
+                        onClick={handlePrevMonth}
+                        aria-label="Mes anterior"
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-[#E3E8F0] bg-white text-[#33415C] transition-colors hover:bg-[#F4F7FB] active:scale-[0.97]"
+                    >
+                        <ChevronLeft className="h-4 w-4" aria-hidden />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleNextMonth}
+                        aria-label="Mes siguiente"
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-[#E3E8F0] bg-white text-[#33415C] transition-colors hover:bg-[#F4F7FB] active:scale-[0.97]"
+                    >
+                        <ChevronRight className="h-4 w-4" aria-hidden />
+                    </button>
                 </div>
+            </div>
 
-                {/* Días de la semana */}
-                <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-gray-600">
-                    {WEEKDAYS.map((wd) => (
-                        <span key={wd}>{wd}</span>
-                    ))}
-                </div>
+            {/* Días de la semana */}
+            <div className="grid grid-cols-7 text-center shrink-0 pt-1 pb-0.5">
+                {WEEKDAYS.map((wd) => (
+                    <span key={wd} className="text-xs font-bold text-[#5B6B82]">
+                        {wd}
+                    </span>
+                ))}
+            </div>
 
-                {/* Rejilla de días del mes */}
-                <div className="grid grid-cols-7 gap-1">
-                    {gridDays.map((dateObj, i) => {
-                        const ymd = toYMD(dateObj);
-                        const isCurrentMonth = dateObj.getMonth() === currentMonthDate.getMonth();
-                        const isToday = ymd === today;
-                        const isSelected = ymd === selectedDate;
-                        const dayEvents = eventsByDate.get(ymd) || [];
-                        const hasHoliday = dayEvents.some((e) => e.isHoliday);
-                        const hasEvent = dayEvents.length > 0;
+            {/* El mes. Las filas tienen su alto: estiradas a toda la tarjeta, cada
+                semana medía 100 px y el mes parecía vacío. Lo que sobra es para
+                lo del día elegido, debajo. */}
+            <div className="grid shrink-0 grid-cols-7 auto-rows-[44px] text-center lateral:auto-rows-[50px]">
+                {gridDays.map((dateObj, i) => {
+                    const ymd = toYMD(dateObj);
+                    const isCurrentMonth = dateObj.getMonth() === currentMonthDate.getMonth();
+                    const isToday = ymd === today;
+                    const isSelected = ymd === selectedDate;
+                    const finDeSemana = i % 7 >= 5;
+                    const dayEvents = eventsByDate.get(ymd) || [];
+                    const hasHoliday = dayEvents.some((e) => e.isHoliday);
 
-                        return (
+                    return (
+                        <div key={`${ymd}-${i}`} className="flex items-center justify-center">
                             <button
-                                key={`${ymd}-${i}`}
                                 type="button"
                                 onClick={() => setSelectedDate(ymd)}
-                                className={`relative flex h-8 w-full flex-col items-center justify-center rounded-lg text-xs transition-all ${
-                                    isSelected
-                                        ? 'bg-violet-600 font-bold text-white shadow-xs'
-                                        : isToday
-                                        ? 'border border-violet-400 font-bold text-violet-900 bg-violet-50'
-                                        : isCurrentMonth
-                                        ? 'text-gray-800 hover:bg-gray-100 hover:shadow-2xs'
-                                        : 'text-gray-500'
+                                aria-pressed={isSelected}
+                                aria-label={`${formatoFechaDiaMes(ymd)}${dayEvents.length ? `, ${dayEvents.length} ${dayEvents.length === 1 ? 'evento' : 'eventos'}` : ''}`}
+                                className={`relative flex h-9 w-9 lateral:h-10 lateral:w-10 items-center justify-center rounded-xl text-xs lateral:text-sm transition-colors ${
+                                    isToday
+                                        ? 'bg-[var(--acento)] font-extrabold text-[var(--sobre-acento)] shadow-sm'
+                                        : isSelected
+                                        ? 'font-bold text-[#0B1B33] ring-2 ring-inset ring-[#0D47A1] bg-[#E3F2FD]/50'
+                                        : !isCurrentMonth
+                                        ? 'text-[#66758A] hover:bg-[#F4F7FB]'
+                                        : finDeSemana
+                                        ? 'text-[#5B6B82] hover:bg-[#F4F7FB]'
+                                        : 'font-medium text-[#0B1B33] hover:bg-[#F4F7FB]'
                                 }`}
                             >
-                                <span>{dateObj.getDate()}</span>
-                                {hasEvent && !isSelected && (
+                                {dateObj.getDate()}
+                                {dayEvents.length > 0 && (
                                     <span
-                                        className={`absolute bottom-1 h-1 w-1 rounded-full ${
-                                            hasHoliday ? 'bg-rose-500' : 'bg-violet-600'
+                                        aria-hidden
+                                        className={`absolute bottom-1 h-1.5 w-1.5 rounded-full ${
+                                            hasHoliday ? 'bg-rose-500' : isToday ? 'bg-[var(--sobre-acento)]' : 'bg-[#0D47A1]'
                                         }`}
                                     />
                                 )}
                             </button>
-                        );
-                    })}
-                </div>
+                        </div>
+                    );
+                })}
             </div>
 
-            {/* 2. Actividades del Día Seleccionado (abajo del calendario) */}
-            <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 space-y-2">
-                <div className="flex items-center justify-between border-b border-gray-200/60 pb-1.5">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                        <CalendarDays className="h-3.5 w-3.5 text-violet-600 shrink-0" aria-hidden="true" />
-                        <span className="text-xs font-bold text-gray-900 truncate">
-                            {fechaSeleccionadaTexto}
-                        </span>
-                    </div>
-                    {selectedDate === today && (
-                        <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-800">
-                            Hoy
-                        </span>
-                    )}
-                </div>
-
-                {isSelectedHoliday && (
-                    <div className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-xs font-medium text-rose-800">
-                        Día sin clases / Feriado institucional
-                    </div>
-                )}
-
-                {/* Lista de actividades o aviso compacto */}
-                <div className="space-y-1.5 max-h-[120px] overflow-y-auto pr-0.5">
-                    {selectedEvents.length === 0 ? (
-                        <p className="py-1.5 text-center text-xs text-gray-500">
-                            No hay actividades programadas para este día.
-                        </p>
-                    ) : (
-                        selectedEvents.map((ev) => (
-                            <div
+            {/* Lo del día elegido: el hueco que queda bajo el mes. */}
+            <div className="mt-2 min-h-0 flex-1 overflow-y-auto border-t border-[#EDF1F7] pt-2.5">
+                <p className="text-xs font-bold text-[#5B6B82]">{formatoFechaDiaMes(selectedDate)}</p>
+                {delDia.length === 0 ? (
+                    <p className="mt-1 text-sm text-[#5B6B82]">Sin eventos este día.</p>
+                ) : (
+                    <ul className="mt-1.5 flex flex-col gap-1.5">
+                        {delDia.map((ev) => (
+                            <li
                                 key={ev.id}
-                                className="flex items-start justify-between gap-2 rounded-lg border border-gray-200/70 bg-white p-2 text-xs shadow-2xs"
+                                className={cn(
+                                    'flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm',
+                                    ev.isHoliday ? 'bg-rose-50 text-rose-900' : 'bg-[#F4F7FB] text-[#0B1B33]'
+                                )}
                             >
-                                <div className="min-w-0">
-                                    <p className="font-bold text-gray-900 truncate">{ev.title}</p>
-                                    {ev.startTime && (
-                                        <p className="flex items-center gap-1 text-xs text-gray-500 mt-0.5">
-                                            <Clock className="h-3 w-3" />
-                                            {ev.startTime} {ev.endTime ? `- ${ev.endTime}` : ''}
-                                        </p>
-                                    )}
-                                </div>
-                                {ev.scope && (
-                                    <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-700 uppercase">
-                                        {ev.scope}
+                                <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', ev.isHoliday ? 'bg-rose-500' : 'bg-[#0D47A1]')} />
+                                <span className="min-w-0 flex-1 truncate font-semibold">{ev.title}</span>
+                                {ev.startTime && (
+                                    <span className="flex shrink-0 items-center gap-1 text-xs text-[#5B6B82]">
+                                        <Clock className="h-3 w-3" aria-hidden />
+                                        {ev.endTime && esDiaEntero({ startTime: ev.startTime, endTime: ev.endTime })
+                                            ? 'Todo el día'
+                                            : `${ev.startTime}${ev.endTime ? `–${ev.endTime}` : ''}`}
                                     </span>
                                 )}
-                            </div>
-                        ))
-                    )}
-                </div>
+                            </li>
+                        ))}
+                    </ul>
+                )}
             </div>
-        </div>
+
+            {/* Franja inferior: Lo de hoy */}
+            <div className="shrink-0 pt-2">
+                <LoDeHoy
+                    cantidad={cuantosHoy}
+                    una="actividad"
+                    varias="actividades"
+                    detalle={[formatoFechaDiaMes(today), currentPeriod?.name].filter(Boolean).join(' · ')}
+                    href="/dashboard/eventos"
+                />
+            </div>
+        </section>
     );
 }
 

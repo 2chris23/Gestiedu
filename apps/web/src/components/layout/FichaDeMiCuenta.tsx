@@ -58,6 +58,12 @@ export interface FichaDeMiCuentaProps {
     liceo?: string;
     esAdmin: boolean;
     alCerrarSesion: () => void | Promise<void>;
+    /**
+     * Por dónde sale. En el teléfono, desde abajo (donde está el pulgar); en
+     * el ordenador, desde la derecha, y sin el color: ese ya está en el menú
+     * de tu nombre (`MiNombreYMenu`).
+     */
+    lado?: 'bottom' | 'right';
 }
 
 /** «Mozilla/5.0 (Linux; Android 14; SM-A536B)…» → «Android · Chrome». */
@@ -97,16 +103,21 @@ export function FichaDeMiCuenta({
     liceo,
     esAdmin,
     alCerrarSesion,
+    lado = 'bottom',
 }: FichaDeMiCuentaProps) {
     const [cambiandoClave, setCambiandoClave] = React.useState(false);
 
     return (
         <Sheet open={abierta} onOpenChange={(v) => !v && alCerrar()}>
             <SheetContent
-                side="bottom"
+                side={lado}
                 /* El hueco de abajo es la barra de gestos del teléfono: sin él,
                    el último botón queda donde el dedo pulsa la barra. */
-                className="zona-segura-abajo max-h-[88dvh] overflow-y-auto rounded-t-2xl p-0"
+                className={
+                    lado === 'bottom'
+                        ? 'zona-segura-abajo max-h-[88dvh] overflow-y-auto rounded-t-2xl p-0'
+                        : 'w-full overflow-y-auto p-0 sm:max-w-md'
+                }
             >
                 <div className="px-5 pb-4 pt-6">
                     <div className="flex items-center gap-3">
@@ -148,7 +159,7 @@ export function FichaDeMiCuenta({
 
                     {cambiandoClave && <FormularioDeClave alTerminar={() => setCambiandoClave(false)} />}
 
-                    <ColorDeLaApp />
+                    {lado === 'bottom' && <ColorDeLaApp />}
 
                     <LaHuellaDeEsteTelefono visible={abierta} correo={nombreCompleto} />
 

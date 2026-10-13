@@ -27,6 +27,8 @@ import { cn } from '@/lib/utils';
 const LICEO = 'liceo';
 const ANOS = [1, 2, 3, 4, 5];
 const FILAS_A_LA_VISTA = 3;
+/** En el ordenador la tarjeta llega al fondo de la pantalla: caben dos filas más. */
+const FILAS_EN_EL_ORDENADOR = 5; // en una pantalla alta (`alta:`); en un portátil, tres
 
 const iniciales = (nombre: string) =>
     nombre
@@ -86,7 +88,7 @@ const laChapa = (puesto: number, lugar: number, medalla: string) => (puesto === 
 const SELECTOR =
     'h-10 w-auto gap-1.5 rounded-full border border-[#E3E8F0] bg-white px-3.5 text-[13px] font-bold text-[#0B1B33] [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-100';
 
-export function CuadroDeHonorWidget() {
+export function CuadroDeHonorWidget({ className }: { className?: string } = {}) {
     const titulo = React.useId();
     const [alcance, setAlcance] = React.useState<string | null>(null);
     const [ano, setAno] = React.useState<number | null>(null);
@@ -95,52 +97,61 @@ export function CuadroDeHonorWidget() {
     const filas = data?.filas ?? [];
     const podio = (lugar: number) => filas[lugar - 1];
     const resto = filas.slice(3);
-    const aLaVista = todos ? resto : resto.slice(0, FILAS_A_LA_VISTA);
+    const aLaVista = todos ? resto : resto.slice(0, FILAS_EN_EL_ORDENADOR);
 
     return (
-        <section className="flex flex-col gap-3.5 rounded-3xl bg-white px-4 py-[18px] shadow-[0_1px_2px_rgba(13,71,161,0.06)]" aria-labelledby={titulo}>
-            <div className="flex items-center gap-2.5">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-[#FFF6DA] text-[#9A6B00]">
-                    <Trophy className="h-5 w-5" aria-hidden />
-                </span>
-                <div className="min-w-0">
-                    <h3 id={titulo} className="text-[15px] font-extrabold text-[#0B1B33]">
-                        Cuadro de honor
-                    </h3>
-                    <p className="text-xs text-[#5B6B82]">
-                        Se actualiza cada sábado{data?.fecha ? ` · última: ${fechaDeLaFoto(data.fecha)}` : ''}
-                    </p>
+        <section
+            className={cn(
+                'flex flex-col justify-between gap-3.5 rounded-3xl bg-white px-4 py-[18px] shadow-[0_1px_2px_rgba(13,71,161,0.06)] lateral:gap-3.5 lateral:rounded-[28px] lateral:p-5 lateral:shadow-[0_1px_2px_rgba(13,71,161,0.06),0_8px_24px_rgba(13,71,161,0.05)]',
+                className
+            )}
+            aria-labelledby={titulo}
+        >
+            {/* En el ordenador, los dos selectores van a la derecha del título (el diseño). */}
+            <div className="flex flex-col gap-3.5 lateral:flex-row lateral:flex-wrap lateral:items-center lateral:justify-between lateral:gap-3">
+                <div className="flex items-center gap-2.5 lateral:gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-[#FFF6DA] text-[#9A6B00] lateral:h-11 lateral:w-11">
+                        <Trophy className="h-5 w-5" aria-hidden />
+                    </span>
+                    <div className="min-w-0">
+                        <h3 id={titulo} className="text-[15px] font-extrabold text-[#0B1B33] lateral:text-[17px]">
+                            Cuadro de honor
+                        </h3>
+                        <p className="text-xs text-[#5B6B82]">
+                            Se actualiza cada sábado{data?.fecha ? ` · última: ${fechaDeLaFoto(data.fecha)}` : ''}
+                        </p>
+                    </div>
                 </div>
-            </div>
 
-            <div className="flex flex-wrap gap-2">
-                <Select value={alcance ?? data?.alcance ?? 'CICLO'} onValueChange={(v) => setAlcance(v)}>
-                    <SelectTrigger aria-label="Lapso o ciclo completo" className={SELECTOR}>
-                        <SelectValue placeholder="Ciclo completo" />
-                    </SelectTrigger>
-                    <SelectContent position="popper" align="start" className="rounded-xl bg-white p-1">
-                        {(data?.alcances ?? [{ id: 'CICLO', nombre: 'Ciclo completo' }]).map((a) => (
-                            <SelectItem key={a.id} value={a.id} className="min-h-[44px] rounded-lg text-sm">
-                                {a.nombre}
+                <div className="flex flex-wrap gap-2">
+                    <Select value={alcance ?? data?.alcance ?? 'CICLO'} onValueChange={(v) => setAlcance(v)}>
+                        <SelectTrigger aria-label="Lapso o ciclo completo" className={SELECTOR}>
+                            <SelectValue placeholder="Ciclo completo" />
+                        </SelectTrigger>
+                        <SelectContent position="popper" align="start" className="rounded-xl bg-white p-1">
+                            {(data?.alcances ?? [{ id: 'CICLO', nombre: 'Ciclo completo' }]).map((a) => (
+                                <SelectItem key={a.id} value={a.id} className="min-h-[44px] rounded-lg text-sm">
+                                    {a.nombre}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Select value={ano ? String(ano) : LICEO} onValueChange={(v) => setAno(v === LICEO ? null : Number(v))}>
+                        <SelectTrigger aria-label="Todo el liceo o un año" className={SELECTOR}>
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent position="popper" align="start" className="rounded-xl bg-white p-1">
+                            <SelectItem value={LICEO} className="min-h-[44px] rounded-lg text-sm">
+                                Todo el liceo
                             </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-                <Select value={ano ? String(ano) : LICEO} onValueChange={(v) => setAno(v === LICEO ? null : Number(v))}>
-                    <SelectTrigger aria-label="Todo el liceo o un año" className={SELECTOR}>
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper" align="start" className="rounded-xl bg-white p-1">
-                        <SelectItem value={LICEO} className="min-h-[44px] rounded-lg text-sm">
-                            Todo el liceo
-                        </SelectItem>
-                        {ANOS.map((n) => (
-                            <SelectItem key={n} value={String(n)} className="min-h-[44px] rounded-lg text-sm">
-                                {n}.º año
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                            {ANOS.map((n) => (
+                                <SelectItem key={n} value={String(n)} className="min-h-[44px] rounded-lg text-sm">
+                                    {n}.º año
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
 
             {isLoading ? (
@@ -161,7 +172,8 @@ export function CuadroDeHonorWidget() {
                 </div>
             ) : (
                 <>
-                    <ol className="grid grid-cols-[1fr_1.12fr_1fr] items-end gap-2 pt-3" aria-label="Los tres primeros">
+                    <div className="flex min-h-0 flex-1 flex-col gap-3 lateral:gap-4 lateral:overflow-y-auto">
+                        <ol className="grid grid-cols-[1fr_1.12fr_1fr] items-end gap-2 pt-3" aria-label="Los tres primeros">
                         {PODIO.map(({ lugar, medalla, caja, chapa, circulo, puntos }) => {
                             const f = podio(lugar);
                             if (!f) {
@@ -203,12 +215,17 @@ export function CuadroDeHonorWidget() {
                     </ol>
 
                     {aLaVista.length > 0 && (
-                        <ol className="flex flex-col gap-2" start={4} aria-label="Del cuarto en adelante">
-                            {aLaVista.map((f) => (
-                                <li key={f.id}>
+                        <ol
+                            className={cn('flex flex-col gap-2', todos && 'max-h-[200px] overflow-y-auto pr-1 lateral:max-h-none lateral:min-h-0 lateral:flex-1')}
+                            start={4}
+                            aria-label="Del cuarto en adelante"
+                        >
+                            {aLaVista.map((f, i) => (
+                                // En el teléfono y en un portátil, tres; las dos de más, en un ordenador con altura.
+                                <li key={f.id} className={cn(!todos && i >= FILAS_A_LA_VISTA && 'hidden lateral:alta:block')}>
                                     <Link
                                         href={`/dashboard/usuarios/${encodeURIComponent(f.id)}`}
-                                        className="flex min-h-[44px] items-center gap-3 rounded-2xl bg-[#F8FAFC] px-3 py-2.5 text-[#0B1B33] transition-colors hover:bg-[#EEF2F7]"
+                                        className="flex min-h-[44px] items-center gap-3 rounded-2xl bg-[#F8FAFC] px-3 py-2 text-[#0B1B33] transition-colors hover:bg-[#EEF2F7]"
                                     >
                                         <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-[#E3E8F0] bg-white text-xs font-extrabold text-[#4A5A72]">
                                             {f.puesto}
@@ -226,13 +243,18 @@ export function CuadroDeHonorWidget() {
                             ))}
                         </ol>
                     )}
+                    </div>
 
                     {resto.length > FILAS_A_LA_VISTA && (
                         <button
                             type="button"
                             onClick={() => setTodos((v) => !v)}
                             aria-expanded={todos}
-                            className="flex min-h-[44px] items-center gap-1.5 self-center text-[13px] font-bold text-[#0D47A1]"
+                            className={cn(
+                                'flex min-h-[44px] items-center gap-1.5 self-center rounded-full px-3 text-[13px] font-bold text-[#0D47A1] transition-colors hover:bg-[#E3F2FD]',
+                                // Con cinco o menos, en el ordenador ya se ven todas.
+                                !todos && resto.length <= FILAS_EN_EL_ORDENADOR && 'lateral:alta:hidden'
+                            )}
                         >
                             {todos ? 'Ver menos' : 'Ver ranking completo'}
                             {todos ? <ChevronDown className="h-3.5 w-3.5 rotate-180" aria-hidden /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden />}

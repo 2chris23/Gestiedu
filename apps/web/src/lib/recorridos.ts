@@ -47,7 +47,7 @@ const LO_DE_SIEMPRE: PasoDelRecorrido[] = ([
     {
         donde: 'menu',
         titulo: 'El menú',
-        texto: 'Aquí están las partes del sistema que te tocan. En el teléfono va abajo, donde llega el pulgar, con Inicio en el centro.',
+        texto: 'Aquí están las partes del sistema que te tocan. En el ordenador se recoge con su botón de abajo (o Ctrl+B); en el teléfono va abajo, donde llega el pulgar, con Inicio en el centro.',
     },
     {
         donde: 'campana',
@@ -57,7 +57,7 @@ const LO_DE_SIEMPRE: PasoDelRecorrido[] = ([
     {
         donde: 'mi-cuenta',
         titulo: 'Tu cuenta',
-        texto: 'Tu foto, tus datos y cerrar sesión.',
+        texto: 'Tu cuenta y tu contraseña, el color de la app y cerrar sesión.',
     },
     {
         donde: 'ayuda',
@@ -86,7 +86,7 @@ const RECORRIDOS: Array<{ ruta: RegExp } & Recorrido> = [
             {
                 donde: 'accesos',
                 titulo: 'Todo a un toque',
-                texto: 'Cada parte del liceo que usas, con lo que trae dentro. Es el mismo camino que el menú.',
+                texto: 'Lo que más usas, a un toque. Desliza para ver el resto. En el ordenador no hace falta: está en la barra de la izquierda.',
             },
             {
                 donde: 'calendario-del-liceo',

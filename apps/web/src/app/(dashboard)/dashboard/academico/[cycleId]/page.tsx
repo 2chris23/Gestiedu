@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Layers, Pencil, GraduationCap, MoreVertical, Users } from 'lucide-react';
+import { ArrowLeft, Pencil, GraduationCap, MoreVertical, Users } from 'lucide-react';
 import { academicYearService } from '@/services/academic-year.service';
 import { classroomService, Classroom } from '@/services/classroom.service';
 import { useAcademicYears } from '@/hooks/useAcademicYears';
@@ -343,46 +343,33 @@ export default function AcademicYearDashboard() {
 
             <div>
                 <div className="space-y-6">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                <Layers className="w-5 h-5 text-indigo-600" aria-hidden />
-                                Secciones por año
-                            </h2>
-                            {/* Qué hay dentro, antes de tocar (escaneo UI/UX, 2026-10-01). */}
-                            <p className="mt-1 text-sm text-gray-600">
-                                Toca un año para ver sus secciones. Dentro de cada sección: sus estudiantes, sus materias y sus notas.
-                            </p>
-                        </div>
-
-                        {turnosQueHay.length > 1 && (
-                            <div className="flex items-center gap-1.5">
+                    {turnosQueHay.length > 1 && (
+                        <div className="flex items-center justify-end gap-1.5">
+                            <button
+                                type="button"
+                                onClick={() => setTurnoElegido('TODOS')}
+                                aria-pressed={turnoElegido === 'TODOS'}
+                                className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                                    turnoElegido === 'TODOS'
+                                        ? 'border-indigo-600 bg-indigo-600 text-white'
+                                        : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+                                }`}
+                            >
+                                Todos los turnos
+                            </button>
+                            {turnosQueHay.map((t) => (
                                 <button
+                                    key={t}
                                     type="button"
-                                    onClick={() => setTurnoElegido('TODOS')}
-                                    aria-pressed={turnoElegido === 'TODOS'}
-                                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                                        turnoElegido === 'TODOS'
-                                            ? 'border-indigo-600 bg-indigo-600 text-white'
-                                            : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
-                                    }`}
+                                    onClick={() => setTurnoElegido(t)}
+                                    aria-pressed={turnoElegido === t}
+                                    className={`rounded-full ${turnoElegido === t ? 'ring-2 ring-indigo-600' : ''}`}
                                 >
-                                    Todos los turnos
+                                    <TurnoBadge turno={t} tamano="md" />
                                 </button>
-                                {turnosQueHay.map((t) => (
-                                    <button
-                                        key={t}
-                                        type="button"
-                                        onClick={() => setTurnoElegido(t)}
-                                        aria-pressed={turnoElegido === t}
-                                        className={`rounded-full ${turnoElegido === t ? 'ring-2 ring-indigo-600' : ''}`}
-                                    >
-                                        <TurnoBadge turno={t} tamano="md" />
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                            ))}
+                        </div>
+                    )}
 
                     <div className="space-y-4">
                         {[1, 2, 3, 4, 5, 6].map((grade) => (

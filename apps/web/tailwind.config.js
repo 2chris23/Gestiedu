@@ -272,6 +272,12 @@ module.exports = {
         // `lateral:` — ver el comentario de arriba, en `theme.extend`.
         function ({ addVariant }) {
             addVariant('lateral', '@media (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (min-height: 600px)');
+            // `recogida:` — la barra lateral del ordenador, recogida en iconos
+            // (`lib/barra-lateral.ts`). Lo dice `<html data-lateral>`.
+            addVariant('recogida', 'html[data-lateral="recogida"] &');
+            // `alta:` — una pantalla con altura de sobra (no un portátil de 768 px):
+            // ahí el Inicio del ordenador enseña algo más sin tener que bajar.
+            addVariant('alta', '@media (min-height: 821px)');
         },
     ],
 };

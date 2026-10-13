@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import Link from 'next/link';
+import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
 import AvisoSinConexion from '@/components/common/AvisoSinConexion';
 import AvisoDePantallaSinGuardar from '@/components/common/AvisoDePantallaSinGuardar';
@@ -14,21 +14,19 @@ import ActualizarLaApp from '@/components/common/ActualizarLaApp';
 import DescargarLaApp from '@/components/common/DescargarLaApp';
 import { AsistenciaEnPantalla } from '@/components/asistencia/AsistenciaDelAlumno';
 import FondoQuieto from '@/components/layout/FondoQuieto';
-import { LogOut, GraduationCap, UserCircle } from 'lucide-react';
-import { clsx } from 'clsx';
+import { UserCircle } from 'lucide-react';
 import { useInstituteConfig } from '@/hooks/useInstitute';
 import { useSessionKeepAlive } from '@/hooks/useSessionKeepAlive';
 import { usePagosActivos } from '@/hooks/usePagos';
 import { usePaeActivo } from '@/hooks/usePae';
-import { BACKEND_URL } from '@/config/env';
 import { elMenuDe, losDeLaBarra, MI_CUENTA } from '@/lib/el-menu';
 import { abrirMiCuenta } from '@/components/layout/CabeceraMovil';
 import BarraInferiorMovil from '@/components/layout/BarraInferiorMovil';
-import { RecorridoGuiado, BotonDelRecorrido } from '@/components/common/Recorrido';
-import { Campana, ApuntarElTelefonoAlEntrar, OfrecerAvisos } from '@/components/layout/Campana';
+import { RecorridoGuiado } from '@/components/common/Recorrido';
+import { ApuntarElTelefonoAlEntrar, OfrecerAvisos } from '@/components/layout/Campana';
 import CabeceraMovil from '@/components/layout/CabeceraMovil';
-import UserAvatar from '@/components/ui/UserAvatar';
-import Image from 'next/image';
+import BarraLateral from '@/components/layout/BarraLateral';
+import { FranjaDelInicio } from '@/components/dashboard/FranjaDelInicio';
 import { esDocumento } from '@/lib/documentos';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/axios';
@@ -53,12 +51,14 @@ interface DashboardShellProps {
     children: React.ReactNode;
 }
 
-const ROLE_LABELS: Record<string, string> = {
-    ADMIN: 'Administrador',
-    TEACHER: 'Profesor',
-    STUDENT: 'Estudiante',
-    TUTOR: 'Tutor',
-};
+
+/**
+ * Las cajas azules del ordenador: cristal, como las tarjetas de Asistencia y
+ * En riesgo (blanco translúcido y un borde suave), no un azul liso con una
+ * raya oscura alrededor.
+ */
+const CRISTAL =
+    'rounded-[24px] border border-white/[0.14] bg-[var(--azul-cabecera)] shadow-[0_16px_48px_rgba(4,24,64,0.22)]';
 
 export default function DashboardShell({ user, children }: DashboardShellProps) {
     const pathname = usePathname();
@@ -96,6 +96,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
 
     const nombre = user.firstName?.split(' ')[0] || '';
     const apellido = user.lastName?.split(' ')[0] || '';
+    const esInicio = pathname === '/dashboard';
 
     /**
      * UN PAPEL SE VE SOLO (`lib/documentos.ts`)
@@ -117,17 +118,23 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
         );
     }
     return (
-        <div className="min-h-screen bg-gray-50 print:min-h-0 print:bg-white" suppressHydrationWarning={true}>
+        <div
+            className={cn(
+                'marco-del-ordenador min-h-screen bg-gray-50 lateral:bg-[#F8FAFC] print:min-h-0 print:!bg-white',
+                esInicio && 'lateral:h-screen lateral:overflow-hidden'
+            )}
+            suppressHydrationWarning={true}
+        >
             {/* En el teléfono: una foto y un nombre, y el hueco del reloj. */}
             <CabeceraMovil
                 nombre={nombre}
                 apellido={apellido}
                 avatar={usuarioDeLaSesion?.avatar}
                 rol={user?.role}
-                liceo={user?.institute?.name}
+                liceo={instituteConfig?.name || user?.institute?.name}
                 esAdmin={user?.role === 'ADMIN'}
                 alCerrarSesion={handleLogout}
-                azul={pathname === '/dashboard' && user?.role === 'ADMIN'}
+                azul={esInicio}
             />
 
             {/* Sin señal se sigue viendo lo de antes, y hay que decirlo. En el
@@ -163,95 +170,63 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 sobra cuando el panel de inicio ya tiene todo a la vista: el
                 menú entero estaba a dos toques (abrir, elegir) y obligaba a
                 tapar la pantalla que se acababa de abrir. Aquí ya no se pinta.
+
+                En el ordenador, CAJAS redondeadas, como Spotify (lo propuso
+                Cristian, octubre 2026): la barra lateral (y, en el Inicio, la
+                caja del promedio), de cristal sobre el azul de la app con sus
+                luces (`.marco-del-ordenador`, globals.css), y el contenido en
+                una hoja clara con un halo suave.
             */}
-            <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 bg-white shadow-lg lateral:block print:!hidden">
-                <div className="flex h-full flex-col">
-                    {/* Logo / User Info */}
-                    <div className="p-6 border-b">
-                        {instituteConfig?.logo && instituteConfig.logo.startsWith('/') ? (
-                            <div className="mb-4 flex items-center justify-center">
-                                <Image
-                                    src={instituteConfig.logo.startsWith('/uploads')
-                                        ? `${BACKEND_URL}${instituteConfig.logo}`
-                                        : instituteConfig.logo}
-                                    alt="Logo del liceo"
-                                    width={120}
-                                    height={120}
-                                    className="object-contain max-h-20 w-auto"
-                                    unoptimized
-                                />
-                            </div>
-                        ) : (
-                            <div className="mb-4 flex items-center justify-center">
-                                <div className="w-20 h-20 rounded-full bg-indigo-100 flex items-center justify-center">
-                                    <GraduationCap className="w-12 h-12 text-indigo-600" />
-                                </div>
-                            </div>
+            <BarraLateral
+                menu={menu}
+                logo={instituteConfig?.logo}
+                // El nombre del liceo, el de su configuración: el de la sesión a
+                // veces llega como el identificador («instituto-testing»).
+                liceo={instituteConfig?.name || user?.institute?.name}
+                nombre={user.firstName ?? ''}
+                apellido={user.lastName ?? ''}
+                correo={user.email}
+                avatar={usuarioDeLaSesion?.avatar}
+                rol={user?.role}
+                alCerrarSesion={handleLogout}
+            />
+
+            <main
+                className={cn(
+                    'transicion-lateral min-h-screen lateral:ml-[calc(var(--ancho-lateral)+16px)] lateral:flex lateral:flex-col lateral:gap-2 lateral:pr-2 print:min-h-0 print:!m-0 print:!block print:!p-0',
+                    esInicio
+                        ? 'lateral:my-2 lateral:py-0 lateral:h-[calc(100vh-16px)] lateral:min-h-0'
+                        : 'lateral:py-2'
+                )}
+            >
+                {/* En el Inicio, el promedio y las cifras van en su caja azul (como en el
+                    teléfono). En las demás pantallas no hay franja: la hoja empieza arriba
+                    y el «?» y la campana viven en la barra. */}
+                {esInicio && (
+                    <div className={`hidden lateral:block shrink-0 print:!hidden ${CRISTAL}`}>
+                        <FranjaDelInicio />
+                    </div>
+                )}
+                {/* La hoja. Sin `overflow`, a propósito: las cabeceras pegadas
+                    (`sticky`) de las tablas dejarían de pegarse. */}
+                <div className={cn('lateral:flex-1 print:!rounded-none print:!bg-white print:!shadow-none', esInicio && 'lateral:flex lateral:flex-col lateral:min-h-0')}>
+                    {/* El hueco de abajo es la barra del teléfono MÁS la del
+                        sistema: sin él, lo último de cada pantalla queda donde el
+                        dedo pulsa la barra de gestos. */}
+                    <div
+                        data-marco
+                        className={cn(
+                            'mx-auto max-w-7xl pb-[calc(7rem+var(--zona-segura-abajo))] print:!p-0 print:max-w-none',
+                            esInicio
+                                ? 'px-4 py-6 sm:px-6 lateral:!m-0 lateral:!p-0 lateral:!w-full lateral:!max-w-none lateral:flex-1 lateral:flex lateral:flex-col lateral:min-h-0'
+                                : 'px-4 py-6 sm:px-6 lg:px-8 lateral:max-w-[1600px] lateral:pb-6 lateral:pt-6'
                         )}
-                        <div className="flex items-center space-x-3">
-                            {/* Su foto, la que le puso el liceo. */}
-                            <UserAvatar
-                                name={`${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || 'Usuario'}
-                                src={usuarioDeLaSesion?.avatar}
-                                className="h-10 w-10"
-                                initialsClassName="text-sm"
-                            />
-                            <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-medium text-gray-900">{nombre} {apellido}</p>
-                                <p className="text-xs text-gray-500">{ROLE_LABELS[user?.role] ?? user?.role}</p>
-                            </div>
-                            <BotonDelRecorrido className="-mr-2" />
-                            <Campana />
-                        </div>
+                    >
+                        {!enMarco && <OfrecerAvisos />}
+                        {/* En el navegador de un Android: la APK del liceo, la última. */}
+                        {!enMarco && <DescargarLaApp />}
+                        {children}
                     </div>
-
-                    {/* Navigation */}
-                    <nav className="flex-1 p-4 space-y-1 overflow-y-auto" data-recorrido="menu">
-                        {menu.map((item) => {
-                            const isActive = item.href === '/dashboard'
-                                ? pathname === '/dashboard'
-                                : pathname === item.href || pathname.startsWith(item.href + '/');
-                            const Icon = item.icon;
-                            return (
-                                <Link
-                                    key={item.name}
-                                    href={item.href}
-                                    className={clsx(
-                                        "flex items-center px-4 py-3 text-sm font-medium rounded-md transition-colors",
-                                        isActive
-                                            ? "bg-primary-900 text-white"
-                                            : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
-                                    )}
-                                >
-                                    <Icon className={clsx("mr-3 h-5 w-5", isActive ? "text-white" : "text-gray-400")} />
-                                    {item.name}
-                                </Link>
-                            );
-                        })}
-                    </nav>
-
-                    <div className="border-t p-4">
-                        <button
-                            onClick={() => void handleLogout()}
-                            className="flex w-full items-center px-4 py-3 text-sm font-medium text-red-600 rounded-md hover:bg-red-50 transition-colors"
-                        >
-                            <LogOut className="mr-3 h-5 w-5" />
-                            Cerrar Sesión
-                        </button>
-                    </div>
-                </div>
-            </aside>
-
-            {/* Main Content */}
-            <main className="min-h-screen lateral:ml-64 print:min-h-0 print:!ml-0">
-                {/* El hueco de abajo es la barra del teléfono MÁS la del
-                    sistema: sin él, lo último de cada pantalla queda donde el
-                    dedo pulsa la barra de gestos. */}
-                <div className="mx-auto max-w-7xl px-4 py-6 pb-[calc(7rem+var(--zona-segura-abajo))] sm:px-6 lg:px-8 lateral:pb-6 print:!p-0 print:max-w-none">
-                    {!enMarco && <OfrecerAvisos />}
-                    {/* En el navegador de un Android: la APK del liceo, la última. */}
-                    {!enMarco && <DescargarLaApp />}
-                    {children}
                 </div>
             </main>
 

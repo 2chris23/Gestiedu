@@ -636,7 +636,7 @@ export default function EvaluationPlanSection({
       { key: 'temaIndispensable',  label: 'TEMA INDISPENSABLE' },
     ];
     return (
-      <div className="bg-white border-b border-gray-200">
+      <div className="bg-white">
         {/* El membrete oficial del liceo (ministerio, nombre, código DEA…), el mismo de la boleta. */}
         <div className="p-4 pb-2">
           <MembreteOficial respaldo={{ nombre: autoPopulated.instituteName || 'Institución educativa' }} />
@@ -723,17 +723,17 @@ export default function EvaluationPlanSection({
     return (
       <div className="flex flex-col h-full">
         {/* Tabla unificada con thead y tfoot sticky para sincronización y alineación perfecta de columnas */}
-        <div className="overflow-auto flex-1 min-h-0">
-          <table className="w-full text-[10px] text-left text-gray-700 border-collapse">
-            <thead className="text-white uppercase bg-slate-800 sticky top-0 z-10 shadow-sm">
+        <div className="overflow-auto flex-1 min-h-0 overscroll-contain [scrollbar-gutter:stable]">
+          <table className="w-full text-[10px] text-left text-gray-700 border-separate border-spacing-0">
+            <thead className="text-white uppercase bg-slate-800 sticky top-0 z-20 shadow-md">
               <tr>
-                <th className="px-1.5 py-2.5 border border-slate-700 text-center w-20 min-w-[76px] bg-slate-800 sticky top-0 font-bold whitespace-nowrap">
+                <th className="px-1.5 py-2.5 border-b-2 border-r border-slate-700 first:border-l text-center w-20 min-w-[76px] bg-slate-800 sticky top-0 font-bold whitespace-nowrap">
                   FECHA / SEMANA
                 </th>
                 {columns.map(col => (
                   <th
                     key={col.key}
-                    className={`px-1.5 py-2.5 border border-slate-700 bg-slate-800 sticky top-0 font-bold ${
+                    className={`px-1.5 py-2.5 border-b-2 border-r border-slate-700 first:border-l bg-slate-800 sticky top-0 font-bold ${
                       col.numeric ? 'text-center whitespace-nowrap' : 'text-left'
                     }`}
                     style={{
@@ -748,8 +748,8 @@ export default function EvaluationPlanSection({
             </thead>
             <tbody className="bg-white">
               {weeks.map((w, idx) => (
-                <tr key={w.weekNumber} className="border-b border-gray-200 hover:bg-slate-50/50 transition-colors">
-                  <td className="px-1.5 py-2 border border-gray-200 text-center align-middle w-20 min-w-[76px] bg-slate-50/40">
+                <tr key={w.weekNumber} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-1.5 py-2 border-b border-r border-gray-200 first:border-l text-center align-middle w-20 min-w-[76px] bg-slate-50/40">
                     <div className="font-bold text-gray-800 text-[10px] uppercase">Semana {w.weekNumber}</div>
                     <div className="text-[9px] text-gray-500 mt-0.5 leading-tight">
                       {getWeekDates(autoPopulated?.lapsoStartDate, w.weekNumber)?.start}
@@ -765,7 +765,7 @@ export default function EvaluationPlanSection({
                       <td
                         key={col.key}
                         rowSpan={span}
-                        className={`px-1.5 py-2 border border-gray-200 align-middle ${
+                        className={`px-1.5 py-2 border-b border-r border-gray-200 first:border-l align-middle ${
                           col.numeric ? 'text-center' : 'text-left'
                         }`}
                       >
@@ -786,15 +786,15 @@ export default function EvaluationPlanSection({
                 </tr>
               ))}
             </tbody>
-            <tfoot className="sticky bottom-0 z-10 bg-slate-100 border-t-2 border-slate-300 font-bold text-gray-800 shadow-[0_-2px_4px_rgba(0,0,0,0.05)]">
+            <tfoot className="sticky bottom-0 z-20 bg-slate-100 font-bold text-gray-800 shadow-[0_-2px_4px_rgba(0,0,0,0.08)]">
               <tr>
                 <td
                   colSpan={nonNumericCols.length + 1}
-                  className="px-4 py-2.5 border border-gray-300 text-right uppercase text-[10px] tracking-wider text-gray-700 bg-slate-100 sticky bottom-0"
+                  className="px-4 py-2.5 border-t-2 border-b border-r border-gray-300 first:border-l text-right uppercase text-[10px] tracking-wider text-gray-700 bg-slate-100 sticky bottom-0"
                 >
                   Total Ponderación Acumulada
                 </td>
-                <td className="px-1.5 py-2.5 border border-gray-300 text-center font-black text-xs bg-slate-100 sticky bottom-0">
+                <td className="px-1.5 py-2.5 border-t-2 border-b border-r border-gray-300 first:border-l text-center font-black text-xs bg-slate-100 sticky bottom-0">
                   <span className={totalPonderacion > 100 ? 'text-red-600' : totalPonderacion === 100 ? 'text-emerald-600' : 'text-amber-600'}>
                     {totalPonderacion}%
                   </span>
@@ -805,7 +805,7 @@ export default function EvaluationPlanSection({
                     <span className="block text-[8px] font-normal text-red-500">exceso {totalPonderacion - 100}%</span>
                   )}
                 </td>
-                <td className="px-1.5 py-2.5 border border-gray-300 text-center font-black text-xs text-gray-800 bg-slate-100 sticky bottom-0">
+                <td className="px-1.5 py-2.5 border-t-2 border-b border-r border-gray-300 first:border-l text-center font-black text-xs text-gray-800 bg-slate-100 sticky bottom-0">
                   {totalPuntos} pts
                 </td>
               </tr>
@@ -849,11 +849,11 @@ export default function EvaluationPlanSection({
     return (
       <div className="flex flex-col h-full bg-white">
         {/* Tabla unificada editable con thead y tfoot sticky */}
-        <div className="overflow-auto flex-1 min-h-0">
-          <table className="w-full text-xs text-left text-gray-800 border-collapse">
+        <div className="overflow-auto flex-1 min-h-0 overscroll-contain [scrollbar-gutter:stable]">
+          <table className="w-full text-xs text-left text-gray-800 border-separate border-spacing-0">
             <thead className="text-slate-800 bg-slate-100 sticky top-0 z-20 shadow-[0_1px_0_#cbd5e1]">
               <tr>
-                <th className="px-2 py-2 border border-slate-200 text-center w-20 min-w-[76px] bg-slate-100 sticky top-0 left-0 z-30 text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">
+                <th className="px-2 py-2 border-b-2 border-r border-slate-300 first:border-l text-center w-20 min-w-[76px] bg-slate-100 sticky top-0 left-0 z-30 text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">
                   Semana
                 </th>
                 {columns.map((col, i) => (
@@ -876,7 +876,7 @@ export default function EvaluationPlanSection({
                       soltarColumna();
                     }}
                     onDragEnd={soltarColumna}
-                    className={`px-1.5 py-1.5 border border-slate-200 bg-slate-100 sticky top-0 align-bottom transition-colors ${
+                    className={`px-1.5 py-1.5 border-b-2 border-r border-slate-300 first:border-l bg-slate-100 sticky top-0 align-bottom transition-colors ${
                       agarrada === i ? 'opacity-40' : ''
                     } ${agarrada !== null && encima === i && agarrada !== i ? 'bg-indigo-100 shadow-[inset_0_0_0_2px_#818cf8]' : ''}`}
                     style={{
@@ -919,7 +919,7 @@ export default function EvaluationPlanSection({
                     </div>
                   </th>
                 ))}
-                <th className="px-1.5 py-1.5 border border-slate-200 w-24 text-center bg-slate-100 sticky top-0">
+                <th className="px-1.5 py-1.5 border-b-2 border-r border-slate-300 first:border-l w-24 text-center bg-slate-100 sticky top-0">
                   <button
                     type="button"
                     onClick={addColumn}
@@ -934,9 +934,9 @@ export default function EvaluationPlanSection({
             <tbody className="bg-white">
               {weeks.map((w, idx) => {
                 return (
-                  <tr key={w.weekNumber} className="bg-white even:bg-slate-50/50 border-b border-gray-200 hover:bg-indigo-50/30 transition-colors">
+                  <tr key={w.weekNumber} className="bg-white even:bg-slate-50/50 hover:bg-indigo-50/30 transition-colors">
                     {/* La semana se queda a la vista al deslizar la tabla de lado. */}
-                    <td className="px-2 py-2 border border-gray-200 text-center align-top w-20 bg-slate-50 sticky left-0 z-10">
+                    <td className="px-2 py-2 border-b border-r border-gray-200 first:border-l text-center align-top w-20 bg-slate-50 sticky left-0 z-10">
                       <div className="font-bold text-slate-900 text-xs">Semana {w.weekNumber}</div>
                       <div className="mt-0.5 text-[11px] text-slate-500 leading-tight">
                         {getWeekDates(autoPopulated?.lapsoStartDate, w.weekNumber)?.start}
@@ -951,7 +951,7 @@ export default function EvaluationPlanSection({
                       const canCollapse = span > 1;
 
                       return (
-                        <td key={col.key} rowSpan={span} className={`px-1 py-1 border border-gray-200 align-top relative group ${span > 1 ? 'bg-indigo-50/40' : ''}`}>
+                        <td key={col.key} rowSpan={span} className={`px-1 py-1 border-b border-r border-gray-200 first:border-l align-top relative group ${span > 1 ? 'bg-indigo-50/40' : ''}`}>
                           {col.numeric ? (
                             col.key === 'ponderacion' ? (
                               <input
@@ -1001,28 +1001,28 @@ export default function EvaluationPlanSection({
                         </td>
                       );
                     })}
-                    <td className="px-0.5 py-0.5 border border-gray-200 bg-slate-50/50 w-24" />
+                    <td className="px-0.5 py-0.5 border-b border-r border-gray-200 first:border-l bg-slate-50/50 w-24" />
                   </tr>
                 );
               })}
             </tbody>
-            <tfoot className="sticky bottom-0 z-20 bg-slate-100 border-t-2 border-slate-300 font-bold text-gray-800 shadow-[0_-2px_4px_rgba(0,0,0,0.05)]">
+            <tfoot className="sticky bottom-0 z-20 bg-slate-100 border-t-2 border-slate-300 font-bold text-gray-800 shadow-[0_-2px_4px_rgba(0,0,0,0.08)]">
               <tr>
                 <td
                   colSpan={nonNumericCols.length + 1}
-                  className="px-4 py-2 border border-gray-300 text-right uppercase text-[11px] tracking-wider text-gray-700 bg-slate-100 sticky bottom-0"
+                  className="px-4 py-2 border-t-2 border-b border-r border-gray-300 first:border-l text-right uppercase text-[11px] tracking-wider text-gray-700 bg-slate-100 sticky bottom-0"
                 >
                   Total Ponderación
                 </td>
-                <td className="px-1 py-2 border border-gray-300 text-center font-black text-xs bg-slate-100 sticky bottom-0">
+                <td className="px-1 py-2 border-t-2 border-b border-r border-gray-300 first:border-l text-center font-black text-xs bg-slate-100 sticky bottom-0">
                   <span className={totalPonderacion > 100 ? 'text-red-600' : totalPonderacion === 100 ? 'text-emerald-600' : 'text-amber-600'}>
                     {totalPonderacion}%
                   </span>
                 </td>
-                <td className="px-1 py-2 border border-gray-300 text-center font-black text-xs text-gray-800 bg-slate-100 sticky bottom-0">
+                <td className="px-1 py-2 border-t-2 border-b border-r border-gray-300 first:border-l text-center font-black text-xs text-gray-800 bg-slate-100 sticky bottom-0">
                   {totalPuntos} pts
                 </td>
-                <td className="border border-gray-300 bg-slate-100 sticky bottom-0" />
+                <td className="border-t-2 border-b border-r border-gray-300 first:border-l bg-slate-100 sticky bottom-0" />
               </tr>
             </tfoot>
           </table>

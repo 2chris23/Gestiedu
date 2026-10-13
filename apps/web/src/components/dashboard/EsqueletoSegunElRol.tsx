@@ -1,20 +1,14 @@
 'use client';
 
 import * as React from 'react';
-import { useAuthStore } from '@/store/auth.store';
-import { EsqueletoDelInicioMovil } from '@/components/dashboard/InicioDelAdminMovil';
+import { EsqueletoDelInicioMovil } from '@/components/dashboard/InicioMovil';
 
 /**
- * El esqueleto del Inicio mientras carga. El admin en el teléfono tiene su
- * Inicio azul: esperar sobre el gris del ordenador y saltar a azul se veía
- * como un parpadeo. El rol del almacén basta aquí: es solo la forma.
+ * El esqueleto del Inicio mientras carga. En el teléfono los cuatro roles
+ * tienen ya su Inicio azul (`InicioMovil`): esperar sobre el gris y saltar a
+ * azul se veía como un parpadeo. En el ordenador, el de la hoja (`children`).
  */
 export function EsqueletoSegunElRol({ children }: { children: React.ReactNode }) {
-    const rol = useAuthStore((s) => s.user?.role);
-    // Tras montar: el servidor no conoce el almacén y la primera pintada debe coincidir.
-    const [montado, setMontado] = React.useState(false);
-    React.useEffect(() => setMontado(true), []);
-    if (!montado || rol !== 'ADMIN') return <>{children}</>;
     return (
         <>
             <EsqueletoDelInicioMovil />
