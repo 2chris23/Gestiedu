@@ -10,6 +10,7 @@ import { VistaDelPersonal } from '@/components/finanzas/VistaDelPersonal';
 import { VistaDeGastosYFondos } from '@/components/finanzas/GastosYFondos';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { BotonComoFunciona } from '@/components/common/Recorrido';
+import { useYaArranco } from '@/hooks/useYaArranco';
 import { CalendarioDelCiclo } from '@/components/pagos/CalendarioDelCiclo';
 import { MesEnDias, type DeudorDelMes } from '@/components/pagos/MesEnDias';
 import { SelectorDeCiclo } from '@/components/pagos/SelectorDeCiclo';
@@ -308,7 +309,10 @@ export default function FinanzasPage() {
         router.replace(`/dashboard/pagos${q.size ? `?${q}` : ''}`, { scroll: false });
     };
 
-    if (cargandoAjustes) {
+    // Hasta arrancar, la rueda también en el navegador (ver `useYaArranco`).
+    const arranco = useYaArranco();
+
+    if (!arranco || cargandoAjustes) {
         return (
             <div className="flex min-h-[60vh] items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-indigo-600" aria-label="Cargando" />

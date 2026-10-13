@@ -23,6 +23,7 @@ import LapsoSelector from '@/components/academic/LapsoSelector';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
+import { useYaArranco } from '@/hooks/useYaArranco';
 import { diferido } from '@/components/common/Diferido';
 
 // Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
@@ -60,6 +61,8 @@ export default function AcademicYearDashboard() {
     const ciclos = useAcademicYears();
     // El día del liceo decide si el ciclo está «en curso», no el del aparato.
     const hoyDelLiceo = useSchoolToday();
+    // Hasta arrancar, el esqueleto también en el navegador (ver `useYaArranco`).
+    const arranco = useYaArranco();
     const allCycles = ciclos.data ?? [];
     const year = allCycles.find((y) => y.id === cycleIdParam || y.name === cycleIdParam) ?? null;
 
@@ -229,7 +232,7 @@ export default function AcademicYearDashboard() {
 
     // Solo se espera si no hay NADA que enseñar: con lo guardado en el
     // teléfono, se pinta al instante aunque no haya conexión.
-    if (ciclos.isLoading) {
+    if (!arranco || ciclos.isLoading) {
         return <CargandoDetalleCiclo />;
     }
 
