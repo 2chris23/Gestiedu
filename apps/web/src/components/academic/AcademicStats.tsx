@@ -1,6 +1,7 @@
 import { AlertTriangle, Bell, Calendar, GraduationCap, Users, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAcademicConfig } from '@/hooks/useAcademicConfig';
+import { useSchoolToday } from '@/hooks/useSchoolTime';
 
 /**
  * LAS CIFRAS DE UN CICLO, UNA SECCIÓN O UNA MATERIA, EN UN SOLO BLOQUE
@@ -69,7 +70,12 @@ interface Cifra {
     alerta?: boolean;
     barra?: Barra;
     pie?: string;
+    /** El lapso elegido aún no empieza: no hay nada que contar todavía. */
+    sinRegistrar?: boolean;
 }
+
+/** Guarda la altura de la fila del pie cuando va vacía. */
+const ESPACIO_FIJO = String.fromCharCode(160);
 
 const entre0y100 = (n: number) => Math.max(0, Math.min(100, Number.isFinite(n) ? n : 0));
 
@@ -121,17 +127,26 @@ function Celda({ cifra, className, grande = false }: { cifra: Cifra; className?:
                     y «Promedio Sec…» no decían qué cifra era. */}
                 <span className="line-clamp-2 break-words leading-tight">{cifra.titulo}</span>
             </span>
-            <span
-                className={cn(
-                    'mt-0.5 max-w-full truncate font-bold tabular-nums',
-                    grande ? 'text-3xl leading-9 md:text-lg md:leading-6' : 'text-lg leading-6',
-                    cifra.alerta ? 'text-red-600' : 'text-gray-900'
-                )}
-            >
-                {cifra.valor}
+            {cifra.sinRegistrar ? (
+                // Misma altura que la cifra, para que todo siga alineado.
+                <span className={cn('mt-0.5 max-w-full truncate text-sm font-medium text-gray-500', grande ? 'leading-9 md:leading-6' : 'leading-6')}>
+                    Sin registrar
+                </span>
+            ) : (
+                <span
+                    className={cn(
+                        'mt-0.5 max-w-full truncate font-bold tabular-nums',
+                        grande ? 'text-3xl leading-9 md:text-lg md:leading-6' : 'text-lg leading-6',
+                        cifra.alerta ? 'text-red-600' : 'text-gray-900'
+                    )}
+                >
+                    {cifra.valor}
+                </span>
+            )}
+            {cifra.barra && !cifra.sinRegistrar ? <BarraDeLaCifra barra={cifra.barra} /> : <div aria-hidden className="mt-1.5 h-1.5" />}
+            <span className="mt-1 block min-h-4 max-w-full truncate text-xs tabular-nums leading-4 text-gray-500">
+                {(!cifra.sinRegistrar && cifra.pie) || ESPACIO_FIJO}
             </span>
-            {cifra.barra ? <BarraDeLaCifra barra={cifra.barra} /> : <div aria-hidden className="mt-1.5 h-1.5" />}
-            <span className="mt-1 block min-h-4 max-w-full truncate text-xs tabular-nums leading-4 text-gray-500">{cifra.pie ?? ' '}</span>
             {cifra.detalle && <span className="sr-only">{cifra.detalle}</span>}
         </div>
     );
@@ -151,6 +166,12 @@ interface AcademicStatsProps {
     averageTitle?: string;
     /** Lo que cuenta «en riesgo» aquí. Se lee al dejar el dedo o el ratón encima. */
     riskSubtext?: string;
+    /**
+     * El día en que empieza el lapso elegido (vacío = todo el ciclo). Si aún no
+     * llega, las cifras de ese lapso dicen «Sin registrar» en vez de un 0 o un
+     * 0 % que parecen un dato (lo pidió Cristian). La ocupación sí se ve.
+     */
+    inicioDelLapso?: string | null;
     className?: string;
 }
 
@@ -159,9 +180,13 @@ export default function AcademicStats({
     isStudentView = false,
     averageTitle = 'Promedio',
     riskSubtext,
+    inicioDelLapso,
     className,
 }: AcademicStatsProps) {
     const { data: config } = useAcademicConfig();
+    // El día del liceo, no el del aparato.
+    const hoy = useSchoolToday();
+    const sinEmpezar = Boolean(inicioDelLapso) && hoy < String(inicioDelLapso).slice(0, 10);
     const data = stats || {
         average: 0,
         minAverage: 0,
@@ -195,6 +220,7 @@ export default function AcademicStats({
             icono: AlertTriangle,
             tono: 'rojo',
             alerta: data.riskCount > 0,
+            sinRegistrar: sinEmpezar,
             // Qué parte de los alumnos. En la vista del alumno son sus
             // materias, y no hay con qué compararlas.
             barra:
@@ -212,6 +238,7 @@ export default function AcademicStats({
             detalle: isStudentView ? 'Asistencia acumulada' : 'Asistencia promedio',
             icono: Calendar,
             tono: 'indigo',
+            sinRegistrar: sinEmpezar,
             barra:
                 asistencia !== null
                     ? {
@@ -247,6 +274,7 @@ export default function AcademicStats({
             detalle: 'Observaciones registradas',
             icono: Bell,
             tono: 'ambar',
+            sinRegistrar: sinEmpezar,
             // Las observaciones no tienen un «lleno»: se dice cuántas tocan por
             // alumno, que es lo que deja comparar una sección con otra.
             pie:
@@ -262,6 +290,7 @@ export default function AcademicStats({
         valor: hayPromedio ? (data.average as number) : '—',
         icono: GraduationCap,
         tono: 'azul',
+        sinRegistrar: sinEmpezar,
         alerta: hayPromedio && promedio < aprueba,
         barra: hayPromedio
             ? {

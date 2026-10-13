@@ -452,7 +452,11 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
 
                 {/* Estadísticas Académicas de la Sección */}
                 <div>
-                    <AcademicStats stats={classroomStats} averageTitle="Promedio Sección" />
+                    <AcademicStats
+                        stats={classroomStats}
+                        averageTitle="Promedio Sección"
+                        inicioDelLapso={((classroom as any)?.academicYear?.periods || []).find((p: any) => p.id === lapsoId)?.startDate}
+                    />
                 </div>
             </header>
 

@@ -56,16 +56,20 @@ test.describe.serial('Selector de lapso en pantallas académicas', () => {
             await resLapso2;
             await page.waitForTimeout(500);
 
-            // En Segundo Lapso: promedio no es 0 sino "—", 0 en riesgo, asistencia "—", 0 observaciones
-            await expect(resumen.getByText('—')).toHaveCount(2);
-            await expect(resumen.getByText('0', { exact: true })).toHaveCount(2); // 0 observaciones / riesgo
+            // El Segundo Lapso aún no empieza: «Sin registrar» en promedio,
+            // riesgo, asistencia y observaciones, nunca un 0 ni un 0 %. La
+            // ocupación sí se ve.
+            await expect(resumen.getByText('Sin registrar')).toHaveCount(4);
+            await expect(resumen.getByText('0%')).toHaveCount(0);
+            await expect(resumen.getByText('0', { exact: true })).toHaveCount(0);
+            await expect(resumen.getByText('599/700')).toBeVisible();
         } catch (e) {
             await captureEvidence(testInfo, page, 'LAPSO-ANO', 'Fallo en selector de lapso en año', e);
             throw e;
         }
     });
 
-    test('2. Pantalla de la sección (/dashboard/academico/<ciclo>/<sección>): cifras cambian y lapso vacío muestra «—» y «Sin notas»', async ({ page }, testInfo) => {
+    test('2. Pantalla de la sección (/dashboard/academico/<ciclo>/<sección>): cifras cambian y lapso sin empezar muestra «Sin registrar» y «Sin notas»', async ({ page }, testInfo) => {
         try {
             await page.goto(`/dashboard/academico/${cycleId}/${sectionSlug}`);
             await page.waitForLoadState('networkidle');
@@ -98,8 +102,9 @@ test.describe.serial('Selector de lapso en pantallas académicas', () => {
             await resLapso2;
             await page.waitForTimeout(500);
 
-            // Debe mostrar «—» para promedio y asistencia, nunca 0 ni 0%
-            await expect(resumen.getByText('—')).toHaveCount(2);
+            // Aún no empieza: «Sin registrar», nunca 0 ni 0%
+            await expect(resumen.getByText('Sin registrar')).toHaveCount(4);
+            await expect(resumen.getByText('0%')).toHaveCount(0);
 
             // En la lista de estudiantes debe mostrar «Sin notas» y nunca «Sin calificar» ni «0»
             await expect(page.getByText('Sin notas').first()).toBeVisible();
@@ -110,7 +115,7 @@ test.describe.serial('Selector de lapso en pantallas académicas', () => {
         }
     });
 
-    test('3. Pantalla de la materia (/dashboard/academico/<ciclo>/<sección>/<materia>): cifras cambian y lapso vacío muestra «—» y «Sin notas»', async ({ page }, testInfo) => {
+    test('3. Pantalla de la materia (/dashboard/academico/<ciclo>/<sección>/<materia>): cifras cambian y lapso sin empezar muestra «Sin registrar» y «Sin notas»', async ({ page }, testInfo) => {
         try {
             await page.goto(`/dashboard/academico/${cycleId}/${sectionSlug}/${subjectSlug}`);
             await page.waitForLoadState('networkidle');
@@ -140,8 +145,8 @@ test.describe.serial('Selector de lapso en pantallas académicas', () => {
             await resLapso2;
             await page.waitForTimeout(500);
 
-            // Debe mostrar «—» en lugar de 0
-            await expect(resumen.getByText('—')).toBeVisible();
+            // Aún no empieza: «Sin registrar» en lugar de 0
+            await expect(resumen.getByText('Sin registrar').first()).toBeVisible();
 
             // En la lista de estudiantes debe mostrar «Sin notas» y nunca «Sin calificar»
             await expect(page.getByText('Sin notas').first()).toBeVisible();

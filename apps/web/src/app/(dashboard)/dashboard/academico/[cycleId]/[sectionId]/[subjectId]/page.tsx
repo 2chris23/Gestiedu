@@ -413,6 +413,7 @@ export default function SectionSubjectDashboard() {
                     <AcademicStats
                         stats={subjectAcademicStats}
                         averageTitle="Promedio Materia"
+                        inicioDelLapso={((classroom as any)?.academicYear?.periods || []).find((p: any) => p.id === lapsoId)?.startDate}
                         riskSubtext="Alumnos con promedio < 10 pts"
                     />
                 </div>

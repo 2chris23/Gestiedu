@@ -170,6 +170,10 @@ export default function AcademicYearDashboard() {
         let totalStudentsWithGrades = 0;
         let totalRisk = 0;
         let weightedSumAttendance = 0;
+        // Solo cuentan los años que tienen asistencia pasada: los que no,
+        // traen `null`, y contarlos como 0 bajaba el total (y un lapso sin
+        // ninguna salía «0%» en vez de vacío).
+        let studentsWithAttendance = 0;
         let totalObservations = 0;
         let globalMin = 20;
         let globalMax = 0;
@@ -182,7 +186,8 @@ export default function AcademicYearDashboard() {
             const capacity = parseInt(capacityStr) || 0;
 
             const avg = typeof s.average === 'number' && s.average > 0 ? s.average : null;
-            const attendance = parseInt(String(s.attendance || '0').replace('%', '')) || 0;
+            const hasAttendance = s.attendance !== null && s.attendance !== undefined && s.attendance !== '';
+            const attendance = hasAttendance ? parseInt(String(s.attendance).replace('%', '')) || 0 : 0;
 
             totalStudents += current;
             totalCapacity += capacity;
@@ -191,7 +196,10 @@ export default function AcademicYearDashboard() {
                 totalStudentsWithGrades += current;
             }
             totalRisk += s.riskCount;
-            weightedSumAttendance += attendance * current;
+            if (hasAttendance) {
+                weightedSumAttendance += attendance * current;
+                studentsWithAttendance += current;
+            }
             totalObservations += s.observations;
 
             if (current > 0) {
@@ -206,7 +214,7 @@ export default function AcademicYearDashboard() {
         });
 
         const finalAvg = totalStudentsWithGrades > 0 ? Number((weightedSumAverage / totalStudentsWithGrades).toFixed(1)) : null;
-        const finalAttendance = totalStudents > 0 ? Math.round(weightedSumAttendance / totalStudents) : 0;
+        const finalAttendance = studentsWithAttendance > 0 ? Math.round(weightedSumAttendance / studentsWithAttendance) : null;
 
         return {
             average: finalAvg,
@@ -214,7 +222,7 @@ export default function AcademicYearDashboard() {
             maxAverage: totalStudentsWithGrades > 0 && globalMax > 0 ? Number(globalMax.toFixed(1)) : undefined,
             riskCount: totalRisk,
             occupancy: `${totalStudents}/${totalCapacity}`,
-            attendance: `${finalAttendance}%`,
+            attendance: finalAttendance !== null ? `${finalAttendance}%` : null,
             observations: totalObservations
         };
     }, [gradeStats]);
@@ -337,7 +345,11 @@ export default function AcademicYearDashboard() {
                         )}
                     </div>
 
-                    <AcademicStats stats={globalStats || undefined} className="mt-3" />
+                    <AcademicStats
+                        stats={globalStats || undefined}
+                        inicioDelLapso={(year.periods || []).find((p) => p.id === lapsoId)?.startDate}
+                        className="mt-3"
+                    />
                 </div>
             </header>
 
