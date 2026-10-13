@@ -916,11 +916,35 @@ de navegador no ven la oferta (la tapa `navigator.webdriver`) salvo que pongan
 
 ## El color de la app y el Inicio del admin en el teléfono (octubre 2026)
 
-Diseño de Cristian («Panel Admin — App móvil»). Cabecera azul `#0D47A1` y un
-**acento que elige cada persona** en Mi cuenta → «Color de la app» (Turquesa,
-Violeta, Amarillo, Coral): es del teléfono, no del liceo
-(`lib/tema-de-la-app.ts`, variables `--acento*`; un guion en el `<head>` lo
-pone antes de pintar). El Inicio del admin en el teléfono es
+Diseño de Cristian («Panel Admin — App móvil»). **El color lo elige cada
+persona** en Mi cuenta (o en el menú de su nombre, en el ordenador): Azul (el
+de siempre, por defecto), Turquesa, Violeta, Amarillo o Coral. Es del
+aparato, no del liceo. Desde el 13-oct-2026 cambia **la cabecera entera** (barra
+lateral, franja del Inicio, cabecera del teléfono, la franja del reloj) **y
+todo `indigo-*`** (lo que se pulsa); el amarillo lleva la letra oscura en la
+barra. Y hay **modo oscuro a lo Spotify** (Claro · Oscuro · Como el teléfono;
+la primera vez, Claro): fondo negro, cajas #121212.
+
+- **No se pinta pantalla por pantalla**: `apps/web/paleta-de-colores.js` hace
+  que las clases de siempre (`bg-white`, `text-gray-900`, `bg-indigo-600`…)
+  lean variables que cambian con `<html data-acento>` y la clase `dark`. Cada
+  familia lleva tres juegos (fondo `-f`, letra `-t`, borde `-b`): `gray-900`
+  como letra se aclara, como fondo de un globo sigue oscuro. En claro son los
+  colores de Tailwind de siempre.
+- **Lo escrito a mano del diseño** va con nombre: `cabecera-*` (fondo, texto,
+  suave, celeste, sobreceleste, claro, tinta), `texto-*`, `superficie-*`,
+  `borde-*`. Un `#0D47A1` o un `text-white` sobre la cabecera NO cambia con el
+  color: usa `bg-cabecera` / `text-cabecera-texto`.
+- **El papel nunca sale oscuro**: lo oscuro va en `@media screen` y
+  `.modo-claro` lo devuelve a claro (los documentos, el login, la pantalla de
+  bloqueo, el libro de la precarga, la baldosa del logo).
+- Guiones del `<head>` antes de pintar: `COLOR_ANTES_DE_PINTAR` y
+  `MODO_ANTES_DE_PINTAR` (sin fogonazo blanco). `SeguirElModo` sigue al
+  teléfono si cambia con la app abierta.
+- Pruebas: TEMA-01…07 (4,5:1 de cada color y de lo oscuro), TEMA-UI-01, y
+  `contraste.spec.ts` mide claro, oscuro y cada color.
+
+El Inicio del admin en el teléfono es
 `InicioDelAdminMovil` (`lateral:hidden`; en el ordenador sigue el de siempre):
 promedio del liceo con ojo para ocultarlo, luces que flotan (quietas con
 «reducir movimiento»), los accesos en un **carrusel sin fin** (`Carril` con

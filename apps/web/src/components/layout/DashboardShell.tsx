@@ -58,7 +58,7 @@ interface DashboardShellProps {
  * raya oscura alrededor.
  */
 const CRISTAL =
-    'rounded-[24px] border border-white/[0.14] bg-[var(--azul-cabecera)] shadow-[0_16px_48px_rgba(4,24,64,0.22)]';
+    'rounded-[24px] border border-cabecera-texto/[0.14] bg-cabecera shadow-[0_16px_48px_rgba(4,24,64,0.22)]';
 
 export default function DashboardShell({ user, children }: DashboardShellProps) {
     const pathname = usePathname();
@@ -107,7 +107,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
      */
     if (esDocumento(pathname)) {
         return (
-            <div className="min-h-screen bg-gray-100 print:min-h-0 print:bg-white" suppressHydrationWarning={true}>
+            <div className="modo-claro min-h-screen bg-gray-100 print:min-h-0 print:bg-white" suppressHydrationWarning={true}>
                 <div className="zona-segura-arriba sticky top-0 z-40 bg-white print:hidden" aria-hidden />
                 <AvisoSinConexion />
                 <ActualizarLaApp />
@@ -120,7 +120,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
     return (
         <div
             className={cn(
-                'marco-del-ordenador min-h-screen bg-gray-50 lateral:bg-[#F8FAFC] print:min-h-0 print:!bg-white',
+                'marco-del-ordenador min-h-screen bg-gray-50 lateral:bg-[rgb(var(--lienzo-de-la-app))] print:min-h-0 print:!bg-white',
                 esInicio && 'lateral:h-screen lateral:overflow-hidden'
             )}
             suppressHydrationWarning={true}

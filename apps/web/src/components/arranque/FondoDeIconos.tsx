@@ -39,7 +39,7 @@ export function FondoDeIconos() {
             {ICONOS.map(({ Icono, x, y, t, d, v }, i) => (
                 <span
                     key={i}
-                    className="icono-que-flota absolute text-white"
+                    className="icono-que-flota absolute text-cabecera-texto"
                     style={{
                         left: `${x}%`,
                         top: `${y}%`,

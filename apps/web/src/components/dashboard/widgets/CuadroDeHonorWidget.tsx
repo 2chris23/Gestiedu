@@ -59,25 +59,25 @@ const PODIO = [
     {
         lugar: 2,
         medalla: 'Plata',
-        caja: 'rounded-[18px] border border-[#E3E8F0] bg-[#F8FAFC] px-1.5 py-3',
-        chapa: 'bg-[#E9EDF3] text-[#4A5A72]',
-        circulo: 'h-[42px] w-[42px] bg-[#E3F2FD] text-[#0D47A1] text-[13px]',
+        caja: 'rounded-[18px] border border-borde-suave bg-superficie-pagina px-1.5 py-3',
+        chapa: 'bg-[#E9EDF3] text-texto-medio dark:bg-[#2a2a2a]',
+        circulo: 'h-[42px] w-[42px] bg-cabecera-claro text-cabecera-tinta text-[13px]',
         puntos: 'text-[15px]',
     },
     {
         lugar: 1,
         medalla: 'Oro',
-        caja: 'rounded-[20px] border-2 border-[#F2C94C] bg-[#FFFBEA] px-1.5 pb-3.5 pt-4',
-        chapa: 'bg-[#FDEBB0] text-[#6B4A00]',
-        circulo: 'h-12 w-12 bg-[#FDEBB0] text-[#6B4A00] text-sm',
+        caja: 'rounded-[20px] border-2 border-[#F2C94C] bg-[#FFFBEA] px-1.5 pb-3.5 pt-4 dark:border-[#8a6d1a] dark:bg-[#231d0b]',
+        chapa: 'bg-[#FDEBB0] text-[#6B4A00] dark:bg-[#3d3210] dark:text-[#F2C94C]',
+        circulo: 'h-12 w-12 bg-[#FDEBB0] text-[#6B4A00] dark:bg-[#3d3210] dark:text-[#F2C94C] text-sm',
         puntos: 'text-[17px]',
     },
     {
         lugar: 3,
         medalla: 'Bronce',
-        caja: 'rounded-[18px] border border-[#F6D2B8] bg-[#FFF6EF] px-1.5 py-3',
-        chapa: 'bg-[#FBE0CC] text-[#8A4416]',
-        circulo: 'h-[42px] w-[42px] bg-[#FBE0CC] text-[#8A4416] text-[13px]',
+        caja: 'rounded-[18px] border border-[#F6D2B8] bg-[#FFF6EF] px-1.5 py-3 dark:border-[#6b3a1e] dark:bg-[#24160e]',
+        chapa: 'bg-[#FBE0CC] text-[#8A4416] dark:bg-[#3d2416] dark:text-[#F4B48A]',
+        circulo: 'h-[42px] w-[42px] bg-[#FBE0CC] text-[#8A4416] dark:bg-[#3d2416] dark:text-[#F4B48A] text-[13px]',
         puntos: 'text-[15px]',
     },
 ] as const;
@@ -86,7 +86,7 @@ const PODIO = [
 const laChapa = (puesto: number, lugar: number, medalla: string) => (puesto === lugar ? `${puesto}.° ${medalla}` : `${puesto}.° Empate`);
 
 const SELECTOR =
-    'h-10 w-auto gap-1.5 rounded-full border border-[#E3E8F0] bg-white px-3.5 text-[13px] font-bold text-[#0B1B33] [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-100';
+    'h-10 w-auto gap-1.5 rounded-full border border-borde-suave bg-white px-3.5 text-[13px] font-bold text-texto-fuerte [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-100';
 
 export function CuadroDeHonorWidget({ className }: { className?: string } = {}) {
     const titulo = React.useId();
@@ -110,14 +110,14 @@ export function CuadroDeHonorWidget({ className }: { className?: string } = {}) 
             {/* En el ordenador, los dos selectores van a la derecha del título (el diseño). */}
             <div className="flex flex-col gap-3.5 lateral:flex-row lateral:flex-wrap lateral:items-center lateral:justify-between lateral:gap-3">
                 <div className="flex items-center gap-2.5 lateral:gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-[#FFF6DA] text-[#9A6B00] lateral:h-11 lateral:w-11">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-[#FFF6DA] text-[#9A6B00] dark:bg-[#2b2410] dark:text-[#F2C94C] lateral:h-11 lateral:w-11">
                         <Trophy className="h-5 w-5" aria-hidden />
                     </span>
                     <div className="min-w-0">
-                        <h3 id={titulo} className="text-[15px] font-extrabold text-[#0B1B33] lateral:text-[17px]">
+                        <h3 id={titulo} className="text-[15px] font-extrabold text-texto-fuerte lateral:text-[17px]">
                             Cuadro de honor
                         </h3>
-                        <p className="text-xs text-[#5B6B82]">
+                        <p className="text-xs text-texto-gris">
                             Se actualiza cada sábado{data?.fecha ? ` · última: ${fechaDeLaFoto(data.fecha)}` : ''}
                         </p>
                     </div>
@@ -156,13 +156,13 @@ export function CuadroDeHonorWidget({ className }: { className?: string } = {}) 
 
             {isLoading ? (
                 <div className="flex justify-center py-10">
-                    <Loader2 className="h-6 w-6 animate-spin text-[#9A6B00]" aria-label="Cargando el cuadro de honor" />
+                    <Loader2 className="h-6 w-6 animate-spin text-[#9A6B00] dark:text-[#F2C94C]" aria-label="Cargando el cuadro de honor" />
                 </div>
             ) : isError ? (
                 <p className="py-8 text-center text-sm text-gray-700">No se pudo cargar el cuadro de honor.</p>
             ) : filas.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
-                    <Trophy className="mb-2 h-8 w-8 text-[#9A6B00]" aria-hidden />
+                    <Trophy className="mb-2 h-8 w-8 text-[#9A6B00] dark:text-[#F2C94C]" aria-hidden />
                     <p className="text-sm font-semibold text-gray-900">{data?.fecha ? 'Nadie con notas en este período' : 'Todavía no hay cuadro de honor'}</p>
                     <p className="mt-1 max-w-[280px] text-xs text-gray-600">
                         {data?.fecha
@@ -178,8 +178,8 @@ export function CuadroDeHonorWidget({ className }: { className?: string } = {}) 
                             const f = podio(lugar);
                             if (!f) {
                                 return (
-                                    <li key={lugar} className="flex min-h-[140px] flex-col items-center justify-center rounded-[18px] border border-dashed border-[#E3E8F0] p-2.5 text-center">
-                                        <span className="text-xs font-bold text-[#5B6B82]">
+                                    <li key={lugar} className="flex min-h-[140px] flex-col items-center justify-center rounded-[18px] border border-dashed border-borde-suave p-2.5 text-center">
+                                        <span className="text-xs font-bold text-texto-gris">
                                             {lugar}.° {medalla}
                                         </span>
                                     </li>
@@ -200,12 +200,12 @@ export function CuadroDeHonorWidget({ className }: { className?: string } = {}) 
                                         <span className={cn('flex items-center justify-center rounded-full font-extrabold', circulo)} aria-hidden>
                                             {iniciales(f.nombre)}
                                         </span>
-                                        <span className="w-full min-w-0 text-xs font-bold leading-tight text-[#0B1B33] [overflow-wrap:anywhere]" title={f.nombre}>
+                                        <span className="w-full min-w-0 text-xs font-bold leading-tight text-texto-fuerte [overflow-wrap:anywhere]" title={f.nombre}>
                                             {f.nombre}
                                         </span>
-                                        <span className="w-full truncate text-xs text-[#5B6B82]">{f.seccion}</span>
-                                        <span className={cn('inline-flex items-center gap-1 font-extrabold text-[#0B1B33]', puntos)}>
-                                            {f.puntaje.toFixed(1)} <span className="text-xs font-semibold text-[#5B6B82]">pts</span>
+                                        <span className="w-full truncate text-xs text-texto-gris">{f.seccion}</span>
+                                        <span className={cn('inline-flex items-center gap-1 font-extrabold text-texto-fuerte', puntos)}>
+                                            {f.puntaje.toFixed(1)} <span className="text-xs font-semibold text-texto-gris">pts</span>
                                             <Subio n={f.subio} />
                                         </span>
                                     </Link>
@@ -225,14 +225,14 @@ export function CuadroDeHonorWidget({ className }: { className?: string } = {}) 
                                 <li key={f.id} className={cn(!todos && i >= FILAS_A_LA_VISTA && 'hidden lateral:alta:block')}>
                                     <Link
                                         href={`/dashboard/usuarios/${encodeURIComponent(f.id)}`}
-                                        className="flex min-h-[44px] items-center gap-3 rounded-2xl bg-[#F8FAFC] px-3 py-2 text-[#0B1B33] transition-colors hover:bg-[#EEF2F7]"
+                                        className="flex min-h-[44px] items-center gap-3 rounded-2xl bg-superficie-pagina px-3 py-2 text-texto-fuerte transition-colors hover:bg-superficie-hover"
                                     >
-                                        <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-[#E3E8F0] bg-white text-xs font-extrabold text-[#4A5A72]">
+                                        <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-borde-suave bg-white text-xs font-extrabold text-texto-medio">
                                             {f.puesto}
                                         </span>
                                         <span className="flex min-w-0 flex-1 flex-col">
                                             <span className="truncate text-sm font-bold">{f.nombre}</span>
-                                            <span className="truncate text-xs text-[#5B6B82]">
+                                            <span className="truncate text-xs text-texto-gris">
                                                 {f.seccion} · Prom. {f.promedio.toFixed(1)} · Asist. {f.asistencia}%
                                             </span>
                                         </span>
@@ -251,7 +251,7 @@ export function CuadroDeHonorWidget({ className }: { className?: string } = {}) 
                             onClick={() => setTodos((v) => !v)}
                             aria-expanded={todos}
                             className={cn(
-                                'flex min-h-[44px] items-center gap-1.5 self-center rounded-full px-3 text-[13px] font-bold text-[#0D47A1] transition-colors hover:bg-[#E3F2FD]',
+                                'flex min-h-[44px] items-center gap-1.5 self-center rounded-full px-3 text-[13px] font-bold text-cabecera-tinta transition-colors hover:bg-cabecera-claro',
                                 // Con cinco o menos, en el ordenador ya se ven todas.
                                 !todos && resto.length <= FILAS_EN_EL_ORDENADOR && 'lateral:alta:hidden'
                             )}

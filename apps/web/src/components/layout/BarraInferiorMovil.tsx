@@ -118,7 +118,7 @@ export function BarraInferiorMovil({ destinos }: Props) {
     const clasesDelBoton = (activo: boolean) =>
         cn(
             'flex min-h-[52px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 text-xs font-semibold transition-colors',
-            activo ? 'text-[#0D47A1]' : 'text-[#5B6B82]'
+            activo ? 'text-cabecera-tinta' : 'text-texto-gris'
         );
 
     const Boton = ({ destino }: { destino: DestinoDeLaBarra }) => {
@@ -174,7 +174,7 @@ export function BarraInferiorMovil({ destinos }: Props) {
                 >
                     <span
                         className={cn(
-                            'flex h-14 w-14 items-center justify-center rounded-full shadow-lg ring-4 ring-white transition-[transform,opacity,background-color] duration-200 ease-out',
+                            'flex h-14 w-14 items-center justify-center rounded-full shadow-lg ring-4 ring-white dark:ring-[#121212] transition-[transform,opacity,background-color] duration-200 ease-out',
                             // El color que eligió quien mira (lib/tema-de-la-app.ts).
                             'bg-[var(--acento)]',
                             // Sobresale 12 px por encima de la barra: escondida,

@@ -1059,7 +1059,7 @@ export default function EvaluationPlanSection({
   // ────────────────────────────────────────────────
   if (isEditing) {
     return (
-      <div className="fixed inset-0 z-[100] bg-[#f3f4f6] flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="Editor Inmersivo — Plan de Evaluación">
+      <div className="fixed inset-0 z-[100] bg-gray-100 flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="Editor Inmersivo — Plan de Evaluación">
         {/* TOP BAR */}
         <div className="bg-white border-b border-gray-200 shadow-sm min-h-16 flex flex-wrap items-center justify-between gap-3 px-4 py-2 sm:px-6 shrink-0">
           <div className="flex items-center gap-4">

@@ -187,13 +187,13 @@ export default function DashboardPage() {
                         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                             <section className={TARJETA} aria-labelledby="evolucion-del-promedio">
                                 <h2 id="evolucion-del-promedio" className={TITULO}>
-                                    <span className={`${BALDOSA} bg-[#E3F2FD] text-[#0D47A1]`}>
+                                    <span className={`${BALDOSA} bg-cabecera-claro text-cabecera-tinta`}>
                                         <TrendingUp className="h-5 w-5" aria-hidden />
                                     </span>
                                     Evolución del promedio
                                 </h2>
                                 {evolutionData.length > 0 ? (
-                                    <TrendChart data={evolutionData} type="area" height={250} color="#0D47A1" />
+                                    <TrendChart data={evolutionData} type="area" height={250} color="var(--cab-tinta-hex)" />
                                 ) : (
                                     <p className="flex h-[250px] items-center justify-center text-sm text-gray-600">Aún no hay calificaciones por lapso</p>
                                 )}
@@ -208,12 +208,12 @@ export default function DashboardPage() {
                                 {studentStats?.subjects?.length ? (
                                     <ul className="flex flex-col gap-2">
                                         {studentStats.subjects.map((subject) => (
-                                            <li key={subject.id} className="flex items-center justify-between gap-3 rounded-2xl bg-[#F8FAFC] px-3.5 py-2.5">
+                                            <li key={subject.id} className="flex items-center justify-between gap-3 rounded-2xl bg-superficie-pagina px-3.5 py-2.5">
                                                 <span className="flex min-w-0 items-center gap-3">
                                                     <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: subject.color }} aria-hidden />
                                                     <span className="min-w-0">
-                                                        <span className="block truncate text-sm font-bold text-[#0B1B33]">{subject.name}</span>
-                                                        <span className="block text-xs text-[#5B6B82]">Promedio: {subject.average.toFixed(1)}</span>
+                                                        <span className="block truncate text-sm font-bold text-texto-fuerte">{subject.name}</span>
+                                                        <span className="block text-xs text-texto-gris">Promedio: {subject.average.toFixed(1)}</span>
                                                     </span>
                                                 </span>
                                                 <StatusBadge status={subject.average >= 10 ? 'approved' : 'failed'} size="sm" />
@@ -250,7 +250,7 @@ export default function DashboardPage() {
 
 /** Las tarjetas de la hoja, en el ordenador: blancas, sin borde, como las del diseño. */
 const TARJETA = 'rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(13,71,161,0.06),0_8px_24px_rgba(13,71,161,0.05)]';
-const TITULO = 'mb-5 flex items-center gap-3 text-[17px] font-extrabold text-[#0B1B33]';
+const TITULO = 'mb-5 flex items-center gap-3 text-[17px] font-extrabold text-texto-fuerte';
 const BALDOSA = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px]';
 
 /** El horario en vivo del profesor (el mismo que en su teléfono). */

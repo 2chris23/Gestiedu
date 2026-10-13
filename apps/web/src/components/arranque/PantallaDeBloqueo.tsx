@@ -91,7 +91,7 @@ export function PantallaDeBloqueo({ perfil, alAbrir }: { perfil: PerfilRecordado
 
     return (
         <div
-            className="fixed inset-0 z-[100] flex flex-col overflow-y-auto bg-[linear-gradient(180deg,var(--azul-cabecera)_0%,#0B3F94_55%,#082F6E_100%)]"
+            className="modo-claro fixed inset-0 z-[100] flex flex-col overflow-y-auto bg-[linear-gradient(180deg,var(--cab-fondo-hex)_0%,var(--cab-medio-hex)_55%,var(--cab-hondo-hex)_100%)]"
             role="dialog"
             aria-modal="true"
             aria-label="La app está bloqueada"
@@ -112,15 +112,15 @@ export function PantallaDeBloqueo({ perfil, alAbrir }: { perfil: PerfilRecordado
                         className="logo-que-respira h-36 w-auto max-w-[260px] object-contain drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]"
                     />
                 ) : (
-                    <p className="text-2xl font-extrabold text-white">{perfil.nombreDelLiceo ?? 'Gestiedu'}</p>
+                    <p className="text-2xl font-extrabold text-cabecera-texto">{perfil.nombreDelLiceo ?? 'Gestiedu'}</p>
                 )}
                 {perfil.logo && perfil.nombreDelLiceo && (
-                    <p className="mt-4 text-center text-base font-bold tracking-wide text-white/90">{perfil.nombreDelLiceo}</p>
+                    <p className="mt-4 text-center text-base font-bold tracking-wide text-cabecera-texto/90">{perfil.nombreDelLiceo}</p>
                 )}
             </div>
 
             <div className="relative flex min-h-[36vh] flex-col items-center rounded-t-[32px] bg-white px-6 pb-[calc(var(--zona-segura-abajo)+20px)] shadow-[0_-12px_32px_rgba(4,24,64,0.25)]">
-                <div className="-mt-12 flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#90CAF9] text-2xl font-extrabold text-[#0D47A1] shadow-[0_8px_20px_rgba(4,24,64,0.25)] ring-4 ring-white">
+                <div className="-mt-12 flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full bg-cabecera-celeste text-2xl font-extrabold text-cabecera-sobreceleste shadow-[0_8px_20px_rgba(4,24,64,0.25)] ring-4 ring-white">
                     {perfil.foto ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={perfil.foto} alt="" className="h-full w-full object-cover" />
@@ -129,7 +129,7 @@ export function PantallaDeBloqueo({ perfil, alAbrir }: { perfil: PerfilRecordado
                     )}
                 </div>
                 <p className="mt-3 text-sm font-medium text-gray-600">{saludo(hora)}</p>
-                <h1 className="mt-0.5 text-center text-xl font-extrabold text-[#0B1B33]">{nombreCompleto || 'Tu cuenta'}</h1>
+                <h1 className="mt-0.5 text-center text-xl font-extrabold text-texto-fuerte">{nombreCompleto || 'Tu cuenta'}</h1>
                 <p className="mt-0.5 text-sm font-semibold text-[var(--acento-hondo)]">{comoSeLee(perfil)}</p>
                 {perfil.correo && <p className="mt-0.5 text-xs text-gray-600">{perfil.correo}</p>}
 
@@ -141,7 +141,7 @@ export function PantallaDeBloqueo({ perfil, alAbrir }: { perfil: PerfilRecordado
                                 <p className="text-sm text-gray-700">
                                     Tu teléfono no tiene bloqueo de pantalla. Para usar el PIN de la app hace falta conexión la primera vez.
                                 </p>
-                                <button type="button" onClick={() => setPaso({ tipo: 'inicio' })} className="min-h-[44px] px-4 text-sm font-bold text-[#0D47A1]">
+                                <button type="button" onClick={() => setPaso({ tipo: 'inicio' })} className="min-h-[44px] px-4 text-sm font-bold text-cabecera-tinta">
                                     Volver
                                 </button>
                             </div>
@@ -177,7 +177,7 @@ export function PantallaDeBloqueo({ perfil, alAbrir }: { perfil: PerfilRecordado
                                 type="button"
                                 onClick={ingresar}
                                 disabled={ocupado}
-                                className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full bg-[var(--azul-cabecera)] px-6 text-base font-extrabold text-white shadow-[0_8px_20px_rgba(13,71,161,0.25)] transition-transform active:scale-[0.98] disabled:opacity-70"
+                                className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full bg-cabecera px-6 text-base font-extrabold text-cabecera-texto shadow-[0_8px_20px_rgba(13,71,161,0.25)] transition-transform active:scale-[0.98] disabled:opacity-70"
                             >
                                 <Fingerprint className="h-6 w-6" aria-hidden />
                                 Ingresar
@@ -190,14 +190,14 @@ export function PantallaDeBloqueo({ perfil, alAbrir }: { perfil: PerfilRecordado
 
                     {preguntando ? (
                         <div className="mt-auto w-full rounded-2xl bg-white p-4 text-center ring-1 ring-red-200" role="alertdialog" aria-label="¿Cerrar sesión?">
-                            <p className="text-sm font-bold text-[#0B1B33]">¿Cerrar sesión en este teléfono?</p>
+                            <p className="text-sm font-bold text-texto-fuerte">¿Cerrar sesión en este teléfono?</p>
                             <p className="mt-1 text-xs text-gray-600">
                                 {preguntando.pendientes
                                     ? `Tienes ${preguntando.pendientes} cambio(s) sin enviar: se perderán.`
                                     : 'Para volver a entrar harán falta tu correo y tu contraseña.'}
                             </p>
                             <div className="mt-3 flex justify-center gap-2">
-                                <button type="button" onClick={() => setPreguntando(null)} className="min-h-[44px] rounded-full px-4 text-sm font-bold text-[#0D47A1]">
+                                <button type="button" onClick={() => setPreguntando(null)} className="min-h-[44px] rounded-full px-4 text-sm font-bold text-cabecera-tinta">
                                     No
                                 </button>
                                 <button

@@ -252,7 +252,7 @@ function ElCandado() {
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={perfil.logo} alt={perfil.nombreDelLiceo ?? 'Logo del liceo'} className="h-28 w-auto max-w-[240px] object-contain motion-safe:animate-aparecer" />
                     ) : (
-                        <p className="text-2xl font-extrabold text-[var(--azul-cabecera)] motion-safe:animate-aparecer">
+                        <p className="text-2xl font-extrabold text-cabecera-tinta motion-safe:animate-aparecer">
                             {perfil?.nombreDelLiceo ?? 'Gestiedu'}
                         </p>
                     )}

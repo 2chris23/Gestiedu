@@ -4,7 +4,8 @@ import { Campana } from '@/components/layout/Campana';
 import { BotonDelRecorrido } from '@/components/common/Recorrido';
 import AvisoSinConexion from '@/components/common/AvisoSinConexion';
 import { pintarLaBarraDelReloj } from '@/lib/barra-del-reloj';
-import { AZUL_CABECERA } from '@/lib/tema-de-la-app';
+import { CAMBIO_DE_COLOR, colorDeLaCabecera } from '@/lib/tema-de-la-app';
+import { CAMBIO_DE_MODO } from '@/lib/modo-de-la-app';
 import * as React from 'react';
 import { ChevronDown } from 'lucide-react';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -37,7 +38,7 @@ import FichaDeMiCuenta from '@/components/layout/FichaDeMiCuenta';
 const ABRIR_MI_CUENTA = 'gestiedu:abrir-mi-cuenta';
 
 /** Los botones redondos sobre el azul: blanco translúcido, como el diseño. */
-const SOBRE_AZUL = 'bg-white/[0.12] text-white hover:bg-white/20 hover:text-white';
+const SOBRE_AZUL = 'bg-cabecera-texto/[0.12] text-cabecera-texto hover:bg-cabecera-texto/20 hover:text-cabecera-texto';
 
 /** Abre «Mi cuenta» desde fuera de la cabecera (el botón de la barra de abajo). */
 export function abrirMiCuenta(): void {
@@ -86,14 +87,19 @@ export function CabeceraMovil({
     // pintada, el puente con Android aún no estaba y se perdía (moto g13).
     React.useEffect(() => {
         if (!azul) return;
-        const pintar = () => pintarLaBarraDelReloj(AZUL_CABECERA);
+        // Del color de la cabecera de quien mira (y negra en modo oscuro).
+        const pintar = () => pintarLaBarraDelReloj(colorDeLaCabecera());
         pintar();
         const relojes = [500, 2000].map((ms) => window.setTimeout(pintar, ms));
         const alVolver = () => document.visibilityState === 'visible' && pintar();
         document.addEventListener('visibilitychange', alVolver);
+        window.addEventListener(CAMBIO_DE_COLOR, pintar);
+        window.addEventListener(CAMBIO_DE_MODO, pintar);
         return () => {
             relojes.forEach((r) => window.clearTimeout(r));
             document.removeEventListener('visibilitychange', alVolver);
+            window.removeEventListener(CAMBIO_DE_COLOR, pintar);
+            window.removeEventListener(CAMBIO_DE_MODO, pintar);
             pintarLaBarraDelReloj(null);
         };
     }, [azul]);
@@ -107,7 +113,7 @@ export function CabeceraMovil({
             <header
                 className={
                     azul
-                        ? 'zona-segura-arriba sticky top-0 z-40 bg-[var(--azul-cabecera)] lateral:hidden print:!hidden'
+                        ? 'zona-segura-arriba sticky top-0 z-40 bg-cabecera lateral:hidden print:!hidden'
                         : 'zona-segura-arriba sticky top-0 z-40 border-b border-gray-200 bg-white lateral:hidden print:!hidden'
                 }
             >
@@ -127,16 +133,16 @@ export function CabeceraMovil({
                         <UserAvatar
                             name={nombreCompleto}
                             src={avatar}
-                            className={azul ? 'h-11 w-11 !bg-[#90CAF9]' : 'h-9 w-9'}
-                            initialsClassName={azul ? 'text-[15px] !font-extrabold !text-[#0D47A1]' : 'text-xs'}
+                            className={azul ? 'h-11 w-11 !bg-cabecera-celeste' : 'h-9 w-9'}
+                            initialsClassName={azul ? 'text-[15px] !font-extrabold !text-cabecera-sobreceleste' : 'text-xs'}
                         />
                         {azul ? (
                             <span className="flex min-w-0 flex-col">
-                                <span className="flex min-w-0 items-center gap-1 text-[15px] font-bold text-white">
+                                <span className="flex min-w-0 items-center gap-1 text-[15px] font-bold text-cabecera-texto">
                                     <span className="truncate">{comoSeLeLlama}</span>
                                     <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
                                 </span>
-                                <span className="truncate text-xs font-medium text-[#90CAF9]">
+                                <span className="truncate text-xs font-medium text-cabecera-suave">
                                     {[ROL_DE[rol] ?? rol, liceo].filter(Boolean).join(' · ')}
                                 </span>
                             </span>

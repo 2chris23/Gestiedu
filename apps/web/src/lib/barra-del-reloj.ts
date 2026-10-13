@@ -17,6 +17,14 @@ interface PluginBarra {
     pintar: (o: { color?: string; iconosClaros?: boolean }) => Promise<void>;
 }
 
+/** Sobre un color claro (la cabecera amarilla), los iconos del reloj van oscuros. */
+function esClaro(hex: string): boolean {
+    const h = hex.replace('#', '');
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) return false;
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+    return 0.299 * r + 0.587 * g + 0.114 * b > 160;
+}
+
 export function pintarLaBarraDelReloj(color: string | null): void {
     if (typeof window === 'undefined') return;
     const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
@@ -25,7 +33,7 @@ export function pintarLaBarraDelReloj(color: string | null): void {
     const cap = (window as unknown as { Capacitor?: Capacitor }).Capacitor;
     if (!cap?.isNativePlatform?.()) return;
     const plugin = cap.Plugins?.BarraDelReloj as PluginBarra | undefined;
-    plugin?.pintar(color ? { color, iconosClaros: true } : {}).catch(() => {
+    plugin?.pintar(color ? { color, iconosClaros: !esClaro(color) } : {}).catch(() => {
         /* APK vieja o color raro: se queda la de siempre */
     });
 }

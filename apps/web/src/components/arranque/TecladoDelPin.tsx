@@ -55,7 +55,7 @@ export function TecladoDelPin({
     return (
         <div className="flex w-full max-w-[300px] flex-col items-center gap-5" data-teclado-del-pin>
             <div className="text-center">
-                <p className="text-base font-bold text-[#0B1B33]">{titulo}</p>
+                <p className="text-base font-bold text-texto-fuerte">{titulo}</p>
                 {pista && <p className="mt-1 text-sm text-gray-600">{pista}</p>}
             </div>
             <div className="flex gap-4" aria-label={`${pin.length} de ${LARGO_DEL_PIN} números`} role="status">
@@ -63,7 +63,7 @@ export function TecladoDelPin({
                     <span
                         key={i}
                         className={`h-4 w-4 rounded-full border-2 transition-colors ${
-                            i < pin.length ? 'border-[var(--azul-cabecera)] bg-[var(--azul-cabecera)]' : 'border-[#9AAFCB]'
+                            i < pin.length ? 'border-cabecera bg-cabecera' : 'border-borde-medio'
                         }`}
                     />
                 ))}
@@ -85,7 +85,7 @@ export function TecladoDelPin({
                     type="button"
                     onClick={borrar}
                     aria-label="Borrar el último número"
-                    className="flex h-16 items-center justify-center rounded-2xl text-[#33415C] active:bg-gray-100"
+                    className="flex h-16 items-center justify-center rounded-2xl text-texto-medio active:bg-gray-100"
                 >
                     <Delete className="h-6 w-6" aria-hidden />
                 </button>
@@ -100,7 +100,7 @@ function Tecla({ children, onClick, disabled }: { children: React.ReactNode; onC
             type="button"
             onClick={onClick}
             disabled={disabled}
-            className="flex h-16 items-center justify-center rounded-2xl bg-white text-2xl font-semibold text-[#0B1B33] shadow-[0_1px_2px_rgba(13,71,161,0.1)] ring-1 ring-[#DCE6F5] transition-transform active:scale-95 active:bg-[#EEF3FB] disabled:opacity-50"
+            className="flex h-16 items-center justify-center rounded-2xl bg-white text-2xl font-semibold text-texto-fuerte shadow-[0_1px_2px_rgba(13,71,161,0.1)] ring-1 ring-borde-suave transition-transform active:scale-95 active:bg-superficie-hover disabled:opacity-50"
         >
             {children}
         </button>

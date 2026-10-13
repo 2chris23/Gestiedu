@@ -149,7 +149,7 @@ function laFechaLeida(ymd: string): string {
     return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
-const PASTILLA = 'self-start rounded-full bg-white/[0.14] px-3.5 py-[7px] text-[13px] font-semibold text-white';
+const PASTILLA = 'self-start rounded-full bg-cabecera-texto/[0.14] px-3.5 py-[7px] text-[13px] font-semibold text-cabecera-texto';
 
 export function FranjaDelInicio() {
     const loQueSeVe = useLoQueSeVe();
@@ -171,15 +171,15 @@ export function FranjaDelInicio() {
                         type="button"
                         onClick={alternar}
                         aria-pressed={oculto}
-                        className="-ml-1 flex min-h-[36px] items-center gap-1.5 self-start rounded-full px-1 text-[15px] font-semibold text-[#BBDEFB] transition-colors hover:text-white"
+                        className="-ml-1 flex min-h-[36px] items-center gap-1.5 self-start rounded-full px-1 text-[15px] font-semibold text-cabecera-suave transition-colors hover:text-cabecera-texto"
                     >
                         {titulo}
                         {oculto ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
                         <span className="sr-only">{oculto ? '(oculto: pulsa para verlo)' : '(pulsa para ocultarlo)'}</span>
                     </button>
                     <div className="flex items-center gap-6">
-                        <p className="text-[56px] font-extrabold leading-none tracking-[-2px] text-white tabular-nums">
-                            {laCifraComoSeLee(cifra, oculto)} <span className="text-2xl font-bold tracking-normal text-[#90CAF9]">/ 20</span>
+                        <p className="text-[56px] font-extrabold leading-none tracking-[-2px] text-cabecera-texto tabular-nums">
+                            {laCifraComoSeLee(cifra, oculto)} <span className="text-2xl font-bold tracking-normal text-cabecera-suave">/ 20</span>
                         </p>
                         {alLado}
                     </div>
@@ -198,7 +198,7 @@ export function FranjaDelInicio() {
 
 /** Mientras llegan las cifras: la misma forma, para que la hoja no salte. */
 function EsqueletoDeLaFranja() {
-    const barra = 'rounded-full bg-white/[0.16] motion-safe:animate-latir';
+    const barra = 'rounded-full bg-cabecera-texto/[0.16] motion-safe:animate-latir';
     return (
         <div className="w-full px-5 py-5 lateral:px-6" aria-busy="true" aria-label="Cargando las cifras">
             <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-6">
@@ -209,7 +209,7 @@ function EsqueletoDeLaFranja() {
                 </div>
                 <div className="grid max-w-[728px] flex-[1_1_520px] grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3.5">
                     {[0, 1, 2].map((i) => (
-                        <div key={i} className="h-[126px] rounded-[22px] border border-white/[0.14] bg-white/10 motion-safe:animate-latir" />
+                        <div key={i} className="h-[126px] rounded-[22px] border border-cabecera-texto/[0.14] bg-cabecera-texto/10 motion-safe:animate-latir" />
                     ))}
                 </div>
             </div>

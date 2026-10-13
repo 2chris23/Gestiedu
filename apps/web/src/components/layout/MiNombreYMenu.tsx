@@ -3,10 +3,11 @@
 import * as React from 'react';
 import Link from 'next/link';
 import * as Menu from '@radix-ui/react-dropdown-menu';
-import { ChevronUp, KeyRound, LogOut, Palette, Settings, Check } from 'lucide-react';
+import { ChevronUp, KeyRound, LogOut, Palette, Settings, Check, Sun, Moon, Smartphone } from 'lucide-react';
 import UserAvatar from '@/components/ui/UserAvatar';
 import FichaDeMiCuenta from '@/components/layout/FichaDeMiCuenta';
-import { ACENTOS, CAMBIO_DE_COLOR, acentoGuardado, elegirAcento, type Acento } from '@/lib/tema-de-la-app';
+import { ACENTOS, ACENTO_POR_DEFECTO, CAMBIO_DE_COLOR, acentoGuardado, elegirAcento, type Acento } from '@/lib/tema-de-la-app';
+import { CAMBIO_DE_MODO, MODO_POR_DEFECTO, elegirModo, modoGuardado, type Modo } from '@/lib/modo-de-la-app';
 import { cn } from '@/lib/utils';
 
 /**
@@ -30,7 +31,7 @@ const ROLES: Record<string, string> = {
 };
 
 const FILA =
-    'flex min-h-[44px] cursor-pointer select-none items-center gap-3 rounded-xl px-3 text-sm font-medium text-[#0B1B33] outline-none transition-colors data-[highlighted]:bg-[#EEF3FA] [&>svg]:h-[18px] [&>svg]:w-[18px] [&>svg]:shrink-0 [&>svg]:text-[#5B6B82]';
+    'flex min-h-[44px] cursor-pointer select-none items-center gap-3 rounded-xl px-3 text-sm font-medium text-texto-fuerte outline-none transition-colors data-[highlighted]:bg-superficie-hover [&>svg]:h-[18px] [&>svg]:w-[18px] [&>svg]:shrink-0 [&>svg]:text-texto-gris';
 
 export interface MiNombreYMenuProps {
     nombre: string;
@@ -45,7 +46,8 @@ export interface MiNombreYMenuProps {
 
 export function MiNombreYMenu({ nombre, apellido, correo, avatar, rol, liceo, recogida, alCerrarSesion }: MiNombreYMenuProps) {
     const [fichaAbierta, setFichaAbierta] = React.useState(false);
-    const [acento, setAcento] = React.useState<Acento>('turquesa');
+    const [acento, setAcento] = React.useState<Acento>(ACENTO_POR_DEFECTO);
+    const [modo, setModo] = React.useState<Modo>(MODO_POR_DEFECTO);
     const primerNombre = nombre?.split(' ')[0] || 'Usuario';
     const nombreCompleto = `${nombre ?? ''} ${apellido ?? ''}`.trim() || 'Usuario';
     const esAdmin = rol === 'ADMIN';
@@ -54,7 +56,13 @@ export function MiNombreYMenu({ nombre, apellido, correo, avatar, rol, liceo, re
         setAcento(acentoGuardado());
         const alCambiar = (e: Event) => setAcento((e as CustomEvent<Acento>).detail);
         window.addEventListener(CAMBIO_DE_COLOR, alCambiar);
-        return () => window.removeEventListener(CAMBIO_DE_COLOR, alCambiar);
+        setModo(modoGuardado());
+        const alCambiarElModo = () => setModo(modoGuardado());
+        window.addEventListener(CAMBIO_DE_MODO, alCambiarElModo);
+        return () => {
+            window.removeEventListener(CAMBIO_DE_COLOR, alCambiar);
+            window.removeEventListener(CAMBIO_DE_MODO, alCambiarElModo);
+        };
     }, []);
 
     return (
@@ -64,23 +72,23 @@ export function MiNombreYMenu({ nombre, apellido, correo, avatar, rol, liceo, re
                     <button
                         type="button"
                         data-recorrido="mi-cuenta"
-                        className="group flex h-14 w-full items-center gap-3 rounded-2xl pl-0.5 pr-2 text-left outline-none transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/50 data-[state=open]:bg-white/[0.14]"
+                        className="group flex h-14 w-full items-center gap-3 rounded-2xl pl-0.5 pr-2 text-left outline-none transition-colors hover:bg-cabecera-texto/10 focus-visible:ring-2 focus-visible:ring-cabecera-texto/50 data-[state=open]:bg-cabecera-texto/[0.14]"
                     >
                         <UserAvatar
                             name={nombreCompleto}
                             src={avatar}
-                            className="!h-10 !w-10 !bg-[#90CAF9]"
-                            initialsClassName="text-sm !font-extrabold !text-[#0D47A1]"
+                            className="!h-10 !w-10 !bg-cabecera-celeste"
+                            initialsClassName="text-sm !font-extrabold !text-cabecera-sobreceleste"
                         />
                         <span className="flex w-[128px] shrink-0 flex-col transition-opacity duration-150 recogida:opacity-0">
-                            <span className="truncate text-sm font-bold text-white">{primerNombre}</span>
+                            <span className="truncate text-sm font-bold text-cabecera-texto">{primerNombre}</span>
                             {/* Con el menú abierto (o el ratón encima) el fondo se aclara: el rol pasa a blanco, si no baja de 4,5:1 (LATERAL-04). */}
-                            <span className="truncate text-xs font-medium text-[#BBDEFB] group-hover:text-white group-data-[state=open]:text-white">
+                            <span className="truncate text-xs font-medium text-cabecera-suave group-hover:text-cabecera-texto group-data-[state=open]:text-cabecera-texto">
                                 {ROLES[rol] ?? rol}
                             </span>
                         </span>
                         <ChevronUp
-                            className="ml-auto h-4 w-4 shrink-0 self-center text-[#90CAF9] transition-[transform,opacity] duration-200 group-data-[state=open]:rotate-180 recogida:opacity-0"
+                            className="ml-auto h-4 w-4 shrink-0 self-center text-cabecera-suave transition-[transform,opacity] duration-200 group-data-[state=open]:rotate-180 recogida:opacity-0"
                             aria-hidden
                         />
                     </button>
@@ -92,13 +100,13 @@ export function MiNombreYMenu({ nombre, apellido, correo, avatar, rol, liceo, re
                         align={recogida ? 'end' : 'start'}
                         sideOffset={recogida ? 14 : 8}
                         collisionPadding={12}
-                        className={`z-[60] ${recogida ? 'w-64' : 'w-[var(--radix-dropdown-menu-trigger-width)]'} origin-[--radix-dropdown-menu-content-transform-origin] rounded-2xl bg-white p-1.5 shadow-[0_16px_48px_rgba(4,24,64,0.28),0_2px_6px_rgba(4,24,64,0.12)] data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.97] data-[state=open]:zoom-in-[0.97] data-[state=closed]:duration-100 data-[state=open]:duration-150`}
+                        className={`z-[60] ${recogida ? 'w-64' : 'w-[var(--radix-dropdown-menu-trigger-width)]'} origin-[--radix-dropdown-menu-content-transform-origin] rounded-2xl bg-white p-1.5 dark:bg-[#282828] shadow-[0_16px_48px_rgba(4,24,64,0.28),0_2px_6px_rgba(4,24,64,0.12)] data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.97] data-[state=open]:zoom-in-[0.97] data-[state=closed]:duration-100 data-[state=open]:duration-150`}
                     >
                         <div className="px-3 pb-2.5 pt-2">
-                            <p className="truncate text-sm font-bold text-[#0B1B33]">{nombreCompleto}</p>
-                            {correo && <p className="truncate text-xs text-[#5B6B82]">{correo}</p>}
+                            <p className="truncate text-sm font-bold text-texto-fuerte">{nombreCompleto}</p>
+                            {correo && <p className="truncate text-xs text-texto-gris">{correo}</p>}
                         </div>
-                        <Menu.Separator className="mx-1.5 my-1 h-px bg-[#EDF1F7]" />
+                        <Menu.Separator className="mx-1.5 my-1 h-px bg-borde-suave dark:bg-[#3e3e3e]" />
 
                         <Menu.Item className={FILA} onSelect={() => setFichaAbierta(true)}>
                             <KeyRound aria-hidden />
@@ -106,16 +114,16 @@ export function MiNombreYMenu({ nombre, apellido, correo, avatar, rol, liceo, re
                         </Menu.Item>
 
                         {/* El color, en dos líneas: así cabe en el ancho de la barra. */}
-                        <div className="flex flex-col gap-1.5 px-3 py-2 text-sm font-medium text-[#0B1B33]">
+                        <div className="flex flex-col gap-1.5 px-3 py-2 text-sm font-medium text-texto-fuerte">
                             <span id="color-de-la-app" className="flex items-center gap-3">
-                                <Palette className="h-[18px] w-[18px] shrink-0 text-[#5B6B82]" aria-hidden />
+                                <Palette className="h-[18px] w-[18px] shrink-0 text-texto-gris" aria-hidden />
                                 Color de la app
                             </span>
                             <Menu.RadioGroup
                                 value={acento}
                                 onValueChange={(v) => elegirAcento(v as Acento)}
                                 aria-labelledby="color-de-la-app"
-                                className="flex gap-1 pl-[26px]"
+                                className="flex gap-1"
                             >
                                 {(Object.keys(ACENTOS) as Acento[]).map((a) => (
                                     <Menu.RadioItem
@@ -126,23 +134,54 @@ export function MiNombreYMenu({ nombre, apellido, correo, avatar, rol, liceo, re
                                         aria-label={ACENTOS[a].nombre}
                                         title={ACENTOS[a].nombre}
                                         data-color={a}
-                                        className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full outline-none data-[highlighted]:bg-[#EEF3FA]"
+                                        className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full outline-none data-[highlighted]:bg-superficie-hover"
                                     >
                                         <span
                                             className={cn(
                                                 'flex h-7 w-7 items-center justify-center rounded-full ring-offset-2 transition-shadow',
-                                                a === acento ? 'ring-2 ring-[#0D47A1]' : 'ring-1 ring-black/10'
+                                                a === acento ? 'ring-2 ring-cabecera-tinta' : 'ring-1 ring-black/10'
                                             )}
                                             style={{ backgroundColor: ACENTOS[a].color }}
                                         >
                                             <Menu.ItemIndicator>
-                                                <Check className="h-4 w-4 text-[var(--sobre-acento)]" strokeWidth={2.6} aria-hidden />
+                                                <Check className={cn('h-4 w-4', a === 'amarillo' ? 'text-[#0B1B33]' : 'text-white')} strokeWidth={2.6} aria-hidden />
                                             </Menu.ItemIndicator>
                                         </span>
                                     </Menu.RadioItem>
                                 ))}
                             </Menu.RadioGroup>
                         </div>
+
+                        {/* Claro, oscuro o como diga el teléfono (lib/modo-de-la-app.ts). */}
+                        <Menu.RadioGroup
+                            value={modo}
+                            onValueChange={(v) => elegirModo(v as Modo)}
+                            aria-label="Modo de la app"
+                            className="mx-3 mb-1.5 grid grid-cols-3 gap-0.5 rounded-xl bg-superficie p-0.5"
+                        >
+                            {(
+                                [
+                                    ['claro', 'Claro', Sun],
+                                    ['oscuro', 'Oscuro', Moon],
+                                    ['sistema', 'Teléfono', Smartphone],
+                                ] as const
+                            ).map(([m, texto, Icono]) => (
+                                <Menu.RadioItem
+                                    key={m}
+                                    value={m}
+                                    onSelect={(e) => e.preventDefault()}
+                                    title={m === 'sistema' ? 'Como el teléfono' : texto}
+                                    data-modo={m}
+                                    className={cn(
+                                        'flex min-h-[44px] cursor-pointer flex-col items-center justify-center gap-0.5 rounded-[10px] text-[12px] font-semibold text-texto-gris outline-none data-[highlighted]:ring-2 data-[highlighted]:ring-cabecera-tinta/40',
+                                        m === modo && 'bg-white text-texto-fuerte shadow-sm dark:bg-[#3e3e3e]'
+                                    )}
+                                >
+                                    <Icono className="h-4 w-4" aria-hidden />
+                                    {texto}
+                                </Menu.RadioItem>
+                            ))}
+                        </Menu.RadioGroup>
 
                         {esAdmin && (
                             <Menu.Item asChild className={FILA}>
@@ -153,7 +192,7 @@ export function MiNombreYMenu({ nombre, apellido, correo, avatar, rol, liceo, re
                             </Menu.Item>
                         )}
 
-                        <Menu.Separator className="mx-1.5 my-1 h-px bg-[#EDF1F7]" />
+                        <Menu.Separator className="mx-1.5 my-1 h-px bg-borde-suave dark:bg-[#3e3e3e]" />
                         <Menu.Item
                             className={cn(FILA, 'font-semibold text-red-700 data-[highlighted]:bg-red-50 [&>svg]:text-red-600')}
                             onSelect={() => void alCerrarSesion()}

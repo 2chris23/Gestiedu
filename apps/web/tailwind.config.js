@@ -11,6 +11,13 @@
  */
 const conVariable = (nombre) => `hsl(var(${nombre}) / <alpha-value>)`;
 
+// El color de la app y el modo oscuro: las clases de siempre (`bg-white`,
+// `text-gray-900`, `bg-indigo-600`…) leen variables (paleta-de-colores.js).
+const paleta = require('./paleta-de-colores');
+const { comoLetra, comoFondo, comoBorde, cabecera, delDiseno } = paleta.coloresDeTailwind();
+/** `indigo` lleva además sus tonos con nombre (claro, suave…): se juntan. */
+const conIndigo = (juego, resto) => ({ ...juego, indigo: { ...juego.indigo, ...resto } });
+
 module.exports = {
     darkMode: ['class'],
     /**
@@ -35,6 +42,15 @@ module.exports = {
     ],
     theme: {
         extend: {
+            // El fondo y el borde de cada familia no se oscurecen como la
+            // letra (paleta-de-colores.js): sus propias variables.
+            backgroundColor: conIndigo(comoFondo, {}),
+            gradientColorStops: conIndigo(comoFondo, {}),
+            borderColor: { ...comoBorde, DEFAULT: 'rgb(var(--gray-200-b) / <alpha-value>)' },
+            divideColor: comoBorde,
+            ringColor: comoBorde,
+            ringOffsetColor: comoBorde,
+            outlineColor: comoBorde,
             /**
              * LA BARRA LATERAL ES DE LA TABLETA Y EL ORDENADOR, NO DEL TELÉFONO
              *
@@ -53,6 +69,11 @@ module.exports = {
              * con las fichas del teléfono y el plan perdió sus columnas.
              */
             colors: {
+                // Las familias de Tailwind como variables (la letra; el fondo
+                // y el borde van abajo, en backgroundColor y borderColor).
+                ...comoLetra,
+                cabecera,
+                ...delDiseno,
                 // ── El papel y la tinta ──────────────────────────────────
                 lienzo: {
                     DEFAULT: conVariable('--lienzo'),
@@ -74,6 +95,7 @@ module.exports = {
 
                 // ── 1. ÍNDIGO — lo que se pulsa ──────────────────────────
                 indigo: {
+                    ...comoLetra.indigo,
                     claro: conVariable('--indigo-claro'),
                     suave: conVariable('--indigo-suave'),
                     DEFAULT: conVariable('--indigo'),
@@ -138,13 +160,9 @@ module.exports = {
                  * Tailwind NO llegan a 4,5:1 sobre blanco (el verde, 3,3:1), y las
                  * pantallas viejas los usan como texto de estado ("aprobado",
                  * "al día"). Se oscurecen al tono -700, que sí llega. Un botón
-                 * con fondo -600 y letra blanca también gana contraste.
+                 * con fondo -600 y letra blanca también gana contraste. Viven
+                 * en paleta-de-colores.js (`AJUSTES_DE_CLARO`).
                  */
-                green: { 600: '#15803d' },
-                emerald: { 600: '#047857' },
-                amber: { 600: '#b45309' },
-                yellow: { 600: '#a16207' },
-                orange: { 600: '#c2410c' },
                 primary: {
                     50: 'hsl(var(--primary) / 0.05)',
                     100: 'hsl(var(--primary) / 0.1)',
@@ -265,6 +283,10 @@ module.exports = {
     },
     plugins: [
         require('tailwindcss-animate'),
+        // Las variables de la paleta: claro, oscuro y cada color de la app.
+        function ({ addBase }) {
+            addBase(paleta.cssDeLaPaleta());
+        },
         // Permite `@md:`, `@lg:`… que miran el ANCHO DEL CONTENEDOR, no el de la
         // ventana. Es lo que hace que una tabla metida en una columna estrecha
         // se comporte como en un teléfono, aunque la pantalla sea enorme.

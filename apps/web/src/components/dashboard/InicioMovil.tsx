@@ -49,8 +49,8 @@ export interface InicioMovilProps {
 
 function AccesoBoton({ href, name, Icono }: { href: string; name: string; Icono: React.ComponentType<{ className?: string }> }) {
     return (
-        <Link href={href} draggable={false} className="flex w-full flex-col items-center gap-2 text-center text-xs font-semibold text-[#33415C]">
-            <span className="flex h-[58px] w-[58px] items-center justify-center rounded-[20px] bg-white text-[#0D47A1] shadow-[0_1px_2px_rgba(13,71,161,0.08)]">
+        <Link href={href} draggable={false} className="flex w-full flex-col items-center gap-2 text-center text-xs font-semibold text-texto-medio">
+            <span className="flex h-[58px] w-[58px] items-center justify-center rounded-[20px] bg-white text-cabecera-tinta shadow-[0_1px_2px_rgba(13,71,161,0.08)]">
                 <Icono className="h-6 w-6" aria-hidden />
             </span>
             <span className="w-full truncate">{name}</span>
@@ -71,14 +71,14 @@ export function TarjetaMetrica({ tarjeta, grande = false }: { tarjeta: TarjetaMe
                     {tarjeta.icono}
                     <span className={grande ? 'text-sm font-semibold' : 'text-[13px] font-semibold'}>{tarjeta.titulo}</span>
                 </span>
-                {tarjeta.href && <ChevronRight className="h-4 w-4 text-[#90CAF9]" aria-hidden />}
+                {tarjeta.href && <ChevronRight className="h-4 w-4 text-cabecera-suave" aria-hidden />}
             </span>
             <span className="flex flex-col gap-0.5">
                 <span className={grande ? 'text-[30px] font-extrabold leading-tight tracking-[-0.5px]' : 'text-2xl font-extrabold tracking-[-0.5px]'}>
                     {tarjeta.valor}
                 </span>
                 {!grande && tarjeta.porcentajeBarra !== undefined && (
-                    <span aria-hidden className="my-1 h-1.5 overflow-hidden rounded-full bg-white/15">
+                    <span aria-hidden className="my-1 h-1.5 overflow-hidden rounded-full bg-cabecera-texto/15">
                         <span
                             className="block h-full rounded-full transition-[width] duration-700 ease-suave"
                             style={{
@@ -88,14 +88,14 @@ export function TarjetaMetrica({ tarjeta, grande = false }: { tarjeta: TarjetaMe
                         />
                     </span>
                 )}
-                <span className={grande ? 'text-xs font-medium text-[#E3F2FD]' : 'text-xs font-medium text-[#BBDEFB]'}>{tarjeta.subtitulo}</span>
+                <span className={grande ? 'text-xs font-medium text-cabecera-suave' : 'text-xs font-medium text-cabecera-suave'}>{tarjeta.subtitulo}</span>
             </span>
         </>
     );
 
     const clases = grande
-        ? 'flex flex-col justify-between gap-3.5 rounded-[22px] border border-white/[0.14] bg-white/10 p-4 text-white transition-colors hover:bg-white/[0.14]'
-        : 'flex flex-col gap-2.5 rounded-[20px] border border-white/[0.16] bg-white/10 p-3.5 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_8px_24px_rgba(4,24,64,0.25)] backdrop-blur-md transition-transform active:scale-[0.98]';
+        ? 'flex flex-col justify-between gap-3.5 rounded-[22px] border border-cabecera-texto/[0.14] bg-cabecera-texto/10 p-4 text-cabecera-texto transition-colors hover:bg-cabecera-texto/[0.14]'
+        : 'flex flex-col gap-2.5 rounded-[20px] border border-cabecera-texto/[0.16] bg-cabecera-texto/10 p-3.5 text-cabecera-texto shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_8px_24px_rgba(4,24,64,0.25)] backdrop-blur-md transition-transform active:scale-[0.98]';
 
     if (tarjeta.href) {
         return (
@@ -162,7 +162,7 @@ export function InicioMovil({
             <section
                 aria-label={etiquetaAria}
                 data-diseno="cabecera-azul"
-                className="relative -mx-4 -mt-6 overflow-hidden bg-[linear-gradient(180deg,var(--azul-cabecera)_0%,#0B3F94_55%,#08326F_100%)] px-5 pb-[50px] pt-2 sm:-mx-6"
+                className="relative -mx-4 -mt-6 overflow-hidden bg-[linear-gradient(180deg,var(--cab-fondo-hex)_0%,var(--cab-medio-hex)_55%,var(--cab-hondo-hex)_100%)] px-5 pb-[50px] pt-2 sm:-mx-6"
             >
                 <h1 className="sr-only">Panel</h1>
                 <span aria-hidden className="pointer-events-none absolute inset-0">
@@ -175,7 +175,7 @@ export function InicioMovil({
                         type="button"
                         onClick={alternar}
                         aria-pressed={oculto}
-                        className="-ml-1 flex min-h-[44px] items-center gap-1.5 self-start px-1 text-sm font-semibold text-[#90CAF9]"
+                        className="-ml-1 flex min-h-[44px] items-center gap-1.5 self-start px-1 text-sm font-semibold text-cabecera-suave"
                     >
                         {tituloCifra}
                         {oculto ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
@@ -183,16 +183,16 @@ export function InicioMovil({
                     </button>
 
                     <div className="flex items-center justify-between gap-3">
-                        <p className="text-[52px] font-extrabold leading-none tracking-[-1.5px] text-white" data-recorrido="inicio-cifras">
+                        <p className="text-[52px] font-extrabold leading-none tracking-[-1.5px] text-cabecera-texto" data-recorrido="inicio-cifras">
                             {valorFormateado}{' '}
-                            {sufijoCifra && <span className="text-xl font-bold tracking-normal text-[#90CAF9]">{sufijoCifra}</span>}
+                            {sufijoCifra && <span className="text-xl font-bold tracking-normal text-cabecera-suave">{sufijoCifra}</span>}
                         </p>
                         {bloqueLateralCifra && <div className="shrink-0">{bloqueLateralCifra}</div>}
                     </div>
 
                     {etiquetaSecundaria && (
                         typeof etiquetaSecundaria === 'string' ? (
-                            <p className="mt-1.5 self-start rounded-full bg-white/[0.14] px-3 py-1.5 text-xs font-semibold text-white">
+                            <p className="mt-1.5 self-start rounded-full bg-cabecera-texto/[0.14] px-3 py-1.5 text-xs font-semibold text-cabecera-texto">
                                 {etiquetaSecundaria}
                             </p>
                         ) : (
@@ -244,13 +244,13 @@ export function EsqueletoDelInicioMovil() {
     const barra = 'rounded-full motion-safe:animate-latir';
     return (
         <div className="lateral:hidden" aria-busy="true" aria-label="Cargando el Inicio">
-            <div className="-mx-4 -mt-6 bg-[linear-gradient(180deg,var(--azul-cabecera)_0%,#0B3F94_55%,#08326F_100%)] px-5 pb-[50px] pt-4 sm:-mx-6">
-                <div className={`h-4 w-32 bg-white/20 ${barra}`} />
-                <div className={`mt-4 h-12 w-40 bg-white/20 ${barra}`} />
-                <div className={`mt-4 h-7 w-56 bg-white/[0.14] ${barra}`} />
+            <div className="-mx-4 -mt-6 bg-[linear-gradient(180deg,var(--cab-fondo-hex)_0%,var(--cab-medio-hex)_55%,var(--cab-hondo-hex)_100%)] px-5 pb-[50px] pt-4 sm:-mx-6">
+                <div className={`h-4 w-32 bg-cabecera-texto/20 ${barra}`} />
+                <div className={`mt-4 h-12 w-40 bg-cabecera-texto/20 ${barra}`} />
+                <div className={`mt-4 h-7 w-56 bg-cabecera-texto/[0.14] ${barra}`} />
                 <div className="mt-[18px] grid grid-cols-2 gap-3">
-                    <div className="h-[132px] rounded-[20px] bg-white/10 motion-safe:animate-latir" />
-                    <div className="h-[132px] rounded-[20px] bg-white/10 motion-safe:animate-latir" />
+                    <div className="h-[132px] rounded-[20px] bg-cabecera-texto/10 motion-safe:animate-latir" />
+                    <div className="h-[132px] rounded-[20px] bg-cabecera-texto/10 motion-safe:animate-latir" />
                 </div>
             </div>
             <div className="relative -mx-4 -mt-[30px] rounded-t-[28px] bg-gray-50 px-5 pt-[22px] sm:-mx-6">

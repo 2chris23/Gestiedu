@@ -172,9 +172,10 @@ export default function InstituteLayout({ children }: { children: ReactNode; par
         );
     }
 
-    // Login page: render children directly without nav
+    // Login page: render children directly without nav. Siempre clara: es
+    // la puerta del liceo, con su color (el modo oscuro es de quien entra).
     if (isLoginPage) {
-        return <>{children}</>;
+        return <div className="modo-claro">{children}</div>;
     }
 
     const navItems = [

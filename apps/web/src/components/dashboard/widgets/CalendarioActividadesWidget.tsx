@@ -139,18 +139,18 @@ export function CalendarioActividadesWidget({ data, className }: CalendarioActiv
             {/* Cabecera: el mes que se mira y el lapso en el que estamos */}
             <div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
                 <div className="flex min-w-0 items-center gap-2.5">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#E3F2FD] text-[#0D47A1]">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-cabecera-claro text-cabecera-tinta">
                         <Calendar className="h-5 w-5" aria-hidden="true" />
                     </span>
                     <div className="min-w-0">
-                        <h3 id="calendario-del-liceo" className="truncate text-base font-extrabold text-[#0B1B33]">
+                        <h3 id="calendario-del-liceo" className="truncate text-base font-extrabold text-texto-fuerte">
                             {mesAnoTexto}
                         </h3>
-                        <p className="truncate text-[11px] text-[#5B6B82]">Eventos y días sin clases</p>
+                        <p className="truncate text-[11px] text-texto-gris">Eventos y días sin clases</p>
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[#E3F2FD] px-2.5 py-1 text-[11px] font-bold text-[#0D47A1]">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-cabecera-claro px-2.5 py-1 text-[11px] font-bold text-cabecera-tinta">
                         <Bookmark className="h-3 w-3" aria-hidden="true" />
                         {lapsoTexto}
                     </span>
@@ -163,11 +163,11 @@ export function CalendarioActividadesWidget({ data, className }: CalendarioActiv
             </div>
 
             {/* Ir a hoy y los meses */}
-            <div className="flex items-center justify-between border-t border-[#EDF1F7] pt-2.5 shrink-0">
+            <div className="flex items-center justify-between border-t border-borde-suave pt-2.5 shrink-0">
                 <button
                     type="button"
                     onClick={handleTodayMonth}
-                    className="-ml-1.5 min-h-[32px] rounded-full px-2 text-xs font-bold text-[#0D47A1] transition-colors hover:bg-[#E3F2FD]"
+                    className="-ml-1.5 min-h-[32px] rounded-full px-2 text-xs font-bold text-cabecera-tinta transition-colors hover:bg-cabecera-claro"
                 >
                     Ir a hoy
                 </button>
@@ -176,7 +176,7 @@ export function CalendarioActividadesWidget({ data, className }: CalendarioActiv
                         type="button"
                         onClick={handlePrevMonth}
                         aria-label="Mes anterior"
-                        className="flex h-8 w-8 items-center justify-center rounded-full border border-[#E3E8F0] bg-white text-[#33415C] transition-colors hover:bg-[#F4F7FB] active:scale-[0.97]"
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-borde-suave bg-white text-texto-medio transition-colors hover:bg-superficie active:scale-[0.97]"
                     >
                         <ChevronLeft className="h-4 w-4" aria-hidden />
                     </button>
@@ -184,7 +184,7 @@ export function CalendarioActividadesWidget({ data, className }: CalendarioActiv
                         type="button"
                         onClick={handleNextMonth}
                         aria-label="Mes siguiente"
-                        className="flex h-8 w-8 items-center justify-center rounded-full border border-[#E3E8F0] bg-white text-[#33415C] transition-colors hover:bg-[#F4F7FB] active:scale-[0.97]"
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-borde-suave bg-white text-texto-medio transition-colors hover:bg-superficie active:scale-[0.97]"
                     >
                         <ChevronRight className="h-4 w-4" aria-hidden />
                     </button>
@@ -194,7 +194,7 @@ export function CalendarioActividadesWidget({ data, className }: CalendarioActiv
             {/* Días de la semana */}
             <div className="grid grid-cols-7 text-center shrink-0 pt-1 pb-0.5">
                 {WEEKDAYS.map((wd) => (
-                    <span key={wd} className="text-xs font-bold text-[#5B6B82]">
+                    <span key={wd} className="text-xs font-bold text-texto-gris">
                         {wd}
                     </span>
                 ))}
@@ -224,12 +224,12 @@ export function CalendarioActividadesWidget({ data, className }: CalendarioActiv
                                     isToday
                                         ? 'bg-[var(--acento)] font-extrabold text-[var(--sobre-acento)] shadow-sm'
                                         : isSelected
-                                        ? 'font-bold text-[#0B1B33] ring-2 ring-inset ring-[#0D47A1] bg-[#E3F2FD]/50'
+                                        ? 'font-bold text-texto-fuerte ring-2 ring-inset ring-cabecera-tinta bg-cabecera-claro/50'
                                         : !isCurrentMonth
-                                        ? 'text-[#66758A] hover:bg-[#F4F7FB]'
+                                        ? 'text-texto-gris hover:bg-superficie'
                                         : finDeSemana
-                                        ? 'text-[#5B6B82] hover:bg-[#F4F7FB]'
-                                        : 'font-medium text-[#0B1B33] hover:bg-[#F4F7FB]'
+                                        ? 'text-texto-gris hover:bg-superficie'
+                                        : 'font-medium text-texto-fuerte hover:bg-superficie'
                                 }`}
                             >
                                 {dateObj.getDate()}
@@ -237,7 +237,7 @@ export function CalendarioActividadesWidget({ data, className }: CalendarioActiv
                                     <span
                                         aria-hidden
                                         className={`absolute bottom-1 h-1.5 w-1.5 rounded-full ${
-                                            hasHoliday ? 'bg-rose-500' : isToday ? 'bg-[var(--sobre-acento)]' : 'bg-[#0D47A1]'
+                                            hasHoliday ? 'bg-rose-500' : isToday ? 'bg-[var(--sobre-acento)]' : 'bg-cabecera-tinta'
                                         }`}
                                     />
                                 )}
@@ -248,10 +248,10 @@ export function CalendarioActividadesWidget({ data, className }: CalendarioActiv
             </div>
 
             {/* Lo del día elegido: el hueco que queda bajo el mes. */}
-            <div className="mt-2 min-h-0 flex-1 overflow-y-auto border-t border-[#EDF1F7] pt-2.5">
-                <p className="text-xs font-bold text-[#5B6B82]">{formatoFechaDiaMes(selectedDate)}</p>
+            <div className="mt-2 min-h-0 flex-1 overflow-y-auto border-t border-borde-suave pt-2.5">
+                <p className="text-xs font-bold text-texto-gris">{formatoFechaDiaMes(selectedDate)}</p>
                 {delDia.length === 0 ? (
-                    <p className="mt-1 text-sm text-[#5B6B82]">Sin eventos este día.</p>
+                    <p className="mt-1 text-sm text-texto-gris">Sin eventos este día.</p>
                 ) : (
                     <ul className="mt-1.5 flex flex-col gap-1.5">
                         {delDia.map((ev) => (
@@ -259,13 +259,13 @@ export function CalendarioActividadesWidget({ data, className }: CalendarioActiv
                                 key={ev.id}
                                 className={cn(
                                     'flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm',
-                                    ev.isHoliday ? 'bg-rose-50 text-rose-900' : 'bg-[#F4F7FB] text-[#0B1B33]'
+                                    ev.isHoliday ? 'bg-rose-50 text-rose-900' : 'bg-superficie text-texto-fuerte'
                                 )}
                             >
-                                <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', ev.isHoliday ? 'bg-rose-500' : 'bg-[#0D47A1]')} />
+                                <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', ev.isHoliday ? 'bg-rose-500' : 'bg-cabecera-tinta')} />
                                 <span className="min-w-0 flex-1 truncate font-semibold">{ev.title}</span>
                                 {ev.startTime && (
-                                    <span className="flex shrink-0 items-center gap-1 text-xs text-[#5B6B82]">
+                                    <span className="flex shrink-0 items-center gap-1 text-xs text-texto-gris">
                                         <Clock className="h-3 w-3" aria-hidden />
                                         {ev.endTime && esDiaEntero({ startTime: ev.startTime, endTime: ev.endTime })
                                             ? 'Todo el día'

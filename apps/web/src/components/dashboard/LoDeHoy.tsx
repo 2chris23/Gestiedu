@@ -33,7 +33,7 @@ export function LoDeHoy({
                 <CalendarCheck className="h-5 w-5" aria-hidden />
             </span>
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="text-[15px] font-extrabold text-[#0B1B33] lateral:text-base">
+                <span className="text-[15px] font-extrabold text-texto-fuerte lateral:text-base">
                     {cantidad === 0 ? 'Nada programado hoy' : `${cantidad} ${cantidad === 1 ? una : varias} para hoy`}
                 </span>
                 <span className="truncate text-xs font-semibold text-[var(--acento-hondo)] first-letter:uppercase lateral:text-[13px]">{detalle}</span>
@@ -41,7 +41,7 @@ export function LoDeHoy({
             {href && (
                 <Link
                     href={href}
-                    className="flex h-11 shrink-0 items-center gap-1 rounded-full bg-white px-[18px] text-sm font-extrabold text-[#0D47A1] transition-transform active:scale-[0.97]"
+                    className="flex h-11 shrink-0 items-center gap-1 rounded-full bg-white px-[18px] text-sm font-extrabold text-cabecera-tinta transition-transform active:scale-[0.97]"
                 >
                     Ver <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.4} aria-hidden />
                 </Link>

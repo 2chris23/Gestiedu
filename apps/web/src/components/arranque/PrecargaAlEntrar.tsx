@@ -158,14 +158,14 @@ export function PrecargaAlEntrar() {
             {lista ? (
                 <div className="flex flex-col items-center gap-3 text-center">
                     <CheckCircle2 className="h-14 w-14 text-[var(--acento-hondo)]" aria-hidden />
-                    <p className="text-lg font-bold text-[#0B1B33]" role="status">
+                    <p className="text-lg font-bold text-texto-fuerte" role="status">
                         Listo: tu liceo ya funciona sin conexión
                     </p>
                 </div>
             ) : esperando ? (
                 <div className="flex max-w-xs flex-col items-center gap-3 text-center">
                     <CloudOff className="h-12 w-12 text-amber-700 motion-safe:animate-pulse" aria-hidden />
-                    <p className="text-lg font-bold text-[#0B1B33]" role="status">
+                    <p className="text-lg font-bold text-texto-fuerte" role="status">
                         Sin conexión
                     </p>
                     <p className="text-sm text-gray-700">Esperando para seguir descargando… Sigue sola en cuanto vuelva la conexión.</p>

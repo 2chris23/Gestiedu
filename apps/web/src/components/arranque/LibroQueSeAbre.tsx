@@ -24,14 +24,14 @@ export function LibroQueSeAbre({
     const porcentaje = avance === null ? null : Math.round(Math.max(0, Math.min(1, avance)) * 100);
     return (
         <div className="flex flex-col items-center gap-6 text-center">
-            <div className="libro relative h-[120px] w-[176px]" aria-hidden>
+            <div className="libro modo-claro relative h-[120px] w-[176px]" aria-hidden>
                 {/* La página de la izquierda (lo que queda debajo de la tapa abierta). */}
-                <div className="absolute left-0 top-0 h-full w-1/2 rounded-l-[10px] bg-white shadow-[inset_-6px_0_10px_rgba(13,71,161,0.08)] ring-1 ring-[#D6E2F5]">
+                <div className="absolute left-0 top-0 h-full w-1/2 rounded-l-[10px] bg-white shadow-[inset_-6px_0_10px_rgba(13,71,161,0.08)] ring-1 ring-borde-suave">
                     <Renglones />
                 </div>
                 {/* El lado derecho: el bloque de hojas, con las que pasan encima. */}
                 <div className="absolute right-0 top-0 h-full w-1/2" style={{ perspective: '900px' }}>
-                    <div className="absolute inset-0 rounded-r-[10px] bg-white shadow-[inset_6px_0_10px_rgba(13,71,161,0.08)] ring-1 ring-[#D6E2F5]">
+                    <div className="absolute inset-0 rounded-r-[10px] bg-white shadow-[inset_6px_0_10px_rgba(13,71,161,0.08)] ring-1 ring-borde-suave">
                         <Renglones />
                     </div>
                     {/*
@@ -43,11 +43,11 @@ export function LibroQueSeAbre({
                         (empiezan transparentes), así que nada la tapa.
                     */}
                     <div className="libro-tapa absolute inset-0">
-                        <div className="libro-cara absolute inset-0 rounded-r-[10px] bg-[var(--azul-cabecera)] shadow-[0_6px_16px_rgba(4,24,64,0.25)]">
+                        <div className="libro-cara absolute inset-0 rounded-r-[10px] bg-cabecera shadow-[0_6px_16px_rgba(4,24,64,0.25)]">
                             <span className="absolute right-3 top-0 h-9 w-2.5 rounded-b-sm bg-[var(--acento)]" />
                             <span className="absolute inset-x-4 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-white/25" />
                         </div>
-                        <div className="libro-cara libro-cara-de-atras absolute inset-0 rounded-l-[10px] bg-white shadow-[inset_-6px_0_10px_rgba(13,71,161,0.08)] ring-1 ring-[#D6E2F5]">
+                        <div className="libro-cara libro-cara-de-atras absolute inset-0 rounded-l-[10px] bg-white shadow-[inset_-6px_0_10px_rgba(13,71,161,0.08)] ring-1 ring-borde-suave">
                             <Renglones />
                         </div>
                     </div>
@@ -69,10 +69,10 @@ export function LibroQueSeAbre({
                         pico y se notaba el salto (lo vio Cristian).
                     */}
                     <div className="libro-hoja absolute inset-0">
-                        <div className="libro-cara absolute inset-0 rounded-r-[10px] bg-white shadow-[inset_6px_0_10px_rgba(13,71,161,0.08)] ring-1 ring-[#D6E2F5]">
+                        <div className="libro-cara absolute inset-0 rounded-r-[10px] bg-white shadow-[inset_6px_0_10px_rgba(13,71,161,0.08)] ring-1 ring-borde-suave">
                             <Renglones />
                         </div>
-                        <div className="libro-cara libro-cara-de-atras absolute inset-0 rounded-l-[10px] bg-white shadow-[inset_-6px_0_10px_rgba(13,71,161,0.08)] ring-1 ring-[#D6E2F5]">
+                        <div className="libro-cara libro-cara-de-atras absolute inset-0 rounded-l-[10px] bg-white shadow-[inset_-6px_0_10px_rgba(13,71,161,0.08)] ring-1 ring-borde-suave">
                             <Renglones />
                         </div>
                     </div>
@@ -82,7 +82,7 @@ export function LibroQueSeAbre({
             </div>
 
             <div className="flex w-full max-w-[260px] flex-col items-center gap-2">
-                <p className="text-base font-bold text-[#0B1B33]" role="status" aria-live="polite">
+                <p className="text-base font-bold text-texto-fuerte" role="status" aria-live="polite">
                     {titulo}
                     {porcentaje !== null && <span className="tabular-nums"> {porcentaje} %</span>}
                 </p>
@@ -92,8 +92,8 @@ export function LibroQueSeAbre({
                         style={porcentaje === null ? undefined : { width: `${porcentaje}%` }}
                     />
                 </div>
-                {detalle && <p className="text-xs font-medium text-[#5B6B82] tabular-nums">{detalle}</p>}
-                {nota && <p className="text-xs text-[#5B6B82] tabular-nums">{nota}</p>}
+                {detalle && <p className="text-xs font-medium text-texto-gris tabular-nums">{detalle}</p>}
+                {nota && <p className="text-xs text-texto-gris tabular-nums">{nota}</p>}
             </div>
         </div>
     );

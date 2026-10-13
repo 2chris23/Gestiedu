@@ -15,19 +15,36 @@ import { WEB_BASE, loginViaUI } from './helpers';
  * texto grande. Se revisa en modo claro Y oscuro, en teléfono y escritorio.
  */
 
-/** `temaOscuro`: la pantalla ya soporta el tema oscuro propio (clase `.dark`). */
-type Pantalla = { nombre: string; ruta: string; conSesion: boolean; temaOscuro?: boolean };
+/**
+ * Desde octubre 2026 TODA la app tiene modo oscuro (lib/modo-de-la-app.ts,
+ * paleta-de-colores.js): en «oscuro» se elige el modo como lo haría la
+ * persona, antes de abrir la pantalla.
+ */
+type Pantalla = { nombre: string; ruta: string; conSesion: boolean };
 
 const PANTALLAS: Pantalla[] = [
     // Con el liceo en la dirección: sin slug, la pantalla de entrar no se pinta
     // —responde "no existe"— y se estaría midiendo el 404, no el formulario.
     { nombre: 'entrar', ruta: '/login?slug=instituto-testing', conSesion: false },
-    { nombre: 'guía de diseño', ruta: '/diseno', conSesion: false, temaOscuro: true },
+    { nombre: 'guía de diseño', ruta: '/diseno', conSesion: false },
     { nombre: 'panel', ruta: '/dashboard', conSesion: true },
     { nombre: 'usuarios', ruta: '/dashboard/usuarios', conSesion: true },
     { nombre: 'académico', ruta: '/dashboard/academico', conSesion: true },
     { nombre: 'configuración', ruta: '/dashboard/configuracion', conSesion: true },
+    { nombre: 'ciclo', ruta: '/dashboard/academico/2026-2027', conSesion: true },
+    { nombre: 'finanzas', ruta: '/dashboard/pagos', conSesion: true },
 ];
+
+/** El modo y el color que eligió la persona, puestos antes de que la página arranque. */
+async function elegir(page: Page, modo: 'claro' | 'oscuro', color = 'azul') {
+    await page.addInitScript(
+        ([m, c]) => {
+            localStorage.setItem('gestiedu:modo-de-la-app', m);
+            localStorage.setItem('gestiedu:color-de-la-app', c);
+        },
+        [modo, color]
+    );
+}
 
 async function fallosDeContraste(page: Page) {
     const r = await new AxeBuilder({ page }).withRules(['color-contrast']).analyze();
@@ -46,18 +63,42 @@ for (const esquema of ['light', 'dark'] as const) {
 
             for (const p of PANTALLAS) {
                 test(`CONTRASTE: ${p.nombre}`, async ({ page }) => {
+                    await elegir(page, esquema === 'dark' ? 'oscuro' : 'claro');
                     if (p.conSesion) await loginViaUI(page, 'admin@testing.edu.ve', '123456');
                     await page.goto(`${WEB_BASE}${p.ruta}`);
                     await page.waitForLoadState('networkidle');
-                    // Con el sistema en oscuro, además de los controles nativos se
-                    // mide el tema oscuro propio donde ya existe.
-                    if (esquema === 'dark' && p.temaOscuro) {
+                    if (esquema === 'dark' && p.ruta === '/diseno') {
                         await page.evaluate(() => document.documentElement.classList.add('dark'));
                     }
                     // Las animaciones de entrada pintan con opacidad parcial: se
                     // mide cuando ya terminaron, no a mitad.
                     await page.waitForTimeout(1500);
 
+                    const fallos = await fallosDeContraste(page);
+                    expect(fallos, fallos.join('\n')).toEqual([]);
+                });
+            }
+        });
+    }
+}
+
+/**
+ * CADA COLOR DE LA APP (TEMA-UI-02). El color cambia la cabecera y los
+ * botones: el amarillo lleva la letra oscura en la barra; los demás, blanca.
+ * Se mide el Inicio y el ciclo, en claro y en oscuro, en el ordenador.
+ */
+for (const color of ['turquesa', 'violeta', 'amarillo', 'coral']) {
+    for (const modo of ['claro', 'oscuro'] as const) {
+        test.describe(`Contraste · color ${color} · ${modo}`, () => {
+            test.use({ viewport: { width: 1366, height: 900 } });
+            for (const ruta of ['/dashboard', '/dashboard/academico/2026-2027']) {
+                test(`CONTRASTE: ${ruta}`, async ({ page }) => {
+                    await elegir(page, modo, color);
+                    await loginViaUI(page, 'admin@testing.edu.ve', '123456');
+                    await page.goto(`${WEB_BASE}${ruta}`);
+                    await page.waitForLoadState('networkidle');
+                    await page.waitForTimeout(1500);
+                    expect(await page.evaluate(() => document.documentElement.dataset.acento)).toBe(color);
                     const fallos = await fallosDeContraste(page);
                     expect(fallos, fallos.join('\n')).toEqual([]);
                 });

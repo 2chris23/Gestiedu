@@ -24,6 +24,10 @@ import { WEB_BASE, loginApi, injectSessionCookies, captureEvidence, representant
  *                  hoja empieza debajo, no hay «Ir a» (repetía la barra) y la
  *                  cifra es LA MISMA que en el teléfono.
  *   INICIO-ESC-02  el ojo oculta el promedio y se recuerda.
+ *   TEMA-UI-01     el color cambia la barra entera (el amarillo, con la letra
+ *                  oscura) y los botones; el modo oscuro se elige en el mismo
+ *                  menú, sigue al recargar desde el primer HTML (sin fogonazo
+ *                  blanco) y el papel sigue claro.
  *
  * «Cerrar sesión» desde el menú lo prueba BOTON-06.
  */
@@ -166,6 +170,51 @@ test.describe('Tu nombre, abajo de la barra', () => {
         } catch (error) {
             await captureEvidence(testInfo, page, 'PERFIL-UI-01', 'El menú de tu nombre', error);
             throw error;
+        }
+    });
+
+    test('TEMA-UI-01: el color cambia la barra y los botones; el modo oscuro sigue al recargar y el papel sigue claro', async ({ page }, testInfo) => {
+        const fondo = (selector: string) => page.evaluate((s) => getComputedStyle(document.querySelector(s)!).backgroundColor, selector);
+        try {
+            await entrarComo(page, 'admin@testing.edu.ve');
+            expect(await fondo('#barra-lateral')).toBe('rgb(13, 71, 161)'); // el azul de siempre
+
+            const yo = page.locator('#barra-lateral [data-recorrido="mi-cuenta"]');
+            await yo.click();
+            const menu = page.getByRole('menu');
+            await menu.getByRole('menuitemradio', { name: 'Amarillo' }).click();
+            // La barra, amarilla de verdad, y su letra oscura para que se lea.
+            await expect.poll(() => fondo('#barra-lateral')).toBe('rgb(251, 192, 45)');
+            expect(await page.evaluate(() => getComputedStyle(document.querySelector('#barra-lateral [data-recorrido="mi-cuenta"] span span')!).color)).toBe('rgb(11, 27, 51)');
+            // Los botones (`indigo-600`) toman el color: el ámbar hondo.
+            expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--indigo-600-f').trim())).toBe('180 83 9');
+
+            await menu.getByRole('menuitemradio', { name: 'Oscuro' }).click();
+            await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(true);
+            // A lo Spotify: la barra es una caja #121212 y las tarjetas también.
+            await expect.poll(() => fondo('#barra-lateral')).toBe('rgb(18, 18, 18)');
+            await page.keyboard.press('Escape');
+
+            // Al recargar, el primer HTML ya sale oscuro: el guion del <head> corre antes de pintar.
+            await page.goto(`${WEB_BASE}/dashboard`, { waitUntil: 'commit' });
+            await page.waitForFunction(() => document.body !== null);
+            expect(await page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(true);
+            expect(await page.evaluate(() => document.documentElement.dataset.acento)).toBe('amarillo');
+
+            // El papel no se oscurece: una hoja impresa con el modo oscuro puesto.
+            await page.goto(`${WEB_BASE}/dashboard/carnets`);
+            await expect(page.locator('.modo-claro').first()).toBeVisible({ timeout: 30000 });
+            expect(await fondo('.modo-claro')).toBe('rgb(243, 244, 246)'); // bg-gray-100 de siempre
+            await page.emulateMedia({ media: 'print' });
+            expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(255, 255, 255)');
+        } catch (error) {
+            await captureEvidence(testInfo, page, 'TEMA-UI-01', 'El color y el modo oscuro', error);
+            throw error;
+        } finally {
+            await page.evaluate(() => {
+                localStorage.removeItem('gestiedu:color-de-la-app');
+                localStorage.removeItem('gestiedu:modo-de-la-app');
+            }).catch(() => {});
         }
     });
 });

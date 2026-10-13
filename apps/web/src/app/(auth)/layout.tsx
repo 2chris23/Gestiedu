@@ -7,9 +7,11 @@ import SinConexionAlEntrar from '@/components/auth/SinConexionAlEntrar';
  */
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
     return (
-        <>
+        // Siempre clara: es la puerta del liceo, con su color (el modo
+        // oscuro es de quien ya entró).
+        <div className="modo-claro">
             <SinConexionAlEntrar />
             {children}
-        </>
+        </div>
     );
 }

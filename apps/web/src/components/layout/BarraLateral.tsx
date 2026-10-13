@@ -39,7 +39,7 @@ const PASO = 48; // 44 px de fila + 4 de hueco
 
 /** Los tres botones de abajo: sobre el cristal, claros; al pasar, blancos. */
 const ICONO_DE_ABAJO =
-    'flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-transparent text-[#BBDEFB] outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/60';
+    'flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-transparent text-cabecera-suave outline-none transition-colors hover:bg-cabecera-texto/10 hover:text-cabecera-texto focus-visible:ring-2 focus-visible:ring-cabecera-texto/60';
 
 const NOMBRE = 'w-[176px] shrink-0 truncate transition-opacity duration-150 recogida:opacity-0';
 
@@ -103,7 +103,7 @@ export function BarraLateral({ menu, logo, liceo, nombre, apellido, correo, avat
         <aside
             id="barra-lateral"
             aria-label="Barra lateral"
-            className="transicion-lateral fixed inset-y-2 left-2 z-50 hidden w-[var(--ancho-lateral)] flex-col overflow-hidden rounded-[24px] border border-white/[0.14] bg-[var(--azul-cabecera)] shadow-[0_16px_48px_rgba(4,24,64,0.28)] lateral:flex print:!hidden"
+            className="transicion-lateral fixed inset-y-2 left-2 z-50 hidden w-[var(--ancho-lateral)] flex-col overflow-hidden rounded-[24px] border border-cabecera-texto/[0.14] bg-cabecera shadow-[0_16px_48px_rgba(4,24,64,0.28)] lateral:flex print:!hidden"
         >
             {/* El liceo: su logo, grande, en una baldosa blanca (sobre azul, un escudo
                 de colores se pierde). Sin el nombre: el logo ya lo dice (Cristian).
@@ -112,7 +112,7 @@ export function BarraLateral({ menu, logo, liceo, nombre, apellido, correo, avat
             <div className="flex h-[var(--logo-cabecera)] shrink-0 flex-col items-center justify-start pt-5 transition-[height,padding] duration-200 recogida:h-[76px] recogida:justify-center recogida:pt-0">
                 <span
                     title={liceo}
-                    className="flex h-[var(--logo-baldosa)] w-[var(--logo-baldosa)] shrink-0 items-center justify-center overflow-hidden rounded-[28px] bg-white shadow-[0_8px_24px_rgba(4,24,64,0.35)] transition-[width,height,border-radius] duration-200 recogida:h-11 recogida:w-11 recogida:rounded-[14px]"
+                    className="flex h-[var(--logo-baldosa)] w-[var(--logo-baldosa)] shrink-0 items-center justify-center overflow-hidden rounded-[28px] modo-claro bg-white shadow-[0_8px_24px_rgba(4,24,64,0.35)] transition-[width,height,border-radius] duration-200 recogida:h-11 recogida:w-11 recogida:rounded-[14px]"
                 >
                     {logoDelLiceo ? (
                         <Image
@@ -124,7 +124,7 @@ export function BarraLateral({ menu, logo, liceo, nombre, apellido, correo, avat
                             unoptimized
                         />
                     ) : (
-                        <GraduationCap className="h-16 w-16 text-[#0D47A1] recogida:h-6 recogida:w-6" aria-label={liceo ?? 'Liceo'} />
+                        <GraduationCap className="h-16 w-16 text-cabecera-tinta recogida:h-6 recogida:w-6" aria-label={liceo ?? 'Liceo'} />
                     )}
                 </span>
             </div>
@@ -135,7 +135,7 @@ export function BarraLateral({ menu, logo, liceo, nombre, apellido, correo, avat
                     {activa >= 0 && (
                         <li
                             aria-hidden
-                            className="pointer-events-none absolute inset-x-0 top-0 h-11 rounded-[14px] bg-white shadow-[0_2px_10px_rgba(4,24,64,0.22)] transition-transform duration-200 ease-suave motion-reduce:transition-none"
+                            className="pointer-events-none absolute inset-x-0 top-0 h-11 rounded-[14px] bg-pastilla shadow-[0_2px_10px_rgba(4,24,64,0.22)] transition-transform duration-200 ease-suave motion-reduce:transition-none"
                             style={{ transform: `translateY(${activa * PASO}px)` }}
                         />
                     )}
@@ -149,8 +149,8 @@ export function BarraLateral({ menu, logo, liceo, nombre, apellido, correo, avat
                                     aria-current={esLaActiva ? 'page' : undefined}
                                     {...conGlobo(item.name)}
                                     className={cn(
-                                        'flex h-11 items-center gap-3 rounded-[14px] px-3 text-[15px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-white/70',
-                                        esLaActiva ? 'font-extrabold text-[#0B1B33]' : 'font-semibold text-[#BBDEFB] hover:bg-white/10 hover:text-white'
+                                        'flex h-11 items-center gap-3 rounded-[14px] px-3 text-[15px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-cabecera-texto/70',
+                                        esLaActiva ? 'font-extrabold text-texto-fuerte' : 'font-semibold text-cabecera-suave hover:bg-cabecera-texto/10 hover:text-cabecera-texto'
                                     )}
                                 >
                                     <Icono
@@ -167,7 +167,7 @@ export function BarraLateral({ menu, logo, liceo, nombre, apellido, correo, avat
             </nav>
 
             {/* Abajo: recoger la barra, y tu nombre con su menú. */}
-            <div className="shrink-0 border-t border-white/[0.12] px-4 pb-4 pt-2">
+            <div className="shrink-0 border-t border-cabecera-texto/[0.12] px-4 pb-4 pt-2">
                 {/* Recoger la barra, el «?» y los avisos: una fila de iconos (una columna, recogida). */}
                 <div className="mb-1.5 flex items-center gap-1 recogida:flex-col">
                     <button

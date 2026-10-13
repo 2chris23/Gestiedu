@@ -1,53 +1,35 @@
 /**
  * EL COLOR DE LA APP (octubre 2026)
  *
- * Azul de cabecera fijo (#0D47A1) y un color de acento que elige cada
- * persona en «Mi cuenta»: Turquesa, Violeta, Amarillo o Coral (el diseño de
- * Cristian, «Panel Admin — App móvil»). Es una preferencia de quien mira, no
- * del liceo: se guarda en el teléfono.
+ * Cada persona elige el color de SU app en «Mi cuenta» (o en el menú de su
+ * nombre, en el ordenador): Azul (el de siempre), Turquesa, Violeta, Amarillo
+ * o Coral. Es una preferencia de quien mira, no del liceo: se guarda en el
+ * aparato.
  *
- * Todo lo que lleva el acento lee variables CSS (`--acento`, …), así que
- * cambiar de color es cambiar cinco variables, sin volver a pintar nada a mano.
- * Las cuentas (suave, hondo, texto encima) son las del diseño original.
+ * Al principio el color solo cambiaba el acento (el botón de Inicio, la marca
+ * de hoy); desde el 13-oct-2026 cambia también la cabecera —la barra lateral,
+ * la franja del Inicio, la cabecera del teléfono— y todo lo que se pulsa
+ * (`indigo-*`): lo pidió Cristian. Los colores y sus cuentas viven en
+ * `paleta-de-colores.js`, que los convierte en variables CSS por cada
+ * `<html data-acento="…">`; aquí solo se elige cuál.
  */
 
-export const AZUL_CABECERA = '#0D47A1';
-
+/** Los mismos de `paleta-de-colores.js` (una prueba compara las dos listas). */
 export const ACENTOS = {
-    turquesa: { nombre: 'Turquesa', color: '#00BFA5' },
-    violeta: { nombre: 'Violeta', color: '#7C3AED' },
+    azul: { nombre: 'Azul', color: '#0D47A1' },
+    turquesa: { nombre: 'Turquesa', color: '#00594F' },
+    violeta: { nombre: 'Violeta', color: '#5B21B6' },
     amarillo: { nombre: 'Amarillo', color: '#FBC02D' },
-    coral: { nombre: 'Coral', color: '#FF7043' },
+    coral: { nombre: 'Coral', color: '#A12D08' },
 } as const;
 
 export type Acento = keyof typeof ACENTOS;
-export const ACENTO_POR_DEFECTO: Acento = 'turquesa';
+export const ACENTO_POR_DEFECTO: Acento = 'azul';
 const LLAVE = 'gestiedu:color-de-la-app';
 export const CAMBIO_DE_COLOR = 'gestiedu:cambio-de-color';
 
 export function esAcento(v: unknown): v is Acento {
     return typeof v === 'string' && v in ACENTOS;
-}
-
-/** Las cinco variables de un acento, como en el diseño. */
-export function variablesDe(acento: Acento): Record<string, string> {
-    const hex = ACENTOS[acento].color.replace('#', '');
-    const r = parseInt(hex.slice(0, 2), 16);
-    const g = parseInt(hex.slice(2, 4), 16);
-    const b = parseInt(hex.slice(4, 6), 16);
-    const lin = (c: number) => {
-        const x = c / 255;
-        return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
-    };
-    const luz = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-    return {
-        '--acento': `#${hex}`,
-        '--acento-suave': `rgba(${r},${g},${b},0.16)`,
-        '--acento-hondo': `rgb(${Math.round(r * 0.52)},${Math.round(g * 0.52)},${Math.round(b * 0.52)})`,
-        // Sobre un acento claro (amarillo, turquesa) el texto va oscuro.
-        '--sobre-acento': luz > 0.3 ? '#0B1B33' : '#FFFFFF',
-        '--azul-cabecera': AZUL_CABECERA,
-    };
 }
 
 export function acentoGuardado(): Acento {
@@ -60,9 +42,7 @@ export function acentoGuardado(): Acento {
 }
 
 export function aplicarAcento(acento: Acento): void {
-    const raiz = document.documentElement;
-    for (const [k, v] of Object.entries(variablesDe(acento))) raiz.style.setProperty(k, v);
-    raiz.dataset.acento = acento;
+    document.documentElement.dataset.acento = acento;
 }
 
 export function elegirAcento(acento: Acento): void {
@@ -76,10 +56,21 @@ export function elegirAcento(acento: Acento): void {
 }
 
 /**
- * Lo mismo, antes de pintar: un guion de una línea en el <head> pone el color
- * guardado antes de que React arranque, para que no se vea un parpadeo del
- * turquesa al color elegido.
+ * El color de la cabecera AHORA (con el color y el modo de quien mira): lo
+ * necesitan la franja del reloj del teléfono y el `theme-color`, que no leen
+ * variables CSS.
  */
-export const COLOR_ANTES_DE_PINTAR = `(function(){try{var t=${JSON.stringify(
-    Object.fromEntries((Object.keys(ACENTOS) as Acento[]).map((a) => [a, variablesDe(a)]))
-)};var a=localStorage.getItem(${JSON.stringify(LLAVE)});var v=t[a];if(!v)return;var r=document.documentElement;for(var k in v)r.style.setProperty(k,v[k]);r.dataset.acento=a;}catch(e){}})();`;
+export function colorDeLaCabecera(): string {
+    if (typeof window === 'undefined') return ACENTOS[ACENTO_POR_DEFECTO].color;
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--azul-cabecera').trim();
+    return v || ACENTOS[ACENTO_POR_DEFECTO].color;
+}
+
+/**
+ * Lo mismo, antes de pintar: un guion de una línea en el <head> pone la marca
+ * del color guardado antes de que React arranque, para que no se vea un
+ * parpadeo del azul al color elegido.
+ */
+export const COLOR_ANTES_DE_PINTAR = `(function(){try{var a=localStorage.getItem(${JSON.stringify(LLAVE)});if(${JSON.stringify(
+    Object.keys(ACENTOS)
+)}.indexOf(a)>=0)document.documentElement.setAttribute('data-acento',a);}catch(e){}})();`;

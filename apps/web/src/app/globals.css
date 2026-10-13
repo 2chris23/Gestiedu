@@ -39,7 +39,10 @@
 */
 
 @layer base {
-  :root {
+  /* `.modo-claro`: lo que es papel (los documentos) se ve claro también con
+     el modo oscuro puesto. */
+  :root,
+  .dark .modo-claro {
     /* ── EL PAPEL ─────────────────────────────────────────────────────────
        Hueso, no blanco. Las tarjetas sí son blancas, y por eso flotan. */
     --lienzo: 220 20% 97%;
@@ -158,9 +161,12 @@
   /* ═══════════════════════════════════════════════════════════════════════
      MODO OSCURO
      ═══════════════════════════════════════════════════════════════════════
-     No es "el claro con los grises al revés". En oscuro:
+     A lo Spotify (lo pidió Cristian, octubre 2026; cambia la regla 4 de
+     arriba para este modo): fondo negro, cajas #121212, letra blanca y gris
+     claro. Lo eligen cada persona y su aparato (lib/modo-de-la-app.ts). Las
+     clases de Tailwind de siempre se oscurecen solas: paleta-de-colores.js.
+     Va dentro de `@media screen`: el papel se imprime siempre claro.
 
-       · el papel es tinta AZULADA, nunca negro puro;
        · las tarjetas SUBEN (más claras que el fondo), no bajan;
        · los colores pierden saturación y ganan luz, o vibran sobre el fondo;
        · las sombras casi no valen: lo que separa una tarjeta del fondo es
@@ -169,59 +175,61 @@
   /* Los controles nativos (campos, casillas, barras) se pintan según esto. Si
      se deja al sistema, un teléfono en modo oscuro pinta campos grises oscuros
      con nuestra letra oscura encima: ilegible (medido: 1,54:1). */
-  :root { color-scheme: light; }
+  :root, .dark .modo-claro { color-scheme: light; }
 
-  .dark {
-    color-scheme: dark;
-    --lienzo: 226 26% 7%;
-    --lienzo-hundido: 226 24% 5%;
-    --tarjeta: 225 22% 11%;
-    --tarjeta-alta: 225 20% 14%;
+  @media screen {
+    .dark {
+      color-scheme: dark;
+      --lienzo: 0 0% 0%;
+      --lienzo-hundido: 0 0% 4%;
+      --tarjeta: 0 0% 7%;
+      --tarjeta-alta: 0 0% 11%;
 
-    --tinta: 220 22% 96%;
-    --tinta-suave: 220 14% 72%;
-    --tinta-tenue: 220 12% 54%;
+      --tinta: 0 0% 100%;
+      --tinta-suave: 0 0% 70%;
+      --tinta-tenue: 0 0% 62%;
 
-    --indigo-claro: 243 45% 18%;
-    --indigo-suave: 243 45% 26%;
-    --indigo: 243 90% 72%;
-    --indigo-hondo: 243 95% 80%;
-    --indigo-encima: 243 60% 10%;
+      --indigo-claro: 243 45% 18%;
+      --indigo-suave: 243 45% 26%;
+      --indigo: 243 90% 72%;
+      --indigo-hondo: 243 95% 80%;
+      --indigo-encima: 243 60% 10%;
 
-    --menta-claro: 162 45% 13%;
-    --menta-suave: 162 40% 22%;
-    --menta: 158 68% 55%;
-    --menta-hondo: 158 72% 65%;
-    --menta-encima: 162 70% 8%;
+      --menta-claro: 162 45% 13%;
+      --menta-suave: 162 40% 22%;
+      --menta: 158 68% 55%;
+      --menta-hondo: 158 72% 65%;
+      --menta-encima: 162 70% 8%;
 
-    --ambar-claro: 35 55% 14%;
-    --ambar-suave: 35 50% 24%;
-    --ambar: 40 95% 62%;
-    --ambar-hondo: 42 98% 70%;
-    --ambar-encima: 30 70% 10%;
+      --ambar-claro: 35 55% 14%;
+      --ambar-suave: 35 50% 24%;
+      --ambar: 40 95% 62%;
+      --ambar-hondo: 42 98% 70%;
+      --ambar-encima: 30 70% 10%;
 
-    --coral-claro: 4 45% 16%;
-    --coral-suave: 4 42% 26%;
-    --coral: 5 90% 68%;
-    --coral-hondo: 5 95% 75%;
-    --coral-encima: 4 60% 10%;
+      --coral-claro: 4 45% 16%;
+      --coral-suave: 4 42% 26%;
+      --coral: 5 90% 68%;
+      --coral-hondo: 5 95% 75%;
+      --coral-encima: 4 60% 10%;
 
-    --cian-claro: 194 50% 13%;
-    --cian-suave: 194 45% 22%;
-    --cian: 190 80% 58%;
-    --cian-hondo: 190 85% 68%;
-    --cian-encima: 194 70% 8%;
+      --cian-claro: 194 50% 13%;
+      --cian-suave: 194 45% 22%;
+      --cian: 190 80% 58%;
+      --cian-hondo: 190 85% 68%;
+      --cian-encima: 194 70% 8%;
 
-    --linea: 225 16% 20%;
-    --linea-fuerte: 225 14% 43%;
+      --linea: 0 0% 16%;
+      --linea-fuerte: 0 0% 40%;
 
-    --sombra-1: 0 1px 2px -1px hsl(0 0% 0% / 0.4);
-    --sombra-2: 0 4px 12px -4px hsl(0 0% 0% / 0.5);
-    --sombra-3: 0 12px 32px -8px hsl(0 0% 0% / 0.6);
-    --sombra-dentro: inset 0 1px 2px hsl(0 0% 0% / 0.3);
-    --sombra-pulsado: inset 0 2px 6px hsl(0 0% 0% / 0.45);
+      --sombra-1: 0 1px 2px -1px hsl(0 0% 0% / 0.4);
+      --sombra-2: 0 4px 12px -4px hsl(0 0% 0% / 0.5);
+      --sombra-3: 0 12px 32px -8px hsl(0 0% 0% / 0.6);
+      --sombra-dentro: inset 0 1px 2px hsl(0 0% 0% / 0.3);
+      --sombra-pulsado: inset 0 2px 6px hsl(0 0% 0% / 0.45);
 
-    --anillo: 243 90% 72%;
+      --anillo: 243 90% 72%;
+    }
   }
 }
 
@@ -427,13 +435,8 @@
      arreglarlo. La auditoría del teléfono (`npm run movil`) les pone el valor
      de un Android de verdad y comprueba que no quede nada debajo. */
   :root {
-    /* El color de la app (lib/tema-de-la-app.ts). Turquesa por defecto; el
-       elegido lo pone un guion del <head> antes de pintar. */
-    --azul-cabecera: #0D47A1;
-    --acento: #00BFA5;
-    --acento-suave: rgba(0,191,165,0.16);
-    --acento-hondo: rgb(0,99,86);
-    --sobre-acento: #0B1B33;
+    /* El color de la app (--azul-cabecera, --acento…) lo pone
+       paleta-de-colores.js, uno por cada color que se puede elegir. */
     --zona-segura-arriba: env(safe-area-inset-top, 0px);
     --zona-segura-abajo: env(safe-area-inset-bottom, 0px);
   }
@@ -465,7 +468,7 @@
   @media (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (min-height: 600px) {
     .marco-del-ordenador {
       isolation: isolate;
-      background-color: #F8FAFC;
+      background-color: rgb(var(--lienzo-de-la-app));
     }
     /* La barra de desplazamiento, fina y del color de la app (Cristian: «no la
        predeterminada del navegador»). La de la página va sobre el fondo; las de dentro (tablas, listas), sobre blanco. */
@@ -483,9 +486,19 @@
       z-index: -1;
       pointer-events: none;
       background:
-        radial-gradient(800px circle at 100% 0%, rgba(227, 242, 253, 0.5), transparent 70%),
-        radial-gradient(600px circle at 0% 100%, rgba(241, 245, 249, 0.8), transparent 70%),
-        #F8FAFC;
+        radial-gradient(800px circle at 100% 0%, rgb(var(--cab-claro) / 0.5), transparent 70%),
+        radial-gradient(600px circle at 0% 100%, rgb(var(--gray-100-f) / 0.8), transparent 70%),
+        rgb(var(--lienzo-de-la-app));
+    }
+    /* En oscuro, como Spotify: negro liso, sin luces. */
+    .dark .marco-del-ordenador::before {
+      background: rgb(var(--lienzo-de-la-app));
+    }
+    .dark * {
+      scrollbar-color: #3e3e3e transparent;
+    }
+    html.dark {
+      scrollbar-color: #535353 transparent;
     }
   }
   html[data-lateral="recogida"] {
@@ -875,4 +888,6 @@ select,
    del armazón a la vista hasta que salga el libro del arranque. */
 html[data-arrancando],
 html[data-arrancando] body { background: #f9fafb; }
+html.dark[data-arrancando],
+html.dark[data-arrancando] body { background: #000; }
 html[data-arrancando] body > *:not([data-capa-del-candado]) { visibility: hidden !important; }

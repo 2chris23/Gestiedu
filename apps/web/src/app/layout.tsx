@@ -15,6 +15,8 @@ import { MarcaDeArranque } from '@/components/common/MarcaDeArranque';
 import { GUARDIAN_DEL_ARRANQUE } from '@/lib/guardian-del-arranque';
 import { CORTINA_DEL_ARRANQUE } from '@/lib/cortina-del-arranque';
 import { COLOR_ANTES_DE_PINTAR } from '@/lib/tema-de-la-app';
+import { MODO_ANTES_DE_PINTAR } from '@/lib/modo-de-la-app';
+import { SeguirElModo } from '@/components/layout/SeguirElModo';
 import { LATERAL_ANTES_DE_PINTAR } from '@/lib/barra-lateral';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -92,11 +94,14 @@ export default function RootLayout({
                 <script dangerouslySetInnerHTML={{ __html: CORTINA_DEL_ARRANQUE }} />
                 {/* El color que eligió quien usa este teléfono, antes de pintar. */}
                 <script dangerouslySetInnerHTML={{ __html: COLOR_ANTES_DE_PINTAR }} />
+                {/* Claro u oscuro, antes de pintar: sin fogonazo blanco. */}
+                <script dangerouslySetInnerHTML={{ __html: MODO_ANTES_DE_PINTAR }} />
                 {/* La barra lateral del ordenador, recogida o no, antes de pintar. */}
                 <script dangerouslySetInnerHTML={{ __html: LATERAL_ANTES_DE_PINTAR }} />
             </head>
             <body className={inter.className} suppressHydrationWarning={true}>
                 <MarcaDeArranque />
+                <SeguirElModo />
                 <QueryProvider>
                     <ConfirmProvider>
                         <DynamicFavicon />

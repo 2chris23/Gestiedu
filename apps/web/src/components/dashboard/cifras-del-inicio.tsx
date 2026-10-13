@@ -35,7 +35,7 @@ export function iconoDeRiesgo(): React.ReactNode {
 /** El tercer círculo del ordenador: azul claro sobre azul, como el diseño. */
 export function iconoClaro(Icono: React.ComponentType<{ className?: string; strokeWidth?: number }>): React.ReactNode {
     return (
-        <span className={`${CIRCULO} bg-[#90CAF9] text-[#0D47A1]`}>
+        <span className={`${CIRCULO} bg-cabecera-celeste text-cabecera-sobreceleste`}>
             <Icono className="h-4 w-4" strokeWidth={2.2} aria-hidden />
         </span>
     );
@@ -137,16 +137,16 @@ export function PuntajeEnElAzul({ studentId }: { studentId: string }) {
     return (
         <div data-recorrido="mi-puntaje" className="flex flex-col items-end gap-1 text-right">
             {puntaje !== undefined && (
-                <div className="flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-1 text-white backdrop-blur-sm">
+                <div className="flex items-center gap-1.5 rounded-full bg-cabecera-texto/20 px-2.5 py-1 text-cabecera-texto backdrop-blur-sm">
                     <Trophy className="h-3.5 w-3.5 text-amber-300" aria-hidden />
                     <span className="text-xs font-extrabold">{puntaje.toFixed(1)} pts</span>
                 </div>
             )}
             {subio !== undefined && subio !== null && (
-                <div className="flex items-center gap-1 text-xs font-semibold text-white/90">
+                <div className="flex items-center gap-1 text-xs font-semibold text-cabecera-texto/90">
                     {subio === 0 ? (
                         <>
-                            <Minus className="h-3 w-3 text-white/70" aria-hidden />
+                            <Minus className="h-3 w-3 text-cabecera-texto/70" aria-hidden />
                             <span>Mismo puesto</span>
                         </>
                     ) : subio > 0 ? (
