@@ -218,7 +218,7 @@ interface SeccionConMaterias {
     slug: string;
     teacherId: string | null;
     academicYear: { id: string; name: string } | null;
-    subjects: Array<{ subjectId: string; teacherId: string | null; subject: { slug: string } }>;
+    subjects: Array<{ id: string; subjectId: string; teacherId: string | null; subject: { slug: string } }>;
 }
 
 async function lasSecciones(prisma: any, where: Record<string, unknown>): Promise<SeccionConMaterias[]> {
@@ -229,7 +229,7 @@ async function lasSecciones(prisma: any, where: Record<string, unknown>): Promis
             slug: true,
             teacherId: true,
             academicYear: { select: { id: true, name: true } },
-            subjects: { select: { subjectId: true, teacherId: true, subject: { select: { slug: true } } } },
+            subjects: { select: { id: true, subjectId: true, teacherId: true, subject: { select: { slug: true } } } },
         },
         orderBy: [{ grade: 'asc' }, { section: 'asc' }],
     });
@@ -260,7 +260,8 @@ function laSeccionEntera(s: SeccionConMaterias, comun: Contexto, conTodo: boolea
 }
 
 function laMateria(s: SeccionConMaterias, m: SeccionConMaterias['subjects'][number], comun: Contexto): Pantalla[] {
-    const ctx = { ...comun, ...deLaSeccion(s), materia: m.subjectId, materiaSlug: m.subject.slug };
+    // `clase`: la materia de esa sección (`classroom_subjects`), la de su pestaña «Pendientes».
+    const ctx = { ...comun, ...deLaSeccion(s), materia: m.subjectId, materiaSlug: m.subject.slug, clase: m.id };
     return [
         { molde: '/dashboard/academico/{ciclo}/{seccionSlug}/{materia}', ctx },
         { molde: '/dashboard/plan-de-evaluacion/{seccion}/{materia}', ctx },

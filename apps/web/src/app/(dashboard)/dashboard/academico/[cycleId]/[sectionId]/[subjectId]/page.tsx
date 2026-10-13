@@ -8,7 +8,7 @@ import {
     Bell, Search, Plus, TrendingUp, Clock,
     FileText, CheckCircle, AlertTriangle, MapPin, Settings,
     ChevronRight, Home, UserCircle,
-    ListTodo
+    ListTodo, ClipboardCheck
 } from 'lucide-react';
 import { useClassroomBySlug } from '@/hooks/useClassrooms';
 import { useClassroomSubjectDetail, useClassroomSubjectsStats } from '@/hooks/useClassroomSubjects';
@@ -32,6 +32,8 @@ const SubjectActivitiesTab = diferido(() => import('@/components/subject/Subject
 const SubjectObservationsTab = diferido(() => import('@/components/subject/SubjectObservationsTab'), { alto: 300 });
 const RevisionDeLaMateria = diferido(() => import('@/components/subject/RevisionDeLaMateria'), { alto: 300 });
 const ApreciacionesDeLaMateria = diferido(() => import('@/components/subject/ApreciacionesDeLaMateria'), { alto: 300 });
+// Las materias pendientes que se trabajan en esta clase (las de este grado, que los alumnos arrastran).
+const PendientesDeLaClase = diferido(() => import('@/components/pendientes/PendientesDeLaClase'), { alto: 300 });
 const StudentObservationsModal = diferido(() => import('@/components/observations/StudentObservationsModal'), { sinEsqueleto: true });
 
 const DAY_ABBR: Record<number, string> = {
@@ -444,6 +446,10 @@ export default function SectionSubjectDashboard() {
                             { id: 'observaciones', label: 'Observaciones', icon: Bell },
                             // Al terminar el año: los que la reprobaron la presentan en revisión.
                             ...(subject.evaluacion !== 'CUALITATIVA' ? [{ id: 'revision', label: 'Revisión', icon: FileText }] : []),
+                            // Y los que la arrastran del año anterior: la evalúa el profesor de esta clase.
+                            ...(subject.evaluacion !== 'CUALITATIVA' && (yo?.role === 'ADMIN' || (yo?.role === 'TEACHER' && !!teacher && teacher.id === yo.id))
+                                ? [{ id: 'pendientes', label: 'Pendientes', icon: ClipboardCheck }]
+                                : []),
                         ].map((tab) => {
                             const Icon = tab.icon;
                             const isActive = activeTab === tab.id;
@@ -620,6 +626,8 @@ export default function SectionSubjectDashboard() {
                         puedePoner={yo?.role === 'ADMIN' || (yo?.role === 'TEACHER' && !!teacher && teacher.id === yo.id)}
                     />
                 )}
+
+                {activeTab === 'pendientes' && classroomSubject?.id && <PendientesDeLaClase claseId={classroomSubject.id} />}
 
                 {activeTab === 'revision' && (
                     <RevisionDeLaMateria

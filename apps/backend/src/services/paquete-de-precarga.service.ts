@@ -62,22 +62,10 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = fa
             pista: 'Las materias del liceo',
         },
         {
-            name: 'Pendientes',
-            href: '/dashboard/materias-pendientes',
-            roles: ['ADMIN', 'TEACHER'],
-            pista: 'Materias pendientes, momento a momento',
-        },
-        {
             name: 'Observaciones',
             href: '/dashboard/observaciones',
             roles: ['ADMIN', 'TEACHER'],
             pista: 'Observaciones y citaciones a representantes',
-        },
-        {
-            name: 'Labor social',
-            href: '/dashboard/labor-social',
-            roles: ['ADMIN', 'TEACHER'],
-            pista: 'Las horas comunitarias de cada alumno',
         },
         {
             name: 'Horarios',

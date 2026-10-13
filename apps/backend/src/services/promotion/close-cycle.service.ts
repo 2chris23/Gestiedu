@@ -24,7 +24,10 @@ import {
     esUltimoAnoConPendientes,
     esPendienteNoAprobada,
     esReglasDePendientes,
+    completarPendientes,
+    completarLaborSocial,
 } from './reglas-del-fin-de-ano';
+import { asignarLasClases } from './clase-de-la-pendiente';
 
 export interface AcademicConfig {
     notaMinimaAprobatoria: number;
@@ -120,9 +123,9 @@ export async function getAcademicConfig(instituteId: string): Promise<AcademicCo
         revision: esReglasDeRevision(raw.revision) ? limpiarReglasDeRevision(raw.revision) : REVISION_POR_DEFECTO,
         ultimoAnoConPendientes,
         pendienteNoAprobada: esPendienteNoAprobada(raw.pendienteNoAprobada) ? raw.pendienteNoAprobada : DEFAULT_ACADEMIC_CONFIG.pendienteNoAprobada,
-        pendientes: esReglasDePendientes(raw.pendientes) ? raw.pendientes : PENDIENTES_POR_DEFECTO,
+        pendientes: esReglasDePendientes(raw.pendientes) ? completarPendientes(raw.pendientes) : PENDIENTES_POR_DEFECTO,
         laborSocial: esReglasDeLaborSocial(raw.laborSocial)
-            ? raw.laborSocial
+            ? completarLaborSocial(raw.laborSocial)
             : { ...LABOR_SOCIAL_POR_DEFECTO, grados: [typeof raw.maxGradeLevel === 'number' ? raw.maxGradeLevel : defaultMax] },
         cuadroDeHonor: esReglasDelCuadro(raw.cuadroDeHonor) ? limpiarReglasDelCuadro(raw.cuadroDeHonor) : REGLAS_DEL_CUADRO_POR_DEFECTO,
     };
@@ -159,8 +162,8 @@ export async function updateAcademicConfig(instituteId: string, patch: Partial<A
         revision: esReglasDeRevision(patch.revision) ? limpiarReglasDeRevision(patch.revision) : current.revision,
         ultimoAnoConPendientes,
         pendienteNoAprobada: esPendienteNoAprobada(patch.pendienteNoAprobada) ? patch.pendienteNoAprobada : current.pendienteNoAprobada,
-        pendientes: esReglasDePendientes(patch.pendientes) ? patch.pendientes : current.pendientes,
-        laborSocial: esReglasDeLaborSocial(patch.laborSocial) ? patch.laborSocial : current.laborSocial,
+        pendientes: esReglasDePendientes(patch.pendientes) ? completarPendientes(patch.pendientes) : current.pendientes,
+        laborSocial: esReglasDeLaborSocial(patch.laborSocial) ? completarLaborSocial(patch.laborSocial) : current.laborSocial,
         cuadroDeHonor: esReglasDelCuadro(patch.cuadroDeHonor) ? limpiarReglasDelCuadro(patch.cuadroDeHonor) : current.cuadroDeHonor,
     };
     await platformPrisma.institute.update({
@@ -1006,6 +1009,8 @@ export async function confirmClose(
                     skipDuplicates: true,
                 });
                 pendientesCreadas = hecho.count;
+                // Cada una a su clase (si el año siguiente ya tiene sus clases armadas).
+                await asignarLasClases(tx, nextAcademicYear.id);
             }
         }
 

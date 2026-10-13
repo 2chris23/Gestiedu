@@ -186,6 +186,18 @@ async function lasPantallasDeDentro() {
           )
         : [];
 
+    // Una clase con materias pendientes (sus actas); si no hay ninguna, la de la materia de arriba.
+    const [clase] = seccion
+        ? await consultar(
+              `SELECT cs.id FROM classroom_subjects cs
+                 JOIN classrooms c ON c.id = cs."classroomId"
+                WHERE c."academicYearId" = $1
+                ORDER BY (SELECT count(*) FROM materias_pendientes mp WHERE mp."claseId" = cs.id) DESC, c.grade, c.section
+                LIMIT 1`,
+              [ciclo.id]
+          )
+        : [];
+
     const [profe] = await consultar(
         `SELECT id FROM users WHERE role = 'TEACHER' AND "isActive" = true ORDER BY id LIMIT 1`
     );
@@ -194,7 +206,7 @@ async function lasPantallasDeDentro() {
         `SELECT id FROM users WHERE role = 'STUDENT' AND "isActive" = true ORDER BY id LIMIT 1`
     );
 
-    return { ciclo, seccion, materia, profe, alumno };
+    return { ciclo, seccion, materia, clase, profe, alumno };
 }
 
 /**
@@ -228,7 +240,7 @@ async function elProfesorDeVerdad() {
 }
 
 async function losRecorridos() {
-    const { ciclo, seccion, materia, profe, alumno } = await lasPantallasDeDentro();
+    const { ciclo, seccion, materia, clase, profe, alumno } = await lasPantallasDeDentro();
     const suyo = await elProfesorDeVerdad();
 
     const conIds = (lista) => lista.filter(([, ruta]) => !ruta.includes('undefined') && !ruta.includes('null'));
@@ -255,9 +267,10 @@ async function losRecorridos() {
                 ['Instrumentos de evaluación', `/dashboard/instrumentos-de-evaluacion/${seccion?.id}/${materia?.id}?lapso=1`],
                 ['Comedor', '/dashboard/comedor'],
                 ['Resumen del comedor', `/dashboard/comedor/resumen?mes=${new Date().toISOString().slice(0, 7)}`],
-                ['Pendientes', '/dashboard/materias-pendientes'],
+                // La materia pendiente y la labor social viven ahora en la sección y la materia (sus pestañas).
+                ['Acta de presentación (pendientes)', `/dashboard/pendientes/presentacion/${clase?.id}?momento=1`],
+                ['Acta de calificaciones (pendientes)', `/dashboard/pendientes/acta/${clase?.id}?momento=1`],
                 ['Observaciones', '/dashboard/observaciones'],
-                ['Labor social', '/dashboard/labor-social'],
                 ['Aulas', '/dashboard/aulas'],
                 ['Un aula', `/dashboard/aulas/${seccion?.id}`],
                 ['Materias', '/dashboard/materias'],
@@ -295,9 +308,7 @@ async function losRecorridos() {
                 ],
                 ['Clase en vivo', `/dashboard/clase-en-vivo/${suyo?.classroomId}/${suyo?.subjectId}`],
                 ['Materias', '/dashboard/materias'],
-                ['Pendientes', '/dashboard/materias-pendientes'],
                 ['Observaciones', '/dashboard/observaciones'],
-                ['Labor social', '/dashboard/labor-social'],
                 ['Horarios', '/dashboard/horarios'],
                 ['Mis pagos', '/dashboard/mis-pagos'],
             ]),

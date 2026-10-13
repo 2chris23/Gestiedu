@@ -309,7 +309,11 @@ describe('El fin del año escolar (CIERRE-01…10)', () => {
         // Ana pasa a 2do con Matemática pendiente, que evalúa el profesor de 1er año.
         expect((await matricula(al.ana))!.classroom.grade).toBe(2);
         const pendiente = await (prisma as any).materiaPendiente.findFirst({ where: { studentId: al.ana.id } });
-        expect(pendiente).toMatchObject({ subjectId: mate.id, gradoDeOrigen: 1, notaDeOrigen: 8, cicloId: siguiente!.id, profesorId: profeMate.id, estado: 'PENDIENTE' });
+        expect(pendiente).toMatchObject({ subjectId: mate.id, gradoDeOrigen: 1, notaDeOrigen: 8, cicloId: siguiente!.id, estado: 'PENDIENTE' });
+        // Nace en su clase (Matemática de 1º, la que da él): la evalúa el profesor de esa clase, no uno puesto a mano.
+        expect(pendiente.profesorId).toBeNull();
+        const clase = await prisma.classroomSubject.findUnique({ where: { id: pendiente.claseId }, include: { classroom: true } });
+        expect(clase).toMatchObject({ subjectId: mate.id, teacherId: profeMate.id, classroom: { grade: 1, academicYearId: siguiente!.id } });
         // Caro repite 1ero; en su expediente, la sugerida.
         expect((await matricula(al.caro))!.classroom.grade).toBe(1);
         expect(await expediente(al.caro)).toMatchObject({ finalResult: 'NO_PROMOVIDO', condicionSugerida: 'NO_PROMOVIDO', motivo: null });

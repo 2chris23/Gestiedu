@@ -14,7 +14,10 @@ export { avanceDe, type AvanceDeLaborSocial };
  * actividad: qué, dónde, cuántas horas, quién la supervisó.
  *
  *   - La anotan el ADMIN y el PROFESOR GUÍA de la sección del alumno (una
- *     salida de toda la sección se anota a varios de una vez). Nadie más.
+ *     salida de toda la sección se anota a varios de una vez), o solo el
+ *     admin si el liceo lo dice (`quienAnota: SOLO_ADMIN`). Nadie más.
+ *   - Las horas se suman de todos los años: lo hecho en 4to cuenta en 5to.
+ *   - Se ve dentro de cada sección (su pestaña «Labor social»).
  *   - El alumno y su representante solo la ven («45 de 60 h»).
  *   - Solo en los grados que diga el liceo (5to por defecto) y si la tiene
  *     activa.
@@ -53,7 +56,8 @@ async function seccionActual(prisma: any, studentId: string) {
 
 /**
  * ¿Puede anotarle labor social? El admin, o el profesor GUÍA de su sección de
- * este año. Da la sección, o corta con 403/409.
+ * este año (si el liceo no lo ha dejado solo al admin). Da la sección, o corta
+ * con 403/409.
  */
 async function puedeAnotar(prisma: any, reglas: ReglasDeLaborSocial, quien: Quien, studentId: string) {
     if (!reglas.activa) throw createError(409, 'El liceo no tiene la labor social activa', 'LABOR_SOCIAL_INACTIVA');
@@ -63,8 +67,12 @@ async function puedeAnotar(prisma: any, reglas: ReglasDeLaborSocial, quien: Quie
         throw createError(409, `La labor social es de ${reglas.grados.map((g) => `${g}º`).join(', ')} año`, 'FUERA_DE_LABOR_SOCIAL');
     }
     if (quien.role === 'ADMIN') return seccion;
-    if (quien.role === 'TEACHER' && seccion.classroom.teacherId === quien.id) return seccion;
-    throw createError(403, 'La labor social la anotan el admin y el profesor guía de la sección', 'FORBIDDEN');
+    if (quien.role === 'TEACHER' && reglas.quienAnota !== 'SOLO_ADMIN' && seccion.classroom.teacherId === quien.id) return seccion;
+    throw createError(
+        403,
+        reglas.quienAnota === 'SOLO_ADMIN' ? 'En este liceo la labor social la anota el admin' : 'La labor social la anotan el admin y el profesor guía de la sección',
+        'FORBIDDEN'
+    );
 }
 
 export interface DatosDeActividad {
@@ -132,10 +140,12 @@ export async function borrarActividad(prisma: any, instituteId: string, quien: Q
 }
 
 /**
- * La lista para la pantalla «Labor social»: los alumnos de los grados del
- * liceo con su avance. El admin, todos; el guía, los de sus secciones.
+ * La lista: los alumnos de los grados del liceo con su avance (de todos los
+ * años). El admin, todos; el guía, los de sus secciones. Con `classroomId`,
+ * los de esa sección (la pestaña de la sección), y si quien pide puede
+ * anotarles.
  */
-export async function listaDeLaborSocial(prisma: any, instituteId: string, quien: Quien) {
+export async function listaDeLaborSocial(prisma: any, instituteId: string, quien: Quien, opciones: { classroomId?: string } = {}) {
     const config = await getAcademicConfig(instituteId);
     const reglas = config.laborSocial;
     const inscripciones = reglas.activa
@@ -143,6 +153,7 @@ export async function listaDeLaborSocial(prisma: any, instituteId: string, quien
               where: {
                   isActive: true,
                   academicYear: { status: 'ACTIVE' },
+                  ...(opciones.classroomId ? { classroomId: opciones.classroomId } : {}),
                   classroom: { grade: { in: reglas.grados }, ...(quien.role === 'ADMIN' ? {} : { teacherId: quien.id }) },
                   student: { isActive: true },
               },
@@ -154,8 +165,12 @@ export async function listaDeLaborSocial(prisma: any, instituteId: string, quien
           })
         : [];
     const avances = await avancesDe(prisma, instituteId, inscripciones.map((i: any) => i.student.id));
+    // Anota el admin; el guía, si el liceo lo deja y la lista es de lo suyo.
+    const puedeAnotar =
+        reglas.activa && (quien.role === 'ADMIN' || (quien.role === 'TEACHER' && reglas.quienAnota !== 'SOLO_ADMIN' && inscripciones.length > 0));
     return {
         reglas,
+        puedeAnotar,
         alumnos: inscripciones.map((i: any) => ({
             alumno: { id: i.student.id, nombre: `${i.student.lastName}, ${i.student.firstName}` },
             seccion: { id: i.classroom.id, nombre: i.classroom.name, grado: i.classroom.grade },

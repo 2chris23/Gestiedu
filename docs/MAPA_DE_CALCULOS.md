@@ -273,11 +273,11 @@ liceo (`academicConfig`, `reglas-del-fin-de-ano.ts`); lo del MPPE es el valor po
 | **Decisión del admin** | Puede ser otra que la sugerida **solo con motivo** (400 `FALTA_EL_MOTIVO`); queda en el expediente junto a la sugerida (`condicionSugerida`, `motivo`, `decididaPor`). | — |
 | **Destino** | NO_PROMOVIDO → repite su grado (también 5to: antes egresaba igual); último año que no repite → no va a sección: `egreso = EGRESADO`, o `PENDIENTE` si SOLO_PENDIENTES; los demás → grado + 1. | — |
 | **Materias pendientes** | Con PROMOVIDO_CON_PENDIENTES, una `MateriaPendiente` por reprobada, en el año siguiente, con la nota de origen y el profesor que da esa materia en ese grado ese año. Las de antes sin aprobar quedan NO_APROBADA y nacen otra vez en el siguiente. | `pendientes.momentos` (4) |
-| **Aprobar una materia pendiente** | La evalúa el profesor asignado (o el admin), momento a momento y en orden, con notas de 0 a 20 redondeadas como las definitivas. MOMENTO_APROBADO: aprobada en el primer momento con la mínima, esa es su nota final y no hay más momentos; con todos los momentos sin llegar: NO_APROBADA con la mejor. PROMEDIO: con todos los momentos, la media (redondeada) decide. Corregir o quitar el último momento recalcula el estado. | `pendientes.momentos` (4), `pendientes.formaDeCalificar` (MOMENTO_APROBADO) |
+| **Aprobar una materia pendiente** | Ver §8c-bis: cada momento con su 1ª y su 2ª opción, y la forma de aprobar del liceo. | `pendientes.*` |
 | **Año siguiente** | Ya no se inventa al cerrar (antes: un mes después, un solo lapso de 90 días): sin él, 409 `SIN_ANO_SIGUIENTE`. Se crea en el paso 5 con el calendario del MPPE (`calendario-mppe.ts`) y copiando secciones (capacidad), materias (horas) y, si se pide, profesores y horarios. Una sección de destino que falte se crea copiando la del mismo grado de este año, no con valores fijos. | — |
 | **Corregir tras cerrar** | Rehace expediente (con motivo, quién y cuándo), matrícula del año siguiente y pendientes nacidas de este año (las ya evaluadas se quedan); queda en `audit_logs`. | — |
 
-Pruebas: CIERRE-01…10, academic-close 1…9, CIERRE-UI-01/02; la pendiente: PEND-01…08, PEND-UI-01 (`materias-pendientes.service.ts`).
+Pruebas: CIERRE-01…10, academic-close 1…9, CIERRE-UI-01/02; la pendiente: PEND-01…16, PEND-UI-01 (`materias-pendientes.service.ts`).
 
 **La definitiva, en bloque (2026-10-06).** `prepareClose` ya no pide el promedio alumno por
 alumno, materia por materia y lapso por lapso (`promedioDeLaMateria`: unas 18.000 cuentas con
@@ -290,6 +290,24 @@ medida con los datos del instituto de pruebas: 0 diferencias en 8.985 materias d
 
 ---
 
+## 8c-bis. La materia pendiente, como una clase (2026-10-12)
+
+`services/materias-pendientes.service.ts`. Circulares 0007 (2010), 006696 (2012) y 000004 (2009)
+del MPPE y la práctica de los liceos; todo del liceo en `academicConfig.pendientes`.
+
+| Qué | Regla | Configurable |
+| :--- | :--- | :--- |
+| **Dónde se trabaja** | En una CLASE: la materia de una sección del grado de origen, en el año en que se cursa (`claseId`). La evalúa su profesor (o uno puesto a mano por el admin, la forma de antes). Sin clase al nacer, se le busca: la del profesor que la tenía, la de la misma letra que su sección del año en que la reprobó, o la primera. | El admin la pasa a otra clase de la misma materia y grado |
+| **Momentos** | En orden: un momento se abre con el anterior decidido. Cada uno tiene 1ª opción y, según el liceo, 2ª (una semana después). | `momentos` (4) |
+| **2ª opción** | Solo para quien reprobó la 1ª. SIEMPRE: a todos esos; SI_REPRUEBA_30: si de los que presentaron la 1ª en esa clase, el 30 % o más la reprobó (art. 112 del Reglamento); NO: la 1ª decide. Un momento ya seguido por el siguiente queda como estaba. | `segundaOpcion` (SIEMPRE) |
+| **Faltar** | Sin justificar: cuenta como presentada sin nota («IN»). Justificada: no cuenta; la opción sigue abierta. | `faltarPierdeElMomento` (sí) |
+| **Nota del momento** | Decidido el momento: la mejor nota de sus opciones (vacía si no se presentó a ninguna). Abierto, no tiene nota. A mano (sin opciones) se pone directa. | — |
+| **Aprobar** | MOMENTO_APROBADO: en el primer momento con la mínima (esa es la final); con todos los momentos sin llegar, NO_APROBADA con la mejor. PROMEDIO: con todos, la media. PONDERADO: con todos, Σ nota × peso ÷ 100. En el promedio y el ponderado, el momento sin nota cuenta 0. Redondeo como las definitivas. | `formaDeCalificar` (MOMENTO_APROBADO), `pesos` (suman 100) |
+| **Asistencia** | A qué encuentros se les pasa lista: SOLO_EVALUACIONES (lo del Reglamento: no está obligado a ir a las clases), OBLIGATORIA (también a las tutorías) o NO. | `asistencia` (SOLO_EVALUACIONES) |
+| **Cronograma** | Por año: cada momento con la ventana de su 1ª y su 2ª opción. Sin guardar, el de la circular 0007: la semana del 1er lunes de octubre, del 1er lunes de diciembre, del 4º lunes de enero y del 1er lunes de junio; la 2ª, la semana siguiente. | Configuración → Académica |
+
+Pruebas: PEND-01…08 (`materias-pendientes.test.ts`) y PEND-09…16 (`pendientes-con-opciones.test.ts`).
+
 ## 8d. La labor social (horas comunitarias)
 
 **Añadido el 2026-09-27** (`services/labor-social.service.ts`; la cuenta pura, `avanceDe`, en
@@ -298,12 +316,14 @@ medida con los datos del instituto de pruebas: 0 diferencias en 8.985 materias d
 | Qué | Regla | Configurable |
 | :--- | :--- | :--- |
 | **A quién le toca** | Alumnos inscritos este año en los grados del liceo, con la labor social activa. | `grados` ([último año]), `activa` (sí) |
-| **Avance** | Suma de las horas de TODAS sus actividades (de cualquier año). Con horas: cumplida si la suma ≥ las requeridas. Con 0 horas (por proyecto): cumplida si alguna actividad culmina el proyecto. Una actividad va de más de 0 a 24 h. | `horasRequeridas` (60; 0 = por proyecto) |
+| **Avance** | Suma de las horas de TODAS sus actividades (de cualquier año: lo de 4to cuenta en 5to). Con horas: cumplida si la suma ≥ las requeridas. Con 0 horas (por proyecto): cumplida si alguna actividad culmina el proyecto. Una actividad va de más de 0 a 24 h. | `horasRequeridas` (60; 0 = por proyecto) |
 | **Para egresar** | En el cierre del último año, al que egresaría: BLOQUEA → `egreso = PENDIENTE` sin ella; AVISA → egresa, con aviso en la sugerencia (lo del MPPE: un retraso no niega el título); NO → no cuenta. También al corregir tras cerrar. | `paraEgresar` (AVISA) |
 | **Constancia** | Solo con la labor social cumplida (409 `LABOR_SOCIAL_NO_CUMPLIDA`), con sus horas y su proyecto. | — |
 
-La anotan el admin y el profesor guía de la sección del alumno (una actividad a varios a la vez);
-el alumno y su representante solo la ven. Pruebas: LABOR-01…07, LABOR-UI-01.
+La anotan el admin y el profesor guía de la sección del alumno (una actividad a varios a la vez), o
+solo el admin si el liceo lo dice (`quienAnota`: ADMIN_Y_GUIA por defecto, o SOLO_ADMIN); el alumno y
+su representante solo la ven. Se lleva dentro de cada sección (su pestaña «Labor social»).
+Pruebas: LABOR-01…10, LABOR-UI-01.
 
 ## 8e. Los documentos oficiales (resumen final y certificación)
 

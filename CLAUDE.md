@@ -455,7 +455,8 @@ certificación junta de 1.º a 5.º, con los años de otro plantel cargados a ma
   inscripciones activas; las notas se toman de los lapsos del año que se cierra,
   no de «la inscripción activa» (CIERRE-10 salía en rojo una de cada tantas).
 - **Revisión y materia pendiente las pone el profesor de la materia**; la
-  pendiente va por momentos y con acta de compromiso (`materias-pendientes.service.ts`).
+  pendiente va por momentos con 1ª y 2ª opción, su plan, sus encuentros y sus
+  actas (ver «La materia pendiente como una clase»).
 - **Labor social**: la anotan el admin y el profesor guía; cuenta para egresar
   según el liceo (bloquea, avisa o nada; `MAPA` §8d).
 
@@ -924,6 +925,82 @@ pone antes de pintar). El Inicio del admin en el teléfono es
 promedio del liceo con ojo para ocultarlo, luces que flotan (quietas con
 «reducir movimiento»), los accesos en un **carrusel sin fin** (`Carril` con
 `bucle`) y su propio esqueleto azul mientras carga.
+
+## El ordenador: cajas, la barra que se recoge y tu nombre abajo (octubre 2026)
+
+Pedido y elegido por Cristian. En el ordenador (`lateral:`) la pantalla son
+**cajas redondeadas**, como Spotify: la barra lateral azul y, en el Inicio, la
+franja del promedio; el contenido va sobre el fondo claro. Ya no hay franja
+arriba en las demás pantallas («horrible», Cristian): el «?» y la campana
+viven abajo en la barra, junto al botón de recogerla. La barra de desplazamiento
+tiene su estilo (globals.css). El teléfono no cambia.
+
+- **La barra se recoge en iconos** (264 → 76 px) con su botón de abajo o
+  Ctrl+B (que no hace nada escribiendo: ahí es la negrita, y por teclado no se
+  anima). El estado vive en `<html data-lateral>` y lo pone un guion del
+  `<head>` antes de pintar (`lib/barra-lateral.ts`, `--ancho-lateral`, variante
+  `recogida:`). **Ese archivo no lleva React**: lo importa `app/layout.tsx`, que
+  es del servidor, y un gancho en el mismo archivo tumbó la app entera; el
+  gancho está en `hooks/useBarraRecogida.ts`. Recogida, cada icono dice su
+  nombre en un globo propio (fijo: la lista se desplaza y lo recortaría).
+- **La pastilla de la página activa se desliza** con `transform`; sin
+  framer-motion, que solo carga la portada (CARGA-01).
+- **Tu nombre, abajo** (`MiNombreYMenu`): el primer nombre y el rol; su menú
+  trae tu cuenta (la ficha del teléfono, desde la derecha: antes en el
+  ordenador no había cómo cambiar la contraseña), el color de la app, la
+  configuración (solo el admin) y cerrar sesión; el menú no se sale del ancho
+  de la barra. El logo del liceo va grande y sin nombre; en una pantalla de
+  poca altura (≤ 820 px), menor (`--logo-cabecera`, `--logo-baldosa`).
+- **El Inicio, como el del teléfono, sin «Ir a» (repetía la barra) y en una
+  sola pantalla, sin bajar.** El calendario tiene filas de alto fijo y debajo
+  lo del día elegido (estirado a toda la tarjeta, cada semana medía 100 px); el
+  cuadro de honor enseña cinco filas con altura de sobra (`alta:`) y tres en un
+  portátil. El
+  promedio y las tarjetas van en la franja azul y los pinta el ARMAZÓN
+  (`FranjaDelInicio`, solo en `/dashboard`), no la página: salirse de la hoja
+  pedía `container-type`, que encierra las ventanas `fixed` dentro de ella, y
+  un portal dejaba la franja vacía en el HTML del servidor. Las consultas son
+  las de la página (`hooks/useInicio.ts`, misma llave: una petición) y **las
+  cifras se cuentan una vez para el teléfono y el ordenador**
+  (`components/dashboard/cifras-del-inicio.tsx`).
+- **La hoja no lleva `overflow`**: las cabeceras pegadas de las tablas dejarían
+  de pegarse.
+- LATERAL-01…03, PERFIL-UI-01, INICIO-ESC-01/02 (`barra-lateral.spec.ts`);
+  BOTON-06 sale por el menú; DISENO-04 exige que el Panel del ordenador no
+  lleve «Ir a».
+
+## La materia pendiente como una clase y la labor social en la sección (octubre 2026)
+
+Pedido por Cristian tras investigar cómo se trabaja en los liceos (circulares
+0007, 006696 y 000004 del MPPE; su papá es profesor). **Ninguna de las dos es ya
+una pantalla del menú**: con el liceo lleno eran listas sin fin. Los enlaces
+viejos (`/dashboard/materias-pendientes`, `/dashboard/labor-social`) van a
+Académico. Sus reglas, en Configuración → Académica; lo del MPPE es solo lo de
+primeras (MAPA §8c-bis y §8d).
+
+- **La pendiente se trabaja en una CLASE** (`MateriaPendiente.claseId`: la
+  materia de una sección del grado de origen, ese año). La evalúa su profesor
+  en la pestaña «Pendientes» de la materia; el guía y el admin la siguen en la
+  pestaña «Pendientes» de la sección del alumno. Sin clase al nacer, se le
+  busca sola (`promotion/clase-de-la-pendiente.ts`, la usan el cierre y la
+  pendiente sin importarse entre sí). El admin la pasa a otra clase de la misma
+  materia y grado; `profesorId` solo si se puso a mano (manda).
+- **Cada momento tiene 1ª y 2ª opción** (`OpcionDePendiente`; el «112»):
+  SIEMPRE, SI_REPRUEBA_30 (el artículo al pie de la letra) o NO. Faltar sin
+  justificar cuenta como presentada sin nota («IN»). La nota del momento
+  (`EvaluacionDePendiente`, ahora puede ir vacía) sale de sus opciones;
+  la forma de antes (`PUT /momentos/:n`, la nota directa) sigue valiendo.
+- **Como una clase** (`plan-de-pendientes.service.ts`): el plan de cada momento
+  con pesos e instrumentos (el editor de la clase, con `local`), las notas del
+  plan (con todas las del momento, la nota de la opción sale sola; lo puesto a
+  mano manda), los encuentros (tutorías y evaluaciones) con asistencia, y las
+  actas de presentación y de calificaciones (`/dashboard/pendientes/...`).
+- **El cronograma** de cada año (`MomentoDePendiente`): sin guardar, el de la
+  circular 0007 (octubre, diciembre, enero, junio; la 2ª una semana después).
+- **La labor social**: pestaña de la sección (si el grado la hace); quién anota
+  lo dice el liceo (`quienAnota`); las horas se suman de todos los años.
+- PEND-09…20, LABOR-08…10, PEND-UI-01, LABOR-UI-01. **El menú está copiado en
+  el servidor** (`elMenuDelRol`, MENU-PARIDAD): quitar una entrada es en los dos.
 
 ## La precarga: sin conexión, todo (octubre 2026)
 

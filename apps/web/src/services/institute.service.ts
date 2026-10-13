@@ -1,3 +1,5 @@
+import type { ReglasDeLaborSocial } from '@/lib/labor-social';
+import type { ReglasDePendientes } from '@/lib/materias-pendientes';
 import api from '@/lib/axios';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
 import { dejarPendiente } from '@/lib/por-enviar';
@@ -29,6 +31,9 @@ export interface ReglasAcademicas {
     permitePendientesEnUltimoAno: boolean;
     /** Porcentaje por debajo del cual se avisa al representante (0-100). */
     asistenciaMinima: number;
+    /** La labor social y la materia pendiente (Configuración → Académica). */
+    laborSocial?: ReglasDeLaborSocial;
+    pendientes?: ReglasDePendientes;
 }
 
 export interface UpdateInstituteDto {

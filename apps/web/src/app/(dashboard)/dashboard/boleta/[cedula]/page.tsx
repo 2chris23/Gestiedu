@@ -236,7 +236,7 @@ export default function BoletaPage({ params }: { params: Promise<{ cedula: strin
                                             {p.materia} de {p.gradoDeOrigen}º año{p.cicloDeOrigen ? ` (${p.cicloDeOrigen})` : ''}
                                         </th>
                                         <td className="border border-gray-200 px-2 py-1.5 text-center tabular-nums text-gray-900">
-                                            {p.momentos.length === 0 ? '—' : p.momentos.map((m) => `${m.momento}º: ${nota(m.nota)}`).join(' · ')}
+                                            {p.momentos.length === 0 ? '—' : p.momentos.map((m) => `${m.momento}º: ${m.nota == null ? 'IN' : nota(m.nota)}`).join(' · ')}
                                         </td>
                                         <td className={`border border-gray-200 px-2 py-1.5 text-center font-semibold ${p.estado === 'APROBADA' ? 'text-emerald-700' : p.estado === 'NO_APROBADA' ? 'text-red-700' : 'text-amber-800'}`}>
                                             {p.estado === 'APROBADA' ? `Aprobada (${nota(p.notaFinal)})` : p.estado === 'NO_APROBADA' ? 'No aprobada' : 'Pendiente'}

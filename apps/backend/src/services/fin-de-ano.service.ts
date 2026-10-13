@@ -16,6 +16,7 @@ import {
     egresoDe,
 } from './promotion/close-cycle.service';
 import { avanceDe } from './promotion/reglas-del-fin-de-ano';
+import { asignarLasClases } from './promotion/clase-de-la-pendiente';
 
 /**
  * EL FIN DEL AÑO ESCOLAR, POR PASOS
@@ -520,11 +521,11 @@ export async function corregirDecision(
             // Sus pendientes nacidas de este año: se rehacen (las evaluadas se quedan).
             const suyas = await tx.materiaPendiente.findMany({
                 where: { studentId, cicloDeOrigenId: academicYearId, cicloId: siguiente.id },
-                include: { _count: { select: { evaluaciones: true } } },
+                include: { _count: { select: { evaluaciones: true, opciones: true } } },
             });
             const quedan = new Set<string>();
             for (const p of suyas) {
-                if (p._count.evaluaciones > 0 || (condicion === 'PROMOVIDO_CON_PENDIENTES' && reprobadas.some((r) => r.subjectId === p.subjectId))) {
+                if (p._count.evaluaciones > 0 || p._count.opciones > 0 || (condicion === 'PROMOVIDO_CON_PENDIENTES' && reprobadas.some((r) => r.subjectId === p.subjectId))) {
                     quedan.add(p.subjectId);
                     continue;
                 }
@@ -548,6 +549,7 @@ export async function corregirDecision(
                         },
                     });
                 }
+                await asignarLasClases(tx, siguiente.id);
             }
         }
 

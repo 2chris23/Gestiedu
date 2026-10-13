@@ -298,6 +298,7 @@ model User {
   materiasPendientes      MateriaPendiente[]       @relation("PendienteAlumno")
   pendientesQueEvalua     MateriaPendiente[]       @relation("PendienteProfesor")
   evaluacionesDePendiente EvaluacionDePendiente[]  @relation("EvaluacionPendientePuestaPor")
+  opcionesDePendiente     OpcionDePendiente[]      @relation("OpcionPendientePuestaPor")
   laborSocial             ActividadDeLaborSocial[] @relation("LaborSocialAlumno")
   laborSocialAnotada      ActividadDeLaborSocial[] @relation("LaborSocialPuestaPor")
   calificacionesExternas  CalificacionExterna[]    @relation("CalificacionExternaAlumno")
@@ -425,6 +426,7 @@ model AcademicYear {
   decisionesDeFinDeAno  DecisionDeFinDeAno[]
   pendientesQueNacieron MateriaPendiente[]       @relation("PendienteOrigen")
   pendientesQueSeCursan MateriaPendiente[]       @relation("PendienteCiclo")
+  momentosDePendientes  MomentoDePendiente[]
   laborSocial           ActividadDeLaborSocial[]
   titulos               Titulo[]
   institute             Institute?               @relation(fields: [instituteId], references: [id])
@@ -648,6 +650,11 @@ model ClassroomSubject {
 
   teacherHistory SubjectTeacherHistory[]
   scheduleBlocks ScheduleBlock[]
+
+  /// Las materias pendientes que se trabajan en esta clase, su plan y sus encuentros.
+  pendientes             MateriaPendiente[]     @relation("PendientesDeLaClase")
+  planDePendientes       EvaluacionDelMomento[]
+  encuentrosDePendientes EncuentroDePendiente[]
 
   @@unique([classroomId, subjectId])
   @@index([teacherId])
@@ -1223,8 +1230,11 @@ model DecisionDeFinDeAno {
 }
 
 /// LA MATERIA PENDIENTE: la que el alumno reprobó y arrastra al año siguiente.
-/// La evalúa un profesor en varios momentos (`EvaluacionDePendiente`); el
-/// cierre de ese año la tiene en cuenta. Ver `services/materias-pendientes.service.ts`.
+/// Se trabaja en una CLASE (la materia de una sección del grado de origen, ese
+/// año) y la evalúa su profesor, en varios momentos con 1ª y 2ª opción
+/// (`OpcionDePendiente`); la nota de cada momento queda en
+/// `EvaluacionDePendiente`. El cierre de ese año la tiene en cuenta. Ver
+/// `services/materias-pendientes.service.ts`.
 model MateriaPendiente {
   id String @id @default(cuid())
 
@@ -1245,7 +1255,12 @@ model MateriaPendiente {
   cicloId String
   ciclo   AcademicYear @relation("PendienteCiclo", fields: [cicloId], references: [id], onDelete: Cascade)
 
-  /// Quién la evalúa: por defecto el que da esa materia en ese grado este año.
+  /// La clase donde se trabaja (`classroom_subjects` del grado de origen, este
+  /// año): la evalúa su profesor. Sin clase todavía, se le busca una sola.
+  claseId String?
+  clase   ClassroomSubject? @relation("PendientesDeLaClase", fields: [claseId], references: [id], onDelete: SetNull)
+
+  /// Un profesor puesto a mano (la forma de antes): manda sobre el de la clase.
   profesorId String?
   profesor   User?   @relation("PendienteProfesor", fields: [profesorId], references: [id], onDelete: SetNull)
 
@@ -1257,14 +1272,20 @@ model MateriaPendiente {
   updatedAt DateTime @updatedAt
 
   evaluaciones EvaluacionDePendiente[]
+  opciones     OpcionDePendiente[]
+  notasDelPlan NotaDePendiente[]
+  asistencias  AsistenciaDePendiente[]
 
   @@unique([studentId, subjectId, cicloDeOrigenId, cicloId])
   @@index([cicloId])
   @@index([profesorId])
+  @@index([claseId])
   @@map("materias_pendientes")
 }
 
-/// Cada momento en que se evalúa una materia pendiente (4 por defecto).
+/// La nota de cada momento de una materia pendiente (4 por defecto). Con
+/// opciones, sale de ellas (la mejor) cuando el momento queda decidido; a mano
+/// (la forma de antes), se pone directa. Sin nota: no se presentó («IN»).
 model EvaluacionDePendiente {
   id String @id @default(cuid())
 
@@ -1272,7 +1293,7 @@ model EvaluacionDePendiente {
   materiaPendiente   MateriaPendiente @relation(fields: [materiaPendienteId], references: [id], onDelete: Cascade)
 
   momento       Int
-  nota          Float
+  nota          Float?
   fecha         DateTime @db.Date
   observaciones String?
 
@@ -1284,6 +1305,159 @@ model EvaluacionDePendiente {
 
   @@unique([materiaPendienteId, momento])
   @@map("evaluaciones_de_pendientes")
+}
+
+/// Cada opción de un momento: la 1ª y la 2ª (el «112» de los liceos, una
+/// semana después). Si se abre la 2ª y si faltar cuenta lo dice el liceo
+/// (`academicConfig.pendientes`).
+model OpcionDePendiente {
+  id String @id @default(cuid())
+
+  materiaPendienteId String
+  materiaPendiente   MateriaPendiente @relation(fields: [materiaPendienteId], references: [id], onDelete: Cascade)
+
+  momento       Int
+  /// 1 | 2
+  opcion        Int
+  /// Sin nota: no se presentó.
+  nota          Float?
+  asistio       Boolean  @default(true)
+  /// La falta justificada no cuenta: la opción sigue abierta.
+  justificada   Boolean  @default(false)
+  /// La puso el plan del momento (la suma de sus evaluaciones), no el profesor a mano.
+  delPlan       Boolean  @default(false)
+  fecha         DateTime @db.Date
+  observaciones String?
+
+  registradaPorId String?
+  registradaPor   User?   @relation("OpcionPendientePuestaPor", fields: [registradaPorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([materiaPendienteId, momento, opcion])
+  @@map("opciones_de_pendientes")
+}
+
+/// El cronograma de la materia pendiente de un año escolar: cuándo es cada
+/// momento, con su 1ª y su 2ª opción. Sin guardar, se propone el del MPPE.
+model MomentoDePendiente {
+  id String @id @default(cuid())
+
+  cicloId String
+  ciclo   AcademicYear @relation(fields: [cicloId], references: [id], onDelete: Cascade)
+
+  numero Int
+  desde1 DateTime  @db.Date
+  hasta1 DateTime  @db.Date
+  desde2 DateTime? @db.Date
+  hasta2 DateTime? @db.Date
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cicloId, numero])
+  @@map("momentos_de_pendientes")
+}
+
+/// El plan de evaluación de una clase de pendientes, momento a momento: qué se
+/// evalúa, cuánto pesa y con qué instrumento. Sin plan, la nota va a mano.
+model EvaluacionDelMomento {
+  id String @id @default(cuid())
+
+  claseId String
+  clase   ClassroomSubject @relation(fields: [claseId], references: [id], onDelete: Cascade)
+
+  momento     Int
+  nombre      String
+  /// Lo que pesa en el momento (las de un momento suman 100).
+  peso        Int
+  /// El instrumento (lista de cotejo, escala, rúbrica, por puntos), con la forma de `utils/instrumentos.ts`.
+  instrumento Json?
+  contenidos  String?
+  orden       Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notas NotaDePendiente[]
+
+  @@index([claseId, momento])
+  @@map("evaluaciones_del_momento")
+}
+
+/// La nota de un alumno en una evaluación del plan, en una opción.
+model NotaDePendiente {
+  id String @id @default(cuid())
+
+  evaluacionId String
+  evaluacion   EvaluacionDelMomento @relation(fields: [evaluacionId], references: [id], onDelete: Cascade)
+
+  materiaPendienteId String
+  materiaPendiente   MateriaPendiente @relation(fields: [materiaPendienteId], references: [id], onDelete: Cascade)
+
+  opcion   Int
+  nota     Float
+  /// Lo marcado en el instrumento, si lo tiene.
+  desglose Json?
+
+  registradaPorId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([evaluacionId, materiaPendienteId, opcion])
+  @@index([materiaPendienteId])
+  @@map("notas_de_pendientes")
+}
+
+/// Un encuentro de la clase de pendientes: una tutoría o una evaluación, con
+/// su fecha, hora y aula. De su asistencia sale el acta de presentación.
+model EncuentroDePendiente {
+  id String @id @default(cuid())
+
+  claseId String
+  clase   ClassroomSubject @relation(fields: [claseId], references: [id], onDelete: Cascade)
+
+  momento Int
+  /// TUTORIA | EVALUACION
+  tipo    String   @default("TUTORIA")
+  /// Para una evaluación: la opción (1 | 2).
+  opcion  Int?
+  fecha   DateTime @db.Date
+  hora    String?
+  aula    String?
+  tema    String?
+
+  creadoPorId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  asistencias AsistenciaDePendiente[]
+
+  @@index([claseId, momento])
+  @@map("encuentros_de_pendientes")
+}
+
+/// Quién vino a un encuentro. PRESENTE | AUSENTE | JUSTIFICADO.
+model AsistenciaDePendiente {
+  id String @id @default(cuid())
+
+  encuentroId String
+  encuentro   EncuentroDePendiente @relation(fields: [encuentroId], references: [id], onDelete: Cascade)
+
+  materiaPendienteId String
+  materiaPendiente   MateriaPendiente @relation(fields: [materiaPendienteId], references: [id], onDelete: Cascade)
+
+  estado String @default("PRESENTE")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([encuentroId, materiaPendienteId])
+  @@index([materiaPendienteId])
+  @@map("asistencias_de_pendientes")
 }
 
 /// LA LABOR SOCIAL (las horas comunitarias de los últimos años): cada alumno

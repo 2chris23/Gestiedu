@@ -510,12 +510,12 @@ export async function updateAcademicConfigEndpoint(request: FastifyRequest, repl
       patch.pendienteNoAprobada = body.pendienteNoAprobada;
     }
     if (body.pendientes !== undefined) {
-      if (!esReglasDePendientes(body.pendientes)) return mal('Materias pendientes: de 1 a 8 momentos, y MOMENTO_APROBADO o PROMEDIO.', 'REGLA_INVALIDA');
+      if (!esReglasDePendientes(body.pendientes)) return mal('Materias pendientes: de 1 a 8 momentos; MOMENTO_APROBADO, PROMEDIO o PONDERADO (con un peso por momento que sumen 100); 2ª opción SIEMPRE, SI_REPRUEBA_30 o NO; asistencia SOLO_EVALUACIONES, OBLIGATORIA o NO.', 'REGLA_INVALIDA');
       patch.pendientes = body.pendientes;
     }
     if (body.laborSocial !== undefined) {
       if (!esReglasDeLaborSocial(body.laborSocial)) {
-        return mal('Labor social: activa, de 1 a 6 grados (1 a 6), horas de 0 a 1000 y para egresar BLOQUEA, AVISA o NO.', 'REGLA_INVALIDA');
+        return mal('Labor social: activa, de 1 a 6 grados (1 a 6), horas de 0 a 1000, para egresar BLOQUEA, AVISA o NO, y la anotan ADMIN_Y_GUIA o SOLO_ADMIN.', 'REGLA_INVALIDA');
       }
       patch.laborSocial = body.laborSocial;
     }

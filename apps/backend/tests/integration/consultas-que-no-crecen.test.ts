@@ -38,6 +38,8 @@ describe('Las pantallas no hacen una consulta por alumno (N1)', () => {
     let lapso: any;
     let materia: any;
     let aula: any;
+    let clase: any;
+    let encuentro: any;
 
     async function agregarAlumnos(n: number) {
         for (let i = 0; i < n; i++) {
@@ -53,6 +55,12 @@ describe('Las pantallas no hacen una consulta por alumno (N1)', () => {
             }
             await prisma.dailyAttendance.create({ data: { id: gId(), studentId: est.id, classroomId: aula.id, teacherId: profesor.id, date: new Date(DIA), status: 'PRESENT' } as any });
             await prisma.observation.create({ data: { title: 'Llegó tarde', studentId: est.id, createdById: profesor.id, classroomId: aula.id, subjectId: materia.id, date: new Date(DIA), instituteId: LICEO } as any });
+            // Y una materia pendiente en la clase, con su 1ª opción y su asistencia.
+            const p = await (prisma as any).materiaPendiente.create({
+                data: { studentId: est.id, subjectId: materia.id, gradoDeOrigen: 1, cicloDeOrigenId: year.id, cicloId: year.id, claseId: clase.id, notaDeOrigen: 7 },
+            });
+            await (prisma as any).opcionDePendiente.create({ data: { materiaPendienteId: p.id, momento: 1, opcion: 1, nota: 8, fecha: new Date(DIA) } });
+            await (prisma as any).asistenciaDePendiente.create({ data: { encuentroId: encuentro.id, materiaPendienteId: p.id, estado: 'PRESENTE' } });
         }
     }
 
@@ -74,6 +82,8 @@ describe('Las pantallas no hacen una consulta por alumno (N1)', () => {
         ['N1-15 consejo de sección (admin)', () => admin, () => `/api/classrooms/${aula.id}/consejos/${lapso.id}`],
         ['N1-16 cuadro de honor (admin)', () => admin, () => '/api/cuadro-de-honor?alcance=ciclo'],
         ['N1-17 cuadro general de la sección guía (profesor)', () => profesor, () => `/api/classrooms/${aula.id}/cuadro-general`],
+        ['N1-18 materias pendientes de la clase (profesor)', () => profesor, () => `/api/materias-pendientes/clase/${clase.id}`],
+        ['N1-19 materias pendientes de la sección (admin)', () => admin, () => `/api/materias-pendientes/seccion/${aula.id}`],
     ];
 
     async function contar(quien: any, url: string) {
@@ -105,7 +115,8 @@ describe('Las pantallas no hacen una consulta por alumno (N1)', () => {
         aula = await prisma.classroom.create({
             data: { id: gId(), name: '1 A', slug: `n1-${gId()}`, grade: 1, section: 'A', capacity: 40, academicYearId: year.id, instituteId: LICEO, teacherId: profesor.id } as any,
         });
-        await prisma.classroomSubject.create({ data: { classroomId: aula.id, subjectId: materia.id, teacherId: profesor.id } });
+        clase = await prisma.classroomSubject.create({ data: { classroomId: aula.id, subjectId: materia.id, teacherId: profesor.id } });
+        encuentro = await (prisma as any).encuentroDePendiente.create({ data: { claseId: clase.id, momento: 1, tipo: 'TUTORIA', fecha: new Date(DIA) } });
 
         await agregarAlumnos(3);
         for (const [nombre, quien, url] of PANTALLAS) {

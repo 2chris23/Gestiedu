@@ -25,6 +25,9 @@ import { NOMBRE_DEL_TIPO } from './nombres-de-instrumentos';
  * criterios con sus puntos (o su peso), los niveles de la escala y, en la
  * rúbrica, qué describe cada casilla. Abajo, lo que vale en total: la nota de
  * la actividad se lleva a 20 igual que cualquier nota.
+ *
+ * Con `local` no hay fila del plan detrás (el plan de una clase de materia
+ * pendiente): parte de lo que se le da y entrega lo armado, sin guardar nada.
  */
 
 const AYUDA: Record<TipoDeInstrumento, string> = {
@@ -43,17 +46,24 @@ export default function EditorDeInstrumento({
     titulo,
     abierto,
     alCerrar,
+    local,
 }: {
     rowId: string;
     titulo: string;
     abierto: boolean;
     alCerrar: () => void;
+    local?: { inicial: Instrumento | null; alGuardar: (definicion: Instrumento | null) => void };
 }) {
-    const { data, isLoading } = useInstrumentoDeLaFila(abierto ? rowId : null);
+    const { data, isLoading } = useInstrumentoDeLaFila(abierto && !local ? rowId : null);
     const guardar = useGuardarInstrumento();
     const quitar = useQuitarInstrumento();
     const confirmar = useConfirm();
     const [def, setDef] = React.useState<Instrumento | null>(null);
+
+    React.useEffect(() => {
+        if (local && abierto) setDef(local.inicial ?? plantillaDe('COTEJO'));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [abierto]);
 
     React.useEffect(() => {
         if (!data) return;
@@ -214,11 +224,16 @@ export default function EditorDeInstrumento({
                         </p>
 
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                            {data?.instrumento ? (
+                            {(local ? local.inicial : data?.instrumento) ? (
                                 <button
                                     type="button"
                                     onClick={async () => {
                                         if (!(await confirmar({ title: '¿Quitar el instrumento?', description: 'Lo ya calificado con él se queda como está.' }))) return;
+                                        if (local) {
+                                            local.alGuardar(null);
+                                            alCerrar();
+                                            return;
+                                        }
                                         quitar.mutate(rowId, {
                                             onSuccess: () => {
                                                 toast.success('Instrumento quitado');
@@ -242,7 +257,9 @@ export default function EditorDeInstrumento({
                                     type="button"
                                     disabled={Boolean(problema) || guardar.isPending}
                                     onClick={() =>
-                                        guardar.mutate(
+                                        local
+                                            ? (local.alGuardar(validarInstrumento(def)), alCerrar())
+                                            : guardar.mutate(
                                             { rowId, definicion: def, version: data?.instrumento?.version },
                                             {
                                                 onSuccess: () => {

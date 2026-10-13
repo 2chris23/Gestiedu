@@ -9,7 +9,6 @@ import {
     Wallet,
     FileText,
     ClipboardCheck,
-    HeartHandshake,
     MessageSquareText,
     UtensilsCrossed,
     type LucideIcon,
@@ -65,25 +64,11 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = fa
             pista: 'Las materias del liceo',
         },
         {
-            name: 'Pendientes',
-            href: '/dashboard/materias-pendientes',
-            icon: ClipboardCheck,
-            roles: ['ADMIN', 'TEACHER'],
-            pista: 'Materias pendientes, momento a momento',
-        },
-        {
             name: 'Observaciones',
             href: '/dashboard/observaciones',
             icon: MessageSquareText,
             roles: ['ADMIN', 'TEACHER'],
             pista: 'Observaciones y citaciones a representantes',
-        },
-        {
-            name: 'Labor social',
-            href: '/dashboard/labor-social',
-            icon: HeartHandshake,
-            roles: ['ADMIN', 'TEACHER'],
-            pista: 'Las horas comunitarias de cada alumno',
         },
         {
             name: 'Horarios',

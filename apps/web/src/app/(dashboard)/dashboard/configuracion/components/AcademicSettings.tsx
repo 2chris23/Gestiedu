@@ -11,6 +11,8 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { calcularTurno, erroresDelHorario, turnosDeLaConfig, type HorarioDelLiceo } from '@/lib/franjas-del-horario';
 import { HorarioDelLiceoEditor } from './HorarioDelLiceoEditor';
 import { ApreciacionesEditor, APRECIACIONES_POR_DEFECTO, erroresDeApreciaciones } from './ApreciacionesEditor';
+import { ReglasDeLaLaborSocial } from '@/components/labor-social/ReglasDeLaLaborSocial';
+import { ReglasDeLasPendientes } from '@/components/pendientes/ReglasDeLasPendientes';
 
 export function AcademicSettings() {
     const [loading, setLoading] = useState(false);
@@ -180,6 +182,7 @@ export function AcademicSettings() {
     }
 
     return (
+        <div className="space-y-8">
         <form onSubmit={handleSubmit} className="space-y-6">
             <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">
@@ -493,5 +496,10 @@ export function AcademicSettings() {
                 </button>
             </div>
         </form>
+
+            {/* Con su propio botón de guardar: la labor social y la materia pendiente (antes, en sus pantallas del menú). */}
+            <ReglasDeLaLaborSocial />
+            <ReglasDeLasPendientes />
+        </div>
     );
 }

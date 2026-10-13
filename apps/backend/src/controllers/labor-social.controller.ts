@@ -16,9 +16,10 @@ const quienDe = (request: FastifyRequest) => ({
     role: String((request.user as any)?.role ?? ''),
 });
 
-export async function lista(request: FastifyRequest, reply: FastifyReply) {
+export async function lista(request: FastifyRequest<{ Querystring: { classroomId?: string } }>, reply: FastifyReply) {
     try {
-        return reply.send({ success: true, data: await listaDeLaborSocial(request.tenantPrisma, instituteIdDe(request), quienDe(request)) });
+        const datos = await listaDeLaborSocial(request.tenantPrisma, instituteIdDe(request), quienDe(request), { classroomId: request.query?.classroomId });
+        return reply.send({ success: true, data: datos });
     } catch (e) {
         return responderErrorClaro(reply, e);
     }

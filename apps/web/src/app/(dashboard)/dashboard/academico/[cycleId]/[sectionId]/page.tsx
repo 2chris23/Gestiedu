@@ -9,8 +9,10 @@ import {
     ChevronLeft, Calendar, Clock,
     BookOpen, Users, GraduationCap, Bell, Search,
     Filter, UserPlus, Trash2,
-    CheckCircle2, FileText
+    CheckCircle2, FileText, ClipboardCheck, HeartHandshake
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { instituteService } from '@/services/institute.service';
 import Link from 'next/link';
 import { useStudents, useAvailableStudents, useAssignStudent } from '@/hooks/useStudents';
 import { useClassroomBySlug, useClassroomStats } from '@/hooks/useClassrooms';
@@ -40,6 +42,9 @@ const AssignSubjectModal = diferido(() => import('@/components/academic/AssignSu
 const EvaluationPlanSection = diferido(() => import('@/components/evaluation/EvaluationPlanSection'), { alto: 400 });
 const SectionObservationsTab = diferido(() => import('@/components/classroom/SectionObservationsTab'), { alto: 300 });
 const StudentObservationsModal = diferido(() => import('@/components/observations/StudentObservationsModal'), { sinEsqueleto: true });
+// Dentro de la sección, como el plan de evaluación (lo pidió Cristian, 2026-10-12): antes eran pantallas del menú.
+const PendientesDeLaSeccion = diferido(() => import('@/components/pendientes/PendientesDeLaSeccion'), { alto: 300 });
+const LaborSocialDeLaSeccion = diferido(() => import('@/components/labor-social/LaborSocialDeLaSeccion'), { alto: 300 });
 import CargandoSeccion from './loading';
 
 // Params refactored: year -> cycleId, slug -> sectionId
@@ -88,6 +93,17 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
 
     const debouncedSearchAvailable = useDebouncedValue(searchAvailableTerm, 350);
     const { yo } = useQuienSoy();
+    // Las pestañas del guía (y del admin): las pendientes de sus alumnos y la
+    // labor social, si el liceo la lleva y este grado la hace.
+    const esGuiaOAdmin = yo?.role === 'ADMIN' || (yo?.role === 'TEACHER' && ((classroom as any)?.teacherId ?? (classroom?.teacher as any)?.id) === yo?.id);
+    const { data: reglasDelLiceo } = useQuery({
+        queryKey: ['reglas-academicas'],
+        queryFn: () => instituteService.getAcademicConfig(),
+        enabled: esGuiaOAdmin,
+        staleTime: 5 * 60_000,
+    });
+    const conLaborSocial =
+        esGuiaOAdmin && !!reglasDelLiceo?.laborSocial?.activa && !!classroom?.grade && reglasDelLiceo.laborSocial.grados.includes(classroom.grade);
     // La lista de alumnos sin sección (para inscribir) es del admin: el
     // profesor recibía nombres y correos de alumnos que no son suyos.
     const { data: availableStudentsData, isLoading: isLoadingAvailable } = useAvailableStudents(
@@ -462,6 +478,8 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                             { id: 'materias', label: 'Materias', icon: BookOpen },
                             { id: 'calificaciones', label: 'Calificaciones', icon: GraduationCap },
                             { id: 'observaciones', label: 'Observaciones', icon: Bell },
+                            ...(esGuiaOAdmin ? [{ id: 'pendientes', label: 'Pendientes', icon: ClipboardCheck }] : []),
+                            ...(conLaborSocial ? [{ id: 'labor-social', label: 'Labor social', icon: HeartHandshake }] : []),
                         ].map((tab) => {
                             const Icon = tab.icon;
                             const isActive = activeTab === tab.id;
@@ -910,6 +928,10 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                 {activeTab === 'observaciones' && (
                     <SectionObservationsTab classroomId={classroomId || ''} />
                 )}
+
+                {activeTab === 'pendientes' && esGuiaOAdmin && classroomId && <PendientesDeLaSeccion classroomId={classroomId} />}
+
+                {activeTab === 'labor-social' && conLaborSocial && classroomId && <LaborSocialDeLaSeccion classroomId={classroomId} />}
             </div>
 
             {isAddStudentModalOpen && (
