@@ -6,9 +6,10 @@ import { toast } from 'sonner';
 /**
  * Hook para obtener la lista de profesores
  */
-export function useTeachers(search?: string) {
+export function useTeachers(search?: string, opciones?: { enabled?: boolean }) {
     return useQuery({
         queryKey: ['teachers', search],
+        enabled: opciones?.enabled ?? true,
         queryFn: () => teachersService.getTeachers({ search }),
         staleTime: 5 * 60 * 1000, // 5 minutos
         // Siempre revalidar al montar para reflejar profesores recién creados

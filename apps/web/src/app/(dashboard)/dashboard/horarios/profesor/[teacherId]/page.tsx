@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useTeachers } from '@/hooks/useTeachers';
 import { useTeacherScheduleBlocks, useTeacherClassroomSubjects } from '@/hooks/useSchedules';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
+import { useAuthStore } from '@/store/auth.store';
 import TeacherScheduleEditor from '@/components/schedule/TeacherScheduleEditor';
 
 export default function TeacherScheduleEditorPage({
@@ -26,14 +27,19 @@ export default function TeacherScheduleEditorPage({
         }
     }, [cargandoYo, esProfesor, yo, teacherId, router]);
 
-    const { data: teachersData, isLoading: isLoadingTeachers } = useTeachers();
+    // La lista de profesores es del admin (al profesor el servidor le responde
+    // 403, PANT-profesor): el profesor solo mira el suyo y su nombre ya lo tiene.
+    const yoMismo = useAuthStore((s) => s.user);
+    const { data: teachersData, isLoading: cargandoLaLista } = useTeachers(undefined, { enabled: !cargandoYo && !esProfesor });
+    const isLoadingTeachers = !esProfesor && cargandoLaLista;
     const { data: blocks, isLoading: isLoadingSchedule } = useTeacherScheduleBlocks(teacherId);
     const { data: assignments, isLoading: isLoadingAssignments } = useTeacherClassroomSubjects(teacherId);
 
     const teacher = useMemo(() => {
+        if (esProfesor) return yoMismo ? { firstName: yoMismo.firstName, lastName: yoMismo.lastName } : null;
         const list = Array.isArray(teachersData) ? teachersData : teachersData?.users || [];
         return list.find((t: any) => t.id === teacherId) || null;
-    }, [teachersData, teacherId]);
+    }, [esProfesor, yoMismo, teachersData, teacherId]);
 
     const isLoading = cargandoYo || isLoadingTeachers || isLoadingSchedule || isLoadingAssignments;
     const scheduleBlocks = blocks || [];
