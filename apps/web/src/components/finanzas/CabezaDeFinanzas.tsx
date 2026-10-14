@@ -55,7 +55,7 @@ export function SaldoDisponible({ ciclo }: { ciclo: string | null }) {
         <section
             aria-label="Fondos disponibles"
             data-recorrido="pantalla"
-            className="relative overflow-hidden rounded-[28px] bg-gradient-to-b from-cabecera-claro to-transparent px-5 pb-6 pt-6 text-center"
+            className="relative -mx-4 !-mt-6 overflow-hidden bg-gradient-to-b from-cabecera-claro to-transparent px-5 pb-6 pt-6 text-center sm:-mx-6 lateral:mx-0 lateral:!mt-0 lateral:rounded-[28px]"
         >
             <p className="flex items-center justify-center gap-1.5 text-sm text-gray-600">
                 <Wallet className="h-4 w-4" aria-hidden />

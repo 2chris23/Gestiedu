@@ -139,6 +139,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 esAdmin={user?.role === 'ADMIN'}
                 alCerrarSesion={handleLogout}
                 azul={esInicio}
+                aura={pathname === '/dashboard/pagos'}
             />
 
             {/* Sin señal se sigue viendo lo de antes, y hay que decirlo. En el

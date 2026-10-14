@@ -59,6 +59,8 @@ export interface CabeceraMovilProps {
      * promedio y las cifras): el diseño «Panel Admin — App móvil».
      */
     azul?: boolean;
+    /** En Finanzas, como Rial: el aura del saldo empieza aquí arriba, desde el reloj. */
+    aura?: boolean;
 }
 
 /** El fondo pintado de un elemento, en #rrggbb (el `theme-color` y Android no leen variables). */
@@ -80,6 +82,7 @@ export function CabeceraMovil({
     esAdmin,
     alCerrarSesion,
     azul = false,
+    aura = false,
 }: CabeceraMovilProps) {
     const [fichaAbierta, setFichaAbierta] = React.useState(false);
 
@@ -112,7 +115,7 @@ export function CabeceraMovil({
             window.removeEventListener(CAMBIO_DE_MODO, pintar);
             pintarLaBarraDelReloj(null);
         };
-    }, [azul]);
+    }, [azul, aura]);
     const nombreCompleto = `${nombre ?? ''} ${apellido ?? ''}`.trim() || 'Usuario';
     // En una pantalla de 390 px cabe el nombre de pila y un apellido; un
     // «María de los Ángeles Rodríguez Betancourt» entero empuja la cabecera.
@@ -125,7 +128,9 @@ export function CabeceraMovil({
                 className={
                     azul
                         ? 'zona-segura-arriba sticky top-0 z-40 bg-cabecera dark:bg-[var(--franja-arriba)] lateral:hidden print:!hidden'
-                        : 'zona-segura-arriba sticky top-0 z-40 border-b border-gray-200 bg-white lateral:hidden print:!hidden'
+                        : aura
+                          ? 'zona-segura-arriba sticky top-0 z-40 bg-cabecera-claro lateral:hidden print:!hidden'
+                          : 'zona-segura-arriba sticky top-0 z-40 border-b border-gray-200 bg-white lateral:hidden print:!hidden'
                 }
             >
                 <div className={azul ? 'flex min-h-[68px] items-center gap-2 px-5 pt-3' : 'flex h-14 items-center px-3'}>
