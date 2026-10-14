@@ -332,10 +332,21 @@ test.describe('El carril del horario en vivo', () => {
             const arrastrar = async (hacia: number) => {
                 const caja = (await carril.boundingBox())!;
                 const y = caja.y + caja.height / 2;
-                const x = caja.x + caja.width * 0.8;
+                // Se empieza en el lado contrario al que se va: desde el 80 %
+                // hacia la derecha, el ratón acababa fuera de la ventana y
+                // el carril no se movía (pasadas las 9:30, cuando «Hoy» lo deja
+                // al final y solo cabe ir hacia atrás).
+                const x = caja.x + caja.width * (hacia < 0 ? 0.8 : 0.2);
                 await page.mouse.move(x, y);
                 await page.mouse.down();
-                for (let i = 1; i <= 12; i++) await page.mouse.move(x + (hacia * i) / 12, y);
+                // Un fotograma entre paso y paso, como una mano: sin tiempo
+                // entre medias, la inercia de Embla sale al azar (medido: al
+                // soltar, unas veces volvía a −545 y otras volaba a 0; a 30 ms
+                // por paso, siempre −182).
+                for (let i = 1; i <= 12; i++) {
+                    await page.mouse.move(x + (hacia * i) / 12, y);
+                    await page.waitForTimeout(30);
+                }
                 await page.mouse.up();
                 await page.waitForTimeout(900);
             };
