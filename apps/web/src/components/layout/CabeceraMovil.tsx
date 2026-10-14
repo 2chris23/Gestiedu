@@ -61,6 +61,14 @@ export interface CabeceraMovilProps {
     azul?: boolean;
 }
 
+/** El fondo pintado de un elemento, en #rrggbb (el `theme-color` y Android no leen variables). */
+function fondoDe(el: HTMLElement | null): string | null {
+    if (!el) return null;
+    const m = getComputedStyle(el).backgroundColor.match(/\d+(\.\d+)?/g);
+    if (!m || m.length < 3) return null;
+    return '#' + m.slice(0, 3).map((n) => Math.round(Number(n)).toString(16).padStart(2, '0')).join('');
+}
+
 const ROL_DE: Record<string, string> = { ADMIN: 'Administrador', TEACHER: 'Profesor', STUDENT: 'Estudiante', TUTOR: 'Representante' };
 
 export function CabeceraMovil({
@@ -85,10 +93,12 @@ export function CabeceraMovil({
     // pinta Android: `lib/barra-del-reloj.ts`). Al salir, la de siempre.
     // Se repite a los 0,5 y 2 s y al volver a la app: pedido en la primera
     // pintada, el puente con Android aún no estaba y se perdía (moto g13).
+    // En las demás pantallas, del fondo de SU cabecera: si no, en modo oscuro
+    // la franja se quedaba clara encima de una cabecera negra.
+    const cabeceraRef = React.useRef<HTMLElement>(null);
     React.useEffect(() => {
-        if (!azul) return;
         // Del color de la cabecera de quien mira (y negra en modo oscuro).
-        const pintar = () => pintarLaBarraDelReloj(colorDeLaCabecera());
+        const pintar = () => pintarLaBarraDelReloj(azul ? colorDeLaCabecera() : fondoDe(cabeceraRef.current));
         pintar();
         const relojes = [500, 2000].map((ms) => window.setTimeout(pintar, ms));
         const alVolver = () => document.visibilityState === 'visible' && pintar();
@@ -111,6 +121,7 @@ export function CabeceraMovil({
     return (
         <>
             <header
+                ref={cabeceraRef}
                 className={
                     azul
                         ? 'zona-segura-arriba sticky top-0 z-40 bg-cabecera dark:bg-[var(--franja-arriba)] lateral:hidden print:!hidden'

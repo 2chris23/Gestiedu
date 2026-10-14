@@ -166,7 +166,7 @@ export function InicioMovil({
             >
                 <h1 className="sr-only">Panel</h1>
                 <span aria-hidden className="pointer-events-none absolute inset-0">
-                    <span className="absolute -right-10 top-24 h-56 w-56 rounded-full bg-[#42A5F5] opacity-30 blur-3xl motion-safe:animate-flotar" />
+                    <span className="absolute -right-10 top-24 h-56 w-56 rounded-full bg-cabecera-celeste opacity-30 blur-3xl motion-safe:animate-flotar" />
                     <span className="absolute -left-20 bottom-4 h-48 w-48 rounded-full bg-[var(--acento)] opacity-20 blur-3xl motion-safe:animate-flotar [animation-delay:-7s]" />
                 </span>
 

@@ -276,11 +276,11 @@ function DialogoDeFicha({ studentId, ciclo, alCerrar }: { studentId: string | nu
 // ════════════════════════════════════════════════════════════════════════════
 
 type Vista = 'resumen' | 'estudiantes' | 'personal' | 'gastos';
-const VISTAS: Array<{ id: Vista; nombre: string; pista: string; icono: typeof Wallet }> = [
-    { id: 'resumen', nombre: 'Resumen', pista: 'Fondos y el ciclo mes a mes', icono: Wallet },
-    { id: 'estudiantes', nombre: 'Estudiantes', pista: 'Cuotas, cobros y quién debe', icono: GraduationCap },
-    { id: 'personal', nombre: 'Personal', pista: 'Sueldos, vacaciones y recibos', icono: Users },
-    { id: 'gastos', nombre: 'Gastos y fondos', pista: 'Compras, reparaciones, ingresos', icono: ShoppingCart },
+const VISTAS: Array<{ id: Vista; nombre: string; corto: string; pista: string; icono: typeof Wallet }> = [
+    { id: 'resumen', nombre: 'Resumen', corto: 'Resumen', pista: 'Fondos y el ciclo mes a mes', icono: Wallet },
+    { id: 'estudiantes', nombre: 'Estudiantes', corto: 'Estudiantes', pista: 'Cuotas, cobros y quién debe', icono: GraduationCap },
+    { id: 'personal', nombre: 'Personal', corto: 'Personal', pista: 'Sueldos, vacaciones y recibos', icono: Users },
+    { id: 'gastos', nombre: 'Gastos y fondos', corto: 'Gastos', pista: 'Compras, reparaciones, ingresos', icono: ShoppingCart },
 ];
 
 /**
@@ -345,7 +345,7 @@ export default function FinanzasPage() {
         <div className="space-y-5">
             <EncabezadoDePantalla
                 titulo="Finanzas"
-                descripcion="Lo que tiene el liceo, lo que le deben, lo que paga y lo que gasta. Elige una pestaña; los meses se tocan para verlos por días."
+                descripcion="Lo que tiene el liceo, lo que le deben, lo que paga y lo que gasta."
                 acciones={
                     <>
                         {ciclos.length > 0 && <SelectorDeCiclo ciclos={ciclos} valor={ciclo} alCambiar={(c) => ir({ ciclo: c })} />}
@@ -355,7 +355,9 @@ export default function FinanzasPage() {
             />
             {elCiclo && ciclos.length === 0 && <p className="-mt-2 text-sm font-semibold text-gray-700">Ciclo escolar {elCiclo.name}{elCiclo.closed ? ' · cerrado' : ''}</p>}
 
-            <nav className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Partes de las finanzas">
+            {/* Las cuatro partes, en una barra de pastillas (como las monedas de Rial):
+                las tarjetas grandes de antes ocupaban media pantalla del teléfono. */}
+            <nav className="grid grid-cols-4 gap-1 rounded-2xl bg-gray-100 p-1" aria-label="Partes de las finanzas">
                 {VISTAS.map((v) => {
                     const Icono = v.icono;
                     const activa = vista === v.id;
@@ -364,21 +366,20 @@ export default function FinanzasPage() {
                             key={v.id}
                             type="button"
                             onClick={() => ir({ vista: v.id })}
-                                    data-pestana
+                            data-pestana
                             data-recorrido={`finanzas-${v.id}`}
                             aria-current={activa ? 'page' : undefined}
                             aria-describedby={`pista-${v.id}`}
                             className={cn(
-                                'flex min-h-[44px] items-start gap-2 rounded-xl border p-3 text-left transition-colors',
-                                activa ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-gray-200 bg-white text-gray-800 hover:bg-gray-50'
+                                'flex min-h-[52px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-center transition-colors',
+                                activa ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-700 hover:bg-white/60'
                             )}
                         >
-                            <Icono className={cn('mt-0.5 h-5 w-5 shrink-0', activa ? 'text-indigo-600' : 'text-gray-500')} aria-hidden />
-                            <span className="min-w-0">
-                                <span className="block text-sm font-semibold leading-tight">{v.nombre}</span>
-                                <span id={`pista-${v.id}`} className={cn('mt-0.5 block text-xs leading-snug', activa ? 'text-indigo-700' : 'text-gray-600')}>
-                                    {v.pista}
-                                </span>
+                            <Icono className={cn('h-5 w-5 shrink-0', activa ? 'text-indigo-600' : 'text-gray-500')} aria-hidden />
+                            <span className="max-w-full truncate text-xs font-semibold">{v.corto}</span>
+                            {/* Oculta pero leída como descripción (aria-describedby lee lo `hidden`). */}
+                            <span id={`pista-${v.id}`} hidden>
+                                {v.nombre}: {v.pista}
                             </span>
                         </button>
                     );
