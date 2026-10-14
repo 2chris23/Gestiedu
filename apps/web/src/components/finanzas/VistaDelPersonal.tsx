@@ -13,6 +13,7 @@ import {
     useAplicarATodos,
     useCrearPersona,
     useFichaDePersonal,
+    useGuardarAreas,
     useGuardarNomina,
     usePersonal,
     type FrecuenciaDelPersonal,
@@ -42,9 +43,9 @@ const fechaCorta = (ymd: string) => ymd.split('-').reverse().join('/');
 export function VistaDelPersonal({ ciclo }: { ciclo: string | null }) {
     const { data, isLoading } = usePersonal(true, ciclo);
     const [abierta, setAbierta] = React.useState<string | null>(null);
-    const [agregando, setAgregando] = React.useState(false);
     const [ajustando, setAjustando] = React.useState(false);
     const [busqueda, setBusqueda] = React.useState('');
+    const [areaVista, setAreaVista] = React.useState('Profesor');
 
     if (isLoading || !data) {
         return (
@@ -58,6 +59,8 @@ export function VistaDelPersonal({ ciclo }: { ciclo: string | null }) {
     const visibles = data.personas.filter((p) => !texto || `${p.nombre} ${p.cargo} ${p.cedula ?? ''}`.toLowerCase().includes(texto));
     const sinSueldo = data.personas.filter((p) => p.activo && !p.acuerdo);
     const n = data.nomina;
+    const areas = data.areas?.length ? data.areas : ['Profesor'];
+    const laArea = areas.find((a) => a === areaVista) ?? areas[0];
 
     return (
         <div className="space-y-6">
@@ -103,12 +106,7 @@ export function VistaDelPersonal({ ciclo }: { ciclo: string | null }) {
                     <h2 id="titulo-personal" className="text-lg font-bold text-gray-900">
                         Personal ({data.personas.filter((p) => p.activo).length})
                     </h2>
-                    {!data.closed && (
-                        <Button onClick={() => setAgregando(true)}>
-                            <UserPlus aria-hidden />
-                            Agregar persona
-                        </Button>
-                    )}
+                    {!data.closed && <CrearArea areas={areas} alCrear={setAreaVista} />}
                 </div>
                 <div className="relative">
                     <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden />
@@ -117,22 +115,59 @@ export function VistaDelPersonal({ ciclo }: { ciclo: string | null }) {
                         aria-label="Buscar en el personal"
                         value={busqueda}
                         onChange={(e) => setBusqueda(e.target.value)}
-                        placeholder="Buscar por nombre, cargo o cédula"
+                        placeholder="Buscar por nombre, área o cédula"
                         className="min-h-[44px] w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                     />
                 </div>
-                <ul className="grid gap-2 lg:grid-cols-2">
-                    {visibles.map((p) => (
-                        <li key={p.id}>
-                            <TarjetaDePersona persona={p} fmt={fmt} alAbrir={() => setAbierta(p.id)} />
-                        </li>
-                    ))}
-                </ul>
-                {visibles.length === 0 && <p className="py-6 text-center text-sm text-gray-700">Nadie coincide con «{busqueda}».</p>}
+                {texto ? (
+                    <>
+                        <ul className="grid gap-2 lg:grid-cols-2">
+                            {visibles.map((p) => (
+                                <li key={p.id}>
+                                    <TarjetaDePersona persona={p} fmt={fmt} alAbrir={() => setAbierta(p.id)} />
+                                </li>
+                            ))}
+                        </ul>
+                        {visibles.length === 0 && <p className="py-6 text-center text-sm text-gray-700">Nadie coincide con «{busqueda}».</p>}
+                    </>
+                ) : (
+                    // Por área: Profesores siempre (salen solos de sus cuentas) y las
+                    // que crea el admin. Se elige arriba: con 29 profesores, la
+                    // Cocina quedaba al fondo de la pantalla.
+                    <>
+                        <div className="flex flex-wrap gap-2" role="group" aria-label="Áreas del personal">
+                            {areas.map((a) => {
+                                const cuantas = data.personas.filter((p) => p.activo && delArea(p, a)).length;
+                                return (
+                                    <button
+                                        key={a}
+                                        type="button"
+                                        aria-pressed={a === laArea}
+                                        onClick={() => setAreaVista(a)}
+                                        className={cn(
+                                            'min-h-[44px] rounded-full px-4 text-sm font-medium',
+                                            a === laArea ? 'bg-indigo-600 text-white' : 'bg-white text-gray-800 shadow-sm ring-1 ring-gray-200'
+                                        )}
+                                    >
+                                        {nombreDelArea(a)} ({cuantas})
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <AreaDelPersonal
+                            key={laArea}
+                            area={laArea}
+                            areas={areas}
+                            personas={data.personas.filter((p) => delArea(p, laArea))}
+                            cerrado={data.closed}
+                            fmt={fmt}
+                            alAbrir={setAbierta}
+                        />
+                    </>
+                )}
             </section>
 
             {abierta && <DialogoDePersona id={abierta} ciclo={ciclo} alCerrar={() => setAbierta(null)} />}
-            {agregando && <AgregarPersona alCerrar={(id) => { setAgregando(false); if (id) setAbierta(id); }} />}
             {ajustando && <AjustesDeNomina lista={data} ciclo={ciclo} alCerrar={() => setAjustando(false)} />}
         </div>
     );
@@ -269,65 +304,166 @@ function SinSueldo({ personas, ciclo, moneda }: { personas: PersonaDelPersonal[]
     );
 }
 
-function AgregarPersona({ alCerrar }: { alCerrar: (id?: string) => void }) {
+const nombreDelArea = (a: string) => (a === 'Profesor' ? 'Profesores' : a);
+const delArea = (p: PersonaDelPersonal, area: string) => p.cargo.trim().toLowerCase() === area.toLowerCase();
+
+/**
+ * UN ÁREA DEL PERSONAL (2026-10-14). Cristian: «crea un área como cocina, y
+ * añadir personal: se le coloca un nombre y listo». El área de cada persona es
+ * su cargo; los profesores salen solos de sus cuentas.
+ */
+function AreaDelPersonal({
+    area,
+    areas,
+    personas,
+    cerrado,
+    fmt,
+    alAbrir,
+}: {
+    area: string;
+    areas: string[];
+    personas: PersonaDelPersonal[];
+    cerrado: boolean;
+    fmt: (n: string | number) => string;
+    alAbrir: (id: string) => void;
+}) {
     const crear = useCrearPersona();
+    const guardarAreas = useGuardarAreas();
+    const [anadiendo, setAnadiendo] = React.useState(false);
     const [nombre, setNombre] = React.useState('');
-    const [cargo, setCargo] = React.useState('');
-    const [cedula, setCedula] = React.useState('');
-    const [seQueda, setSeQueda] = React.useState(true);
-    const [problema, setProblema] = React.useState<string | null>(null);
-    const enviar = async (e: React.FormEvent) => {
+    const esDeProfesores = area === 'Profesor';
+    const activas = personas.filter((p) => p.activo).length;
+    const anadir = async (e: React.FormEvent) => {
         e.preventDefault();
-        setProblema(null);
         try {
-            const r = await crear.mutateAsync({ nombre, cargo, cedula: cedula || null, seQuedaParaProximosCiclos: seQueda });
-            toast.success(`${nombre} agregado: ahora ponle su sueldo`);
-            alCerrar(r.persona.id);
+            const r = await crear.mutateAsync({ nombre: nombre.trim(), cargo: area, cedula: null, seQuedaParaProximosCiclos: true });
+            toast.success(`${nombre.trim()} agregado a ${nombreDelArea(area)}: ahora ponle su sueldo`);
+            setNombre('');
+            setAnadiendo(false);
+            alAbrir(r.persona.id);
         } catch (err) {
-            setProblema(errorDe(err, 'No se pudo agregar'));
+            toast.error(errorDe(err, 'No se pudo agregar'));
+        }
+    };
+    const quitar = async () => {
+        try {
+            await guardarAreas.mutateAsync(areas.filter((a) => a !== 'Profesor' && a !== area));
+            toast.success(`Área «${area}» quitada`);
+        } catch (err) {
+            toast.error(errorDe(err, 'No se pudo quitar'));
         }
     };
     return (
-        <Dialog open onOpenChange={(v) => !v && alCerrar()}>
-            <DialogContent className="max-w-md">
-                <DialogHeader>
-                    <DialogTitle>Agregar persona</DialogTitle>
-                    <DialogDescription>Personal sin cuenta en el sistema (limpieza, vigilancia, cocina…). Los profesores con cuenta ya aparecen solos.</DialogDescription>
-                </DialogHeader>
-                <form onSubmit={enviar} className="space-y-3">
-                    <label className="block text-sm font-medium text-gray-800">
-                        Nombre y apellido
-                        <input required minLength={3} maxLength={120} value={nombre} onChange={(e) => setNombre(e.target.value)} className={campo} />
-                    </label>
-                    <label className="block text-sm font-medium text-gray-800">
-                        Cargo
-                        <input required minLength={2} maxLength={60} value={cargo} onChange={(e) => setCargo(e.target.value)} placeholder="Ej.: Vigilante" className={campo} />
-                    </label>
-                    <label className="block text-sm font-medium text-gray-800">
-                        Cédula (opcional)
-                        <input maxLength={20} value={cedula} onChange={(e) => setCedula(e.target.value)} className={campo} />
-                    </label>
-                    <label className="flex min-h-[44px] items-center gap-2 text-sm text-gray-800">
-                        <input type="checkbox" checked={seQueda} onChange={(e) => setSeQueda(e.target.checked)} className="h-5 w-5 accent-indigo-600" />
-                        Guardarlo para los próximos ciclos (con lo mismo acordado)
-                    </label>
-                    {problema && (
-                        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                            {problema}
-                        </p>
-                    )}
-                    <div className="flex justify-end gap-2">
-                        <Button type="button" variant="contorno" onClick={() => alCerrar()}>
-                            Cancelar
-                        </Button>
-                        <Button type="submit" disabled={crear.isPending}>
-                            {crear.isPending ? <Loader2 className="animate-spin" aria-hidden /> : <UserPlus aria-hidden />}
-                            Agregar
+        <section aria-label={nombreDelArea(area)} className="space-y-2 rounded-3xl bg-gray-100/70 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                <h3 className="text-base font-bold text-gray-900">
+                    {nombreDelArea(area)} <span className="font-normal text-gray-600">({activas})</span>
+                </h3>
+                {!cerrado && !esDeProfesores && (
+                    <div className="flex gap-1">
+                        {personas.length === 0 && (
+                            <Button variant="contorno" onClick={quitar} disabled={guardarAreas.isPending}>
+                                Quitar área
+                            </Button>
+                        )}
+                        <Button onClick={() => setAnadiendo((v) => !v)} aria-expanded={anadiendo}>
+                            <UserPlus aria-hidden />
+                            Añadir persona
                         </Button>
                     </div>
+                )}
+            </div>
+            {esDeProfesores && <p className="px-1 text-xs text-gray-600">Salen solos de sus cuentas de profesor.</p>}
+            {anadiendo && (
+                <form onSubmit={anadir} className="flex flex-wrap items-center gap-2 rounded-2xl bg-white p-2">
+                    <label className="sr-only" htmlFor={`nombre-${area}`}>
+                        Nombre y apellido
+                    </label>
+                    <input
+                        id={`nombre-${area}`}
+                        autoFocus
+                        required
+                        minLength={3}
+                        maxLength={120}
+                        value={nombre}
+                        onChange={(e) => setNombre(e.target.value)}
+                        placeholder="Nombre y apellido"
+                        className="min-h-[44px] min-w-0 flex-1 rounded-lg border border-gray-300 px-3 text-sm text-gray-900 outline-none focus:border-indigo-500"
+                    />
+                    <Button type="submit" disabled={crear.isPending || nombre.trim().length < 3}>
+                        {crear.isPending ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
+                        Agregar
+                    </Button>
                 </form>
-            </DialogContent>
-        </Dialog>
+            )}
+            {personas.length === 0 ? (
+                <p className="px-1 py-2 text-sm text-gray-600">Nadie todavía.</p>
+            ) : (
+                <ul className="grid gap-2 lg:grid-cols-2">
+                    {personas.map((p) => (
+                        <li key={p.id}>
+                            <TarjetaDePersona persona={p} fmt={fmt} alAbrir={() => alAbrir(p.id)} />
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </section>
+    );
+}
+
+/** «Crear área»: un nombre (Cocina, Limpieza…) y ya sale para añadirle gente. */
+function CrearArea({ areas, alCrear }: { areas: string[]; alCrear: (area: string) => void }) {
+    const guardar = useGuardarAreas();
+    const [abierto, setAbierto] = React.useState(false);
+    const [nombre, setNombre] = React.useState('');
+    const crear = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const nueva = nombre.trim();
+        if (areas.some((a) => a.toLowerCase() === nueva.toLowerCase())) {
+            toast.error(`Ya existe el área «${nueva}»`);
+            return;
+        }
+        try {
+            await guardar.mutateAsync([...areas.filter((a) => a !== 'Profesor'), nueva]);
+            toast.success(`Área «${nueva}» creada: añádele su personal`);
+            alCrear(nueva);
+            setNombre('');
+            setAbierto(false);
+        } catch (err) {
+            toast.error(errorDe(err, 'No se pudo crear el área'));
+        }
+    };
+    if (!abierto) {
+        return (
+            <Button variant="contorno" onClick={() => setAbierto(true)}>
+                <Plus aria-hidden />
+                Crear área
+            </Button>
+        );
+    }
+    return (
+        <form onSubmit={crear} className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <label className="sr-only" htmlFor="nombre-del-area">
+                Nombre del área
+            </label>
+            <input
+                id="nombre-del-area"
+                autoFocus
+                required
+                minLength={2}
+                maxLength={40}
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                placeholder="Ej.: Cocina"
+                className="min-h-[44px] min-w-0 flex-1 rounded-lg border border-gray-300 px-3 text-sm text-gray-900 outline-none focus:border-indigo-500"
+            />
+            <Button type="submit" disabled={guardar.isPending || nombre.trim().length < 2}>
+                Crear
+            </Button>
+            <Button type="button" variant="contorno" onClick={() => setAbierto(false)}>
+                Cancelar
+            </Button>
+        </form>
     );
 }
 

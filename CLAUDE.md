@@ -263,10 +263,21 @@ responde 403. Reglas en `MAPA` §8b y §8g.
 - **Reporte del mes** para imprimir: `/dashboard/pagos/reporte?mes=` (desde Movimientos).
 - **Diseño como Rial** (pedido por Cristian, 14-oct-2026): sin título ni
   explicación arriba; el saldo grande con su ojo, las cuatro partes en
-  círculos debajo, «Entró/Salió» del mes, las cuentas del ciclo y
-  **Movimientos** (cada entrada y salida, mes con flechas). Añadir va por el
-  «+» que flota (`components/finanzas/CabezaDeFinanzas.tsx`). El selector de
-  ciclo se quitó de arriba: irá en otro sitio (por ahora, `?ciclo=`).
+  cuadros debajo (la forma de los accesos del Inicio), «Entró/Salió» del mes,
+  las cuentas del ciclo y **Movimientos** (cada entrada y salida, mes con
+  flechas). El selector de ciclo se quitó de arriba: irá en otro sitio (por
+  ahora, `?ciclo=`).
+- **El «+» solo tiene Ingreso y Egreso** (Cristian: «anotar un gasto y pagarle
+  al personal es lo mismo: se está descontando»). Abre **Nuevo movimiento**
+  (`components/finanzas/NuevoMovimiento.tsx`, como el de Rial): la fecha
+  arriba, el monto con su calculadora y luego de qué es, en un carril. Ingreso:
+  un estudiante (año → sección → tabla con su mensualidad y lo pagado, con
+  buscador), donación, otro ingreso o saldo inicial. Egreso: el personal (por
+  área) o una categoría de gasto. La descripción, de último y opcional.
+- **Áreas del personal**: Profesores siempre; las demás (Cocina, Limpieza…)
+  las crea el admin en Personal y se les añade gente con solo el nombre. El
+  área es el `cargo`; la lista vive en `payment_settings.areasDelPersonal`
+  (`PUT /finanzas/areas`, AREAS-01/02).
 - Sin conexión solo se anotan fondos y gastos (sin la foto); pagar al personal
   y confirmar pagos piden servidor: es dinero y llevan recibo correlativo.
 

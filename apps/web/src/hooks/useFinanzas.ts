@@ -83,6 +83,8 @@ export interface ListaDelPersonal {
     nomina: Nomina;
     traidos: { traidos: number; desde: string | null };
     personas: PersonaDelPersonal[];
+    /** «Profesor» primero, siempre; luego las que creó el admin (Cocina…). El área de cada persona es su `cargo`. */
+    areas: string[];
 }
 
 export interface PagoDebido {
@@ -307,6 +309,7 @@ export const useCrearGasto = () =>
     );
 export const useAnularGasto = () => useCambio(({ id, motivo }: { id: string; motivo: string }) => api.post(`/finanzas/gastos/${id}/anular`, { motivo }).then((r) => r.data));
 export const useGuardarCategorias = () => useCambio((categorias: string[]) => api.put('/finanzas/categorias', { categorias }).then((r) => r.data));
+export const useGuardarAreas = () => useCambio((areas: string[]) => api.put('/finanzas/areas', { areas }).then((r) => r.data as { areas: string[] }));
 export const useCrearPersona = () => useCambio((d: Record<string, unknown>) => api.post('/finanzas/personal', d).then((r) => r.data));
 export const useEditarPersona = () => useCambio(({ id, ...d }: { id: string } & Record<string, unknown>) => api.put(`/finanzas/personal/${id}`, d).then((r) => r.data));
 export const useGuardarAcuerdo = (ciclo: string | null) =>

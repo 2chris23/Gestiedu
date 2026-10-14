@@ -20,6 +20,7 @@ import {
     getReciboDelPersonal,
     getResumen,
     guardarAcuerdo,
+    guardarAreas,
     guardarCategorias,
     guardarNomina,
     pagarAlPersonal,
@@ -97,6 +98,11 @@ export async function finanzasRoutes(fastify: FastifyInstance) {
         guardarCategorias as any
     );
 
+    fastify.put(
+        '/areas',
+        { ...admin, schema: { body: { type: 'object', additionalProperties: false, required: ['areas'], properties: { areas: { type: 'array', maxItems: 40, items: { type: 'string', maxLength: 40 } } } } } },
+        guardarAreas as any
+    );
     fastify.post('/comprobantes', admin, subirComprobante as any);
     fastify.get('/comprobantes/:id', { ...admin, schema: { params: conId } }, getComprobante as any);
 

@@ -610,6 +610,51 @@ async function categoriasDelLiceo(prisma: any): Promise<string[]> {
     return lista.length ? lista : CATEGORIAS_POR_DEFECTO;
 }
 
+/**
+ * Las áreas del personal (2026-10-14): «Profesor» primero, siempre; luego las
+ * que creó el admin y las de los cargos que ya existen (un «Vigilante» de
+ * antes sale como su área aunque nadie la haya creado).
+ */
+const AREA_DE_LOS_PROFESORES = 'Profesor';
+async function areasDelPersonal(prisma: any, cargos: string[] = []): Promise<string[]> {
+    const fila = await prisma.paymentSettings.findUnique({ where: { id: 'liceo' }, select: { areasDelPersonal: true } });
+    const creadas = Array.isArray(fila?.areasDelPersonal) ? (fila.areasDelPersonal as unknown[]).map(String) : [];
+    const vistas = new Set<string>([AREA_DE_LOS_PROFESORES.toLowerCase()]);
+    const lista = [AREA_DE_LOS_PROFESORES];
+    for (const a of [...creadas, ...cargos]) {
+        const clave = a.trim().toLowerCase();
+        if (!clave || vistas.has(clave)) continue;
+        vistas.add(clave);
+        lista.push(a.trim());
+    }
+    return lista;
+}
+
+/** PUT /api/finanzas/areas — las áreas que crea el admin (Cocina, Limpieza…). */
+export async function guardarAreas(request: FastifyRequest<{ Body: { areas?: unknown[] } }>, reply: FastifyReply) {
+    try {
+        if (!(await moduloActivo(request, reply))) return reply;
+        const vistas = new Set<string>();
+        const lista: string[] = [];
+        for (const a of request.body?.areas ?? []) {
+            const area = limpio(a, 40);
+            if (!area || area.length < 2) return reply.status(400).send({ error: 'Cada área lleva un nombre de 2 letras o más', code: 'AREA_INVALIDA' });
+            const clave = area.toLowerCase();
+            // «Profesor» va siempre: no se guarda ni se puede quitar.
+            if (clave === AREA_DE_LOS_PROFESORES.toLowerCase() || clave === 'profesores' || vistas.has(clave)) continue;
+            vistas.add(clave);
+            lista.push(area);
+        }
+        if (lista.length > 30) return reply.status(400).send({ error: 'Como mucho 30 áreas', code: 'AREAS_DE_MAS' });
+        const prisma = prismaDe(request);
+        await prisma.paymentSettings.upsert({ where: { id: 'liceo' }, create: { id: 'liceo', areasDelPersonal: lista }, update: { areasDelPersonal: lista } });
+        await bitacora(request, ActionType.UPDATE, 'AREAS_DEL_PERSONAL', 'liceo', { areas: lista });
+        return reply.send({ areas: await areasDelPersonal(prisma) });
+    } catch (error) {
+        return responder(reply, error, 'Error al guardar las áreas');
+    }
+}
+
 /** GET /api/finanzas/gastos?academicYearId= */
 export async function getGastos(request: FastifyRequest<{ Querystring: { academicYearId?: string } }>, reply: FastifyReply) {
     try {
@@ -742,6 +787,7 @@ export async function getPersonal(request: FastifyRequest<{ Querystring: { acade
             nomina: nominaParaLaPantalla(nomina, ajustes),
             traidos,
             personas: filas.map(personaParaLaPantalla).sort((a: any, b: any) => Number(b.activo) - Number(a.activo) || a.nombre.localeCompare(b.nombre, 'es')),
+            areas: await areasDelPersonal(prisma, filas.map((x: any) => String(x.persona.cargo ?? ''))),
         });
     } catch (error) {
         return responder(reply, error, 'Error al leer el personal');

@@ -7,9 +7,9 @@ import Link from 'next/link';
 import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, Lock, Search, Wallet } from 'lucide-react';
 import { VistaResumen } from '@/components/finanzas/VistaResumen';
 import { VistaDelPersonal } from '@/components/finanzas/VistaDelPersonal';
-import { FormularioDeFondo, FormularioDeGasto, VistaDeGastosYFondos } from '@/components/finanzas/GastosYFondos';
+import { VistaDeGastosYFondos } from '@/components/finanzas/GastosYFondos';
+import { NuevoMovimiento, type FuenteDelMovimiento, type TipoDeMovimiento } from '@/components/finanzas/NuevoMovimiento';
 import { BotonAnadir, PartesDeFinanzas, SaldoDisponible, VISTAS, type Vista } from '@/components/finanzas/CabezaDeFinanzas';
-import { useGastos } from '@/hooks/useFinanzas';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useYaArranco } from '@/hooks/useYaArranco';
 import { CalendarioDelCiclo } from '@/components/pagos/CalendarioDelCiclo';
@@ -293,11 +293,9 @@ export default function FinanzasPage() {
     const ciclo = buscar.get('ciclo');
     const vista = (VISTAS.some((v) => v.id === buscar.get('vista')) ? buscar.get('vista') : 'resumen') as Vista;
     const { data: ciclos = [] } = useCiclosDePagos(activo);
-    // Los formularios del «+» (y el saldo inicial del Resumen) viven aquí:
-    // se abren desde cualquier parte de las finanzas.
-    const { data: g } = useGastos(activo, ciclo);
-    const [agregando, setAgregando] = React.useState<null | 'SALDO_INICIAL' | 'DONACION'>(null);
-    const [anotando, setAnotando] = React.useState(false);
+    // El panel del «+» (y el saldo inicial del Resumen) vive aquí: se abre
+    // desde cualquier parte de las finanzas.
+    const [movimiento, setMovimiento] = React.useState<null | { tipo: TipoDeMovimiento; fuente?: FuenteDelMovimiento }>(null);
     const ir = (cambios: { ciclo?: string | null; vista?: Vista }) => {
         const q = new URLSearchParams();
         const c = cambios.ciclo !== undefined ? cambios.ciclo : ciclo;
@@ -350,22 +348,25 @@ export default function FinanzasPage() {
             {/* Las cuatro partes, en círculos debajo del saldo (los accesos de Rial). */}
             <PartesDeFinanzas vista={vista} alElegir={(v) => ir({ vista: v })} />
 
-            {vista === 'resumen' && <VistaResumen ciclo={ciclo} irA={(v) => ir({ vista: v })} alPonerSaldo={() => setAgregando('SALDO_INICIAL')} />}
+            {vista === 'resumen' && <VistaResumen ciclo={ciclo} irA={(v) => ir({ vista: v })} alPonerSaldo={() => setMovimiento({ tipo: 'entra', fuente: 'SALDO_INICIAL' })} />}
             {vista === 'estudiantes' && <VistaDeEstudiantes ciclo={ciclo} />}
             {vista === 'personal' && <VistaDelPersonal ciclo={ciclo} />}
             {vista === 'gastos' && <VistaDeGastosYFondos ciclo={ciclo} monedas={monedas} cerrado={Boolean(elCiclo?.closed)} />}
 
             {/* Un ciclo cerrado se ve, no se toca: sin «+». */}
             {!elCiclo?.closed && (
-                <BotonAnadir
-                    alAgregarFondos={() => setAgregando('DONACION')}
-                    alAnotarGasto={() => setAnotando(true)}
-                    alPagarPersonal={() => ir({ vista: 'personal' })}
-                    alCobrar={() => ir({ vista: 'estudiantes' })}
+                <BotonAnadir alIngreso={() => setMovimiento({ tipo: 'entra' })} alEgreso={() => setMovimiento({ tipo: 'sale' })} />
+            )}
+            {movimiento && (
+                <NuevoMovimiento
+                    tipoInicial={movimiento.tipo}
+                    fuenteInicial={movimiento.fuente}
+                    ciclo={ciclo}
+                    monedas={monedas}
+                    metodos={ajustes?.methods ?? []}
+                    alCerrar={() => setMovimiento(null)}
                 />
             )}
-            {agregando && <FormularioDeFondo abierto alCerrar={() => setAgregando(null)} monedas={monedas} conceptoInicial={agregando} />}
-            <FormularioDeGasto abierto={anotando} alCerrar={() => setAnotando(false)} categorias={g?.categorias ?? ['Otro']} monedas={monedas} />
         </div>
     );
 }

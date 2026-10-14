@@ -370,6 +370,11 @@ export async function getPaymentsOverview(
                 lastName: i.student.lastName,
                 avatar: i.student.avatar,
                 ...dineroDe(r),
+                // Lo de cada mes, con su beca o su descuento (para cobrar desde
+                // «Ingreso»): la cuota menor, que es la que no lleva mora.
+                mensualidad: deCentimos(
+                    r.cuotas.filter((c: any) => c.kind === 'CUOTA' && c.state !== 'EXONERADA').reduce((m: number | null, c: any) => (m === null || c.amountCents < m ? c.amountCents : m), null) ?? 0
+                ),
                 cuotas,
             });
         }

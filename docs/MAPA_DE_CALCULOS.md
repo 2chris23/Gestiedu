@@ -238,6 +238,8 @@ Implementación: `apps/backend/src/services/finanzas.service.ts` (cuentas puras)
 | Pagar | Se reparte de lo más viejo a lo más nuevo; lo que no completa el último queda como abono. Rechaza: pagado ya, monto de más, sin acuerdo, fecha futura, ciclo cerrado. Candado por persona (`pg_advisory_xact_lock`). | Cambiar la frecuencia con pagos hechos en el ciclo: 409. |
 | Ciclo nuevo | Al abrir su nómina sin acuerdos, se copian los del ciclo anterior de quien tiene «guardar para los próximos ciclos» (menos los pagos únicos y las fechas de bono). Sin duplicar. | Los profesores con cuenta aparecen solos, sin sueldo. |
 | Mes a mes | Entra = cuotas cobradas (por `paidAt`) + fondos (por fecha); sale = pagos al personal + gastos (por fecha). | |
+| Ingreso o egreso desde el «+» (2026-10-14) | Cobrar a un estudiante o pagar a una persona desde «Nuevo movimiento» elige solo QUÉ se paga: lo que se debe, de lo más viejo a lo más nuevo, hasta cubrir el monto (en la moneda del liceo, con la tasa si es otra). Si el monto pasa de lo que se debe, no se guarda. El servidor reparte y valida como siempre. | `loQueCubre` en `components/finanzas/NuevoMovimiento.tsx`. |
+| Mensualidad de cada alumno | La cuota menor del ciclo que no está exonerada, con su beca o descuento (la que no lleva mora). | `GET /payments/overview`, `mensualidad` (MENSUALIDAD-01). |
 | Reporte del mes (2026-10-01) | Saldo al empezar = fondos disponibles contando solo lo fechado **antes** del día 1; final = inicial + entró − salió. «Deben» = la deuda de los estudiantes del ciclo al último día del mes (o a hoy, si el mes no acabó). | El final del mes en curso = fondos disponibles de hoy; el final de un mes = el inicial del siguiente (REPORTE-01). |
 
 ---

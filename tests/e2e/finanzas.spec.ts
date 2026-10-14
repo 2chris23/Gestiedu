@@ -21,9 +21,17 @@ test.describe.serial('Finanzas', () => {
               WHERE u.role = 'TEACHER' AND u."isActive" AND u.email LIKE '%@testing.edu.ve' ORDER BY u.email LIMIT 1`
         );
         profe = p;
+        // Cada tanda le paga un mes: a la duodécima ya no quedaba nada por
+        // pagarle y FIN-UI-02 salía en rojo. Lo de las tandas anteriores se
+        // anula (nada se borra), y vuelve a deberse.
+        await queryTenantDb(
+            `UPDATE pagos_al_personal SET "anuladoEn" = now(), "motivoAnulacion" = 'Prueba: se empieza de nuevo'
+              WHERE "anuladoEn" IS NULL AND "personalId" IN (SELECT id FROM personal WHERE "userId" = $1)`,
+            [profe.id]
+        );
     });
 
-    test('FIN-UI-01: agregar fondos y anotar un gasto cambian el saldo', async ({ page }, testInfo) => {
+    test('FIN-UI-01: un ingreso y un egreso desde el «+» cambian el saldo', async ({ page }, testInfo) => {
         try {
             await loginViaUI(page, 'admin@testing.edu.ve', '123456');
             await page.goto(`${WEB_BASE}/dashboard/pagos`);
@@ -31,25 +39,29 @@ test.describe.serial('Finanzas', () => {
             await expect(page.getByText('Fondos disponibles')).toBeVisible({ timeout: 30000 });
             const antes = dineroDe(await saldo.innerText());
 
-            // Se añade por el «+» que flota abajo (como Rial).
+            // Se añade por el «+» que flota abajo (como Rial): ingreso o egreso,
+            // el monto en su calculadora y luego de qué es.
             await page.getByRole('button', { name: 'Añadir', exact: true }).click();
-            await page.getByRole('menuitem', { name: /Agregar fondos/ }).click();
-            const fondo = page.getByRole('dialog', { name: 'Agregar fondos' });
-            await fondo.getByRole('radio', { name: 'Donación' }).click();
-            await fondo.getByLabel(/^Monto/).fill('100');
-            await fondo.getByRole('button', { name: 'Agregar fondos' }).click();
-            await expect(page.getByText('Fondos agregados')).toBeVisible({ timeout: 15000 });
+            await page.getByRole('menuitem', { name: /Ingreso/ }).click();
+            const panel = page.getByRole('dialog', { name: 'Nuevo movimiento' });
+            const calculadora = panel.getByRole('group', { name: 'Calculadora' });
+            for (const n of ['1', '0', '0', '00']) await calculadora.getByRole('button', { name: n, exact: true }).click();
+            await expect(panel.getByLabel('Monto: $ 100.00')).toBeVisible();
+            await panel.getByRole('button', { name: 'Donación' }).click();
+            await panel.getByRole('button', { name: 'Guardar el ingreso' }).click();
+            await expect(page.getByText('Ingreso anotado')).toBeVisible({ timeout: 15000 });
             await expect.poll(async () => dineroDe(await saldo.innerText()), { timeout: 15000 }).toBeCloseTo(antes + 100, 2);
 
             await page.getByRole('button', { name: 'Añadir', exact: true }).click();
-            await page.getByRole('menuitem', { name: /Anotar un gasto/ }).click();
-            const gasto = page.getByRole('dialog', { name: 'Anotar un gasto' });
-            await gasto.getByLabel('¿Qué fue?').fill('Tablero de básquet (prueba)');
-            await gasto.getByRole('radio', { name: 'Compras' }).click();
-            await gasto.getByLabel(/^Cuánto costó/).fill('40');
-            await gasto.getByRole('button', { name: 'Anotar gasto' }).click();
-            await expect(page.getByText('Gasto anotado')).toBeVisible({ timeout: 15000 });
+            await page.getByRole('menuitem', { name: /Egreso/ }).click();
+            for (const n of ['4', '0', '00']) await calculadora.getByRole('button', { name: n, exact: true }).click();
+            await panel.getByRole('button', { name: 'Compras' }).click();
+            // La descripción, de último y opcional.
+            await panel.getByPlaceholder('Opcional').fill('Tablero de básquet (prueba)');
+            await panel.getByRole('button', { name: 'Guardar el egreso' }).click();
+            await expect(page.getByText('Egreso anotado')).toBeVisible({ timeout: 15000 });
             await expect.poll(async () => dineroDe(await saldo.innerText()), { timeout: 15000 }).toBeCloseTo(antes + 60, 2);
+            await expect(page.getByRole('list', { name: /Movimientos de/ })).toContainText('Tablero de básquet (prueba)');
             await page.screenshot({ path: testInfo.outputPath('finanzas-resumen.png') });
         } catch (e) {
             await captureEvidence(testInfo, page, 'FIN-UI-01', 'Fondos y gastos', e);
@@ -102,6 +114,59 @@ test.describe.serial('Finanzas', () => {
         } catch (e) {
             await captureEvidence(testInfo, page, 'REPORTE-UI-01', 'Reporte del mes', e);
             throw e;
+        }
+    });
+
+    test('FIN-UI-03: cobrar a un estudiante desde «Ingreso»: año, sección y su fila con la mensualidad', async ({ page }, testInfo) => {
+        try {
+            await loginViaUI(page, 'admin@testing.edu.ve', '123456');
+            await page.goto(`${WEB_BASE}/dashboard/pagos`);
+            await expect(page.getByText('Fondos disponibles')).toBeVisible({ timeout: 30000 });
+            await page.getByRole('button', { name: 'Añadir', exact: true }).click();
+            await page.getByRole('menuitem', { name: /Ingreso/ }).click();
+            const panel = page.getByRole('dialog', { name: 'Nuevo movimiento' });
+            await panel.getByRole('button', { name: 'Estudiante', exact: true }).click();
+            // Mientras se busca a quién, la calculadora se aparta.
+            await expect(panel.getByRole('group', { name: 'Calculadora' })).toHaveCount(0);
+            await panel.getByRole('button', { name: '1er Año' }).click();
+            await panel.getByRole('button', { name: /^Sección / }).first().click();
+            const filas = panel.getByRole('list', { name: 'Estudiantes' }).getByRole('button');
+            await expect(filas.first()).toBeVisible({ timeout: 15000 });
+            // Cada fila: nombre, mensualidad y lo pagado.
+            await expect(filas.first()).toContainText('$');
+            await filas.first().click();
+            await expect(panel.getByRole('button', { name: 'Cambiar', exact: true })).toBeVisible();
+            const calculadora = panel.getByRole('group', { name: 'Calculadora' });
+            for (const n of ['1', '00']) await calculadora.getByRole('button', { name: n, exact: true }).click();
+            await panel.getByRole('button', { name: 'Guardar el ingreso' }).click();
+            await expect(page.getByText(/Cobrado · comprobante Nº/)).toBeVisible({ timeout: 15000 });
+        } catch (e) {
+            await captureEvidence(testInfo, page, 'FIN-UI-03', 'Cobrar desde Ingreso', e);
+            throw e;
+        }
+    });
+
+    test('FIN-UI-04: en Personal se crea un área y se le añade una persona con solo su nombre', async ({ page }, testInfo) => {
+        const area = `Cocina QA ${Date.now() % 100000}`;
+        try {
+            await loginViaUI(page, 'admin@testing.edu.ve', '123456');
+            await page.goto(`${WEB_BASE}/dashboard/pagos?vista=personal`);
+            await page.getByRole('button', { name: 'Crear área' }).click({ timeout: 30000 });
+            await page.getByLabel('Nombre del área').fill(area);
+            await page.getByRole('button', { name: 'Crear', exact: true }).click();
+            await expect(page.getByRole('button', { name: `${area} (0)` })).toHaveAttribute('aria-pressed', 'true', { timeout: 15000 });
+            await page.getByRole('button', { name: 'Añadir persona' }).click();
+            await page.getByLabel('Nombre y apellido').fill('Rosa Prueba QA');
+            await page.getByRole('button', { name: 'Agregar', exact: true }).click();
+            await expect(page.getByText(/Rosa Prueba QA agregado a/)).toBeVisible({ timeout: 15000 });
+            await page.keyboard.press('Escape');
+            await expect(page.getByRole('button', { name: `${area} (1)` })).toBeVisible({ timeout: 15000 });
+        } catch (e) {
+            await captureEvidence(testInfo, page, 'FIN-UI-04', 'Áreas del personal', e);
+            throw e;
+        } finally {
+            await queryTenantDb(`DELETE FROM personal WHERE nombre = 'Rosa Prueba QA'`).catch(() => 0);
+            await queryTenantDb(`UPDATE payment_settings SET "areasDelPersonal" = COALESCE((SELECT jsonb_agg(x) FROM jsonb_array_elements("areasDelPersonal") x WHERE x #>> '{}' NOT LIKE 'Cocina QA %'), '[]'::jsonb)`).catch(() => 0);
         }
     });
 

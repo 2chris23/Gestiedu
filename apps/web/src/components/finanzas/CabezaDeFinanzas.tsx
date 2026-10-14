@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Eye, EyeOff, GraduationCap, Plus, PiggyBank, ShoppingCart, Users, Wallet, X, type LucideIcon } from 'lucide-react';
+import { ArrowDown, ArrowUp, Eye, EyeOff, GraduationCap, Plus, ShoppingCart, Users, Wallet, X, type LucideIcon } from 'lucide-react';
 import { useResumenDeFinanzas } from '@/hooks/useFinanzas';
 import { dinero } from '@/hooks/usePagos';
 import { cn } from '@/lib/utils';
@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
  *
  * Cristian, mirando Rial: arriba solo el saldo; debajo, las partes de las
  * finanzas en círculos (lo que antes eran pestañas), y un botón «+» que
- * flota abajo para añadir: fondos, un gasto, pagar al personal o cobrar.
+ * flota abajo para añadir un ingreso o un egreso (`NuevoMovimiento`).
  */
 
 /** El ojo de los fondos: se recuerda en este aparato y lo oyen todos los que lo usan. */
@@ -82,7 +82,7 @@ export function SaldoDisponible({ ciclo }: { ciclo: string | null }) {
     );
 }
 
-/** Las partes de las finanzas, en círculos (los accesos de Rial). Eran pestañas. */
+/** Las partes de las finanzas, con la forma de los accesos del Inicio. Eran pestañas. */
 export type Vista = 'resumen' | 'estudiantes' | 'personal' | 'gastos';
 export const VISTAS: Array<{ id: Vista; nombre: string; corto: string; pista: string; icono: LucideIcon }> = [
     { id: 'resumen', nombre: 'Resumen', corto: 'Resumen', pista: 'Fondos y el ciclo mes a mes', icono: Wallet },
@@ -110,8 +110,8 @@ export function PartesDeFinanzas({ vista, alElegir }: { vista: Vista; alElegir: 
                     >
                         <span
                             className={cn(
-                                'flex h-14 w-14 items-center justify-center rounded-full shadow-sm transition-colors group-active:scale-95',
-                                activa ? 'bg-indigo-600 text-white' : 'bg-white text-gray-900 ring-1 ring-gray-200 group-hover:bg-gray-50'
+                                'flex h-[58px] w-[58px] items-center justify-center rounded-[20px] shadow-[0_1px_2px_rgba(13,71,161,0.08)] transition-colors group-active:scale-95',
+                                activa ? 'bg-indigo-600 text-white' : 'bg-white text-cabecera-tinta group-hover:bg-gray-50'
                             )}
                         >
                             <Icono className="h-6 w-6" aria-hidden />
@@ -130,28 +130,19 @@ export function PartesDeFinanzas({ vista, alElegir }: { vista: Vista; alElegir: 
 
 /** Una opción del menú del «+»: icono, qué hace y una línea debajo. */
 interface Opcion {
-    icono: LucideIcon;
+    entra: boolean;
     titulo: string;
     detalle: string;
     alElegir: () => void;
 }
 
 /**
- * EL BOTÓN DE AÑADIR (el «+» verde de Rial, del color de la app). Flota abajo
- * a la derecha, por encima de la barra del teléfono; al tocarlo oscurece la
- * pantalla y sale su menú encima.
+ * EL BOTÓN DE AÑADIR (el «+» de Rial, del color de la app). Flota abajo a la
+ * derecha, por encima de la barra del teléfono; al tocarlo oscurece la
+ * pantalla y ofrece lo único que hace falta: ingreso o egreso (Cristian:
+ * «anotar un gasto y pagarle al personal es lo mismo: se está descontando»).
  */
-export function BotonAnadir({
-    alAgregarFondos,
-    alAnotarGasto,
-    alPagarPersonal,
-    alCobrar,
-}: {
-    alAgregarFondos: () => void;
-    alAnotarGasto: () => void;
-    alPagarPersonal: () => void;
-    alCobrar: () => void;
-}) {
+export function BotonAnadir({ alIngreso, alEgreso }: { alIngreso: () => void; alEgreso: () => void }) {
     const [abierto, setAbierto] = React.useState(false);
     const primero = React.useRef<HTMLButtonElement>(null);
     React.useEffect(() => {
@@ -163,10 +154,8 @@ export function BotonAnadir({
     }, [abierto]);
 
     const opciones: Opcion[] = [
-        { icono: PiggyBank, titulo: 'Agregar fondos', detalle: 'Una donación u otro ingreso', alElegir: alAgregarFondos },
-        { icono: ShoppingCart, titulo: 'Anotar un gasto', detalle: 'Una compra o una reparación', alElegir: alAnotarGasto },
-        { icono: Users, titulo: 'Pagar al personal', detalle: 'Sueldo, vacaciones o bono, con su recibo', alElegir: alPagarPersonal },
-        { icono: GraduationCap, titulo: 'Cobrar a un estudiante', detalle: 'Sus cuotas y su comprobante', alElegir: alCobrar },
+        { entra: true, titulo: 'Ingreso', detalle: 'Una cuota, una donación, otro ingreso', alElegir: alIngreso },
+        { entra: false, titulo: 'Egreso', detalle: 'Pagar al personal o un gasto', alElegir: alEgreso },
     ];
 
     return (
@@ -176,7 +165,7 @@ export function BotonAnadir({
                 {abierto && (
                     <div role="menu" aria-label="Añadir" className="w-[min(20rem,calc(100vw-2rem))] rounded-3xl bg-white p-2 shadow-xl">
                         {opciones.map((o, i) => {
-                            const Icono = o.icono;
+                            const Icono = o.entra ? ArrowUp : ArrowDown;
                             return (
                                 <button
                                     key={o.titulo}
@@ -189,7 +178,9 @@ export function BotonAnadir({
                                     }}
                                     className="flex min-h-[52px] w-full items-center gap-3 rounded-2xl px-3 py-2 text-left hover:bg-gray-50"
                                 >
-                                    <Icono className="h-5 w-5 shrink-0 text-gray-700" aria-hidden />
+                                    <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white', o.entra ? 'bg-emerald-600' : 'bg-red-600')}>
+                                        <Icono className="h-5 w-5" aria-hidden />
+                                    </span>
                                     <span className="min-w-0">
                                         <span className="block text-base font-medium text-gray-900">{o.titulo}</span>
                                         <span className="block text-xs text-gray-600">{o.detalle}</span>

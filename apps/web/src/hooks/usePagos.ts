@@ -43,6 +43,8 @@ export interface AlumnoEnResumen extends ResumenDinero {
     firstName: string;
     lastName: string;
     avatar: string | null;
+    /** Lo de cada mes, con su beca o su descuento. */
+    mensualidad?: string;
     /** Sus cuotas sin pagar, con su estado: para «quién debe este mes». */
     cuotas?: Record<string, EstadoDeCuota>;
 }
