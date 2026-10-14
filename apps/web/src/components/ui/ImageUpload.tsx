@@ -114,7 +114,7 @@ export function ImageUpload({
     };
 
     return (
-        <div className={`p-5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow transition-shadow space-y-4 ${className}`}>
+        <div className={`space-y-4 p-4 ${className}`}>
             <div>
                 <div className="flex items-center justify-between gap-2">
                     {label && (

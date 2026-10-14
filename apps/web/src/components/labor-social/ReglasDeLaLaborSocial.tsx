@@ -3,8 +3,8 @@
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { HeartHandshake, Loader2 } from 'lucide-react';
-import { Checkbox } from '@/components/ui/checkbox';
+import { HeartHandshake } from 'lucide-react';
+import { BotonGuardar, CargandoAjustes, Fila, FilaCampo, FilaInterruptor, Grupo } from '@/components/configuracion/ajustes';
 import { Lista } from '@/components/ui/lista';
 import { instituteService } from '@/services/institute.service';
 import { laborSocial, REGLAS_DE_LABOR_SOCIAL_POR_DEFECTO, type ReglasDeLaborSocial } from '@/lib/labor-social';
@@ -49,90 +49,74 @@ export function ReglasDeLaLaborSocial() {
         onError: (e) => toast.error(getApiErrorMessage(e, 'No se pudieron guardar')),
     });
 
+    if (isLoading || !r) return <CargandoAjustes />;
+
     return (
-        <section aria-labelledby="reglas-labor-social" className="border-t border-gray-200 pt-6">
-            <h3 id="reglas-labor-social" className="mb-1 text-lg font-medium text-gray-900">
-                <HeartHandshake className="mr-2 inline h-5 w-5" aria-hidden />
-                Labor social
-            </h3>
-            <p className="mb-4 text-sm text-gray-600">
-                Las horas comunitarias. Se anotan dentro de cada sección (Académico → el año → la sección → «Labor social») y se suman de un
-                año a otro.
-            </p>
-            {isLoading || !r ? (
-                <p className="flex items-center gap-2 text-sm text-gray-600">
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Cargando…
-                </p>
-            ) : (
-                <div className="grid gap-4 md:grid-cols-2">
-                    <label className="flex min-h-[44px] items-center gap-3 text-sm text-gray-800 md:col-span-2">
-                        <Checkbox checked={r.activa} onCheckedChange={(v) => setR({ ...r, activa: v === true })} aria-label="Labor social activa" />
-                        El liceo lleva la labor social en el sistema
-                    </label>
-                    <div className="text-sm text-gray-800">
-                        <span className="mb-1 block font-medium">La hacen los alumnos de</span>
-                        <div className="flex flex-wrap gap-x-3">
-                            {[1, 2, 3, 4, 5, 6].map((g) => (
-                                <label key={g} className="flex min-h-[44px] items-center gap-2">
-                                    <Checkbox
-                                        checked={r.grados.includes(g)}
-                                        onCheckedChange={(v) =>
-                                            setR({ ...r, grados: v === true ? [...r.grados, g].sort((a, b) => a - b) : r.grados.filter((x) => x !== g) })
-                                        }
-                                        aria-label={`${g}º año`}
-                                    />
+        <div className="space-y-4">
+            <Grupo
+                id="reglas-labor-social"
+                titulo="Labor social"
+                descripcion="Las horas comunitarias. Se anotan en cada sección (Académico → el año → la sección → «Labor social») y se suman de un año a otro."
+            >
+                <FilaInterruptor icono={HeartHandshake} titulo="El liceo lleva la labor social en el sistema" checked={r.activa} onChange={(v) => setR({ ...r, activa: v })} />
+                <Fila etiqueta="La hacen los alumnos de" apilada>
+                    <div role="group" aria-label="La hacen los alumnos de" className="flex flex-wrap gap-2">
+                        {[1, 2, 3, 4, 5, 6].map((g) => {
+                            const si = r.grados.includes(g);
+                            return (
+                                <button
+                                    key={g}
+                                    type="button"
+                                    aria-pressed={si}
+                                    aria-label={`${g}º año`}
+                                    onClick={() => setR({ ...r, grados: si ? r.grados.filter((x) => x !== g) : [...r.grados, g].sort((a, b) => a - b) })}
+                                    className={
+                                        si
+                                            ? 'h-11 min-w-[52px] rounded-full bg-indigo-600 px-3 text-sm font-semibold text-white'
+                                            : 'h-11 min-w-[52px] rounded-full bg-gray-100 px-3 text-sm font-medium text-gray-700 hover:bg-gray-200'
+                                    }
+                                >
                                     {g}º
-                                </label>
-                            ))}
-                        </div>
+                                </button>
+                            );
+                        })}
                     </div>
-                    <label className="text-sm font-medium text-gray-800">
-                        Horas que hay que cumplir en total (0 = por proyecto)
-                        <input
-                            inputMode="numeric"
-                            value={r.horas}
-                            onChange={(e) => setR({ ...r, horas: e.target.value.replace(/[^\d]/g, '') })}
-                            className="mt-1 min-h-[44px] w-full rounded-lg border border-gray-300 px-3 text-sm font-normal"
-                        />
-                    </label>
-                    <div className="text-sm text-gray-800">
-                        <span className="mb-1 block font-medium">Para egresar</span>
-                        <Lista
-                            etiqueta="Para egresar"
-                            valor={r.paraEgresar}
-                            alCambiar={(v) => setR({ ...r, paraEgresar: v as ReglasDeLaborSocial['paraEgresar'] })}
-                            opciones={[
-                                { valor: 'AVISA', texto: 'Se avisa, pero egresa' },
-                                { valor: 'BLOQUEA', texto: 'Sin ella no egresa' },
-                                { valor: 'NO', texto: 'No cuenta para egresar' },
-                            ]}
-                        />
-                    </div>
-                    <div className="text-sm text-gray-800">
-                        <span className="mb-1 block font-medium">Quién anota las actividades</span>
-                        <Lista
-                            etiqueta="Quién anota las actividades"
-                            valor={r.quienAnota ?? 'ADMIN_Y_GUIA'}
-                            alCambiar={(v) => setR({ ...r, quienAnota: v as NonNullable<ReglasDeLaborSocial['quienAnota']> })}
-                            opciones={[
-                                { valor: 'ADMIN_Y_GUIA', texto: 'El admin y el profesor guía' },
-                                { valor: 'SOLO_ADMIN', texto: 'Solo el admin' },
-                            ]}
-                        />
-                    </div>
-                    <div className="md:col-span-2">
-                        <button
-                            type="button"
-                            onClick={() => guardar.mutate()}
-                            disabled={guardar.isPending || r.grados.length === 0}
-                            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                        >
-                            {guardar.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} Guardar la labor social
-                        </button>
-                    </div>
-                </div>
-            )}
-        </section>
+                </Fila>
+                <FilaCampo
+                    etiqueta="Horas en total"
+                    ayuda="0 = por proyecto."
+                    inputMode="numeric"
+                    value={r.horas}
+                    onChange={(e) => setR({ ...r, horas: e.target.value.replace(/[^\d]/g, '') })}
+                />
+                <Fila etiqueta="Para egresar" apilada>
+                    <Lista
+                        etiqueta="Para egresar"
+                        valor={r.paraEgresar}
+                        alCambiar={(v) => setR({ ...r, paraEgresar: v as ReglasDeLaborSocial['paraEgresar'] })}
+                        className="border-0 bg-gray-100 font-normal shadow-none"
+                        opciones={[
+                            { valor: 'AVISA', texto: 'Se avisa, pero egresa' },
+                            { valor: 'BLOQUEA', texto: 'Sin ella no egresa' },
+                            { valor: 'NO', texto: 'No cuenta para egresar' },
+                        ]}
+                    />
+                </Fila>
+                <Fila etiqueta="Quién anota las actividades" apilada>
+                    <Lista
+                        etiqueta="Quién anota las actividades"
+                        valor={r.quienAnota ?? 'ADMIN_Y_GUIA'}
+                        alCambiar={(v) => setR({ ...r, quienAnota: v as NonNullable<ReglasDeLaborSocial['quienAnota']> })}
+                        className="border-0 bg-gray-100 font-normal shadow-none"
+                        opciones={[
+                            { valor: 'ADMIN_Y_GUIA', texto: 'El admin y el profesor guía' },
+                            { valor: 'SOLO_ADMIN', texto: 'Solo el admin' },
+                        ]}
+                    />
+                </Fila>
+            </Grupo>
+            <BotonGuardar type="button" texto="Guardar la labor social" onClick={() => guardar.mutate()} guardando={guardar.isPending} disabled={r.grados.length === 0} />
+        </div>
     );
 }
 

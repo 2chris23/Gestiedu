@@ -1,9 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { KeyRound, Smartphone, Loader2, Fingerprint } from 'lucide-react';
+import { Loader2, Fingerprint } from 'lucide-react';
+import MisSesiones from '@/components/configuracion/MisSesiones';
+import { Ajustes, BotonGuardar, FilaCampo, FilaInterruptor, Grupo } from '@/components/configuracion/ajustes';
 import BloquearAlVolver from '@/components/layout/BloquearAlVolver';
 import api from '@/lib/axios';
 import { getApiErrorMessage } from '@/lib/utils';
@@ -20,59 +21,17 @@ import { guardarLaLlave, hayHuella, hayLlaveGuardada, laLlaveGuardada, olvidarLa
  * y dónde tengo la sesión abierta.
  */
 
-interface SesionAbierta {
-    id: string;
-    userAgent: string | null;
-    ip: string | null;
-    createdAt: string;
-    lastUsedAt?: string | null;
-    isCurrent: boolean;
-}
-
-/** «Mozilla/5.0 (Linux; Android 14; SM-A536B)…» → «Android · Chrome». */
-function comoSeLlamaElAparato(userAgent: string | null): string {
-    if (!userAgent) return 'Un dispositivo';
-    const sistema = /Android/i.test(userAgent)
-        ? 'Android'
-        : /iPhone|iPad|iOS/i.test(userAgent)
-          ? 'iPhone o iPad'
-          : /Windows/i.test(userAgent)
-            ? 'Windows'
-            : /Mac OS/i.test(userAgent)
-              ? 'Mac'
-              : /Linux/i.test(userAgent)
-                ? 'Linux'
-                : 'Un dispositivo';
-    const navegador = /Edg\//i.test(userAgent)
-        ? 'Edge'
-        : /OPR\//i.test(userAgent)
-          ? 'Opera'
-          : /Firefox/i.test(userAgent)
-            ? 'Firefox'
-            : /Chrome/i.test(userAgent)
-              ? 'Chrome'
-              : /Safari/i.test(userAgent)
-                ? 'Safari'
-                : null;
-    return navegador ? `${sistema} · ${navegador}` : sistema;
-}
-
 export function ContrasenaYAcceso({ nombreCompleto }: { nombreCompleto: string }) {
     return (
-        <div className="space-y-4">
-            <section aria-labelledby="mi-contrasena" className="overflow-hidden rounded-[24px] bg-white ring-1 ring-gray-200">
-                <h3 id="mi-contrasena" className="flex items-center gap-3 px-5 pt-4 text-sm font-semibold text-gray-900">
-                    <KeyRound className="h-5 w-5 shrink-0 text-gray-600" aria-hidden />
-                    Cambiar mi contraseña
-                </h3>
-                <FormularioDeClave />
-            </section>
-            <div className="overflow-hidden rounded-[24px] bg-white ring-1 ring-gray-200 empty:hidden [&>*:first-child]:border-t-0">
+        <Ajustes>
+            <FormularioDeClave />
+            {/* Lo de este teléfono: la huella y el candado (solo en la app). */}
+            <Grupo id="este-telefono" titulo="En este teléfono" className="has-[>div:empty]:hidden">
                 <LaHuellaDeEsteTelefono visible correo={nombreCompleto} />
                 <BloquearAlVolver />
-                <SesionesAbiertas visible />
-            </div>
-        </div>
+            </Grupo>
+            <MisSesiones />
+        </Ajustes>
     );
 }
 
@@ -140,25 +99,17 @@ function LaHuellaDeEsteTelefono({ visible, correo }: { visible: boolean; correo:
     };
 
     return (
-        <label className="flex min-h-[56px] w-full items-center gap-3 border-t border-gray-200 px-5 py-3 text-sm font-medium text-gray-800">
-            <Fingerprint className="h-5 w-5 shrink-0 text-gray-500" aria-hidden />
-            <span className="flex-1">
-                Entrar con la huella
-                <span className="mt-0.5 block text-xs font-normal text-gray-500">
-                    Solo en este teléfono. La primera vez siempre es con contraseña.
-                </span>
-            </span>
-            {trabajando ? (
-                <Loader2 className="h-5 w-5 animate-spin text-gray-400" aria-hidden />
-            ) : (
-                <input
-                    type="checkbox"
-                    checked={encendida}
-                    onChange={(e) => cambiar(e.target.checked)}
-                    className="h-6 w-6 shrink-0 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                />
-            )}
-        </label>
+        <div className="relative">
+            <FilaInterruptor
+                icono={Fingerprint}
+                titulo="Entrar con la huella"
+                descripcion="La primera vez siempre es con contraseña."
+                checked={encendida}
+                disabled={trabajando}
+                onChange={(v) => void cambiar(v)}
+            />
+            {trabajando && <Loader2 className="absolute right-20 top-1/2 h-5 w-5 -translate-y-1/2 animate-spin text-gray-400" aria-hidden />}
+        </div>
     );
 }
 
@@ -193,80 +144,15 @@ function FormularioDeClave() {
         }
     };
 
-    const campo =
-        'w-full rounded-lg border border-gray-300 px-3 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500';
-
     return (
-        <form onSubmit={enviar} className="space-y-3 px-5 pb-5 pt-3">
-            <input
-                type="password"
-                autoComplete="current-password"
-                value={actual}
-                onChange={(e) => setActual(e.target.value)}
-                placeholder="Contraseña actual"
-                required
-                className={campo}
-            />
-            <input
-                type="password"
-                autoComplete="new-password"
-                value={nueva}
-                onChange={(e) => setNueva(e.target.value)}
-                placeholder="Contraseña nueva (mínimo 8)"
-                required
-                className={campo}
-            />
-            <input
-                type="password"
-                autoComplete="new-password"
-                value={repetida}
-                onChange={(e) => setRepetida(e.target.value)}
-                placeholder="Repite la contraseña nueva"
-                required
-                className={campo}
-            />
-            <button
-                type="submit"
-                disabled={enviando}
-                className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors active:bg-indigo-700 disabled:opacity-60"
-            >
-                {enviando && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-                Guardar la contraseña nueva
-            </button>
+        <form onSubmit={enviar} className="space-y-4">
+            <Grupo id="mi-contrasena" titulo="Cambiar mi contraseña" pie="Mínimo 8 caracteres. Al cambiarla, sigues dentro en este aparato.">
+                <FilaCampo etiqueta="Actual" type="password" autoComplete="current-password" value={actual} onChange={(e) => setActual(e.target.value)} placeholder="Contraseña actual" required />
+                <FilaCampo etiqueta="Nueva" type="password" autoComplete="new-password" value={nueva} onChange={(e) => setNueva(e.target.value)} placeholder="Contraseña nueva (mínimo 8)" required />
+                <FilaCampo etiqueta="Repetir" type="password" autoComplete="new-password" value={repetida} onChange={(e) => setRepetida(e.target.value)} placeholder="Repite la contraseña nueva" required />
+            </Grupo>
+            <BotonGuardar guardando={enviando} texto="Guardar la contraseña nueva" />
         </form>
-    );
-}
-
-/** Dónde está abierta la sesión. Mirar, no tocar: revocar es otra pantalla. */
-function SesionesAbiertas({ visible }: { visible: boolean }) {
-    const { data, isLoading } = useQuery({
-        queryKey: ['misSesiones'],
-        queryFn: async () => (await api.get<{ sessions: SesionAbierta[] }>('/auth/sessions')).data.sessions,
-        enabled: visible,
-        staleTime: 60_000,
-    });
-
-    if (isLoading || !data?.length) return null;
-
-    return (
-        <div className="border-t border-gray-200 px-5 py-4">
-            <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                <Smartphone className="h-4 w-4" aria-hidden />
-                Sesión abierta en
-            </p>
-            <ul className="space-y-1.5">
-                {data.slice(0, 5).map((s) => (
-                    <li key={s.id} className="flex items-center justify-between gap-2 text-sm text-gray-700">
-                        <span className="truncate">{comoSeLlamaElAparato(s.userAgent)}</span>
-                        {s.isCurrent && (
-                            <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                                este
-                            </span>
-                        )}
-                    </li>
-                ))}
-            </ul>
-        </div>
     );
 }
 

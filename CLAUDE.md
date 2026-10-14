@@ -963,6 +963,16 @@ derecha. Lo del liceo lo sigue negando el servidor a los demás (ROL-03).
 La equis de las ventanas ya no enseña el anillo del foco al tocar (solo con
 teclado, `focus-visible`).
 
+**Cada apartado con el mismo juego de piezas** (`components/configuracion/ajustes.tsx`):
+`Grupo` (título pequeño y una caja blanca con filas), `FilaCampo` (el rótulo
+a la izquierda y el valor a la derecha, sin caja), `FilaInterruptor`, `Fila`,
+`Opciones` (segmentado) y `BotonGuardar`. Un apartado nuevo se arma con ellas,
+no con tarjetas propias. Los campos numéricos llevan `!` en sus clases: la red
+de seguridad de `globals.css` les pone borde y fondo. Las sesiones abiertas
+(«Cerrar», «Cerrar las demás») viven en Contraseña y acceso (`MisSesiones`),
+ya no en Seguridad del liceo; el color y el modo, en `ColorYModo` (miniaturas
+de claro, oscuro y «como el teléfono»).
+
 ## El color de la app y el Inicio del admin en el teléfono (octubre 2026)
 
 Diseño de Cristian («Panel Admin — App móvil»). **El color lo elige cada

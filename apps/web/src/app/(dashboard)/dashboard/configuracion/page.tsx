@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { GeneralSettings } from './components/GeneralSettings';
 import { diferido } from '@/components/common/Diferido';
-import ColorDeLaApp from '@/components/layout/ColorDeLaApp';
+import ColorYModo from '@/components/configuracion/ColorYModo';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { useAuthStore } from '@/store/auth.store';
 import { cn } from '@/lib/utils';
@@ -65,7 +65,7 @@ interface Apartado {
 }
 
 const DE_LA_PERSONA: Apartado[] = [
-    { id: 'acceso', nombre: 'Contraseña y acceso', pista: 'Tu contraseña, la huella y el bloqueo', otras: 'seguridad clave pin sesiones biometria', icono: KeyRound },
+    { id: 'acceso', nombre: 'Contraseña y acceso', pista: 'Tu contraseña, la huella y tus sesiones', otras: 'seguridad clave pin sesiones biometria', icono: KeyRound },
     { id: 'color', nombre: 'Color y modo', pista: 'El color de la app; claro, oscuro o del teléfono', otras: 'apariencia tema oscuro claro', icono: SwatchBook },
 ];
 
@@ -78,7 +78,7 @@ const DEL_LICEO: Apartado[] = [
     { id: 'pae', nombre: 'Comedor (PAE)', pista: 'Activar y ajustar el comedor', otras: 'comedor pae', icono: UtensilsCrossed },
     { id: 'qr', nombre: 'Asistencia por QR', pista: 'Escanear para pasar lista', otras: 'qr asistencia faro', icono: QrCode },
     { id: 'notifications', nombre: 'Notificaciones', pista: 'Qué avisos se envían', otras: 'avisos notificaciones', icono: Bell },
-    { id: 'security', nombre: 'Seguridad', pista: 'Sesiones y contraseñas del liceo', otras: 'sesiones tiempo de espera', icono: Shield },
+    { id: 'security', nombre: 'Seguridad', pista: 'Tiempo de sesión, contraseñas e intentos', otras: 'sesiones tiempo de espera', icono: Shield },
 ];
 
 const CONTENIDO: Record<string, React.ComponentType> = {
@@ -226,20 +226,19 @@ function Configuracion() {
 
             {/* EL APARTADO ABIERTO. En el teléfono, solo con uno elegido. */}
             {enElOrdenador && (
-                <div className={cn('min-w-0 space-y-4', !abierto && 'hidden lateral:block')}>
-                    <div className="flex items-center gap-3">
+                <div className={cn('min-w-0 space-y-5', !abierto && 'hidden lateral:block')}>
+                    {/* Como Rial: la flecha redonda a la izquierda y el nombre en medio. */}
+                    <div className="relative flex min-h-[48px] items-center justify-center px-14 lateral:justify-start lateral:px-0">
                         <Link
                             href="/dashboard/configuracion"
                             aria-label="Volver a Configuración"
-                            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-gray-900 shadow-sm ring-1 ring-gray-200 active:bg-gray-100 lateral:hidden"
+                            className="absolute left-0 top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white text-gray-900 shadow-sm ring-1 ring-gray-200 active:bg-gray-100 lateral:hidden"
                         >
                             <ArrowLeft className="h-5 w-5" aria-hidden />
                         </Link>
-                        <div className="min-w-0">
-                            <h2 className="text-2xl font-bold tracking-tight text-gray-900">{enElOrdenador.nombre}</h2>
-                            <p className="text-sm text-gray-600">{enElOrdenador.pista}</p>
-                        </div>
+                        <h2 className="truncate text-center text-lg font-bold text-gray-900 lateral:text-2xl">{enElOrdenador.nombre}</h2>
                     </div>
+                    <p className="hidden text-sm text-gray-600 lateral:-mt-3 lateral:block">{enElOrdenador.pista}</p>
                     <Contenido id={enElOrdenador.id} nombreCompleto={nombreCompleto} />
                 </div>
             )}
@@ -249,11 +248,7 @@ function Configuracion() {
 
 function Contenido({ id, nombreCompleto }: { id: string; nombreCompleto: string }) {
     if (id === 'acceso') return <ContrasenaYAcceso nombreCompleto={nombreCompleto} />;
-    if (id === 'color') return <ColorDeLaApp className="rounded-[24px] border-t-0 bg-white px-5 py-4 ring-1 ring-gray-200" />;
+    if (id === 'color') return <ColorYModo />;
     const Componente = CONTENIDO[id];
-    return (
-        <div className="rounded-[24px] bg-white p-5 shadow-sm ring-1 ring-gray-200 sm:p-6">
-            <Componente />
-        </div>
-    );
+    return <Componente />;
 }

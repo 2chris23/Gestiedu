@@ -156,6 +156,16 @@ export function BarraInferiorMovil({ destinos }: Props) {
                 ...(escondida ? { transform: 'translateY(calc(100% - var(--zona-segura-abajo)))' } : {}),
             }}
         >
+            {/* Lo de la pantalla se desvanece al llegar a la barra (como Rial),
+                en vez de cortarse en seco contra ella (Cristian, 14-oct-2026). */}
+            <div
+                aria-hidden
+                className={cn(
+                    'pointer-events-none absolute inset-x-0 bottom-full h-10 bg-gradient-to-t from-gray-50 to-transparent transition-opacity duration-200',
+                    // Escondida la barra, el difuminado se va con ella: si no, asomaba (MOVIL-02).
+                    escondida && 'opacity-0'
+                )}
+            />
             <div className="mx-auto flex max-w-xl items-end justify-between px-1">
                 {Array.from({ length: faltanIzquierda }).map((_, i) => (
                     <div key={`spacer-izq-${i}`} className="min-h-[52px] min-w-0 flex-1" aria-hidden />

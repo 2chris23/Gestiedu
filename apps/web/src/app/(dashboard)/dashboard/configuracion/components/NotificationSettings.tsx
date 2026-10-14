@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Save, Bell, Mail, Smartphone, RefreshCw } from 'lucide-react';
+import { Bell, Mail, GraduationCap, FileText, ShieldAlert } from 'lucide-react';
+import { Ajustes, BotonGuardar, CargandoAjustes, FilaInterruptor, Grupo } from '@/components/configuracion/ajustes';
 import { instituteService } from '@/services/institute.service';
 import { toast } from 'sonner';
 import { esPendiente } from '@/lib/por-enviar';
@@ -126,138 +127,52 @@ export function NotificationSettings() {
         }));
     };
 
-    if (loading) {
-        return (
-            <div className="flex justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-            </div>
-        );
-    }
+    if (loading) return <CargandoAjustes />;
 
     return (
-        <div className="space-y-8">
-            <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Canales de Notificación</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                    Selecciona los medios por los cuales el sistema enviará alertas a usuarios y administradores.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Email Channel */}
-                    <div className={`p-4 border rounded-lg cursor-pointer transition-all ${config.channels.email ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-gray-300'}`}
-                        onClick={() => toggleChannel('email')} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleChannel('email'); } }}>
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-full ${config.channels.email ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-500'}`}>
-                                <Mail className="w-5 h-5" />
-                            </div>
-                            <div className="flex-1">
-                                <h4 className="text-sm font-semibold text-gray-900">Correo Electrónico</h4>
-                                <p className="text-xs text-gray-500">Enviar alertas a la dirección de email registrada.</p>
-                            </div>
-                            <div className={`w-10 h-5 rounded-full relative transition-colors ${config.channels.email ? 'bg-indigo-600' : 'bg-gray-300'}`}>
-                                <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${config.channels.email ? 'translate-x-5' : 'translate-x-0'}`}></div>
-                            </div>
-                        </div>
-                    </div>
+        <Ajustes>
+            <Grupo id="canales" titulo="Cómo se avisa" descripcion="Por dónde el sistema manda las alertas a la gente del liceo.">
+                <FilaInterruptor
+                    icono={Mail}
+                    titulo="Correo electrónico"
+                    descripcion="A la dirección registrada de cada uno."
+                    checked={config.channels.email}
+                    onChange={() => toggleChannel('email')}
+                />
+                <FilaInterruptor
+                    icono={Bell}
+                    titulo="En la app"
+                    descripcion="En la campana y, con la app instalada, en el teléfono."
+                    checked={config.channels.inApp}
+                    onChange={() => toggleChannel('inApp')}
+                />
+            </Grupo>
 
-                    {/* In-App Channel */}
-                    <div className={`p-4 border rounded-lg cursor-pointer transition-all ${config.channels.inApp ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-gray-300'}`}
-                        onClick={() => toggleChannel('inApp')} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleChannel('inApp'); } }}>
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-full ${config.channels.inApp ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-500'}`}>
-                                <Bell className="w-5 h-5" />
-                            </div>
-                            <div className="flex-1">
-                                <h4 className="text-sm font-semibold text-gray-900">Notificaciones en Sistema</h4>
-                                <p className="text-xs text-gray-500">Mostrar alertas dentro de la plataforma (campana).</p>
-                            </div>
-                            <div className={`w-10 h-5 rounded-full relative transition-colors ${config.channels.inApp ? 'bg-indigo-600' : 'bg-gray-300'}`}>
-                                <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${config.channels.inApp ? 'translate-x-5' : 'translate-x-0'}`}></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <Grupo id="tipos" titulo="Qué se avisa">
+                <FilaInterruptor
+                    icono={GraduationCap}
+                    titulo="Académicas"
+                    descripcion="Notas nuevas, inasistencias, conducta."
+                    checked={config.types.academic}
+                    onChange={() => toggleType('academic')}
+                />
+                <FilaInterruptor
+                    icono={FileText}
+                    titulo="Administrativas"
+                    descripcion="Recordatorios de pago, comunicados, eventos."
+                    checked={config.types.administrative}
+                    onChange={() => toggleType('administrative')}
+                />
+                <FilaInterruptor
+                    icono={ShieldAlert}
+                    titulo="Seguridad"
+                    descripcion="Entradas raras, cambios de contraseña, intentos fallidos."
+                    checked={config.types.security}
+                    onChange={() => toggleType('security')}
+                />
+            </Grupo>
 
-            <div className="border-t border-gray-200 pt-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Tipos de Alertas Activas</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                    Define qué categorías de eventos generarán notificaciones automaticas.
-                </p>
-
-                <div className="space-y-3">
-                    {/* Academic */}
-                    <label aria-label="Académicas" className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                        <div className="flex items-center gap-3">
-                            <div className="h-2 w-2 rounded-full bg-blue-500"></div>
-                            <div>
-                                <span className="text-sm font-medium text-gray-900 block">Académicas</span>
-                                <span className="text-xs text-gray-500 block">Nuevas calificaciones, inasistencias, reportes de conducta.</span>
-                            </div>
-                        </div>
-                        <input
-                            type="checkbox"
-                            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                            checked={config.types.academic}
-                            onChange={() => toggleType('academic')}
-                        />
-                    </label>
-
-                    {/* Administrative */}
-                    <label aria-label="Administrativas" className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                        <div className="flex items-center gap-3">
-                            <div className="h-2 w-2 rounded-full bg-orange-500"></div>
-                            <div>
-                                <span className="text-sm font-medium text-gray-900 block">Administrativas</span>
-                                <span className="text-xs text-gray-500 block">Recordatorios de pago, comunicados oficiales, eventos.</span>
-                            </div>
-                        </div>
-                        <input
-                            type="checkbox"
-                            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                            checked={config.types.administrative}
-                            onChange={() => toggleType('administrative')}
-                        />
-                    </label>
-
-                    {/* Security */}
-                    <label aria-label="Seguridad" className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                        <div className="flex items-center gap-3">
-                            <div className="h-2 w-2 rounded-full bg-red-500"></div>
-                            <div>
-                                <span className="text-sm font-medium text-gray-900 block">Seguridad</span>
-                                <span className="text-xs text-gray-500 block">Inicios de sesión sospechosos, cambios de contraseña, intentos fallidos.</span>
-                            </div>
-                        </div>
-                        <input
-                            type="checkbox"
-                            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                            checked={config.types.security}
-                            onChange={() => toggleType('security')}
-                        />
-                    </label>
-                </div>
-            </div>
-
-            {/* Save Button */}
-            <div className="flex justify-end pt-6 border-t border-gray-200">
-                <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {saving ? (
-                        <>
-                            <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
-                            Guardando...
-                        </>
-                    ) : (
-                        <>
-                            <Save className="w-5 h-5 mr-2" />
-                            Guardar Preferencias
-                        </>
-                    )}
-                </button>
-            </div>
-        </div>
+            <BotonGuardar type="button" texto="Guardar Preferencias" onClick={handleSave} guardando={saving} />
+        </Ajustes>
     );
 }

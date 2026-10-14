@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Loader2, QrCode, Save } from 'lucide-react';
+import { QrCode } from 'lucide-react';
+import { Ajustes, BotonGuardar, CargandoAjustes, Fila, FilaCampo, FilaInterruptor, Grupo, Opciones } from '@/components/configuracion/ajustes';
 import { asistenciaQr, elMotivo, type ConfigAsistenciaQr } from '@/lib/asistencia-qr';
-import { cn } from '@/lib/utils';
 
 /**
  * ASISTENCIA POR QR: LAS REGLAS DE ESTE LICEO
@@ -15,26 +15,6 @@ import { cn } from '@/lib/utils';
  * Lo que sale de fábrica es lo que se propuso en el diseño
  * (`docs/PROXIMAS-FUNCIONES.md`).
  */
-
-const campo =
-    'mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100';
-const rotulo = 'block text-sm font-medium text-gray-800';
-const ayuda = 'mt-1 text-xs text-gray-600';
-
-function SiNo({ valor, alCambiar, etiqueta }: { valor: boolean; alCambiar: (v: boolean) => void; etiqueta: string }) {
-    return (
-        <button
-            type="button"
-            role="switch"
-            aria-checked={valor}
-            aria-label={etiqueta}
-            onClick={() => alCambiar(!valor)}
-            className={cn('relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors', valor ? 'bg-indigo-600' : 'bg-gray-300')}
-        >
-            <span className={cn('inline-block h-5 w-5 rounded-full bg-white shadow transition-transform', valor ? 'translate-x-6' : 'translate-x-1')} />
-        </button>
-    );
-}
 
 export function QrSettings() {
     const cola = useQueryClient();
@@ -46,13 +26,7 @@ export function QrSettings() {
         if (data) setC(data);
     }, [data]);
 
-    if (isLoading || !c) {
-        return (
-            <div className="flex items-center gap-2 p-6 text-sm text-gray-600">
-                <Loader2 className="h-4 w-4 animate-spin" /> Cargando…
-            </div>
-        );
-    }
+    if (isLoading || !c) return <CargandoAjustes />;
 
     const poner = <K extends keyof ConfigAsistenciaQr>(k: K, v: ConfigAsistenciaQr[K]) => setC((x) => (x ? { ...x, [k]: v } : x));
 
@@ -70,121 +44,89 @@ export function QrSettings() {
     };
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-start gap-3">
-                <QrCode className="mt-0.5 h-6 w-6 text-indigo-600" aria-hidden />
-                <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Asistencia por QR</h2>
-                    <p className="text-sm text-gray-600">
-                        El profesor abre un QR en su clase y los alumnos lo escanean desde su app. Pasar lista a mano sigue funcionando siempre.
-                    </p>
-                </div>
-            </div>
+        <Ajustes>
+            <Grupo
+                id="qr-activa"
+                descripcion="El profesor abre un QR en su clase y los alumnos lo escanean desde su app. Pasar lista a mano sigue funcionando siempre."
+            >
+                <FilaInterruptor
+                    icono={QrCode}
+                    titulo="Usar la asistencia por QR"
+                    descripcion="Apagada, el botón del QR no aparece en las clases."
+                    checked={c.activa}
+                    onChange={(v) => poner('activa', v)}
+                    comoInterruptor
+                />
+            </Grupo>
 
-            <div className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 p-4">
-                <div>
-                    <p className={rotulo}>Usar la asistencia por QR</p>
-                    <p className={ayuda}>Apagada, el botón del QR no aparece en las clases.</p>
-                </div>
-                <SiNo valor={c.activa} alCambiar={(v) => poner('activa', v)} etiqueta="Usar la asistencia por QR" />
-            </div>
-
-            <fieldset disabled={!c.activa} className="grid gap-5 disabled:opacity-60 sm:grid-cols-2">
-                <div>
-                    <label htmlFor="qr-radio" className={rotulo}>Distancia máxima al teléfono del profesor (metros)</label>
-                    <input
+            <fieldset disabled={!c.activa} className="min-w-0 space-y-7 disabled:opacity-60">
+                <Grupo id="qr-faro" titulo="Qué tan cerca">
+                    <FilaCampo
                         id="qr-radio"
+                        etiqueta="Distancia máxima"
+                        sufijo="m"
+                        ayuda="Al teléfono del profesor cuando abre el QR, esté donde esté la clase."
                         type="number"
                         inputMode="numeric"
                         min={10}
                         max={5000}
                         value={c.radioMetros}
                         onChange={(e) => poner('radioMetros', Number(e.target.value))}
-                        className={campo}
                     />
-                    <p className={ayuda}>El centro es el teléfono del profesor al abrir el QR, esté donde esté la clase.</p>
-                </div>
+                    <Fila etiqueta="Si el alumno está más lejos" descripcion="«Por confirmar»: el profesor lo aprueba de un toque. Sin GPS, siempre es por confirmar." apilada>
+                        <Opciones
+                            etiqueta="Si el alumno está más lejos"
+                            valor={c.fueraDelRadio}
+                            alCambiar={(v) => poner('fueraDelRadio', v)}
+                            opciones={[
+                                { valor: 'confirmar', texto: 'Entra por confirmar' },
+                                { valor: 'bloquear', texto: 'No se registra' },
+                            ]}
+                        />
+                    </Fila>
+                </Grupo>
 
-                <div>
-                    <span className={rotulo}>Si el alumno está más lejos</span>
-                    <div className="mt-1 flex flex-wrap gap-2" role="radiogroup" aria-label="Si el alumno está más lejos">
-                        {(
-                            [
-                                { v: 'confirmar', t: 'Entra por confirmar' },
-                                { v: 'bloquear', t: 'No se registra' },
-                            ] as const
-                        ).map((o) => (
-                            <button
-                                key={o.v}
-                                type="button"
-                                role="radio"
-                                aria-checked={c.fueraDelRadio === o.v}
-                                onClick={() => poner('fueraDelRadio', o.v)}
-                                className={cn(
-                                    'min-h-[44px] rounded-lg border px-3 text-sm font-medium',
-                                    c.fueraDelRadio === o.v ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300 bg-white text-gray-800'
-                                )}
-                            >
-                                {o.t}
-                            </button>
-                        ))}
-                    </div>
-                    <p className={ayuda}>«Por confirmar»: el profesor lo aprueba de un toque. Sin GPS, siempre es por confirmar.</p>
-                </div>
-
-                <div>
-                    <label htmlFor="qr-tiempo" className={rotulo}>Minutos para llegar a tiempo</label>
-                    <input
+                <Grupo id="qr-tiempos" titulo="Tiempos">
+                    <FilaCampo
                         id="qr-tiempo"
+                        etiqueta="Para llegar a tiempo"
+                        sufijo="min"
+                        ayuda="Desde que el profesor abre el QR. Quien escanea después entra como «tarde»."
                         type="number"
                         inputMode="numeric"
                         min={0}
                         max={120}
                         value={c.minutosATiempo}
                         onChange={(e) => poner('minutosATiempo', Number(e.target.value))}
-                        className={campo}
                     />
-                    <p className={ayuda}>Desde que el profesor abre el QR. Quien escanea después entra como «tarde».</p>
-                </div>
-
-                <div>
-                    <label htmlFor="qr-dias" className={rotulo}>Días hacia atrás que se pueden corregir</label>
-                    <input
+                    <FilaCampo
                         id="qr-dias"
+                        etiqueta="Se puede corregir"
+                        sufijo="días atrás"
+                        ayuda="Para marcar a quien se olvidó un día pasado. Nunca más allá del cierre del lapso."
                         type="number"
                         inputMode="numeric"
                         min={0}
                         max={365}
                         value={c.diasParaCorregir}
                         onChange={(e) => poner('diasParaCorregir', Number(e.target.value))}
-                        className={campo}
                     />
-                    <p className={ayuda}>Para marcar a quien se olvidó un día pasado. Nunca más allá del cierre del lapso.</p>
-                </div>
+                </Grupo>
 
-                <div className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 p-4 sm:col-span-2">
-                    <div>
-                        <p className={rotulo}>Un teléfono por alumno</p>
-                        <p className={ayuda}>
-                            El primer teléfono desde el que un alumno pasa asistencia queda suyo. Si lo cambia, lo desbloqueas desde su perfil.
-                        </p>
-                    </div>
-                    <SiNo valor={c.unTelefonoPorAlumno} alCambiar={(v) => poner('unTelefonoPorAlumno', v)} etiqueta="Un teléfono por alumno" />
-                </div>
+                <Grupo id="qr-telefono" titulo="Contra firmar por otro">
+                    <FilaInterruptor
+                        titulo="Un teléfono por alumno"
+                        descripcion="El primero desde el que pasa asistencia queda suyo. Si lo cambia, lo desbloqueas desde su perfil."
+                        checked={c.unTelefonoPorAlumno}
+                        onChange={(v) => poner('unTelefonoPorAlumno', v)}
+                        disabled={!c.activa}
+                        comoInterruptor
+                    />
+                </Grupo>
             </fieldset>
 
-            <div className="flex justify-end">
-                <button
-                    type="button"
-                    onClick={guardar}
-                    disabled={guardando}
-                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-indigo-600 px-5 text-sm font-semibold text-white disabled:opacity-60"
-                >
-                    {guardando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    Guardar
-                </button>
-            </div>
-        </div>
+            <BotonGuardar type="button" texto="Guardar" onClick={guardar} guardando={guardando} />
+        </Ajustes>
     );
 }
 

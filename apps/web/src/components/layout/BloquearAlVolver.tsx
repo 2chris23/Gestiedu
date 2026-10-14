@@ -2,10 +2,11 @@
 
 import * as React from 'react';
 import { Lock } from 'lucide-react';
+import { Fila } from '@/components/configuracion/ajustes';
 import { TIEMPOS_DE_BLOQUEO, elegirTiempoDeBloqueo, esLaApp, tiempoDeBloqueo } from '@/lib/el-candado';
 
 /**
- * «BLOQUEAR LA APP AL VOLVER», EN MI CUENTA
+ * «BLOQUEAR LA APP AL VOLVER», EN CONFIGURACIÓN → CONTRASEÑA Y ACCESO
  *
  * Cuánto puede estar uno fuera de la app sin que al volver pida la huella o
  * el bloqueo del teléfono (`lib/el-candado.ts`). Al abrirla, siempre. Es de
@@ -27,16 +28,11 @@ export function BloquearAlVolver() {
     if (!enLaApp) return null;
 
     return (
-        <label className="flex min-h-[56px] w-full items-center gap-3 border-t border-gray-200 px-5 py-3 text-sm font-medium text-gray-800">
-            <Lock className="h-5 w-5 shrink-0 text-gray-500" aria-hidden />
-            <span className="flex-1">
-                Bloquear la app al volver
-                <span className="mt-0.5 block text-xs font-normal text-gray-600">
-                    {valor === 0
-                        ? 'Cada vez que salgas, también al elegir una foto o usar la cámara.'
-                        : 'Al abrirla, siempre. Al volver a ella, pasado este tiempo.'}
-                </span>
-            </span>
+        <Fila
+            icono={Lock}
+            etiqueta="Bloquear al volver"
+            descripcion={valor === 0 ? 'Cada vez que salgas, también al elegir una foto o usar la cámara.' : 'Al abrirla, siempre. Al volver, pasado este tiempo.'}
+        >
             <select
                 value={valor}
                 onChange={(e) => {
@@ -44,7 +40,7 @@ export function BloquearAlVolver() {
                     elegirTiempoDeBloqueo(v);
                     setValor(v);
                 }}
-                className="min-h-[44px] rounded-lg border border-gray-300 bg-white px-2 text-sm text-gray-800"
+                className="min-h-[44px] max-w-[9rem] rounded-xl bg-gray-100 px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500"
                 aria-label="Bloquear la app al volver"
             >
                 {TIEMPOS_DE_BLOQUEO.map((t) => (
@@ -53,7 +49,7 @@ export function BloquearAlVolver() {
                     </option>
                 ))}
             </select>
-        </label>
+        </Fila>
     );
 }
 

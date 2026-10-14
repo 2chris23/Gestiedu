@@ -99,20 +99,20 @@ test.describe('Con el servidor apagado', () => {
                 page.waitForURL('**/dashboard**', { timeout: 60_000 }),
                 page.getByRole('button', { name: /^Ingresar$/ }).click(),
             ]);
-            await expect(page.getByText('Estudiantes').first()).toBeVisible({ timeout: 30_000 });
+            await expect(page.getByText('Estudiantes').filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
 
             // El ayudante toma el control, y con él al mando se vuelve a cargar
             // una vez: así la cáscara del panel queda guardada.
             await page.waitForFunction(() => !!navigator.serviceWorker?.controller, null, { timeout: 60_000 });
             await page.reload();
-            await expect(page.getByText('Estudiantes').first()).toBeVisible({ timeout: 30_000 });
+            await expect(page.getByText('Estudiantes').filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
             await expect.poll(() => lleganDatosGuardados(page), { timeout: 20_000 }).toBe(true);
             const cifras = await page.locator('main').innerText();
             // La contraseña vive en Configuración (14-oct-2026): se abre una vez con servidor.
             await page.goto(`${WEB}/dashboard/configuracion?seccion=acceso`);
             await expect(page.getByPlaceholder('Contraseña actual')).toBeVisible({ timeout: 30_000 });
             await page.goto(`${WEB}/dashboard`);
-            await expect(page.getByText('Estudiantes').first()).toBeVisible({ timeout: 30_000 });
+            await expect(page.getByText('Estudiantes').filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
 
             // ── Se apaga el servidor ───────────────────────────────────
             await puerta.cerrar();
@@ -123,7 +123,7 @@ test.describe('Con el servidor apagado', () => {
 
             // Lo mismo que se veía, y el aviso de que es lo de antes.
             await expect(page.getByText('Sin conexión con el liceo').first()).toBeVisible({ timeout: 20_000 });
-            await expect(page.getByText('Estudiantes').first()).toBeVisible();
+            await expect(page.getByText('Estudiantes').filter({ visible: true }).first()).toBeVisible();
             const primeraCifra = cifras.match(/\d+/)?.[0];
             if (primeraCifra) await expect(page.locator('main')).toContainText(primeraCifra);
 
@@ -139,7 +139,7 @@ test.describe('Con el servidor apagado', () => {
             // Abrir la app por la entrada, sin servidor: va a lo guardado.
             await page.goto(`${WEB}/login?slug=${TENANT_SLUG}`);
             await page.waitForURL('**/dashboard**', { timeout: 20_000 });
-            await expect(page.getByText('Estudiantes').first()).toBeVisible({ timeout: 20_000 });
+            await expect(page.getByText('Estudiantes').filter({ visible: true }).first()).toBeVisible({ timeout: 20_000 });
 
             // ── Vuelve el servidor ─────────────────────────────────────
             puerta = await abrirPuerta(PUERTO, DESTINO);
@@ -187,15 +187,16 @@ test.describe('Con el servidor apagado', () => {
             await page.reload();
             await expect(page.getByText('Sin conexión con el liceo').first()).toBeVisible({ timeout: 20_000 });
 
-            await page.getByRole('button', { name: /Apariencia/ }).click();
+            // Sigue abierta en su apartado (`?seccion=`); se vuelve a la lista.
             await expect(page.getByText('Logos del liceo')).toBeVisible({ timeout: 15_000 });
+            await page.getByRole('link', { name: 'Volver a Configuración' }).filter({ visible: true }).first().click();
 
             // «Seguridad» no se abrió nunca, y abre igual: desde el 30-09 la
             // app se baja entera en segundo plano (`sw.js`, `ponerseAlDia`).
             // El aviso «no está guardada» queda para lo que de verdad falte.
             await page.getByRole('button', { name: /Seguridad/ }).click();
             await expect(page.getByText('Sesión y Tiempo de Espera')).toBeVisible({ timeout: 15_000 });
-            await expect(page.getByRole('button', { name: /Apariencia/ })).toBeVisible(); // la pantalla sigue viva
+            await expect(page.getByRole('heading', { name: 'Seguridad' }).filter({ visible: true })).toBeVisible(); // la pantalla sigue viva
         } finally {
             await puerta.cerrar().catch(() => undefined);
             await context.unroute(`${API}/**`).catch(() => undefined);

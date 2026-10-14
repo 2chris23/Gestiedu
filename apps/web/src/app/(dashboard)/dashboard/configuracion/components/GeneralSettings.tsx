@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Save, Building2, Mail, Phone, MapPin, Landmark } from 'lucide-react';
+import { Landmark } from 'lucide-react';
+import { Ajustes, BotonGuardar, CargandoAjustes, EN_LA_FILA, Fila, FilaCampo, FilaInterruptor, FilaTexto, Grupo } from '@/components/configuracion/ajustes';
 import { Lista } from '@/components/ui/lista';
 import { ENTIDADES_FEDERALES } from '@/lib/entidades-federales';
 import { useQueryClient } from '@tanstack/react-query';
@@ -37,8 +38,6 @@ const DATOS_VACIOS = {
 };
 type DatosDelPlantel = typeof DATOS_VACIOS;
 
-const CAMPO =
-    'w-full px-4 py-2 min-h-[44px] border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent';
 import { instituteService, type InstituteConfig } from '@/services/institute.service';
 import { toast } from 'sonner';
 import { esPendiente } from '@/lib/por-enviar';
@@ -127,223 +126,71 @@ export function GeneralSettings() {
         }));
     };
 
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center py-12">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-                    <p className="mt-4 text-gray-600">Cargando configuración...</p>
-                </div>
-            </div>
-        );
-    }
+    if (loading) return <CargandoAjustes />;
+
+    const cambiarPlantel = (k: keyof DatosDelPlantel) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+        setPlantel((p) => ({ ...p, [k]: e.target.value }));
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Información General</h3>
-                <p className="text-sm text-gray-600 mb-6">
-                    Configura la información básica de tu instituto que se mostrará en el sistema.
-                </p>
-            </div>
+        <form onSubmit={handleSubmit}>
+            <Ajustes>
+                <Grupo id="el-liceo" titulo="El liceo" descripcion="Cómo se llama y cómo se le contacta. Sale en el sistema y en los avisos.">
+                    <FilaCampo etiqueta="Nombre *" id="name" name="name" value={formData.name} onChange={handleChange} required placeholder="U.E. Liceo Bolívar" />
+                    <FilaCampo etiqueta="Siglas *" id="code" name="code" value={formData.code} onChange={handleChange} required maxLength={20} placeholder="IED" />
+                    <FilaCampo etiqueta="Correo *" type="email" id="email" name="email" value={formData.email} onChange={handleChange} required placeholder="contacto@liceo.edu.ve" />
+                    <FilaCampo etiqueta="Teléfono" type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange} placeholder="0241 555 0100" />
+                    <FilaTexto etiqueta="Dirección" id="address" name="address" value={formData.address} onChange={handleChange} rows={2} placeholder="Av. Principal, Ciudad" />
+                </Grupo>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Nombre del Instituto */}
-                <div className="md:col-span-2">
-                    <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-                        <Building2 className="inline w-4 h-4 mr-1" />
-                        Nombre del Instituto *
-                    </label>
-                    <input
-                        type="text"
-                        id="name"
-                        name="name"
-                        value={formData.name}
-                        onChange={handleChange}
-                        required
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder="Ej: U.E. Liceo Bolívar"
-                    />
-                </div>
-
-                {/* Código */}
-                <div>
-                    <label htmlFor="code" className="block text-sm font-medium text-gray-700 mb-2">
-                        Código/Siglas *
-                    </label>
-                    <input
-                        type="text"
-                        id="code"
-                        name="code"
-                        value={formData.code}
-                        onChange={handleChange}
-                        required
-                        maxLength={20}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder="Ej: IED"
-                    />
-                    <p className="mt-1 text-xs text-gray-500">Máximo 20 caracteres</p>
-                </div>
-
-                {/* Email */}
-                <div>
-                    <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                        <Mail className="inline w-4 h-4 mr-1" />
-                        Email de Contacto *
-                    </label>
-                    <input
-                        type="email"
-                        id="email"
-                        name="email"
-                        value={formData.email}
-                        onChange={handleChange}
-                        required
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder="contacto@liceo.edu.ve"
-                    />
-                </div>
-
-                {/* Teléfono */}
-                <div>
-                    <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
-                        <Phone className="inline w-4 h-4 mr-1" />
-                        Teléfono
-                    </label>
-                    <input
-                        type="tel"
-                        id="phone"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleChange}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder="+58-212-555-0100"
-                    />
-                </div>
-
-                {/* Dirección */}
-                <div className="md:col-span-2">
-                    <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-2">
-                        <MapPin className="inline w-4 h-4 mr-1" />
-                        Dirección
-                    </label>
-                    <textarea
-                        id="address"
-                        name="address"
-                        value={formData.address}
-                        onChange={handleChange}
-                        rows={3}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder="Av. Principal, Ciudad, País"
-                    />
-                </div>
-            </div>
-
-            {/* Datos oficiales del plantel (MPPE) */}
-            <section className="space-y-4 border-t border-gray-200 pt-6" aria-labelledby="datos-oficiales">
-                <div>
-                    <h3 id="datos-oficiales" className="flex items-center gap-2 text-lg font-medium text-gray-900">
-                        <Landmark className="h-5 w-5" aria-hidden /> Datos oficiales del plantel
-                    </h3>
-                    <p className="mt-1 text-sm text-gray-600">
-                        Los del Ministerio de Educación. Salen en la cabecera de la boleta, la constancia, el resumen
-                        final y el plan de evaluación.
-                    </p>
-                </div>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <label htmlFor="nombreOficial" className="block md:col-span-2">
-                        <span className="mb-1 block text-sm font-medium text-gray-700">Nombre oficial (como en el MPPE)</span>
-                        <input id="nombreOficial" className={CAMPO} maxLength={160} placeholder="U.E.N. «…»"
-                            value={plantel.nombreOficial} onChange={(e) => setPlantel((p) => ({ ...p, nombreOficial: e.target.value }))} />
-                    </label>
-                    <label htmlFor="codigoDea" className="block">
-                        <span className="mb-1 block text-sm font-medium text-gray-700">Código DEA (del plantel)</span>
-                        <input id="codigoDea" className={CAMPO} maxLength={20} placeholder="OD00541105" autoCapitalize="characters"
-                            value={plantel.codigoDea} onChange={(e) => setPlantel((p) => ({ ...p, codigoDea: e.target.value }))} />
-                    </label>
-                    <label htmlFor="codigoEstadistico" className="block">
-                        <span className="mb-1 block text-sm font-medium text-gray-700">Código estadístico (6 dígitos)</span>
-                        <input id="codigoEstadistico" className={CAMPO} inputMode="numeric" maxLength={8} placeholder="111299"
-                            value={plantel.codigoEstadistico} onChange={(e) => setPlantel((p) => ({ ...p, codigoEstadistico: e.target.value }))} />
-                    </label>
-                    <label htmlFor="codigoDependencia" className="block">
-                        <span className="mb-1 block text-sm font-medium text-gray-700">Código de dependencia (9 dígitos)</span>
-                        <input id="codigoDependencia" className={CAMPO} inputMode="numeric" maxLength={11} placeholder="123456789"
-                            value={plantel.codigoDependencia} onChange={(e) => setPlantel((p) => ({ ...p, codigoDependencia: e.target.value }))} />
-                    </label>
-                    <label htmlFor="codigoDelPlanDeEstudio" className="block">
-                        <span className="mb-1 block text-sm font-medium text-gray-700">Código del plan de estudio</span>
-                        <input id="codigoDelPlanDeEstudio" className={CAMPO} maxLength={12} placeholder="31059"
-                            value={plantel.codigoDelPlanDeEstudio} onChange={(e) => setPlantel((p) => ({ ...p, codigoDelPlanDeEstudio: e.target.value }))} />
-                    </label>
-                    <label htmlFor="zonaEducativa" className="block">
-                        <span className="mb-1 block text-sm font-medium text-gray-700">Zona educativa</span>
-                        <input id="zonaEducativa" className={CAMPO} maxLength={160} placeholder="Zona Educativa del estado Carabobo"
-                            value={plantel.zonaEducativa} onChange={(e) => setPlantel((p) => ({ ...p, zonaEducativa: e.target.value }))} />
-                    </label>
-                    <div>
-                        <span className="mb-1 block text-sm font-medium text-gray-700" id="entidadFederal-label">Entidad federal</span>
+                <Grupo
+                    id="datos-oficiales"
+                    titulo="Datos oficiales del plantel"
+                    descripcion="Los del Ministerio de Educación. Salen en la cabecera de la boleta, la constancia, el resumen final y el plan de evaluación."
+                >
+                    <FilaCampo etiqueta="Nombre oficial" id="nombreOficial" maxLength={160} placeholder="U.E.N. «…»" value={plantel.nombreOficial} onChange={cambiarPlantel('nombreOficial')} />
+                    <FilaCampo etiqueta="Código DEA" id="codigoDea" maxLength={20} placeholder="OD00541105" autoCapitalize="characters" value={plantel.codigoDea} onChange={cambiarPlantel('codigoDea')} />
+                    <FilaCampo etiqueta="Código estadístico" id="codigoEstadistico" inputMode="numeric" maxLength={8} placeholder="6 dígitos" value={plantel.codigoEstadistico} onChange={cambiarPlantel('codigoEstadistico')} />
+                    <FilaCampo etiqueta="Código de dependencia" id="codigoDependencia" inputMode="numeric" maxLength={11} placeholder="9 dígitos" value={plantel.codigoDependencia} onChange={cambiarPlantel('codigoDependencia')} />
+                    <FilaCampo etiqueta="Plan de estudio" id="codigoDelPlanDeEstudio" maxLength={12} placeholder="31059" value={plantel.codigoDelPlanDeEstudio} onChange={cambiarPlantel('codigoDelPlanDeEstudio')} />
+                    <FilaCampo etiqueta="Zona educativa" id="zonaEducativa" maxLength={160} placeholder="Carabobo" value={plantel.zonaEducativa} onChange={cambiarPlantel('zonaEducativa')} />
+                    <Fila etiqueta="Entidad federal" etiquetaId="entidadFederal-label">
                         <Lista
                             id="entidadFederal"
                             etiqueta="Entidad federal"
                             valor={plantel.entidadFederal || SIN_ENTIDAD}
                             alCambiar={(v) => setPlantel((p) => ({ ...p, entidadFederal: v === SIN_ENTIDAD ? '' : v }))}
                             opciones={[{ valor: SIN_ENTIDAD, texto: 'Sin elegir' }, ...ENTIDADES_FEDERALES.map((e) => ({ valor: e, texto: e }))]}
+                            className={EN_LA_FILA}
                         />
-                    </div>
-                    <label htmlFor="municipio" className="block">
-                        <span className="mb-1 block text-sm font-medium text-gray-700">Municipio</span>
-                        <input id="municipio" className={CAMPO} maxLength={160}
-                            value={plantel.municipio} onChange={(e) => setPlantel((p) => ({ ...p, municipio: e.target.value }))} />
-                    </label>
-                    <label htmlFor="parroquia" className="block">
-                        <span className="mb-1 block text-sm font-medium text-gray-700">Parroquia</span>
-                        <input id="parroquia" className={CAMPO} maxLength={160}
-                            value={plantel.parroquia} onChange={(e) => setPlantel((p) => ({ ...p, parroquia: e.target.value }))} />
-                    </label>
-                    <label htmlFor="circuitoEducativo" className="block">
-                        <span className="mb-1 block text-sm font-medium text-gray-700">Circuito educativo</span>
-                        <input id="circuitoEducativo" className={CAMPO} maxLength={160} placeholder="Circuito N.º 2"
-                            value={plantel.circuitoEducativo} onChange={(e) => setPlantel((p) => ({ ...p, circuitoEducativo: e.target.value }))} />
-                    </label>
-                    <label htmlFor="textoDelMinisterio" className="block md:col-span-2">
-                        <span className="mb-1 block text-sm font-medium text-gray-700">Encabezado del ministerio (una línea por renglón)</span>
-                        <textarea id="textoDelMinisterio" rows={2} maxLength={300}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                            placeholder={'República Bolivariana de Venezuela\nMinisterio del Poder Popular para la Educación'}
-                            value={plantel.textoDelMinisterio} onChange={(e) => setPlantel((p) => ({ ...p, textoDelMinisterio: e.target.value }))} />
-                        <span className="mt-1 block text-xs text-gray-500">Vacío: el del Ministerio del Poder Popular para la Educación.</span>
-                    </label>
-                    <label htmlFor="logoDelMinisterio" className="flex min-h-[44px] cursor-pointer items-center gap-3 md:col-span-2">
-                        <input id="logoDelMinisterio" type="checkbox" className="h-5 w-5 accent-indigo-600"
-                            checked={plantel.logoDelMinisterio !== 'NO'}
-                            onChange={(e) => setPlantel((p) => ({ ...p, logoDelMinisterio: e.target.checked ? '' : 'NO' }))} />
-                        <span className="text-sm text-gray-800">
-                            Poner el logo del Ministerio en los documentos <span className="text-gray-600">(a la izquierda; el del liceo, a la derecha)</span>
-                        </span>
-                    </label>
-                </div>
-            </section>
+                    </Fila>
+                    <FilaCampo etiqueta="Municipio" id="municipio" maxLength={160} value={plantel.municipio} onChange={cambiarPlantel('municipio')} />
+                    <FilaCampo etiqueta="Parroquia" id="parroquia" maxLength={160} value={plantel.parroquia} onChange={cambiarPlantel('parroquia')} />
+                    <FilaCampo etiqueta="Circuito educativo" id="circuitoEducativo" maxLength={160} placeholder="N.º 2" value={plantel.circuitoEducativo} onChange={cambiarPlantel('circuitoEducativo')} />
+                </Grupo>
 
-            {/* Botón Guardar */}
-            <div className="flex justify-end pt-6 border-t border-gray-200">
-                <button
-                    type="submit"
-                    disabled={saving}
-                    className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {saving ? (
-                        <>
-                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                            Guardando...
-                        </>
-                    ) : (
-                        <>
-                            <Save className="w-5 h-5 mr-2" />
-                            Guardar Cambios
-                        </>
-                    )}
-                </button>
-            </div>
+                <Grupo id="membrete" titulo="El membrete">
+                    <FilaTexto
+                        etiqueta="Encabezado del ministerio"
+                        id="textoDelMinisterio"
+                        rows={2}
+                        maxLength={300}
+                        placeholder={'República Bolivariana de Venezuela\nMinisterio del Poder Popular para la Educación'}
+                        value={plantel.textoDelMinisterio}
+                        onChange={cambiarPlantel('textoDelMinisterio')}
+                        ayuda="Una línea por renglón. Vacío: el del Ministerio del Poder Popular para la Educación."
+                    />
+                    <FilaInterruptor
+                        id="logoDelMinisterio"
+                        icono={Landmark}
+                        titulo="Logo del Ministerio"
+                        descripcion="A la izquierda de los documentos; el del liceo, a la derecha."
+                        checked={plantel.logoDelMinisterio !== 'NO'}
+                        onChange={(v) => setPlantel((p) => ({ ...p, logoDelMinisterio: v ? '' : 'NO' }))}
+                    />
+                </Grupo>
+
+                <BotonGuardar guardando={saving} />
+            </Ajustes>
         </form>
     );
 }
