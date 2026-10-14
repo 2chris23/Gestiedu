@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginViaUI, queryTenantDb } from './helpers';
+import { WEB_BASE, loginViaUI, queryTenantDb } from './helpers';
 
 /**
  * UNA FICHA GUARDADA VALE PARA TODAS (`public/sw.js`, `laPlantilla`)
@@ -16,6 +16,12 @@ import { loginViaUI, queryTenantDb } from './helpers';
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
 test('PLANTILLA-01: sin su página guardada, la ficha de otro alumno sale con su nombre', async ({ page, context }) => {
+    // Contra el servidor de desarrollo la app no arranca sin él (CLAUDE.md,
+    // «Sin señal se trabaja»): sale «no está guardada» aunque el ayudante haya
+    // servido la plantilla. Se salta diciéndolo, no se da por buena.
+    const html = await (await fetch(`${WEB_BASE}/login`)).text().catch(() => '');
+    test.skip(html.includes('hmr-client') || html.includes('webpack-hmr'), 'Necesita la web COMPILADA: npm run build && npx next start (en el 3000 o con WEB_BASE)');
+
     const alumnos = await queryTenantDb<{ id: string; firstName: string; lastName: string }>(
         `SELECT id, "firstName", "lastName" FROM users WHERE role = 'STUDENT' AND "isActive" = true ORDER BY id LIMIT 2`
     );

@@ -226,6 +226,12 @@ test.describe('Precarga: sin conexión, todo', () => {
 
     test('PRECARGA-09: descarga del admin a 38 Mbps con CPU ×4 tarda ≤ 10 s y sin aviso de conexión', async ({ browser }) => {
         test.setTimeout(180_000);
+        // Es una medida de tiempo: con el servidor de desarrollo cada pantalla
+        // se compila al pedirla (medido 2026-10-14: «bajando» tardó 20 s y
+        // «páginas» no acabó en 30). No mide la app, mide al compilador. Se
+        // salta diciéndolo.
+        const html = await (await fetch(`${WEB_BASE}/login`)).text().catch(() => '');
+        test.skip(html.includes('hmr-client') || html.includes('webpack-hmr'), 'Necesita la web COMPILADA: npm run build && npx next start (en el 3000 o con WEB_BASE)');
         // 1. Que el paquete esté armado de antemano
         const s = await loginApi('admin@testing.edu.ve');
         const h = { Authorization: `Bearer ${s.accessToken}`, 'X-Institute-Slug': TENANT_SLUG };
