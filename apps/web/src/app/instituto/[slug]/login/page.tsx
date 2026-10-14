@@ -91,6 +91,8 @@ export default function InstituteLoginPage() {
             // Ver `lib/credencial-en-memoria.ts`.
             guardarCredencial(data?.tokens?.accessToken || data?.accessToken);
 
+            // Lo que el enrutador guardó sin sesión ya no vale (ver el login principal).
+            router.refresh();
             router.push('/dashboard');
         } catch {
             setError('Error de conexión. Intenta nuevamente.');

@@ -305,6 +305,18 @@ export default function LoginPage() {
 
             // Store user data in Zustand for UI
             setAuth(user, accessToken || '', result.keepSession);
+            /**
+             * LO QUE EL ENRUTADOR GUARDÓ SIN SESIÓN YA NO VALE
+             *
+             * Sin cookies pero con la sesión vieja en el almacén, esta pantalla
+             * manda al Inicio (arriba); el guardián lo devuelve a
+             * `/login?redirect=/dashboard`, y el enrutador del navegador se
+             * guarda esa vuelta. Al entrar, `push('/dashboard')` la reutilizaba
+             * sin preguntar al servidor: la contraseña era buena, las cookies
+             * quedaban puestas y la pantalla seguía en el login (PAGOS-UI-04,
+             * medido 2026-10-14). `refresh()` lo tira antes de ir.
+             */
+            router.refresh();
             router.push('/dashboard');
 
         } catch (err) {
@@ -379,6 +391,7 @@ export default function LoginPage() {
 
             guardarCredencial(resultado.tokens?.accessToken || resultado.accessToken);
             setAuth(resultado.user, resultado.accessToken || '', true);
+            router.refresh();
             router.push('/dashboard');
         } catch {
             setError('No se pudo entrar con la huella. Prueba con tu contraseña.');
