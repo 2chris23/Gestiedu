@@ -260,7 +260,13 @@ responde 403. Reglas en `MAPA` §8b y §8g.
   admin lo confirma (y entonces se cobra con la cuenta de «Registrar pago»).
   Un aviso le recuerda la cuota N días antes (`jobs/recordatorio-de-cuotas.job.ts`),
   una sola vez por cuota aunque haya varios procesos.
-- **Reporte del mes** para imprimir: `/dashboard/pagos/reporte?mes=`.
+- **Reporte del mes** para imprimir: `/dashboard/pagos/reporte?mes=` (desde Movimientos).
+- **Diseño como Rial** (pedido por Cristian, 14-oct-2026): sin título ni
+  explicación arriba; el saldo grande con su ojo, las cuatro partes en
+  círculos debajo, «Entró/Salió» del mes, las cuentas del ciclo y
+  **Movimientos** (cada entrada y salida, mes con flechas). Añadir va por el
+  «+» que flota (`components/finanzas/CabezaDeFinanzas.tsx`). El selector de
+  ciclo se quitó de arriba: irá en otro sitio (por ahora, `?ciclo=`).
 - Sin conexión solo se anotan fondos y gastos (sin la foto); pagar al personal
   y confirmar pagos piden servidor: es dinero y llevan recibo correlativo.
 

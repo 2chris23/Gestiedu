@@ -127,7 +127,10 @@ function medirElTitulo() {
     // El Inicio del admin en el teléfono no lleva título a la vista, a
     // propósito: su cabecera es el bloque azul del diseño (InicioDelAdminMovil).
     const conCabeceraAzul = [...main.querySelectorAll<HTMLElement>('[data-diseno="cabecera-azul"]')].some((e) => e.getBoundingClientRect().width > 0);
-    if (!h1 && conCabeceraAzul) return { columna, izquierda: null, letra: null, mains: document.querySelectorAll('main').length, aProposito: true };
+    // Finanzas tampoco, por decisión de Cristian (2026-10-14): «si tocó en
+    // Finanzas sabe qué es». La pantalla lo declara con `data-sin-titulo`.
+    const sinTituloAProposito = !!main.querySelector('[data-sin-titulo]');
+    if (!h1 && (conCabeceraAzul || sinTituloAProposito)) return { columna, izquierda: null, letra: null, mains: document.querySelectorAll('main').length, aProposito: true };
     if (!h1) return { columna, izquierda: null, letra: null, mains: document.querySelectorAll('main').length };
     const rango = document.createRange();
     rango.selectNodeContents(h1);

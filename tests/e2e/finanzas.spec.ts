@@ -31,7 +31,9 @@ test.describe.serial('Finanzas', () => {
             await expect(page.getByText('Fondos disponibles')).toBeVisible({ timeout: 30000 });
             const antes = dineroDe(await saldo.innerText());
 
-            await page.getByRole('button', { name: 'Agregar fondos' }).first().click();
+            // Se añade por el «+» que flota abajo (como Rial).
+            await page.getByRole('button', { name: 'Añadir', exact: true }).click();
+            await page.getByRole('menuitem', { name: /Agregar fondos/ }).click();
             const fondo = page.getByRole('dialog', { name: 'Agregar fondos' });
             await fondo.getByRole('radio', { name: 'Donación' }).click();
             await fondo.getByLabel(/^Monto/).fill('100');
@@ -39,7 +41,8 @@ test.describe.serial('Finanzas', () => {
             await expect(page.getByText('Fondos agregados')).toBeVisible({ timeout: 15000 });
             await expect.poll(async () => dineroDe(await saldo.innerText()), { timeout: 15000 }).toBeCloseTo(antes + 100, 2);
 
-            await page.getByRole('button', { name: 'Anotar un gasto' }).click();
+            await page.getByRole('button', { name: 'Añadir', exact: true }).click();
+            await page.getByRole('menuitem', { name: /Anotar un gasto/ }).click();
             const gasto = page.getByRole('dialog', { name: 'Anotar un gasto' });
             await gasto.getByLabel('¿Qué fue?').fill('Tablero de básquet (prueba)');
             await gasto.getByRole('radio', { name: 'Compras' }).click();
@@ -80,13 +83,14 @@ test.describe.serial('Finanzas', () => {
         }
     });
 
-    test('REPORTE-UI-01: del mes en el calendario a su reporte para imprimir, que cuadra', async ({ page }, testInfo) => {
+    test('REPORTE-UI-01: de los movimientos del mes a su reporte para imprimir, que cuadra', async ({ page }, testInfo) => {
         try {
             await loginViaUI(page, 'admin@testing.edu.ve', '123456');
             await page.goto(`${WEB_BASE}/dashboard/pagos`);
             await expect(page.getByText('Fondos disponibles')).toBeVisible({ timeout: 30000 });
             const disponibles = await page.locator('p', { hasText: /^-?\$/ }).first().innerText();
-            await page.getByRole('button', { name: /Ver el mes en días/ }).filter({ hasText: 'Este mes' }).click();
+            // Los movimientos abren en el mes en curso, con su reporte.
+            await expect(page.getByRole('heading', { name: 'Movimientos' })).toBeVisible();
             await page.getByRole('link', { name: 'Reporte del mes' }).click();
             await expect(page).toHaveURL(/\/dashboard\/pagos\/reporte\?mes=\d{4}-\d{2}/);
             const resumen = page.getByRole('table', { name: 'Resumen del mes' });

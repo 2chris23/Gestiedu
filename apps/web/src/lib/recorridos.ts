@@ -176,7 +176,6 @@ const RECORRIDOS: Array<{ ruta: RegExp } & Recorrido> = [
         ruta: /^\/dashboard\/pagos\/?$/,
         pasos: [
             { donde: 'pantalla', titulo: 'Las finanzas del liceo', texto: 'Lo que tiene el liceo, lo que le deben, lo que paga y lo que gasta.' },
-            { donde: 'acciones', titulo: 'El ciclo', texto: 'Elige otro ciclo para ver los anteriores. Un ciclo cerrado se ve, pero no se toca.' },
             {
                 donde: 'finanzas-resumen',
                 titulo: 'Empieza por el saldo',

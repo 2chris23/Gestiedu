@@ -4,16 +4,16 @@ import { Button } from '@/components/ui/button';
 import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import * as React from 'react';
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle2, ChevronDown, GraduationCap, Loader2, Lock, Search, ShoppingCart, Users, Wallet } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, Lock, Search, Wallet } from 'lucide-react';
 import { VistaResumen } from '@/components/finanzas/VistaResumen';
 import { VistaDelPersonal } from '@/components/finanzas/VistaDelPersonal';
-import { VistaDeGastosYFondos } from '@/components/finanzas/GastosYFondos';
+import { FormularioDeFondo, FormularioDeGasto, VistaDeGastosYFondos } from '@/components/finanzas/GastosYFondos';
+import { BotonAnadir, PartesDeFinanzas, SaldoDisponible, VISTAS, type Vista } from '@/components/finanzas/CabezaDeFinanzas';
+import { useGastos } from '@/hooks/useFinanzas';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { BotonComoFunciona } from '@/components/common/Recorrido';
 import { useYaArranco } from '@/hooks/useYaArranco';
 import { CalendarioDelCiclo } from '@/components/pagos/CalendarioDelCiclo';
 import { MesEnDias, type DeudorDelMes } from '@/components/pagos/MesEnDias';
-import { SelectorDeCiclo } from '@/components/pagos/SelectorDeCiclo';
 import { mesesDelCiclo, mesDe } from '@/lib/calendario-del-ciclo';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -275,21 +275,14 @@ function DialogoDeFicha({ studentId, ciclo, alCerrar }: { studentId: string | nu
 // FINANZAS: la página (2026-10-01)
 // ════════════════════════════════════════════════════════════════════════════
 
-type Vista = 'resumen' | 'estudiantes' | 'personal' | 'gastos';
-const VISTAS: Array<{ id: Vista; nombre: string; corto: string; pista: string; icono: typeof Wallet }> = [
-    { id: 'resumen', nombre: 'Resumen', corto: 'Resumen', pista: 'Fondos y el ciclo mes a mes', icono: Wallet },
-    { id: 'estudiantes', nombre: 'Estudiantes', corto: 'Estudiantes', pista: 'Cuotas, cobros y quién debe', icono: GraduationCap },
-    { id: 'personal', nombre: 'Personal', corto: 'Personal', pista: 'Sueldos, vacaciones y recibos', icono: Users },
-    { id: 'gastos', nombre: 'Gastos y fondos', corto: 'Gastos', pista: 'Compras, reparaciones, ingresos', icono: ShoppingCart },
-];
 
 /**
  * FINANZAS DEL LICEO
  *
  * Cristian: «hacer aquí en pagos controlar también los pagos a los profesores,
  * al personal y gastos extras… que sea para manejar sus finanzas». La misma
- * dirección de siempre (`/dashboard/pagos`), con cuatro pestañas y el ciclo
- * que se mira arriba; los dos van en la dirección (`?vista=&ciclo=`), así que
+ * dirección de siempre (`/dashboard/pagos`): arriba el saldo, debajo sus
+ * cuatro partes en círculos y el «+» para añadir (como Rial, 2026-10-14); los dos van en la dirección (`?vista=&ciclo=`), así que
  * volver atrás y compartir el enlace llevan al mismo sitio.
  */
 export default function FinanzasPage() {
@@ -300,6 +293,11 @@ export default function FinanzasPage() {
     const ciclo = buscar.get('ciclo');
     const vista = (VISTAS.some((v) => v.id === buscar.get('vista')) ? buscar.get('vista') : 'resumen') as Vista;
     const { data: ciclos = [] } = useCiclosDePagos(activo);
+    // Los formularios del «+» (y el saldo inicial del Resumen) viven aquí:
+    // se abren desde cualquier parte de las finanzas.
+    const { data: g } = useGastos(activo, ciclo);
+    const [agregando, setAgregando] = React.useState<null | 'SALDO_INICIAL' | 'DONACION'>(null);
+    const [anotando, setAnotando] = React.useState(false);
     const ir = (cambios: { ciclo?: string | null; vista?: Vista }) => {
         const q = new URLSearchParams();
         const c = cambios.ciclo !== undefined ? cambios.ciclo : ciclo;
@@ -342,54 +340,32 @@ export default function FinanzasPage() {
     const monedas = { base, aceptadas: (ajustes?.acceptedCurrencies === 'BOTH' || !ajustes?.acceptedCurrencies ? ['USD', 'VES'] : [ajustes.acceptedCurrencies]) as Moneda[] };
 
     return (
-        <div className="space-y-5">
-            <EncabezadoDePantalla
-                titulo="Finanzas"
-                descripcion="Lo que tiene el liceo, lo que le deben, lo que paga y lo que gasta."
-                acciones={
-                    <>
-                        {ciclos.length > 0 && <SelectorDeCiclo ciclos={ciclos} valor={ciclo} alCambiar={(c) => ir({ ciclo: c })} />}
-                        <BotonComoFunciona recorrido="finanzas" />
-                    </>
-                }
-            />
-            {elCiclo && ciclos.length === 0 && <p className="-mt-2 text-sm font-semibold text-gray-700">Ciclo escolar {elCiclo.name}{elCiclo.closed ? ' · cerrado' : ''}</p>}
+        <div className="space-y-5 pb-20" data-sin-titulo>
+            {/* Sin título ni explicación (Cristian: «si tocó en Finanzas sabe qué es»;
+                las dudas, en el «?» de arriba). El ciclo irá en otro sitio: por ahora
+                se elige con `?ciclo=`. */}
+            <h1 className="sr-only">Finanzas</h1>
 
-            {/* Las cuatro partes, en una barra de pastillas (como las monedas de Rial):
-                las tarjetas grandes de antes ocupaban media pantalla del teléfono. */}
-            <nav className="grid grid-cols-4 gap-1 rounded-2xl bg-gray-100 p-1" aria-label="Partes de las finanzas">
-                {VISTAS.map((v) => {
-                    const Icono = v.icono;
-                    const activa = vista === v.id;
-                    return (
-                        <button
-                            key={v.id}
-                            type="button"
-                            onClick={() => ir({ vista: v.id })}
-                            data-pestana
-                            data-recorrido={`finanzas-${v.id}`}
-                            aria-current={activa ? 'page' : undefined}
-                            aria-describedby={`pista-${v.id}`}
-                            className={cn(
-                                'flex min-h-[52px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-center transition-colors',
-                                activa ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-700 hover:bg-white/60'
-                            )}
-                        >
-                            <Icono className={cn('h-5 w-5 shrink-0', activa ? 'text-indigo-600' : 'text-gray-500')} aria-hidden />
-                            <span className="max-w-full truncate text-xs font-semibold">{v.corto}</span>
-                            {/* Oculta pero leída como descripción (aria-describedby lee lo `hidden`). */}
-                            <span id={`pista-${v.id}`} hidden>
-                                {v.nombre}: {v.pista}
-                            </span>
-                        </button>
-                    );
-                })}
-            </nav>
+            <SaldoDisponible ciclo={ciclo} />
+            {/* Las cuatro partes, en círculos debajo del saldo (los accesos de Rial). */}
+            <PartesDeFinanzas vista={vista} alElegir={(v) => ir({ vista: v })} />
 
-            {vista === 'resumen' && <VistaResumen ciclo={ciclo} monedas={monedas} irA={(v) => ir({ vista: v })} />}
+            {vista === 'resumen' && <VistaResumen ciclo={ciclo} irA={(v) => ir({ vista: v })} alPonerSaldo={() => setAgregando('SALDO_INICIAL')} />}
             {vista === 'estudiantes' && <VistaDeEstudiantes ciclo={ciclo} />}
             {vista === 'personal' && <VistaDelPersonal ciclo={ciclo} />}
             {vista === 'gastos' && <VistaDeGastosYFondos ciclo={ciclo} monedas={monedas} cerrado={Boolean(elCiclo?.closed)} />}
+
+            {/* Un ciclo cerrado se ve, no se toca: sin «+». */}
+            {!elCiclo?.closed && (
+                <BotonAnadir
+                    alAgregarFondos={() => setAgregando('DONACION')}
+                    alAnotarGasto={() => setAnotando(true)}
+                    alPagarPersonal={() => ir({ vista: 'personal' })}
+                    alCobrar={() => ir({ vista: 'estudiantes' })}
+                />
+            )}
+            {agregando && <FormularioDeFondo abierto alCerrar={() => setAgregando(null)} monedas={monedas} conceptoInicial={agregando} />}
+            <FormularioDeGasto abierto={anotando} alCerrar={() => setAnotando(false)} categorias={g?.categorias ?? ['Otro']} monedas={monedas} />
         </div>
     );
 }

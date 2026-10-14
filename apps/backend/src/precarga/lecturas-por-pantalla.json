@@ -222,11 +222,13 @@
       "/avisos/preferencias",
       "/finanzas/fondos",
       "/finanzas/gastos",
+      "/finanzas/mes?mes={mes}",
       "/finanzas/personal",
       "/finanzas/resumen",
       "/institutes/current/config",
       "/pae/config",
       "/payments/cycles",
+      "/payments/month?month={mes}",
       "/payments/overview",
       "/payments/reportes",
       "/payments/settings"
