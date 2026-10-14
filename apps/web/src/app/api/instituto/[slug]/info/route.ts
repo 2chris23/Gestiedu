@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { BACKEND_URL } from '@/config/env';
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '');
+const API_URL = BACKEND_URL;
 
 /**
  * GET /api/instituto/[slug]/info

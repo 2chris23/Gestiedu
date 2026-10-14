@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { BACKEND_URL } from '@/config/env';
 
 /**
  * `secure` manda la cookie SOLO por conexión cifrada (https).
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Llamar al backend
-        const backendUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '');
+        const backendUrl = BACKEND_URL;
         const response = await fetch(`${backendUrl}/api/superadmin/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

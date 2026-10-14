@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { BACKEND_URL } from '@/config/env';
 import { cookies } from 'next/headers';
 
 /**
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
             return response;
         }
 
-        const backendUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '');
+        const backendUrl = BACKEND_URL;
         const backendRes = await fetch(`${backendUrl}/api/superadmin/auth/refresh`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

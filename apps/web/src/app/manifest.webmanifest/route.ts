@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { BACKEND_URL } from '@/config/env';
 
 /**
  * LA FICHA DE LA APP — Y ES LA DE CADA LICEO, NO UNA GENÉRICA
@@ -22,6 +23,8 @@ import { NextRequest, NextResponse } from 'next/server';
  */
 
 const API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '');
+/** Para lo que pide ESTE servidor (con el túnel, la pública se llamaría a sí misma). */
+const API_INTERNA = BACKEND_URL;
 
 /** Los colores del liceo llegan como '#RRGGBB'; cualquier otra cosa se ignora. */
 function colorSeguro(valor: unknown, porDefecto: string): string {
@@ -49,7 +52,7 @@ function elLiceoDeLaPeticion(request: NextRequest): string | null {
 
 async function elLiceo(slug: string) {
     try {
-        const r = await fetch(`${API}/api/institutes/current/config`, {
+        const r = await fetch(`${API_INTERNA}/api/institutes/current/config`, {
             headers: { 'X-Institute-Slug': slug },
             cache: 'no-store',
         });

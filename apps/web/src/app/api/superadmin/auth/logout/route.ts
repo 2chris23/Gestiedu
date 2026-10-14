@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { BACKEND_URL } from '@/config/env';
 import { cookies } from 'next/headers';
 
 export async function POST(request: NextRequest) {
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Llamar al backend para logout incluyendo el token de autorización
-        const backendUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '');
+        const backendUrl = BACKEND_URL;
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
         };

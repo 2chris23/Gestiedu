@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { BACKEND_URL } from '@/config/env';
 import { cookies } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
         }
 
-        const backendUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '');
+        const backendUrl = BACKEND_URL;
         const searchParams = request.nextUrl.searchParams.toString();
         const url = `${backendUrl}/api/superadmin/institutes${searchParams ? `?${searchParams}` : ''}`;
 
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
         }
 
-        const backendUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '');
+        const backendUrl = BACKEND_URL;
         const body = await request.json();
 
         const response = await fetch(`${backendUrl}/api/superadmin/institutes`, {

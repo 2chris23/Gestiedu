@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { BACKEND_URL } from '@/config/env';
 import { cookies } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
         const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || cookieStore.get('superadmin_access_token')?.value;
         if (!token) return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
 
-        const backendUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '');
+        const backendUrl = BACKEND_URL;
         const response = await fetch(`${backendUrl}/api/superadmin/monitoring/health`, {
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
             cache: 'no-store',
