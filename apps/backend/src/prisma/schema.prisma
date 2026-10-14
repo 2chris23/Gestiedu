@@ -2033,6 +2033,10 @@ model PaymentSettings {
   /// va siempre y no está aquí: es el cargo de quien tiene cuenta.
   areasDelPersonal Json @default("[]")
 
+  /// Los movimientos recurrentes del liceo (el internet, el sueldo de la
+  /// cocinera…): plantillas para anotarlos de un toque desde «Nuevo movimiento».
+  recurrentes Json @default("[]")
+
   /// Lo que lleva un ciclo nuevo (ver `AjustesDePagosDelCiclo`).
   descuentoHermanosPct  Int     @default(0)
   moraTipo              String  @default("NINGUNA")

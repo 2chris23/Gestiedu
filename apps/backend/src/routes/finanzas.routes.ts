@@ -20,7 +20,10 @@ import {
     getReciboDelPersonal,
     getResumen,
     guardarAcuerdo,
+    getRecurrentes,
+    getTasa,
     guardarAreas,
+    guardarRecurrentes,
     guardarCategorias,
     guardarNomina,
     pagarAlPersonal,
@@ -98,6 +101,24 @@ export async function finanzasRoutes(fastify: FastifyInstance) {
         guardarCategorias as any
     );
 
+    // La tasa la puede pedir cualquiera con sesión: también el representante que reporta un pago.
+    fastify.get('/tasa', { preHandler: [authenticate] }, getTasa as any);
+    fastify.get('/recurrentes', admin, getRecurrentes as any);
+    fastify.put(
+        '/recurrentes',
+        {
+            ...admin,
+            schema: {
+                body: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['recurrentes'],
+                    properties: { recurrentes: { type: 'array', maxItems: 40, items: { type: 'object' } } },
+                },
+            },
+        },
+        guardarRecurrentes as any
+    );
     fastify.put(
         '/areas',
         { ...admin, schema: { body: { type: 'object', additionalProperties: false, required: ['areas'], properties: { areas: { type: 'array', maxItems: 40, items: { type: 'string', maxLength: 40 } } } } } },

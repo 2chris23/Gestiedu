@@ -278,6 +278,17 @@ responde 403. Reglas en `MAPA` §8b y §8g.
   las crea el admin en Personal y se les añade gente con solo el nombre. El
   área es el `cargo`; la lista vive en `payment_settings.areasDelPersonal`
   (`PUT /finanzas/areas`, AREAS-01/02).
+- **La tasa del BCV se pone sola** (`services/tasa-del-dia.service.ts`,
+  `GET /finanzas/tasa`): tres servicios gratuitos sin clave, en orden
+  (ve.dolarapi.com, bcv.today, bcv-api-ashy.vercel.app); la primera que
+  conteste bien gana, una hora en la memoria rápida (`platform:`). Si ninguna
+  contesta, la última buena «vieja» (30 días) y 5 min sin volver a preguntar;
+  si nunca hubo, se escribe a mano. Ninguna es del BCV: leen lo que publica.
+- **Recurrentes**: plantillas de ingreso o egreso (el internet, el sueldo de
+  la cocinera) en `payment_settings.recurrentes`; se guardan desde el panel
+  («Guardar como recurrente») y se usan de un toque (RECUR-01/02, FIN-UI-05).
+  El panel pide también la **referencia** (salvo efectivo) y la **foto de la
+  factura** en los gastos.
 - Sin conexión solo se anotan fondos y gastos (sin la foto); pagar al personal
   y confirmar pagos piden servidor: es dinero y llevan recibo correlativo.
 

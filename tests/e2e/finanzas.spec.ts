@@ -170,6 +170,56 @@ test.describe.serial('Finanzas', () => {
         }
     });
 
+    test('FIN-UI-05: un egreso guardado como recurrente se repite de un toque; bolívares con la tasa del BCV', async ({ page }, testInfo) => {
+        const nombre = `Internet QA ${Date.now() % 100000}`;
+        try {
+            await loginViaUI(page, 'admin@testing.edu.ve', '123456');
+            await page.goto(`${WEB_BASE}/dashboard/pagos`);
+            const saldo = page.locator('p', { hasText: /^-?\$/ }).first();
+            await expect(page.getByText('Fondos disponibles')).toBeVisible({ timeout: 30000 });
+            const panel = page.getByRole('dialog', { name: 'Nuevo movimiento' });
+            const calculadora = panel.getByRole('group', { name: 'Calculadora' });
+
+            await page.getByRole('button', { name: 'Añadir', exact: true }).click();
+            await page.getByRole('menuitem', { name: /Egreso/ }).click();
+            for (const n of ['2', '5', '00']) await calculadora.getByRole('button', { name: n, exact: true }).click();
+            await panel.getByRole('button', { name: 'Servicios' }).click();
+            // La factura y la descripción, opcionales.
+            await expect(panel.getByLabel('Foto de la factura')).toBeAttached();
+            await panel.getByPlaceholder('Opcional').last().fill(nombre);
+            await panel.getByRole('checkbox', { name: /Guardar como recurrente/ }).check();
+            await panel.getByRole('button', { name: 'Guardar el egreso' }).click();
+            await expect(page.getByText(`«${nombre}» guardado como recurrente`)).toBeVisible({ timeout: 15000 });
+            const antes = dineroDe(await saldo.innerText());
+
+            // La próxima vez: un toque y queda lleno.
+            await page.getByRole('button', { name: 'Añadir', exact: true }).click();
+            await page.getByRole('menuitem', { name: /Egreso/ }).click();
+            await panel.getByRole('button', { name: new RegExp(nombre) }).first().click();
+            await expect(panel.getByLabel('Monto: $ 25.00')).toBeVisible();
+            await expect(panel.getByRole('button', { name: 'Servicios' })).toHaveAttribute('aria-pressed', 'true');
+            await panel.getByRole('button', { name: 'Guardar el egreso' }).click();
+            await expect(page.getByText('Egreso anotado')).toBeVisible({ timeout: 15000 });
+            await expect.poll(async () => dineroDe(await saldo.innerText()), { timeout: 15000 }).toBeCloseTo(antes - 25, 2);
+
+            // En bolívares, la tasa se pone sola (la del BCV, o la última que se supo).
+            await page.getByRole('button', { name: 'Añadir', exact: true }).click();
+            await page.getByRole('menuitem', { name: /Egreso/ }).click();
+            await panel.getByRole('radio', { name: /Bolívares/ }).click();
+            await expect(panel.getByText(/Tasa BCV del|Escribe la tasa del día/)).toBeVisible({ timeout: 15000 });
+            // Con Pago Móvil se pide la referencia; con efectivo, no.
+            await panel.getByRole('button', { name: 'Personal', exact: true }).click();
+            await page.keyboard.press('Escape');
+        } catch (e) {
+            await captureEvidence(testInfo, page, 'FIN-UI-05', 'Recurrentes y tasa', e);
+            throw e;
+        } finally {
+            await queryTenantDb(
+              `UPDATE payment_settings SET recurrentes = COALESCE((SELECT jsonb_agg(x) FROM jsonb_array_elements(recurrentes) x WHERE x->>'nombre' NOT LIKE 'Internet QA %'), '[]'::jsonb)`
+            ).catch(() => 0);
+        }
+    });
+
     test('MISPAGOS-UI-01: el profesor ve lo suyo, y nada de las finanzas del liceo', async ({ page }, testInfo) => {
         try {
             await loginViaUI(page, profe.email, '123456');

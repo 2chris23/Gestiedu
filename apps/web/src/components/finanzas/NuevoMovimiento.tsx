@@ -8,6 +8,7 @@ import {
     ArrowDown,
     ArrowUp,
     CalendarDays,
+    Camera,
     Check,
     ChevronDown,
     ChevronLeft,
@@ -17,6 +18,7 @@ import {
     Hammer,
     Loader2,
     PiggyBank,
+    Repeat,
     Rocket,
     Search,
     ShoppingCart,
@@ -33,8 +35,13 @@ import {
     useFichaDePersonal,
     useGastos,
     usePagarAlPersonal,
+    useGuardarRecurrentes,
     usePersonal,
+    useRecurrentes,
     useResumenDeFinanzas,
+    useTasaDelDia,
+    subirComprobante,
+    type Recurrente,
 } from '@/hooks/useFinanzas';
 import { dinero, errorDe, useFichaDePagos, useRegistrarPago, useResumenDePagos, type Moneda } from '@/hooks/usePagos';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
@@ -126,6 +133,9 @@ export function NuevoMovimiento({
         if (!fecha && hoy) setFecha(hoy);
     }, [fecha, hoy]);
     const [descripcion, setDescripcion] = React.useState('');
+    const [referencia, setReferencia] = React.useState('');
+    const [factura, setFactura] = React.useState<File | null>(null);
+    const [comoRecurrente, setComoRecurrente] = React.useState(false);
     const [problema, setProblema] = React.useState<string | null>(null);
     const [enviando, setEnviando] = React.useState(false);
     const [escribiendo, setEscribiendo] = React.useState(false);
@@ -137,6 +147,13 @@ export function NuevoMovimiento({
     const fichaDePersona = useFichaDePersonal(fuente === 'PERSONAL' ? (persona?.id ?? null) : null, ciclo);
     const crearFondo = useCrearFondo();
     const crearGasto = useCrearGasto();
+    const { data: tasaBcv } = useTasaDelDia(true);
+    const { data: recurrentes = [] } = useRecurrentes(true);
+    const guardarRecurrentes = useGuardarRecurrentes();
+    // La tasa del BCV se pone sola al elegir la otra moneda (se puede cambiar).
+    React.useEffect(() => {
+        if (moneda !== monedas.base && !tasa && tasaBcv?.usd) setTasa(String(tasaBcv.usd));
+    }, [moneda, monedas.base, tasa, tasaBcv]);
     const pagar = usePagarAlPersonal(ciclo);
     const cobrar = useRegistrarPago(estudiante?.id ?? '');
 
@@ -183,6 +200,27 @@ export function NuevoMovimiento({
               ];
 
     const pideMetodo = fuente === 'ESTUDIANTE' || fuente === 'PERSONAL';
+    // Pago móvil, transferencia, Zelle…: llevan su número de referencia (el efectivo no).
+    const pideReferencia = pideMetodo && !!metodo && !/efectivo/i.test(metodo);
+    // Un estudiante no se repite (cada uno es distinto); el saldo inicial, tampoco.
+    const puedeSerRecurrente = !!fuente && fuente !== 'ESTUDIANTE' && fuente !== 'SALDO_INICIAL';
+    const losRecurrentes = recurrentes.filter((r) => r.tipo === tipo);
+    /** Un toque y el panel queda lleno: solo falta revisar y guardar. */
+    const usarRecurrente = (r: Recurrente) => {
+        setProblema(null);
+        setMoneda(r.moneda);
+        setCifras(String(Math.round(Number(r.monto) * 100)));
+        setFuente(r.fuente as FuenteDelMovimiento);
+        setDescripcion(r.descripcion ?? '');
+        if (r.metodo) setMetodo(r.metodo);
+        setPersona(r.fuente === 'PERSONAL' && r.personaId ? { id: r.personaId, nombre: r.personaNombre ?? r.nombre } : null);
+        setComoRecurrente(false);
+    };
+    const quitarRecurrente = (r: Recurrente) =>
+        guardarRecurrentes
+            .mutateAsync(recurrentes.filter((x) => x.id !== r.id))
+            .then(() => toast.success(`«${r.nombre}» quitado de los recurrentes`))
+            .catch((e) => toast.error(errorDe(e, 'No se pudo quitar')));
     const eligiendoAQuien = (fuente === 'ESTUDIANTE' && !estudiante) || (fuente === 'PERSONAL' && !persona);
     const listo =
         monto > 0 &&
@@ -217,6 +255,7 @@ export function NuevoMovimiento({
                     currency: moneda,
                     exchangeRate: conTasa ? tasa : null,
                     method: metodo,
+                    reference: pideReferencia ? referencia.trim() || null : null,
                     notes: descripcion.trim() || null,
                     paidAt: fecha,
                 });
@@ -239,18 +278,42 @@ export function NuevoMovimiento({
                     ...dineroDe,
                     metodo,
                     fecha,
+                    referencia: pideReferencia ? referencia.trim() || null : null,
                     notas: descripcion.trim() || null,
                 });
                 toast.success(`Pagado · recibo Nº ${String(pago.numero).padStart(6, '0')}`);
             } else if (fuente.startsWith('GASTO:')) {
                 const categoria = fuente.slice('GASTO:'.length);
-                const r = await crearGasto.mutateAsync({ concepto: descripcion.trim() || categoria, categoria, fecha, proveedor: null, ...dineroDe });
+                // La foto de la factura: si no sube (sin señal), el gasto se anota igual, sin ella.
+                const comprobanteId = factura ? await subirComprobante(factura).catch(() => null) : null;
+                if (factura && !comprobanteId) toast('La factura no se pudo subir: el egreso se anota sin ella.');
+                const r = await crearGasto.mutateAsync({ concepto: descripcion.trim() || categoria, categoria, fecha, proveedor: null, comprobanteId, ...dineroDe });
                 if (esPendiente(r)) toast('Sin conexión: quedó pendiente ⏱ y se anota solo al volver.', { id: 'pendiente' });
                 else toast.success('Egreso anotado');
             } else {
                 const r = await crearFondo.mutateAsync({ concepto: fuente, descripcion: descripcion.trim() || null, fecha, ...dineroDe });
                 if (esPendiente(r)) toast('Sin conexión: quedó pendiente ⏱ y se anota solo al volver.', { id: 'pendiente' });
                 else toast.success('Ingreso anotado');
+            }
+            if (comoRecurrente && puedeSerRecurrente) {
+                const nombre = (descripcion.trim() || (fuente === 'PERSONAL' ? persona?.nombre : opciones.find((o) => o.id === fuente)?.texto) || 'Recurrente').slice(0, 40);
+                await guardarRecurrentes
+                    .mutateAsync([
+                        ...recurrentes,
+                        {
+                            nombre,
+                            tipo,
+                            fuente,
+                            monto: montoTexto,
+                            moneda,
+                            descripcion: descripcion.trim() || null,
+                            metodo: pideMetodo ? metodo : null,
+                            personaId: fuente === 'PERSONAL' ? persona?.id : null,
+                            personaNombre: fuente === 'PERSONAL' ? persona?.nombre : null,
+                        },
+                    ])
+                    .then(() => toast.success(`«${nombre}» guardado como recurrente`))
+                    .catch((e) => toast.error(errorDe(e, 'No se pudo guardar como recurrente')));
             }
             alCerrar();
         } catch (err) {
@@ -397,7 +460,48 @@ export function NuevoMovimiento({
                                 />
                             </label>
                         )}
-                        {conTasa && t > 0 && monto > 0 && <p className="-mt-3 text-center text-xs text-gray-600">Son {fmtBase(enBase)}</p>}
+                        {conTasa && (
+                            <p className="-mt-3 text-center text-xs text-gray-600">
+                                {t > 0 && monto > 0 && <>Son {fmtBase(enBase)} · </>}
+                                {tasaBcv
+                                    ? `${String(tasaBcv.usd) === tasa ? 'Tasa BCV' : 'La del BCV es ' + tasaBcv.usd.toLocaleString('es-VE')} del ${tasaBcv.fecha.split('-').reverse().slice(0, 2).join('/')}${tasaBcv.vieja ? ' (sin conexión: la última que se supo)' : ''}`
+                                    : 'Escribe la tasa del día'}
+                            </p>
+                        )}
+
+                        {/* LOS RECURRENTES: un toque y queda lleno (como las plantillas de Rial) */}
+                        {losRecurrentes.length > 0 && (
+                            <section aria-labelledby="recurrentes" className="space-y-2">
+                                <h3 id="recurrentes" className="text-sm font-semibold text-gray-700">
+                                    Recurrentes
+                                </h3>
+                                <ul className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+                                    {losRecurrentes.map((r) => (
+                                        <li key={r.id} className="flex shrink-0 items-center rounded-full bg-white shadow-sm ring-1 ring-gray-200">
+                                            <button
+                                                type="button"
+                                                onClick={() => usarRecurrente(r)}
+                                                className="flex min-h-[44px] items-center gap-2 pl-3 pr-1 text-sm font-medium text-gray-900"
+                                            >
+                                                <Repeat className="h-4 w-4 text-gray-600" aria-hidden />
+                                                {r.nombre}
+                                                <span className="text-gray-600">
+                                                    {SIMBOLO[r.moneda]} {Number(r.monto).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                                                </span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => void quitarRecurrente(r)}
+                                                aria-label={`Quitar «${r.nombre}» de los recurrentes`}
+                                                className="flex h-11 w-9 items-center justify-center rounded-full text-gray-500 hover:text-red-700"
+                                            >
+                                                <X className="h-4 w-4" aria-hidden />
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </section>
+                        )}
 
                         <section aria-labelledby="de-que-es" className="space-y-2">
                             <h3 id="de-que-es" className="text-sm font-semibold text-gray-700">
@@ -502,6 +606,36 @@ export function NuevoMovimiento({
                             </div>
                         )}
 
+                        {pideReferencia && (
+                            <label className="flex min-h-[52px] items-center gap-3 rounded-2xl bg-white px-4 shadow-sm ring-1 ring-gray-200">
+                                <span className="text-sm text-gray-800">Referencia</span>
+                                <input
+                                    value={referencia}
+                                    onChange={(e) => setReferencia(e.target.value)}
+                                    maxLength={60}
+                                    inputMode="numeric"
+                                    placeholder="Opcional"
+                                    className="min-h-[44px] min-w-0 flex-1 bg-transparent text-right text-sm text-gray-900 outline-none placeholder:text-gray-500"
+                                />
+                            </label>
+                        )}
+
+                        {fuente?.startsWith('GASTO:') && (
+                            <label className="flex min-h-[52px] cursor-pointer items-center gap-3 rounded-2xl bg-white px-4 shadow-sm ring-1 ring-gray-200">
+                                <Camera className="h-5 w-5 shrink-0 text-gray-600" aria-hidden />
+                                <span className="min-w-0 flex-1 truncate text-sm text-gray-800">{factura ? factura.name : 'Foto de la factura'}</span>
+                                <span className="text-sm text-gray-500">{factura ? 'Cambiar' : 'Opcional'}</span>
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    aria-label="Foto de la factura"
+                                    onChange={(e) => setFactura(e.target.files?.[0] ?? null)}
+                                    className="sr-only"
+                                />
+                            </label>
+                        )}
+
                         {/* De último, la descripción */}
                         <label className="flex min-h-[52px] items-center gap-3 rounded-2xl bg-white px-4 shadow-sm ring-1 ring-gray-200">
                             <span className="text-sm text-gray-800">Descripción</span>
@@ -513,6 +647,14 @@ export function NuevoMovimiento({
                                 className="min-h-[44px] min-w-0 flex-1 bg-transparent text-right text-sm text-gray-900 outline-none placeholder:text-gray-500"
                             />
                         </label>
+
+                        {puedeSerRecurrente && (
+                            <label className="flex min-h-[44px] cursor-pointer items-center gap-3 px-1 text-sm text-gray-800">
+                                <input type="checkbox" checked={comoRecurrente} onChange={(e) => setComoRecurrente(e.target.checked)} className="h-5 w-5 accent-indigo-600" />
+                                <Repeat className="h-4 w-4 text-gray-600" aria-hidden />
+                                Guardar como recurrente (para la próxima vez, de un toque)
+                            </label>
+                        )}
 
                         {problema && (
                             <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-800">
