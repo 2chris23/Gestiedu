@@ -108,6 +108,11 @@ test.describe('Con el servidor apagado', () => {
             await expect(page.getByText('Estudiantes').first()).toBeVisible({ timeout: 30_000 });
             await expect.poll(() => lleganDatosGuardados(page), { timeout: 20_000 }).toBe(true);
             const cifras = await page.locator('main').innerText();
+            // La contraseña vive en Configuración (14-oct-2026): se abre una vez con servidor.
+            await page.goto(`${WEB}/dashboard/configuracion?seccion=acceso`);
+            await expect(page.getByPlaceholder('Contraseña actual')).toBeVisible({ timeout: 30_000 });
+            await page.goto(`${WEB}/dashboard`);
+            await expect(page.getByText('Estudiantes').first()).toBeVisible({ timeout: 30_000 });
 
             // ── Se apaga el servidor ───────────────────────────────────
             await puerta.cerrar();
@@ -123,8 +128,7 @@ test.describe('Con el servidor apagado', () => {
             if (primeraCifra) await expect(page.locator('main')).toContainText(primeraCifra);
 
             // Guardar algo: se dice que falta conexión, no un error cualquiera.
-            await page.locator('header button').first().click();
-            await page.getByRole('button', { name: /Cambiar mi contraseña/i }).click();
+            await page.goto(`${WEB}/dashboard/configuracion?seccion=acceso`);
             await page.getByPlaceholder('Contraseña actual').fill('123456');
             await page.getByPlaceholder(/Contraseña nueva/).fill('otraclave123');
             await page.getByPlaceholder(/Repite/).fill('otraclave123');
@@ -217,9 +221,10 @@ test.describe('Con el servidor apagado', () => {
                     page.waitForURL('**/dashboard**', { timeout: 60_000 }),
                     page.getByRole('button', { name: /^Ingresar$/ }).click(),
                 ]);
-                // La franja del Inicio del ordenador también dice «estudiantes»,
-                // escondida en el teléfono: se mira lo que se ve.
-                await expect(page.getByText('Estudiantes').filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
+                // Sin el ayudante no se navega sin servidor: se mira desde
+                // Configuración → «Contraseña y acceso», donde luego se guarda.
+                await page.goto(`${WEB}/dashboard/configuracion?seccion=acceso`);
+                await expect(page.getByPlaceholder('Contraseña actual')).toBeVisible({ timeout: 30_000 });
                 await page.waitForTimeout(2000);
                 const antes = await page.locator('main').innerText();
 
@@ -232,8 +237,6 @@ test.describe('Con el servidor apagado', () => {
                 expect(await page.locator('main').innerText()).toBe(antes);
 
                 // Y guardar lo dice.
-                await page.locator('header button').first().click();
-                await page.getByRole('button', { name: /Cambiar mi contraseña/i }).click();
                 await page.getByPlaceholder('Contraseña actual').fill('123456');
                 await page.getByPlaceholder(/Contraseña nueva/).fill('otraclave123');
                 await page.getByPlaceholder(/Repite/).fill('otraclave123');

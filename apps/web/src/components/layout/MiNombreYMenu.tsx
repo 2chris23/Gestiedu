@@ -3,11 +3,8 @@
 import * as React from 'react';
 import Link from 'next/link';
 import * as Menu from '@radix-ui/react-dropdown-menu';
-import { ChevronUp, KeyRound, LogOut, Palette, Settings, Check, Sun, Moon, Smartphone } from 'lucide-react';
+import { ChevronUp, LogOut, Settings } from 'lucide-react';
 import UserAvatar from '@/components/ui/UserAvatar';
-import FichaDeMiCuenta from '@/components/layout/FichaDeMiCuenta';
-import { ACENTOS, ACENTO_POR_DEFECTO, CAMBIO_DE_COLOR, acentoGuardado, elegirAcento, type Acento } from '@/lib/tema-de-la-app';
-import { CAMBIO_DE_MODO, MODO_POR_DEFECTO, elegirModo, modoGuardado, type Modo } from '@/lib/modo-de-la-app';
 import { cn } from '@/lib/utils';
 
 /**
@@ -15,12 +12,9 @@ import { cn } from '@/lib/utils';
  *
  * Arriba de la barra se apretaban el nombre, el «?» y la campana: «Prof…»
  * cortado. Cristian lo quiso abajo, como el menú de Claude: el primer nombre
- * y el rol; al pulsarlo, quién eres, tu cuenta, el color de la app, la
- * configuración (el admin) y salir.
- *
- * «Mi cuenta y contraseña» abre la misma ficha que en el teléfono, desde la
- * derecha. Hasta ahora, en el ordenador no había forma de cambiar la
- * contraseña: esa ficha solo se abría desde la cabecera del teléfono.
+ * y el rol; al pulsarlo, quién eres, Configuración y salir (como el menú de
+ * Rial, 14-oct-2026). La contraseña, el color y el modo viven ahora en
+ * Configuración, cada uno en su apartado, igual que en el teléfono.
  */
 
 const ROLES: Record<string, string> = {
@@ -44,26 +38,9 @@ export interface MiNombreYMenuProps {
     alCerrarSesion: () => void | Promise<void>;
 }
 
-export function MiNombreYMenu({ nombre, apellido, correo, avatar, rol, liceo, recogida, alCerrarSesion }: MiNombreYMenuProps) {
-    const [fichaAbierta, setFichaAbierta] = React.useState(false);
-    const [acento, setAcento] = React.useState<Acento>(ACENTO_POR_DEFECTO);
-    const [modo, setModo] = React.useState<Modo>(MODO_POR_DEFECTO);
+export function MiNombreYMenu({ nombre, apellido, correo, avatar, rol, recogida, alCerrarSesion }: MiNombreYMenuProps) {
     const primerNombre = nombre?.split(' ')[0] || 'Usuario';
     const nombreCompleto = `${nombre ?? ''} ${apellido ?? ''}`.trim() || 'Usuario';
-    const esAdmin = rol === 'ADMIN';
-
-    React.useEffect(() => {
-        setAcento(acentoGuardado());
-        const alCambiar = (e: Event) => setAcento((e as CustomEvent<Acento>).detail);
-        window.addEventListener(CAMBIO_DE_COLOR, alCambiar);
-        setModo(modoGuardado());
-        const alCambiarElModo = () => setModo(modoGuardado());
-        window.addEventListener(CAMBIO_DE_MODO, alCambiarElModo);
-        return () => {
-            window.removeEventListener(CAMBIO_DE_COLOR, alCambiar);
-            window.removeEventListener(CAMBIO_DE_MODO, alCambiarElModo);
-        };
-    }, []);
 
     return (
         <>
@@ -108,89 +85,12 @@ export function MiNombreYMenu({ nombre, apellido, correo, avatar, rol, liceo, re
                         </div>
                         <Menu.Separator className="mx-1.5 my-1 h-px bg-borde-suave dark:bg-[#3e3e3e]" />
 
-                        <Menu.Item className={FILA} onSelect={() => setFichaAbierta(true)}>
-                            <KeyRound aria-hidden />
-                            Mi cuenta y contraseña
+                        <Menu.Item asChild className={FILA}>
+                            <Link href="/dashboard/configuracion">
+                                <Settings aria-hidden />
+                                Configuración
+                            </Link>
                         </Menu.Item>
-
-                        {/* El color, en dos líneas: así cabe en el ancho de la barra. */}
-                        <div className="flex flex-col gap-1.5 px-3 py-2 text-sm font-medium text-texto-fuerte">
-                            <span id="color-de-la-app" className="flex items-center gap-3">
-                                <Palette className="h-[18px] w-[18px] shrink-0 text-texto-gris" aria-hidden />
-                                Color de la app
-                            </span>
-                            <Menu.RadioGroup
-                                value={acento}
-                                onValueChange={(v) => elegirAcento(v as Acento)}
-                                aria-labelledby="color-de-la-app"
-                                className="flex gap-1"
-                            >
-                                {(Object.keys(ACENTOS) as Acento[]).map((a) => (
-                                    <Menu.RadioItem
-                                        key={a}
-                                        value={a}
-                                        // Elegir un color no cierra el menú: se ve el cambio y se sigue.
-                                        onSelect={(e) => e.preventDefault()}
-                                        aria-label={ACENTOS[a].nombre}
-                                        title={ACENTOS[a].nombre}
-                                        data-color={a}
-                                        className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full outline-none data-[highlighted]:bg-superficie-hover"
-                                    >
-                                        <span
-                                            className={cn(
-                                                'flex h-7 w-7 items-center justify-center rounded-full ring-offset-2 transition-shadow',
-                                                a === acento ? 'ring-2 ring-cabecera-tinta' : 'ring-1 ring-black/10'
-                                            )}
-                                            style={{ backgroundColor: ACENTOS[a].color }}
-                                        >
-                                            <Menu.ItemIndicator>
-                                                <Check className={cn('h-4 w-4', a === 'amarillo' ? 'text-[#0B1B33]' : 'text-white')} strokeWidth={2.6} aria-hidden />
-                                            </Menu.ItemIndicator>
-                                        </span>
-                                    </Menu.RadioItem>
-                                ))}
-                            </Menu.RadioGroup>
-                        </div>
-
-                        {/* Claro, oscuro o como diga el teléfono (lib/modo-de-la-app.ts). */}
-                        <Menu.RadioGroup
-                            value={modo}
-                            onValueChange={(v) => elegirModo(v as Modo)}
-                            aria-label="Modo de la app"
-                            className="mx-3 mb-1.5 grid grid-cols-3 gap-0.5 rounded-xl bg-superficie p-0.5"
-                        >
-                            {(
-                                [
-                                    ['claro', 'Claro', Sun],
-                                    ['oscuro', 'Oscuro', Moon],
-                                    ['sistema', 'Teléfono', Smartphone],
-                                ] as const
-                            ).map(([m, texto, Icono]) => (
-                                <Menu.RadioItem
-                                    key={m}
-                                    value={m}
-                                    onSelect={(e) => e.preventDefault()}
-                                    title={m === 'sistema' ? 'Como el teléfono' : texto}
-                                    data-modo={m}
-                                    className={cn(
-                                        'flex min-h-[44px] cursor-pointer flex-col items-center justify-center gap-0.5 rounded-[10px] text-[12px] font-semibold text-texto-gris outline-none data-[highlighted]:ring-2 data-[highlighted]:ring-cabecera-tinta/40',
-                                        m === modo && 'bg-white text-texto-fuerte shadow-sm dark:bg-[#3e3e3e]'
-                                    )}
-                                >
-                                    <Icono className="h-4 w-4" aria-hidden />
-                                    {texto}
-                                </Menu.RadioItem>
-                            ))}
-                        </Menu.RadioGroup>
-
-                        {esAdmin && (
-                            <Menu.Item asChild className={FILA}>
-                                <Link href="/dashboard/configuracion">
-                                    <Settings aria-hidden />
-                                    Configuración del liceo
-                                </Link>
-                            </Menu.Item>
-                        )}
 
                         <Menu.Separator className="mx-1.5 my-1 h-px bg-borde-suave dark:bg-[#3e3e3e]" />
                         <Menu.Item
@@ -203,18 +103,6 @@ export function MiNombreYMenu({ nombre, apellido, correo, avatar, rol, liceo, re
                     </Menu.Content>
                 </Menu.Portal>
             </Menu.Root>
-
-            <FichaDeMiCuenta
-                abierta={fichaAbierta}
-                alCerrar={() => setFichaAbierta(false)}
-                nombreCompleto={nombreCompleto}
-                avatar={avatar}
-                rol={rol}
-                liceo={liceo}
-                esAdmin={esAdmin}
-                alCerrarSesion={alCerrarSesion}
-                lado="right"
-            />
         </>
     );
 }

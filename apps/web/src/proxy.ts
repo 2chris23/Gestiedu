@@ -79,7 +79,10 @@ const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[]; patron?: RegExp 
     { prefijo: '/dashboard/plan-de-evaluacion', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/acta-de-socializacion', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/instrumentos-de-evaluacion', roles: ['ADMIN', 'TEACHER'] },
-    { prefijo: '/dashboard/configuracion', roles: ['ADMIN'] },
+    // Configuración es de todos desde el 14-oct-2026: lo de cada uno (la
+    // contraseña, la huella, el color) vive ahí. Lo del liceo solo lo ve el
+    // admin, y el servidor lo niega a los demás.
+    { prefijo: '/dashboard/configuracion', roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
     { prefijo: '/dashboard/eventos', roles: ['ADMIN'] },
     { prefijo: '/dashboard/pagos', roles: ['ADMIN'] },
     // Cada quien lo suyo: el servidor da solo los pagos de quien pregunta.

@@ -949,6 +949,20 @@ de navegador no ven la oferta (la tapa `navigator.webdriver`) salvo que pongan
 - `docs/DESPLIEGUE.md` — despliegue y operación.
 - `docs/APP-MOVIL.md` — la app del teléfono: PWA y APK.
 
+## Configuración, como la de Rial (14-oct-2026)
+
+Pedido por Cristian. **La ficha de Mi cuenta** (el teléfono) y **el menú de tu
+nombre** (el ordenador) traen solo Configuración y Cerrar sesión. Todo lo demás
+vive en **`/dashboard/configuracion`, que ahora es de TODOS los roles**: un
+buscador, el título y filas agrupadas — «Tu cuenta» (Contraseña y acceso: la
+contraseña, la huella, el bloqueo y las sesiones,
+`components/configuracion/ContrasenaYAcceso.tsx`; Color y modo) y, solo para
+el admin, «El liceo» (los nueve apartados de siempre). Al tocar uno se ve solo
+(`?seccion=`); en el ordenador, la lista a la izquierda y el apartado a la
+derecha. Lo del liceo lo sigue negando el servidor a los demás (ROL-03).
+La equis de las ventanas ya no enseña el anillo del foco al tocar (solo con
+teclado, `focus-visible`).
+
 ## El color de la app y el Inicio del admin en el teléfono (octubre 2026)
 
 Diseño de Cristian («Panel Admin — App móvil»). **El color lo elige cada

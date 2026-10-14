@@ -46,7 +46,7 @@ const DialogContent = React.forwardRef<
       {children}
       {/* 44 × 44 para el dedo (antes, 16 px: había que atinarle a una X
           diminuta) y dicho en español a quien no ve la pantalla. */}
-      <DialogPrimitive.Close className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full opacity-70 ring-offset-background transition-opacity hover:bg-gray-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+      <DialogPrimitive.Close className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full opacity-70 ring-offset-background transition-opacity hover:bg-gray-100 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none">
         <X className="h-5 w-5" aria-hidden />
         <span className="sr-only">Cerrar</span>
       </DialogPrimitive.Close>

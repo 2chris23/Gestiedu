@@ -9,13 +9,15 @@ import { API_BASE, WEB_BASE, TENANT_SLUG, loginApi, injectSessionCookies, captur
  *
  *   - un estudiante no entra a las pantallas de administración, ni escribiendo
  *     la dirección a mano;
- *   - un profesor tampoco entra a usuarios ni a configuración;
+ *   - un profesor tampoco entra a usuarios; en configuración solo ve lo suyo;
  *   - nadie que no sea administrador puede cambiar datos personales;
  *   - si alguien manipula la cookie del navegador para hacerse pasar por
  *     administrador, la pantalla se abre pero SIN datos: el servidor los niega.
  */
 
-const PANTALLAS_DE_ADMIN = ['/dashboard/usuarios', '/dashboard/configuracion', '/dashboard/eventos'];
+// Configuración ya no: es de todos (lo de cada uno vive ahí), y lo del liceo
+// no se le enseña (ROL-03) y el servidor lo niega.
+const PANTALLAS_DE_ADMIN = ['/dashboard/usuarios', '/dashboard/eventos'];
 // Académico, Materias y Horarios ya son también del alumno (fase E, cada uno
 // con lo suyo: lo ajeno lo niega el servidor). Del personal quedan estas.
 const PANTALLAS_DE_PERSONAL = ['/dashboard/observaciones', '/dashboard/clase-en-vivo', '/dashboard/plan-de-evaluacion'];
@@ -47,7 +49,7 @@ test.describe('Pantallas permitidas por rol', () => {
             const sesion = await loginApi('profesor.ciencias@tuapp.com', '123456');
             await injectSessionCookies(page, sesion);
 
-            for (const ruta of ['/dashboard/usuarios', '/dashboard/configuracion']) {
+            for (const ruta of ['/dashboard/usuarios']) {
                 const url = await entraA(page, ruta);
                 expect(url, `debería salir de ${ruta}`).not.toContain(ruta);
             }
@@ -57,6 +59,24 @@ test.describe('Pantallas permitidas por rol', () => {
             expect(academico).toContain('/dashboard/academico');
         } catch (error) {
             await captureEvidence(testInfo, page, 'ROL-02', 'Profesor fuera de administración', error);
+            throw error;
+        }
+    });
+
+    test('ROL-03: en Configuración, el profesor y el alumno ven lo suyo y nada del liceo', async ({ page }, testInfo) => {
+        try {
+            for (const correo of ['profesor.ciencias@tuapp.com', 'est0575@testing.edu.ve']) {
+                await page.context().clearCookies();
+                await injectSessionCookies(page, await loginApi(correo, '123456'));
+                // Aunque pida un apartado del liceo por la dirección.
+                const url = await entraA(page, '/dashboard/configuracion?seccion=general');
+                expect(url).toContain('/dashboard/configuracion');
+                await expect(page.getByRole('button', { name: 'Contraseña y acceso' }).filter({ visible: true }).first()).toBeVisible({ timeout: 30000 });
+                await expect(page.getByRole('button', { name: 'Información General' })).toHaveCount(0);
+                await expect(page.getByText('Datos oficiales del plantel')).toHaveCount(0);
+            }
+        } catch (error) {
+            await captureEvidence(testInfo, page, 'ROL-03', 'Configuración sin lo del liceo', error);
             throw error;
         }
     });

@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
  */
 const ICONOS: Record<Modo, typeof Sun> = { claro: Sun, oscuro: Moon, sistema: Smartphone };
 
-export function ColorDeLaApp() {
+export function ColorDeLaApp({ className }: { className?: string } = {}) {
     const [elegido, setElegido] = React.useState<Acento>(ACENTO_POR_DEFECTO);
     const [modo, setModo] = React.useState<Modo>(MODO_POR_DEFECTO);
     React.useEffect(() => {
@@ -25,7 +25,7 @@ export function ColorDeLaApp() {
     }, []);
 
     return (
-        <fieldset className="border-t border-gray-200 px-5 py-3">
+        <fieldset className={cn('border-t border-gray-200 px-5 py-3', className)}>
             <legend className="sr-only">Color de la app</legend>
             <div className="flex items-center gap-3 text-sm font-medium text-gray-800">
                 <Palette className="h-5 w-5 shrink-0 text-gray-500" aria-hidden />

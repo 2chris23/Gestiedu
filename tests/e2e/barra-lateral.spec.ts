@@ -16,10 +16,9 @@ import { WEB_BASE, loginApi, injectSessionCookies, captureEvidence, representant
  *   LATERAL-04     el contraste (axe) con el menú de tu nombre abierto y con la
  *                  barra recogida y su globo: las cajas son de cristal, y el
  *                  cristal baja el contraste de lo que lleva encima.
- *   PERFIL-UI-01   abajo, el primer nombre y el rol; el menú trae la cuenta,
- *                  el color (cambia sin cerrar el menú) y, solo al admin, la
- *                  configuración. «Mi cuenta» abre la contraseña: antes, en el
- *                  ordenador no había forma de cambiarla.
+ *   PERFIL-UI-01   abajo, el primer nombre y el rol; el menú trae solo
+ *                  Configuración y Cerrar sesión (como Rial). Allí, el color
+ *                  y la contraseña; lo del liceo, solo al admin.
  *   INICIO-ESC-01  cada rol tiene su franja azul con la cifra y sus tarjetas, la
  *                  hoja empieza debajo, no hay «Ir a» (repetía la barra) y la
  *                  cifra es LA MISMA que en el teléfono.
@@ -133,7 +132,7 @@ test('LATERAL-04: se lee bien con el menú abierto y con la barra recogida', asy
 });
 
 test.describe('Tu nombre, abajo de la barra', () => {
-    test('PERFIL-UI-01: nombre y rol abajo; el menú trae la cuenta, el color y (solo al admin) la configuración', async ({ page, browser }, testInfo) => {
+    test('PERFIL-UI-01: nombre y rol abajo; el menú trae Configuración y Cerrar sesión (como Rial); lo del liceo, solo al admin', async ({ page, browser }, testInfo) => {
         try {
             await entrarComo(page, 'admin@testing.edu.ve');
             const yo = page.locator('#barra-lateral [data-recorrido="mi-cuenta"]');
@@ -141,31 +140,33 @@ test.describe('Tu nombre, abajo de la barra', () => {
 
             await yo.click();
             const menu = page.getByRole('menu');
-            await expect(menu.getByRole('menuitem', { name: 'Configuración del liceo' })).toBeVisible();
             await expect(menu.getByRole('menuitem', { name: 'Cerrar sesión' })).toBeVisible();
+            // Solo lo principal: el color y la contraseña viven en Configuración.
+            await expect(menu.getByRole('menuitemradio')).toHaveCount(0);
+            await menu.getByRole('menuitem', { name: 'Configuración' }).click();
+            await page.waitForURL('**/dashboard/configuracion**');
 
-            // El color cambia al instante y el menú se queda abierto.
-            await menu.getByRole('menuitemradio', { name: 'Violeta' }).click();
+            // El color cambia al instante, desde «Color y modo».
+            await page.getByRole('button', { name: 'Color y modo' }).click();
+            await page.getByRole('radio', { name: 'Violeta' }).click();
             await expect
                 .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--acento').trim().toUpperCase()))
                 .toBe('#7C3AED');
-            await expect(menu).toBeVisible();
+            // Y la contraseña, en «Contraseña y acceso» (en el ordenador no había cómo cambiarla).
+            await page.getByRole('button', { name: 'Contraseña y acceso' }).click();
+            await expect(page.getByPlaceholder('Contraseña actual')).toBeVisible();
+            await expect(page.getByRole('button', { name: 'Información General' })).toBeVisible();
 
-            // «Mi cuenta» abre la contraseña (en el ordenador no había cómo cambiarla).
-            await menu.getByRole('menuitem', { name: 'Mi cuenta y contraseña' }).click();
-            const ficha = page.getByRole('dialog');
-            await ficha.getByRole('button', { name: 'Cambiar mi contraseña' }).click();
-            await expect(ficha.getByPlaceholder('Contraseña actual')).toBeVisible();
-
-            // El profesor: su rol, y sin la configuración del liceo.
+            // El profesor: su rol, Configuración, y nada del liceo dentro.
             const otra = await browser.newContext({ viewport: PORTATIL, deviceScaleFactor: 1 });
             const profe = await otra.newPage();
             await entrarComo(profe, 'profesor.ciencias@tuapp.com');
             const suyo = profe.locator('#barra-lateral [data-recorrido="mi-cuenta"]');
             await expect(suyo).toContainText('Profesor');
             await suyo.click();
-            await expect(profe.getByRole('menuitem', { name: 'Mi cuenta y contraseña' })).toBeVisible();
-            await expect(profe.getByRole('menuitem', { name: 'Configuración del liceo' })).toHaveCount(0);
+            await profe.getByRole('menuitem', { name: 'Configuración' }).click();
+            await expect(profe.getByRole('button', { name: 'Contraseña y acceso' })).toBeVisible({ timeout: 30000 });
+            await expect(profe.getByRole('button', { name: 'Información General' })).toHaveCount(0);
             await otra.close();
         } catch (error) {
             await captureEvidence(testInfo, page, 'PERFIL-UI-01', 'El menú de tu nombre', error);
@@ -179,21 +180,18 @@ test.describe('Tu nombre, abajo de la barra', () => {
             await entrarComo(page, 'admin@testing.edu.ve');
             expect(await fondo('#barra-lateral')).toBe('rgb(13, 71, 161)'); // el azul de siempre
 
-            const yo = page.locator('#barra-lateral [data-recorrido="mi-cuenta"]');
-            await yo.click();
-            const menu = page.getByRole('menu');
-            await menu.getByRole('menuitemradio', { name: 'Amarillo' }).click();
+            await page.goto(`${WEB_BASE}/dashboard/configuracion?seccion=color`);
+            await page.getByRole('radio', { name: 'Amarillo' }).click();
             // La barra, amarilla de verdad, y su letra oscura para que se lea.
             await expect.poll(() => fondo('#barra-lateral')).toBe('rgb(251, 192, 45)');
             expect(await page.evaluate(() => getComputedStyle(document.querySelector('#barra-lateral [data-recorrido="mi-cuenta"] span span')!).color)).toBe('rgb(11, 27, 51)');
             // Los botones (`indigo-600`) toman el color: el ámbar hondo.
             expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--indigo-600-f').trim())).toBe('180 83 9');
 
-            await menu.getByRole('menuitemradio', { name: 'Oscuro' }).click();
+            await page.locator('[data-modo="oscuro"]').click();
             await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(true);
             // A lo Spotify: la barra es una caja #121212 y las tarjetas también.
             await expect.poll(() => fondo('#barra-lateral')).toBe('rgb(18, 18, 18)');
-            await page.keyboard.press('Escape');
 
             // Al recargar, el primer HTML ya sale oscuro: el guion del <head> corre antes de pintar.
             await page.goto(`${WEB_BASE}/dashboard`, { waitUntil: 'commit' });
