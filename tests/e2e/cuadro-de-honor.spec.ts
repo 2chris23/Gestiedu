@@ -28,7 +28,8 @@ test.describe.serial('Cuadro de honor', () => {
             expect(await hayFoto(), 'la foto del sábado no salió').toBe(true);
             await loginViaUI(page, 'admin@testing.edu.ve', '123456');
             await page.waitForLoadState('networkidle');
-            const cuadro = page.getByRole('region', { name: 'Cuadro de honor' });
+            // Exacto: la sección que lo envuelve se llama «Lo que viene y el cuadro de honor».
+            const cuadro = page.getByRole('region', { name: 'Cuadro de honor', exact: true });
             await expect(cuadro).toBeVisible({ timeout: 30000 });
             await expect(cuadro.getByText(/Se actualiza cada sábado · última: sáb \d\d\/\d\d/)).toBeVisible();
             await expect(cuadro.getByRole('list', { name: 'Los tres primeros' }).getByRole('link').first()).toBeVisible();
@@ -65,14 +66,15 @@ test.describe.serial('Cuadro de honor', () => {
             expect(alumno, 'hace falta un alumno en el cuadro').toBeTruthy();
             await loginViaUI(page, alumno.email, '123456');
 
-            // 1. En escritorio
+            // 1. En escritorio. Desde el rediseño del ordenador (a53ba92) el
+            // puntaje va en la franja azul, junto al promedio, no en una tarjeta
+            // «Cuadro de honor». La del teléfono también está, escondida.
             await page.waitForLoadState('networkidle');
-            const suyo = page.getByRole('region', { name: 'Cuadro de honor' });
+            const suyo = page.locator('[data-recorrido="mi-puntaje"]').filter({ visible: true });
             await expect(suyo).toBeVisible({ timeout: 30000 });
-            await expect(suyo.getByText('puntos').first()).toBeVisible();
-            await expect(suyo.getByText(/Primera semana en el cuadro|Igual que el sábado pasado|Subiste|Bajaste/).first()).toBeVisible();
+            await expect(suyo.getByText(/\d pts$/)).toBeVisible();
             // Nada de puestos ni de podio para el 11.°
-            await expect(suyo.getByText(/puesto \d|\d\.° (Oro|Plata|Bronce)|11[.°º]/i)).toHaveCount(0);
+            await expect(suyo.getByText(/de tu año|del liceo|puesto \d|\d\.° (Oro|Plata|Bronce)|11[.°º]/i)).toHaveCount(0);
             await expect(page.getByRole('list', { name: 'Los tres primeros' })).toHaveCount(0);
             await page.screenshot({ path: 'test-results/evidencia/cuadro-de-honor-alumno.png', fullPage: true });
 
@@ -110,7 +112,8 @@ test.describe.serial('Cuadro de honor', () => {
             await page.setViewportSize({ width: 390, height: 844 });
             await page.reload();
             await page.waitForLoadState('domcontentloaded');
-            await expect(page.getByText('Promedio de mis clases')).toBeVisible({ timeout: 20000 });
+            // La franja del ordenador lo dice también, escondida a este ancho.
+            await expect(page.getByText('Promedio de mis clases').filter({ visible: true })).toBeVisible({ timeout: 20000 });
             await expect(page.getByRole('region', { name: 'Cuadro de honor' })).toHaveCount(0);
             await expect(page.getByText('Cuadro de honor')).toHaveCount(0);
             await page.screenshot({ path: 'test-results/evidencia/cuadro-de-honor-profesor-movil.png', fullPage: true });

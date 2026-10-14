@@ -51,7 +51,8 @@ test.describe('Recorrido guiado', () => {
         try {
             await loginViaUI(page, 'admin@testing.edu.ve', '123456');
             await page.goto(`${WEB_BASE}/dashboard`);
-            await expect(page.getByRole('region', { name: 'Cuadro de honor' })).toBeVisible({ timeout: 30000 });
+            // Exacto: la sección que lo envuelve se llama «Lo que viene y el cuadro de honor».
+            await expect(page.getByRole('region', { name: 'Cuadro de honor', exact: true })).toBeVisible({ timeout: 30000 });
             const boton = page.getByRole('button', { name: '¿Cómo funciona esta pantalla?' }).first();
             await boton.click();
 
@@ -66,10 +67,12 @@ test.describe('Recorrido guiado', () => {
             await esperarElHueco(page);
             expect(await elHueco(page)).toMatchObject({ donde: 'inicio-cifras', cubre: true });
 
-            // Con el teclado, como en rial con el dedo.
+            // Con el teclado, como en rial con el dedo. En el ordenador no hay
+            // «Ir a» (lo hace la barra lateral, a53ba92): ese paso se salta y
+            // el siguiente es el calendario.
             await page.keyboard.press('ArrowRight');
             await esperarElHueco(page);
-            expect((await elHueco(page))?.donde).toBe('accesos');
+            expect((await elHueco(page))?.donde).toBe('calendario-del-liceo');
             await page.keyboard.press('ArrowLeft');
             await expect(g.getByText(/^2 de /)).toBeVisible();
 

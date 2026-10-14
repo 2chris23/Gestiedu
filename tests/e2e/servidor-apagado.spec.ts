@@ -217,7 +217,9 @@ test.describe('Con el servidor apagado', () => {
                     page.waitForURL('**/dashboard**', { timeout: 60_000 }),
                     page.getByRole('button', { name: /^Ingresar$/ }).click(),
                 ]);
-                await expect(page.getByText('Estudiantes').first()).toBeVisible({ timeout: 30_000 });
+                // La franja del Inicio del ordenador también dice «estudiantes»,
+                // escondida en el teléfono: se mira lo que se ve.
+                await expect(page.getByText('Estudiantes').filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
                 await page.waitForTimeout(2000);
                 const antes = await page.locator('main').innerText();
 

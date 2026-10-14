@@ -37,8 +37,10 @@ test.describe('El reloj del aparato no manda', () => {
             await page.clock.install({ time: ahora + 36 * 3600 * 1000 });
             await injectSessionCookies(page, alumno);
             await page.goto(`${WEB_BASE}/dashboard`);
-            await expect(page.getByText('Horario en Vivo').first()).toBeVisible({ timeout: 30000 });
-            await expect(page.getByText(esperado).first()).toBeVisible({ timeout: 15000 });
+            // El Inicio del teléfono y el del ordenador están los dos en la
+            // página; uno escondido según el ancho. Se mira el que se ve.
+            await expect(page.getByText('Horario en Vivo').filter({ visible: true }).first()).toBeVisible({ timeout: 30000 });
+            await expect(page.getByText(esperado).filter({ visible: true }).first()).toBeVisible({ timeout: 15000 });
         } catch (error) {
             await captureEvidence(testInfo, page, 'RELOJ-01', 'Hoy es el día del liceo', error);
             throw error;

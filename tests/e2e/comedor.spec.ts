@@ -33,7 +33,8 @@ test('PAE-UI-01: activar el comedor, anotar un día y ver el resumen', async ({ 
 
         await page.getByLabel('Raciones recibidas').fill('300');
         await page.getByLabel('Raciones servidas').fill('310');
-        await page.getByLabel('Menú').fill('Menú e2e');
+        // Exacto: la barra lateral es el «Menú principal».
+        await page.getByLabel('Menú', { exact: true }).fill('Menú e2e');
         await page.getByRole('button', { name: 'Guardar' }).click();
         // Más servidas que recibidas: se guarda y se avisa.
         await expect(page.getByText(/10 raciones más de las recibidas/)).toBeVisible({ timeout: 15000 });

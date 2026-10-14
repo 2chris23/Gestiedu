@@ -86,10 +86,12 @@ test.describe('La boleta', () => {
             await injectSessionCookies(page, alumno);
             await page.goto(`${WEB_BASE}/dashboard`);
 
-            // Esperar que cargue el inicio
-            await expect(page.getByText('Promedio hasta hoy')).toBeVisible({ timeout: 30000 });
+            // Esperar que cargue el inicio. El del ordenador (la franja que
+            // pinta el armazón) también está en la página, escondido a este
+            // ancho: se mira el que se ve.
+            await expect(page.getByText('Promedio hasta hoy').filter({ visible: true })).toBeVisible({ timeout: 30000 });
             // Verificar que en Inicio sale 15.5
-            await expect(page.getByText('15.5').first()).toBeVisible({ timeout: 15000 });
+            await expect(page.getByText('15.5').filter({ visible: true }).first()).toBeVisible({ timeout: 15000 });
 
             // Ir a Académico
             await page.goto(`${WEB_BASE}/dashboard/academico`);

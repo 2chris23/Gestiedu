@@ -31,13 +31,15 @@ test.describe('El horario del alumno', () => {
             await loginViaUI(page, alumno.email, '123456');
             await page.goto(`${WEB_BASE}/dashboard`);
 
-            // Su horario, con el turno dicho con todas las letras.
-            const horario = page.getByText('Horario en Vivo').first();
+            // Su horario, con el turno dicho con todas las letras. El Inicio
+            // del teléfono también está en la página, escondido a este ancho:
+            // se mira el que se ve.
+            const horario = page.getByText('Horario en Vivo').filter({ visible: true }).first();
             await expect(horario).toBeVisible({ timeout: 30000 });
 
             // Un bloque con materia: lleva a SU clase (plan, sus notas, sus
             // observaciones), no a una ventanita con el tema del día.
-            await expect(page.locator('h4', { hasText: /\S/ }).first()).toBeVisible({ timeout: 30000 });
+            await expect(page.locator('h4', { hasText: /\S/ }).filter({ visible: true }).first()).toBeVisible({ timeout: 30000 });
             // El carril se desliza solo hasta la clase en curso: según la hora,
             // la primera queda a la izquierda, debajo de la barra lateral, y el
             // clic lo recibía la barra. Se toca la primera que se ve entera.
@@ -116,9 +118,10 @@ test.describe('El horario del alumno', () => {
             await loginViaUI(page, alumno.email, '123456');
             await page.goto(`${WEB_BASE}/dashboard`);
 
-            await expect(page.getByText('Mis actividades')).toBeVisible({ timeout: 30000 });
-            await expect(page.getByRole('button', { name: /Pendientes \(/ })).toBeVisible();
-            await expect(page.getByRole('button', { name: /Con nota \(/ })).toBeVisible();
+            // La del Inicio del teléfono está también, escondida a este ancho.
+            await expect(page.getByText('Mis actividades').filter({ visible: true })).toBeVisible({ timeout: 30000 });
+            await expect(page.getByRole('button', { name: /Pendientes \(/ }).filter({ visible: true })).toBeVisible();
+            await expect(page.getByRole('button', { name: /Con nota \(/ }).filter({ visible: true })).toBeVisible();
         } catch (error) {
             await captureEvidence(testInfo, page, 'ALUM-UI-02', 'Actividades del alumno', error);
             throw error;
@@ -275,7 +278,7 @@ test.describe('Las fotos', () => {
     test('FOTO-UI-02: la foto del alumno sale también en la lista de su sección', async ({ page }, testInfo) => {
         try {
             const [caso] = await queryTenantDb(
-                `SELECT u.id AS student_id, c.id AS classroom_id, ay.name AS year_name, c.slug
+                `SELECT u.id AS student_id, u."lastName" AS apellido, c.id AS classroom_id, ay.name AS year_name, c.slug
                    FROM users u
                    JOIN student_classrooms sc ON sc."studentId" = u.id AND sc."isActive" = true
                    JOIN classrooms c ON c.id = sc."classroomId"
@@ -288,8 +291,12 @@ test.describe('Las fotos', () => {
             await loginViaUI(page, 'admin@testing.edu.ve', '123456');
             await page.goto(`${WEB_BASE}/dashboard/academico/${caso.year_name}/${caso.slug}`);
 
-            // La foto se trae con la credencial: cuando llega, hay un <img>.
-            await expect(page.locator('table img').first()).toBeVisible({ timeout: 30000 });
+            // La foto se pide cuando el avatar llega a la pantalla, y la lista
+            // queda debajo del horario en vivo: se baja hasta su fila. Se trae
+            // con la credencial: cuando llega, hay un <img>.
+            const fila = page.locator('table tr', { hasText: caso.apellido }).first();
+            await fila.scrollIntoViewIfNeeded({ timeout: 30000 });
+            await expect(fila.locator('img').first()).toBeVisible({ timeout: 30000 });
         } catch (error) {
             await captureEvidence(testInfo, page, 'FOTO-UI-02', 'Foto en la lista de la sección', error);
             throw error;
