@@ -27,7 +27,7 @@ import { cn } from '@/lib/utils';
 export function Hoja({ pedido, alCerrar }: { pedido: ComprobantePedido; alCerrar: () => void }) {
     const { data, isLoading, error } = useQuery({
         queryKey: ['comprobante', pedido.tipo, pedido.id],
-        queryFn: () => (pedido.tipo === 'cobro' ? leerComprobante(pedido.id) : leerReciboDelPersonal(pedido.id)),
+        queryFn: () => (pedido.datos ? Promise.resolve(pedido.datos) : pedido.tipo === 'cobro' ? leerComprobante(pedido.id) : leerReciboDelPersonal(pedido.id)),
         // Siempre lo de ahora: un pago recién anulado sale anulado.
         staleTime: 0,
     });
@@ -62,7 +62,7 @@ export function Hoja({ pedido, alCerrar }: { pedido: ComprobantePedido; alCerrar
         }
     };
 
-    const titulo = data?.annulled ? 'Pago anulado' : pedido.tipo === 'cobro' ? 'Pago recibido' : 'Pago al personal';
+    const titulo = data?.annulled ? 'Pago anulado' : (data?.titulo ?? (pedido.tipo === 'cobro' ? 'Pago recibido' : 'Pago al personal'));
 
     return (
         <Sheet open onOpenChange={(v) => !v && alCerrar()}>
@@ -91,10 +91,11 @@ export function Hoja({ pedido, alCerrar }: { pedido: ComprobantePedido; alCerrar
                             <p className={cn('mt-1 text-4xl font-bold tabular-nums', data.annulled ? 'text-gray-400 line-through' : 'text-emerald-700')}>{montoDelComprobante(data)}</p>
                             {data.annulled && <p className="mt-2 text-sm font-semibold text-red-700">Anulado{data.annulReason ? `: ${data.annulReason}` : ''}</p>}
                         </div>
-                        <dl className="space-y-3 py-4 text-center">
+                        {/* Como el de Bancamiga: el monto en medio y los datos a la izquierda, uno debajo de otro. */}
+                        <dl className="space-y-3 px-1 py-4 text-left">
                             {renglonesDelComprobante(data).map(([r, v]) => (
                                 <div key={r}>
-                                    <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">{r}</dt>
+                                    <dt className="text-xs font-medium uppercase tracking-wide text-indigo-700">{r}</dt>
                                     <dd className="break-words text-[15px] font-semibold text-gray-900">{v}</dd>
                                 </div>
                             ))}

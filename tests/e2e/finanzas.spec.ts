@@ -76,16 +76,20 @@ test.describe.serial('Finanzas', () => {
             // La lista va de 20 en 20: se busca, como haría el admin con 30 profesores.
             await page.getByLabel('Buscar en el personal').fill(profe.nombre, { timeout: 30000 });
             await page.getByRole('button', { name: new RegExp(profe.nombre) }).first().click({ timeout: 30000 });
-            const ficha = page.getByRole('dialog');
+            const ficha = page.getByRole('dialog', { name: profe.nombre });
             await ficha.getByRole('radio', { name: 'Mensual' }).click();
             await ficha.getByLabel(/^Cuánto al mes/).fill('250');
             await ficha.getByRole('button', { name: 'Guardar lo acordado' }).click();
             await expect(page.getByText('Guardado').first()).toBeVisible({ timeout: 15000 });
 
-            await ficha.getByRole('button', { name: 'El próximo' }).click();
-            await ficha.getByRole('radio', { name: 'Efectivo' }).click();
+            // Pagar va por el Egreso, ya puesto con esa persona.
             await ficha.getByRole('button', { name: 'Registrar pago' }).click();
-            await expect(page.getByText(/Pago registrado · recibo Nº/)).toBeVisible({ timeout: 15000 });
+            const panel = page.getByRole('dialog', { name: 'Nuevo movimiento' });
+            await expect(panel.getByRole('button', { name: 'Cambiar', exact: true })).toBeVisible({ timeout: 15000 });
+            const calculadora = panel.getByRole('group', { name: 'Calculadora' });
+            for (const n of ['2', '5', '0', '00']) await calculadora.getByRole('button', { name: n, exact: true }).click();
+            await panel.getByRole('button', { name: 'Guardar el egreso' }).click();
+            await expect(page.getByText(/Pagado · recibo Nº/)).toBeVisible({ timeout: 15000 });
             const [pago] = await queryTenantDb(
                 `SELECT p."montoBase" FROM pagos_al_personal p JOIN personal x ON x.id = p."personalId" WHERE x."userId" = $1 AND p."anuladoEn" IS NULL ORDER BY p.numero DESC LIMIT 1`,
                 [profe.id]
@@ -181,6 +185,10 @@ test.describe.serial('Finanzas', () => {
             await expect(page.getByText('Fondos disponibles')).toBeVisible({ timeout: 30000 });
             const panel = page.getByRole('dialog', { name: 'Nuevo movimiento' });
             const calculadora = panel.getByRole('group', { name: 'Calculadora' });
+            // El saldo se lee ANTES del primer egreso: leído justo después, a veces
+            // aún no se había vuelto a pedir y la cuenta salía con 25 de más.
+            await expect(saldo).toBeVisible({ timeout: 30000 });
+            const antes = dineroDe(await saldo.innerText());
 
             await page.getByRole('button', { name: 'Añadir', exact: true }).click();
             await page.getByRole('menuitem', { name: /Egreso/ }).click();
@@ -192,7 +200,6 @@ test.describe.serial('Finanzas', () => {
             await panel.getByRole('checkbox', { name: /Guardar como recurrente/ }).check();
             await panel.getByRole('button', { name: 'Guardar el egreso' }).click();
             await expect(page.getByText(`«${nombre}» guardado como recurrente`)).toBeVisible({ timeout: 15000 });
-            const antes = dineroDe(await saldo.innerText());
 
             // La próxima vez: un toque y queda lleno.
             await page.getByRole('button', { name: 'Añadir', exact: true }).click();
@@ -201,8 +208,8 @@ test.describe.serial('Finanzas', () => {
             await expect(panel.getByLabel('Monto: $ 25.00')).toBeVisible();
             await expect(panel.getByRole('button', { name: 'Servicios' })).toHaveAttribute('aria-pressed', 'true');
             await panel.getByRole('button', { name: 'Guardar el egreso' }).click();
-            await expect(page.getByText('Egreso anotado')).toBeVisible({ timeout: 15000 });
-            await expect.poll(async () => dineroDe(await saldo.innerText()), { timeout: 15000 }).toBeCloseTo(antes - 25, 2);
+            await expect(page.getByText('Egreso anotado').last()).toBeVisible({ timeout: 15000 });
+            await expect.poll(async () => dineroDe(await saldo.innerText()), { timeout: 15000 }).toBeCloseTo(antes - 50, 2);
 
             // En bolívares, la tasa se pone sola (la del BCV, o la última que se supo).
             await page.getByRole('button', { name: 'Añadir', exact: true }).click();

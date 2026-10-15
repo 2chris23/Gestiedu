@@ -146,6 +146,7 @@ export function VistaResumen({
                 filtro={filtro}
                 alFiltrar={setFiltro}
                 fmt={(n) => tapar(fmt(n))}
+                moneda={data.currency}
             />
 
         </div>

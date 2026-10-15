@@ -294,8 +294,7 @@ responde 403. Reglas en `MAPA` §8b y §8g.
 - **Ninguna lista de más de 20 filas de golpe** (Cristian, 14-oct-2026: con
   599 alumnos «la app parece interminable»). Estudiantes va por años →
   secciones → alumnos (con búsqueda o filtro, lista plana de 20 en 20,
-  `components/pagos/listas-de-finanzas.tsx`, `VerMas`); los meses son un
-  carril de pastillas (`CarrilDeMeses`) y un mes abierto enseña quién debe
+  `components/pagos/listas-de-finanzas.tsx`, `VerMas`); un mes abierto enseña quién debe
   **por sección** (`MesAbierto`; los días, detrás de «Por días»). Personal:
   «sin sueldo» es una fila que abre una hoja (`PonerSueldo`). FIN-UI-06.
 - **El comprobante es como un Pago Móvil**: se toca un pago y sale una hoja
@@ -303,6 +302,20 @@ responde 403. Reglas en `MAPA` §8b y §8g.
   en el ordenador se baja) y «Cerrar»; anular va dentro. Sin PDF. Vive una vez
   en el armazón (`HojaDeComprobante`, se abre con `abrirComprobante()` de
   `lib/comprobante-abierto.ts`) y su imagen sale de `lib/comprobante-de-pago.ts`.
+  Los datos van a la izquierda, uno debajo de otro (como el de Bancamiga), y
+  **cada movimiento se toca**: un cobro o un pago al personal abre su recibo;
+  un fondo o un gasto, su hoja sin número (`tipo: 'movimiento'` con sus datos).
+- **Las fichas solo enseñan; cobrar y pagar van por «Nuevo movimiento»**
+  (Cristian, 15-oct-2026). La del estudiante (`FichaDelAlumno`) y la de la
+  persona tienen la forma del panel de Ingreso/Egreso (`PanelDeFicha`): lo que
+  debe, las cuotas en filas, el historial y, abajo, «Registrar pago», que abre
+  el Ingreso o el Egreso ya puesto con esa persona (`abrirMovimiento()`). Lo
+  pagado se reparte **empezando por lo más viejo** (`loQueCubre`): si debe 40
+  del mes pasado y 40 de este y paga 20, se abona al mes pasado. El
+  representante sigue en `FichaDePagos` (ahí reporta lo que pagó).
+- Los meses son **un gráfico** (`GraficoDeMeses`): doce barras en dos filas,
+  verde lo cobrado y rojo lo que quedó sin cobrar de los meses vencidos. Los
+  filtros de Estudiantes, una barra segmentada de cuatro (sin arrastrar).
 
 ## Asistencia por QR
 

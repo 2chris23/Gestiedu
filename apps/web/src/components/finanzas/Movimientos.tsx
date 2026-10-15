@@ -7,6 +7,10 @@ import { useMesDeFinanzas } from '@/hooks/useFinanzas';
 import { useMesDePagos } from '@/hooks/usePagos';
 import { nombreDelMes } from '@/lib/calendario-del-ciclo';
 import { cn } from '@/lib/utils';
+import { abrirComprobante } from '@/lib/comprobante-abierto';
+import type { DatosDelComprobante } from '@/lib/comprobante-de-pago';
+import { useInstituteConfig } from '@/hooks/useInstitute';
+import type { Moneda } from '@/hooks/usePagos';
 
 /**
  * LOS MOVIMIENTOS (2026-10-14)
@@ -28,6 +32,8 @@ interface Movimiento {
     titulo: string;
     detalle: string;
     monto: string;
+    /** Al tocarlo: su comprobante (como un Pago Móvil). */
+    abrir: () => void;
 }
 
 const conRecibo = (n: number) => `recibo Nº ${String(n).padStart(6, '0')}`;
@@ -40,6 +46,7 @@ export function Movimientos({
     filtro,
     alFiltrar,
     fmt,
+    moneda,
 }: {
     ciclo: string | null;
     /** Los meses del ciclo, en orden («2026-09»…). */
@@ -48,8 +55,31 @@ export function Movimientos({
     filtro: FiltroDeMovimientos;
     alFiltrar: (f: FiltroDeMovimientos) => void;
     fmt: (n: string | number) => string;
+    moneda: Moneda;
 }) {
     const [mes, setMes] = React.useState(mesInicial);
+    const { data: liceo } = useInstituteConfig();
+    // Un fondo o un gasto no tiene recibo en el servidor: su hoja se arma con lo que ya se tiene.
+    const sinRecibo = (titulo: string, rotulo: string, nombre: string, fecha: string, monto: string, concepto: string): DatosDelComprobante => ({
+        institute: { name: liceo?.name ?? '' },
+        receiptNumber: 0,
+        student: { id: '', firstName: nombre, lastName: '' },
+        academicYear: '',
+        paidAt: fecha,
+        method: '',
+        reference: null,
+        currency: moneda,
+        amount: monto,
+        exchangeRate: null,
+        baseCurrency: moneda,
+        amountBase: monto,
+        annulled: false,
+        annulReason: null,
+        allocations: concepto ? [{ label: concepto, amount: monto }] : [],
+        titulo,
+        rotuloPersona: rotulo,
+        rotuloMonto: 'Monto',
+    });
     React.useEffect(() => setMes(mesInicial), [mesInicial]);
     const { data: f, isLoading: cargandoF } = useMesDeFinanzas(ciclo, mes);
     const { data: p, isLoading: cargandoP } = useMesDePagos(ciclo, mes);
@@ -58,16 +88,50 @@ export function Movimientos({
     const todos: Movimiento[] = [];
     for (const d of p?.days ?? []) {
         for (const x of d.payments) {
-            todos.push({ id: `c-${x.id}`, fecha: d.date, entra: true, titulo: `Cuota de ${x.student.nombre}`, detalle: conRecibo(x.receiptNumber), monto: x.amount });
+            todos.push({
+                id: `c-${x.id}`,
+                fecha: d.date,
+                entra: true,
+                titulo: `Cuota de ${x.student.nombre}`,
+                detalle: conRecibo(x.receiptNumber),
+                monto: x.amount,
+                abrir: () => abrirComprobante({ tipo: 'cobro', id: x.id, editable: true }),
+            });
         }
     }
     for (const d of f?.days ?? []) {
         for (const x of d.fondos) {
             const titulo = x.descripcion ?? (x.concepto === 'SALDO_INICIAL' ? 'Saldo inicial' : x.concepto === 'DONACION' ? 'Donación' : 'Otro ingreso');
-            todos.push({ id: `f-${x.id}`, fecha: d.date, entra: true, titulo, detalle: 'Fondo', monto: x.monto });
+            todos.push({
+                id: `f-${x.id}`,
+                fecha: d.date,
+                entra: true,
+                titulo,
+                detalle: 'Fondo',
+                monto: x.monto,
+                abrir: () => abrirComprobante({ tipo: 'movimiento', id: x.id, datos: sinRecibo('Ingreso', 'Concepto', titulo, d.date, x.monto, '') }),
+            });
         }
-        for (const x of d.gastos) todos.push({ id: `g-${x.id}`, fecha: d.date, entra: false, titulo: x.concepto, detalle: `Gasto · ${x.categoria}`, monto: x.monto });
-        for (const x of d.pagados) todos.push({ id: `p-${x.id}`, fecha: d.date, entra: false, titulo: `Pago a ${x.persona}`, detalle: `Personal · ${conRecibo(x.numero)}`, monto: x.monto });
+        for (const x of d.gastos)
+            todos.push({
+                id: `g-${x.id}`,
+                fecha: d.date,
+                entra: false,
+                titulo: x.concepto,
+                detalle: `Gasto · ${x.categoria}`,
+                monto: x.monto,
+                abrir: () => abrirComprobante({ tipo: 'movimiento', id: x.id, datos: sinRecibo('Egreso', 'Gasto', x.concepto, d.date, x.monto, x.categoria) }),
+            });
+        for (const x of d.pagados)
+            todos.push({
+                id: `p-${x.id}`,
+                fecha: d.date,
+                entra: false,
+                titulo: `Pago a ${x.persona}`,
+                detalle: `Personal · ${conRecibo(x.numero)}`,
+                monto: x.monto,
+                abrir: () => abrirComprobante({ tipo: 'personal', id: x.id, editable: true }),
+            });
     }
     // Lo más reciente arriba, como en el banco.
     todos.sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -80,12 +144,14 @@ export function Movimientos({
                 <h2 id="titulo-movimientos" className="text-lg font-bold text-gray-900">
                     Movimientos
                 </h2>
+                {/* Un solo botón: el dibujo de la hoja ya dice que es el reporte. */}
                 <Link
                     href={`/dashboard/pagos/reporte?mes=${mes}${ciclo ? `&ciclo=${ciclo}` : ''}`}
-                    className="inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                    aria-label="Reporte del mes"
+                    title="Reporte del mes"
+                    className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-indigo-700 shadow-sm ring-1 ring-gray-200 hover:bg-indigo-50"
                 >
-                    <FileText className="h-4 w-4" aria-hidden />
-                    Reporte del mes
+                    <FileText className="h-5 w-5" aria-hidden />
                 </Link>
             </div>
 
@@ -149,7 +215,8 @@ export function Movimientos({
                 ) : (
                     <ul className="divide-y divide-gray-100" aria-label={`Movimientos de ${nombreDelMes(mes)}`}>
                         {lista.map((m) => (
-                            <li key={m.id} className="flex items-center gap-3 px-4 py-3">
+                            <li key={m.id}>
+                                <button type="button" onClick={m.abrir} className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-gray-100">
                                 <span
                                     className={cn(
                                         'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
@@ -168,6 +235,7 @@ export function Movimientos({
                                     <span className="sr-only">{m.entra ? 'Entró' : 'Salió'} </span>
                                     {m.entra ? '+' : '−'} {fmt(m.monto)}
                                 </span>
+                                </button>
                             </li>
                         ))}
                     </ul>

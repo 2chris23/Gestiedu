@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 import { CalendarDays, ChevronRight, Loader2, Plus, Save, Search, UserPlus, Users } from 'lucide-react';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { VerMas } from '@/components/pagos/listas-de-finanzas';
+import { PanelDeFicha } from '@/components/finanzas/PanelDeFicha';
+import { abrirMovimiento } from '@/lib/abrir-movimiento';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -198,22 +200,34 @@ function FilaDePersona({ persona: p, fmt, conArea, alAbrir }: { persona: Persona
 
 function DialogoDePersona({ id, ciclo, alCerrar }: { id: string; ciclo: string | null; alCerrar: () => void }) {
     const { data, isLoading } = useFichaDePersonal(id, ciclo);
+    const nombre = data?.persona.nombre ?? 'Personal';
+    const sePuedePagar = !!data && !data.closed && data.debidos.some((d) => Number(d.pendiente) > 0);
     return (
-        <Dialog open onOpenChange={(v) => !v && alCerrar()}>
-            <DialogContent className="max-h-[92dvh] max-w-2xl overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>{data?.persona.nombre ?? 'Personal'}</DialogTitle>
-                    <DialogDescription>{data ? `${data.persona.cargo} · ciclo ${data.academicYear.name}` : ''}</DialogDescription>
-                </DialogHeader>
-                {isLoading || !data ? (
-                    <div className="flex justify-center py-10">
-                        <Loader2 className="h-6 w-6 animate-spin text-indigo-600" aria-label="Cargando" />
-                    </div>
-                ) : (
-                    <FichaDePersonal key={data.persona.id} ficha={data} ciclo={ciclo} />
-                )}
-            </DialogContent>
-        </Dialog>
+        <PanelDeFicha
+            titulo={nombre}
+            subtitulo={data ? `${nombreDelArea(data.persona.cargo)} · ciclo ${data.academicYear.name}` : undefined}
+            alCerrar={alCerrar}
+            abajo={
+                sePuedePagar ? (
+                    <button
+                        type="button"
+                        onClick={() => abrirMovimiento({ tipo: 'sale', persona: { id, nombre } })}
+                        className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-base font-semibold text-white active:bg-indigo-700"
+                    >
+                        <Plus className="h-5 w-5" aria-hidden />
+                        Registrar pago
+                    </button>
+                ) : undefined
+            }
+        >
+            {isLoading || !data ? (
+                <div className="flex justify-center py-16">
+                    <Loader2 className="h-7 w-7 animate-spin text-indigo-600" aria-label="Cargando" />
+                </div>
+            ) : (
+                <FichaDePersonal key={data.persona.id} ficha={data} ciclo={ciclo} />
+            )}
+        </PanelDeFicha>
     );
 }
 

@@ -113,14 +113,22 @@ test.describe.serial('Pagos', () => {
             await page.getByPlaceholder('Buscar estudiante o cédula').fill(caso.student_id);
             await page.getByRole('button', { name: new RegExp(`${caso.last_name}, ${caso.first_name}`) }).click();
 
-            // La ficha; el comprobante sale en otra hoja encima (como un Pago Móvil).
-            const dialogo = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Cuotas' }) });
-            await expect(dialogo.getByRole('heading', { name: 'Cuotas' })).toBeVisible({ timeout: 15000 });
-            await dialogo.getByRole('button', { name: 'Las vencidas' }).click();
-            await dialogo.getByRole('radio', { name: 'Efectivo' }).click();
+            // La ficha solo enseña (cuotas, lo que debe, el historial); cobrar es
+            // «Registrar pago», que abre el Ingreso ya puesto con ese estudiante.
+            const dialogo = page.getByRole('dialog', { name: `${caso.first_name} ${caso.last_name}` });
+            await expect(dialogo.getByRole('list', { name: 'Cuotas del ciclo' })).toBeVisible({ timeout: 15000 });
             await page.screenshot({ path: path.join(EVIDENCIA, 'pagos-ficha.png') });
-            await dialogo.getByRole('button', { name: 'Registrar pago' }).click();
-            await expect(page.getByText(/Pago registrado · comprobante Nº/)).toBeVisible({ timeout: 15000 });
+            const cobrar = async () => {
+                await dialogo.getByRole('button', { name: 'Registrar pago' }).click();
+                const panel = page.getByRole('dialog', { name: 'Nuevo movimiento' });
+                await expect(panel.getByRole('button', { name: 'Cambiar', exact: true })).toBeVisible({ timeout: 15000 });
+                const calculadora = panel.getByRole('group', { name: 'Calculadora' });
+                for (const n of ['1', '00']) await calculadora.getByRole('button', { name: n, exact: true }).click();
+                await panel.getByRole('button', { name: 'Guardar el ingreso' }).click();
+                await expect(page.getByText(/Cobrado · comprobante Nº/).first()).toBeVisible({ timeout: 15000 });
+                await expect(panel).toHaveCount(0);
+            };
+            await cobrar();
 
             const [pago] = await queryTenantDb(`SELECT id, "amountBase" FROM payments WHERE "studentId" = $1 AND "annulledAt" IS NULL`, [caso.student_id]);
             expect(Number(pago.amountBase)).toBeGreaterThan(0);
@@ -144,10 +152,7 @@ test.describe.serial('Pagos', () => {
             expect(anulado.annulReason).toBe('Prueba automática');
 
             // Un segundo pago, que queda vigente para lo que ve el representante.
-            await dialogo.getByRole('button', { name: 'Las vencidas' }).click();
-            await dialogo.getByRole('radio', { name: 'Efectivo' }).click();
-            await dialogo.getByRole('button', { name: 'Registrar pago' }).click();
-            await expect(page.getByText(/Pago registrado · comprobante Nº/).first()).toBeVisible({ timeout: 15000 });
+            await cobrar();
         } catch (error) {
             await captureEvidence(testInfo, page, 'PAGOS-UI-02', 'Cobrar y anular', error);
             throw error;

@@ -12,14 +12,15 @@ import { NuevoMovimiento, type FuenteDelMovimiento, type TipoDeMovimiento } from
 import { BotonAnadir, PartesDeFinanzas, SaldoDisponible, VISTAS, type Vista } from '@/components/finanzas/CabezaDeFinanzas';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useYaArranco } from '@/hooks/useYaArranco';
-import { CarrilDeMeses } from '@/components/pagos/CarrilDeMeses';
+import { GraficoDeMeses } from '@/components/pagos/GraficoDeMeses';
 import { MesAbierto, type DeudorDelMes } from '@/components/pagos/MesAbierto';
 import { FilaDeAlumno, FilaDeGrupo, VerMas } from '@/components/pagos/listas-de-finanzas';
 import { mesesDelCiclo, mesDe, porcentaje } from '@/lib/calendario-del-ciclo';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { FichaDePagos } from '@/components/pagos/FichaDePagos';
+
+import { FichaDelAlumno } from '@/components/pagos/FichaDelAlumno';
+import { alAbrirMovimiento } from '@/lib/abrir-movimiento';
 import { PagosPorConfirmar } from '@/components/pagos/PagosPorConfirmar';
-import { dinero, ESTADO_DEL_ALUMNO, EstadoDelAlumno, useCiclosDePagos, useFichaDePagos, usePagosActivos, useResumenDePagos, type Moneda } from '@/hooks/usePagos';
+import { dinero, ESTADO_DEL_ALUMNO, EstadoDelAlumno, useCiclosDePagos, usePagosActivos, useResumenDePagos, type Moneda } from '@/hooks/usePagos';
 import { cn } from '@/lib/utils';
 
 /**
@@ -34,7 +35,20 @@ import { cn } from '@/lib/utils';
  */
 
 const ANOS = ['1er Año', '2do Año', '3er Año', '4to Año', '5to Año', '6to Año'];
-type Filtro = 'TODOS' | EstadoDelAlumno;
+/** «Al día» junta al que va al día y al que pagó el año entero. */
+type Filtro = 'TODOS' | 'DEBE' | 'AL_DIA' | 'EXONERADO';
+const ENTRA_EN: Record<Filtro, (e: EstadoDelAlumno) => boolean> = {
+    TODOS: () => true,
+    DEBE: (e) => e === 'DEBE',
+    AL_DIA: (e) => e === 'AL_DIA' || e === 'ANO_PAGADO',
+    EXONERADO: (e) => e === 'EXONERADO',
+};
+const FILTROS: Array<[Filtro, string]> = [
+    ['TODOS', 'Todos'],
+    ['DEBE', 'Deben'],
+    ['AL_DIA', 'Al día'],
+    ['EXONERADO', 'Exonerados'],
+];
 
 function VistaDeEstudiantes({ ciclo }: { ciclo: string | null }) {
     const { data, isLoading, error } = useResumenDePagos(true, ciclo);
@@ -97,10 +111,9 @@ function VistaDeEstudiantes({ ciclo }: { ciclo: string | null }) {
     const plana = filtro !== 'TODOS' || !!texto;
     const visibles = plana
         ? todos
-              .filter((a) => (filtro === 'TODOS' || a.state === filtro) && (!texto || `${a.firstName} ${a.lastName} ${a.id}`.toLowerCase().includes(texto)))
+              .filter((a) => ENTRA_EN[filtro](a.state) && (!texto || `${a.firstName} ${a.lastName} ${a.id}`.toLowerCase().includes(texto)))
               .sort((x, y) => x.nombre.localeCompare(y.nombre, 'es'))
         : [];
-    const cuantosCon = (f: Filtro) => (f === 'TODOS' ? todos.length : todos.filter((a) => a.state === f).length);
 
     const fila = (a: (typeof todos)[number], conSeccion: boolean) => (
         <FilaDeAlumno
@@ -166,7 +179,7 @@ function VistaDeEstudiantes({ ciclo }: { ciclo: string | null }) {
                 <h2 id="titulo-meses" className="flex items-baseline gap-2 text-lg font-bold text-gray-900">
                     Meses <span className="text-sm font-normal text-gray-500">{data.academicYear.name}</span>
                 </h2>
-                <CarrilDeMeses meses={meses} hoy={data.today} elegido={mes} alElegir={(m) => setMes(m === mes ? null : m)} />
+                <GraficoDeMeses meses={meses} hoy={data.today} elegido={mes} alElegir={(m) => setMes(m === mes ? null : m)} />
                 {mes && elMes && (
                     <MesAbierto
                         ciclo={ciclo}
@@ -196,19 +209,20 @@ function VistaDeEstudiantes({ ciclo }: { ciclo: string | null }) {
                         className="min-h-[44px] min-w-0 flex-1 bg-transparent text-[15px] text-gray-900 outline-none placeholder:text-gray-500"
                     />
                 </label>
-                <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:px-0" role="group" aria-label="Filtrar por estado">
-                    {(['TODOS', 'DEBE', 'AL_DIA', 'ANO_PAGADO', 'EXONERADO'] as Filtro[]).map((f) => (
+                {/* Una barra segmentada, como las de iOS: los cuatro caben, sin arrastrar. */}
+                <div className="flex rounded-full bg-gray-200/70 p-1" role="group" aria-label="Filtrar por estado">
+                    {FILTROS.map(([f, texto]) => (
                         <button
                             key={f}
                             type="button"
                             onClick={() => setFiltro(f)}
                             aria-pressed={filtro === f}
                             className={cn(
-                                'min-h-[44px] shrink-0 rounded-full px-4 text-sm font-medium',
-                                filtro === f ? 'bg-indigo-600 text-white' : 'bg-white text-gray-800 ring-1 ring-gray-200'
+                                'min-h-[44px] min-w-0 flex-1 rounded-full px-1 text-[13px] font-semibold transition-colors',
+                                filtro === f ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'
                             )}
                         >
-                            {f === 'TODOS' ? 'Todos' : ESTADO_DEL_ALUMNO[f].texto} <span className={cn('ml-0.5', filtro === f ? 'text-white/80' : 'text-gray-500')}>{cuantosCon(f)}</span>
+                            {texto}
                         </button>
                     ))}
                 </div>
@@ -254,7 +268,7 @@ function VistaDeEstudiantes({ ciclo }: { ciclo: string | null }) {
                 </div>
             </section>
 
-            <DialogoDeFicha studentId={abierto} ciclo={ciclo} alCerrar={() => setAbierto(null)} />
+            {abierto && <FichaDelAlumno studentId={abierto} ciclo={ciclo} alCerrar={() => setAbierto(null)} />}
         </div>
     );
 }
@@ -269,31 +283,9 @@ function Volver({ texto, alTocar }: { texto: string; alTocar: () => void }) {
     );
 }
 
-function DialogoDeFicha({ studentId, ciclo, alCerrar }: { studentId: string | null; ciclo: string | null; alCerrar: () => void }) {
-    const { data, isLoading } = useFichaDePagos(studentId, ciclo);
-    return (
-        <Dialog open={!!studentId} onOpenChange={(v) => !v && alCerrar()}>
-            <DialogContent className="max-h-[92dvh] max-w-2xl overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>{data ? `${data.student.firstName} ${data.student.lastName}` : 'Pagos'}</DialogTitle>
-                    <DialogDescription>{data?.student.classroom?.name ?? ''}</DialogDescription>
-                </DialogHeader>
-                {isLoading || !data ? (
-                    <div className="flex justify-center py-10">
-                        <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
-                    </div>
-                ) : (
-                    <FichaDePagos ficha={data} editable />
-                )}
-            </DialogContent>
-        </Dialog>
-    );
-}
-
 // ════════════════════════════════════════════════════════════════════════════
 // FINANZAS: la página (2026-10-01)
 // ════════════════════════════════════════════════════════════════════════════
-
 
 /**
  * FINANZAS DEL LICEO
@@ -314,7 +306,19 @@ export default function FinanzasPage() {
     const { data: ciclos = [] } = useCiclosDePagos(activo);
     // El panel del «+» (y el saldo inicial del Resumen) vive aquí: se abre
     // desde cualquier parte de las finanzas.
-    const [movimiento, setMovimiento] = React.useState<null | { tipo: TipoDeMovimiento; fuente?: FuenteDelMovimiento }>(null);
+    const [movimiento, setMovimiento] = React.useState<null | {
+        tipo: TipoDeMovimiento;
+        fuente?: FuenteDelMovimiento;
+        estudiante?: { id: string; nombre: string; seccion: string };
+        persona?: { id: string; nombre: string };
+    }>(null);
+    React.useEffect(
+        () =>
+            alAbrirMovimiento((p) =>
+                setMovimiento({ tipo: p.tipo, fuente: p.estudiante ? 'ESTUDIANTE' : p.persona ? 'PERSONAL' : undefined, estudiante: p.estudiante, persona: p.persona })
+            ),
+        []
+    );
     const ir = (cambios: { ciclo?: string | null; vista?: Vista }) => {
         const q = new URLSearchParams();
         const c = cambios.ciclo !== undefined ? cambios.ciclo : ciclo;
@@ -380,6 +384,8 @@ export default function FinanzasPage() {
                 <NuevoMovimiento
                     tipoInicial={movimiento.tipo}
                     fuenteInicial={movimiento.fuente}
+                    estudianteInicial={movimiento.estudiante}
+                    personaInicial={movimiento.persona}
                     ciclo={ciclo}
                     monedas={monedas}
                     metodos={ajustes?.methods ?? []}

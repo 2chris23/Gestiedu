@@ -367,7 +367,7 @@ function RegistrarPago({ ficha, elegidas, alTerminar, reportar = false }: { fich
 }
 
 /** Un pago, como una fila de Rial; al tocarlo, su comprobante en la hoja (como un Pago Móvil). */
-function PagoEnHistorial({ pago, editable }: { pago: PagoRegistrado; base: Moneda; editable: boolean }) {
+export function PagoEnHistorial({ pago, editable }: { pago: PagoRegistrado; base: Moneda; editable: boolean }) {
     const anulado = Boolean(pago.annulledAt);
     const concepto = pago.allocations.map((a) => a.label).join(', ');
     return (
@@ -397,7 +397,7 @@ function PagoEnHistorial({ pago, editable }: { pago: PagoRegistrado; base: Moned
     );
 }
 
-function PlanDelAlumno({ ficha }: { ficha: Ficha }) {
+export function PlanDelAlumno({ ficha }: { ficha: Ficha }) {
     const guardar = useGuardarPlanDePago(ficha.student.id, ficha.academicYear.id);
     const [dia, setDia] = React.useState<string>(ficha.plan.dueDay?.toString() ?? '');
     const [exento, setExento] = React.useState(ficha.plan.exempt);
@@ -476,7 +476,7 @@ const ESTADO_DEL_REPORTE: Record<PagoReportadoEnFicha['estado'], { texto: string
 };
 
 /** Lo que el representante reportó y cómo va. Lo ven él y el admin. */
-function PagosReportados({ reportes }: { reportes: PagoReportadoEnFicha[] }) {
+export function PagosReportados({ reportes }: { reportes: PagoReportadoEnFicha[] }) {
     return (
         <section>
             <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-gray-700">Pagos reportados</h3>

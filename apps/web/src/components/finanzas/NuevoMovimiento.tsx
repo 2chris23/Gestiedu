@@ -105,6 +105,8 @@ export function loQueCubre<T extends { pendiente: number }>(debidos: T[], monto:
 export function NuevoMovimiento({
     tipoInicial,
     fuenteInicial,
+    estudianteInicial,
+    personaInicial,
     ciclo,
     monedas,
     metodos,
@@ -112,6 +114,10 @@ export function NuevoMovimiento({
 }: {
     tipoInicial: TipoDeMovimiento;
     fuenteInicial?: FuenteDelMovimiento;
+    /** Desde la ficha de un estudiante: el ingreso ya es de él (y de su mensualidad). */
+    estudianteInicial?: { id: string; nombre: string; seccion: string };
+    /** Desde la ficha de una persona del personal: el egreso ya es para ella. */
+    personaInicial?: { id: string; nombre: string };
     ciclo: string | null;
     monedas: { base: Moneda; aceptadas: Moneda[] };
     metodos: string[];
@@ -124,8 +130,8 @@ export function NuevoMovimiento({
     const [cifras, setCifras] = React.useState('');
     const [tasa, setTasa] = React.useState('');
     const [fuente, setFuente] = React.useState<FuenteDelMovimiento | null>(fuenteInicial ?? null);
-    const [estudiante, setEstudiante] = React.useState<{ id: string; nombre: string; seccion: string } | null>(null);
-    const [persona, setPersona] = React.useState<{ id: string; nombre: string } | null>(null);
+    const [estudiante, setEstudiante] = React.useState<{ id: string; nombre: string; seccion: string } | null>(estudianteInicial ?? null);
+    const [persona, setPersona] = React.useState<{ id: string; nombre: string } | null>(personaInicial ?? null);
     const [metodo, setMetodo] = React.useState(metodos[0] ?? '');
     const [fecha, setFecha] = React.useState(hoy);
     // La hora del liceo llega del servidor: hasta entonces, la fecha va vacía.

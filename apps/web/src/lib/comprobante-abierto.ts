@@ -7,12 +7,19 @@
  * ninguna pantalla. Sin React: se puede llamar desde donde sea.
  */
 
+import type { DatosDelComprobante } from '@/lib/comprobante-de-pago';
+
 export interface ComprobantePedido {
-    /** Un cobro a un estudiante o un pago al personal. */
-    tipo: 'cobro' | 'personal';
+    /**
+     * Un cobro a un estudiante o un pago al personal (se leen del servidor), o
+     * un movimiento sin recibo —un fondo, un gasto— con sus datos ya puestos.
+     */
+    tipo: 'cobro' | 'personal' | 'movimiento';
     id: string;
     /** Quien puede anularlo (el admin): sale «Anular pago» dentro. */
     editable?: boolean;
+    /** Solo con `movimiento`: lo que se enseña, tal cual. */
+    datos?: DatosDelComprobante;
 }
 
 type Oyente = (p: ComprobantePedido) => void;

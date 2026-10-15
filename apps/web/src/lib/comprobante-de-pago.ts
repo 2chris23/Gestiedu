@@ -57,21 +57,21 @@ function recortar(ctx: CanvasRenderingContext2D, texto: string, ancho: number) {
 
 /** Los renglones de la hoja y de la imagen: los mismos, en el mismo orden. */
 export function renglonesDelComprobante(d: DatosDelComprobante): Array<[string, string]> {
-    const r: Array<[string, string]> = [
-        ['Número de recibo', String(d.receiptNumber).padStart(6, '0')],
-        [d.rotuloPersona ?? 'Estudiante', `${d.student.firstName} ${d.student.lastName}`.trim()],
-    ];
+    // Un fondo o un gasto no lleva recibo (número 0): no se inventa uno.
+    const r: Array<[string, string]> = [];
+    if (d.receiptNumber > 0) r.push(['Número de recibo', String(d.receiptNumber).padStart(6, '0')]);
+    r.push([d.rotuloPersona ?? 'Estudiante', `${d.student.firstName} ${d.student.lastName}`.trim()]);
     if (d.student.id) r.push(['Cédula', d.student.id]);
     if (d.cargo) r.push(['Cargo', d.cargo]);
     r.push(['Fecha', fechaLarga(d.paidAt)]);
-    r.push(['Forma de pago', d.method]);
+    if (d.method) r.push(['Forma de pago', d.method]);
     if (d.reference) r.push(['Referencia', d.reference]);
     if (d.currency !== d.baseCurrency && d.exchangeRate) {
         r.push(['Tasa', `${formato(d.exchangeRate, 'VES')} por $1`]);
         r.push(['Equivale a', formato(d.amountBase, d.baseCurrency)]);
     }
     if (d.allocations.length) r.push(['Concepto', d.allocations.map((a) => a.label).join(', ')]);
-    r.push(['Ciclo escolar', d.academicYear]);
+    if (d.academicYear) r.push(['Ciclo escolar', d.academicYear]);
     return r;
 }
 
@@ -153,19 +153,22 @@ async function dibujar(d: DatosDelComprobante): Promise<HTMLCanvasElement> {
     ctx.stroke();
     y += 34;
 
+    // Los datos a la izquierda, uno debajo de otro (como el de Bancamiga).
+    ctx.textAlign = 'left';
     for (const [rotulo, valor] of renglones) {
-        ctx.fillStyle = '#6b7280';
+        ctx.fillStyle = '#4338ca';
         ctx.font = `500 22px ${familia}`;
-        ctx.fillText(rotulo.toUpperCase(), centro, y);
+        ctx.fillText(rotulo.toUpperCase(), M, y);
         y += 42;
         ctx.fillStyle = '#111827';
         ctx.font = `600 30px ${familia}`;
         for (const linea of valor) {
-            ctx.fillText(linea, centro, y);
+            ctx.fillText(linea, M, y);
             y += 40;
         }
         y += 22;
     }
+    ctx.textAlign = 'center';
 
     if (d.annulled) {
         ctx.fillStyle = '#b91c1c';
@@ -226,7 +229,7 @@ export async function leerReciboDelPersonal(pagoId: string): Promise<DatosDelCom
 export async function compartirComprobante(d: DatosDelComprobante) {
     const lienzo = await dibujar(d);
     const blob = await new Promise<Blob>((ok, mal) => lienzo.toBlob((b) => (b ? ok(b) : mal(new Error('No se pudo generar'))), 'image/png'));
-    const nombre = `${d.rotuloPersona ? 'recibo-personal' : 'comprobante'}-${String(d.receiptNumber).padStart(6, '0')}.png`;
+    const nombre = d.receiptNumber > 0 ? `${d.rotuloPersona ? 'recibo-personal' : 'comprobante'}-${String(d.receiptNumber).padStart(6, '0')}.png` : `movimiento-${d.paidAt}.png`;
     return entregarArchivo(blob, nombre);
 }
 
