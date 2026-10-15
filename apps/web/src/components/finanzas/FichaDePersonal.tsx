@@ -2,13 +2,12 @@
 
 import * as React from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, Ban, Check, CheckCircle2, Clock3, Download, FileText, Gift, Loader2, Lock, Palmtree, Receipt, Save, Wallet } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Clock3, Gift, Loader2, Lock, Palmtree, Receipt, Save, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CampoDeDinero, campo, type Dinero } from '@/components/finanzas/CampoDeDinero';
 import {
     ESTADO_DE_PAGO_AL_PERSONAL,
     FRECUENCIA,
-    useAnularPagoAlPersonal,
     useEditarPersona,
     useGuardarAcuerdo,
     usePagarAlPersonal,
@@ -17,7 +16,7 @@ import {
 } from '@/hooks/useFinanzas';
 import { dinero, errorDe, type Moneda } from '@/hooks/usePagos';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
-import { descargarReciboDelPersonal } from '@/lib/comprobante-de-pago';
+import { abrirComprobante } from '@/lib/comprobante-abierto';
 import { nombreDelMes } from '@/lib/calendario-del-ciclo';
 import { cn } from '@/lib/utils';
 
@@ -43,7 +42,7 @@ export function FichaDePersonal({ ficha, ciclo }: { ficha: Ficha; ciclo: string 
     const r = ficha.persona.resumen;
 
     return (
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
             {cerrado && (
                 <p className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
                     <Lock className="h-4 w-4 shrink-0 text-gray-600" aria-hidden />
@@ -159,7 +158,7 @@ export function FichaDePersonal({ ficha, ciclo }: { ficha: Ficha; ciclo: string 
                 {ficha.pagos.length === 0 ? (
                     <p className="text-sm text-gray-600">Todavía no se le ha pagado nada en este ciclo.</p>
                 ) : (
-                    <ul className="space-y-2">
+                    <ul className="divide-y divide-gray-100 overflow-hidden rounded-[22px] bg-white ring-1 ring-gray-200">
                         {ficha.pagos.map((p) => (
                             <PagoHecho key={p.id} pago={p} base={base} editable={!cerrado} />
                         ))}
@@ -341,7 +340,7 @@ function Pagar({ ficha, ciclo, elegidos, alTerminar }: { ficha: Ficha; ciclo: st
                 referencia: referencia || null,
             });
             toast.success(`Pago registrado · recibo Nº ${String(pago.numero).padStart(6, '0')}`, {
-                action: { label: 'Descargar', onClick: () => descargarReciboDelPersonal(pago.id, 'png') },
+                action: { label: 'Ver', onClick: () => abrirComprobante({ tipo: 'personal', id: pago.id, editable: true }) },
             });
             alTerminar();
         } catch (err) {
@@ -397,73 +396,32 @@ function Pagar({ ficha, ciclo, elegidos, alTerminar }: { ficha: Ficha; ciclo: st
     );
 }
 
-function PagoHecho({ pago, base, editable }: { pago: Ficha['pagos'][number]; base: Moneda; editable: boolean }) {
-    const anular = useAnularPagoAlPersonal();
-    const [anulando, setAnulando] = React.useState(false);
-    const [motivo, setMotivo] = React.useState('');
-    const [bajando, setBajando] = React.useState<null | 'png' | 'pdf'>(null);
-    const bajar = async (f: 'png' | 'pdf') => {
-        setBajando(f);
-        try {
-            await descargarReciboDelPersonal(pago.id, f);
-        } catch (e) {
-            toast.error(errorDe(e, 'No se pudo generar el recibo'));
-        } finally {
-            setBajando(null);
-        }
-    };
+/** Un pago hecho; al tocarlo, su recibo en la hoja (como un Pago Móvil). */
+function PagoHecho({ pago, editable }: { pago: Ficha['pagos'][number]; base: Moneda; editable: boolean }) {
+    const concepto = pago.asignaciones.map((a) => a.etiqueta).join(', ');
     return (
-        <li className={cn('rounded-xl border px-3 py-2.5', pago.anulado ? 'border-gray-200 bg-gray-50' : 'border-gray-200 bg-white')}>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <Receipt size={16} className="text-gray-500" aria-hidden />
-                <span className={cn('text-sm font-semibold', pago.anulado ? 'text-gray-500 line-through' : 'text-gray-900')}>
-                    {dinero(pago.monto, pago.moneda)}
-                    {pago.moneda !== base && <span className="font-normal text-gray-600"> ({dinero(pago.montoBase, base)})</span>}
+        <li>
+            <button
+                type="button"
+                onClick={() => abrirComprobante({ tipo: 'personal', id: pago.id, editable })}
+                aria-label={`Comprobante Nº ${String(pago.numero).padStart(6, '0')}`}
+                className={cn('flex min-h-[64px] w-full items-center gap-3 px-4 py-2.5 text-left active:bg-gray-100', pago.anulado && 'opacity-70')}
+            >
+                <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-full', pago.anulado ? 'bg-gray-100 text-gray-500' : 'bg-emerald-50 text-emerald-700')}>
+                    <Receipt className="h-5 w-5" aria-hidden />
                 </span>
-                <span className="text-sm text-gray-700">
-                    {fechaCorta(pago.fecha)} · {pago.metodo}
-                    {pago.referencia ? ` · Ref. ${pago.referencia}` : ''}
+                <span className="min-w-0 flex-1">
+                    <span className={cn('block text-[15px] font-semibold tabular-nums', pago.anulado ? 'text-gray-500 line-through' : 'text-gray-900')}>
+                        {dinero(pago.monto, pago.moneda)} <span className="font-normal text-gray-600">· {pago.metodo}</span>
+                    </span>
+                    <span className="block truncate text-sm text-gray-600">
+                        {fechaCorta(pago.fecha)}{concepto ? ` · ${concepto}` : ''}
+                    </span>
                 </span>
-                <span className="text-xs text-gray-600">Nº {String(pago.numero).padStart(6, '0')}</span>
-                {pago.anulado && <span className="rounded-md bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-800">Anulado: {pago.motivoAnulacion}</span>}
-                <span className="ml-auto flex gap-1">
-                    <button type="button" onClick={() => bajar('png')} disabled={!!bajando} aria-label="Recibo en imagen" title="Recibo en imagen" className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100">
-                        {bajando === 'png' ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                    </button>
-                    <button type="button" onClick={() => bajar('pdf')} disabled={!!bajando} aria-label="Recibo en PDF" title="Recibo en PDF" className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100">
-                        {bajando === 'pdf' ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
-                    </button>
-                    {editable && !pago.anulado && (
-                        <button type="button" onClick={() => setAnulando((v) => !v)} aria-label="Anular pago" title="Anular pago" className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-red-700 hover:bg-red-50">
-                            <Ban size={16} />
-                        </button>
-                    )}
+                <span className="shrink-0 text-right text-xs text-gray-500">
+                    {pago.anulado ? <span className="font-semibold text-red-700">Anulado</span> : `Nº ${String(pago.numero).padStart(6, '0')}`}
                 </span>
-            </div>
-            <p className="mt-1 text-xs text-gray-600">{pago.asignaciones.map((a) => `${a.etiqueta} (${dinero(a.monto, base)})`).join(' · ')}</p>
-            {anulando && (
-                <form
-                    onSubmit={async (e) => {
-                        e.preventDefault();
-                        try {
-                            await anular.mutateAsync({ id: pago.id, motivo });
-                            toast.success('Pago anulado: vuelve a los fondos');
-                            setAnulando(false);
-                        } catch (err) {
-                            toast.error(errorDe(err, 'No se pudo anular'));
-                        }
-                    }}
-                    className="mt-2 flex flex-wrap gap-2"
-                >
-                    <label className="min-w-[12rem] flex-1 text-xs font-medium text-gray-700">
-                        Motivo de la anulación (queda a la vista)
-                        <input autoFocus required minLength={3} maxLength={200} value={motivo} onChange={(e) => setMotivo(e.target.value)} className={cn(campo, 'mt-0.5')} />
-                    </label>
-                    <button type="submit" disabled={anular.isPending} className="min-h-[44px] self-end rounded-lg bg-red-700 px-3 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-60">
-                        Anular
-                    </button>
-                </form>
-            )}
+            </button>
         </li>
     );
 }

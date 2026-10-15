@@ -1,5 +1,6 @@
 'use client';
 
+import { HojaDeComprobante } from '@/components/pagos/HojaDeComprobante';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -146,6 +147,8 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                 teléfono va dentro de la cabecera; este, el del ordenador. */}
             <AvisoSinConexion soloOrdenador />
             <AvisoDePantallaSinGuardar />
+            {/* El comprobante de un pago, como el de un Pago Móvil: se abre desde cualquier lista. */}
+            <HojaDeComprobante />
             {!enMarco && (
                 <>
                     {/* Como WhatsApp: con conexión, lo de cada uno se baja solo. */}

@@ -103,7 +103,7 @@ test.describe.serial('Pagos', () => {
         }
     });
 
-    test('PAGOS-UI-02: avisa cuántos deben, se cobra, se baja el comprobante y se anula', async ({ page }, testInfo) => {
+    test('PAGOS-UI-02: avisa cuántos deben, se cobra, se comparte el comprobante y se anula', async ({ page }, testInfo) => {
         try {
             await loginViaUI(page, 'admin@testing.edu.ve', '123456');
             await page.goto(`${WEB_BASE}/dashboard/pagos?vista=estudiantes`);
@@ -113,7 +113,8 @@ test.describe.serial('Pagos', () => {
             await page.getByPlaceholder('Buscar estudiante o cédula').fill(caso.student_id);
             await page.getByRole('button', { name: new RegExp(`${caso.last_name}, ${caso.first_name}`) }).click();
 
-            const dialogo = page.getByRole('dialog');
+            // La ficha; el comprobante sale en otra hoja encima (como un Pago Móvil).
+            const dialogo = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Cuotas' }) });
             await expect(dialogo.getByRole('heading', { name: 'Cuotas' })).toBeVisible({ timeout: 15000 });
             await dialogo.getByRole('button', { name: 'Las vencidas' }).click();
             await dialogo.getByRole('radio', { name: 'Efectivo' }).click();
@@ -124,18 +125,21 @@ test.describe.serial('Pagos', () => {
             const [pago] = await queryTenantDb(`SELECT id, "amountBase" FROM payments WHERE "studentId" = $1 AND "annulledAt" IS NULL`, [caso.student_id]);
             expect(Number(pago.amountBase)).toBeGreaterThan(0);
 
-            const [descarga] = await Promise.all([
-                page.waitForEvent('download'),
-                dialogo.getByRole('button', { name: 'Comprobante en imagen' }).first().click(),
-            ]);
+            // Se toca el pago: la hoja con el monto y «Compartir», que en el ordenador baja la imagen.
+            await dialogo.getByRole('button', { name: /Comprobante Nº/ }).first().click();
+            const hoja = page.getByRole('dialog', { name: 'Pago recibido' });
+            await expect(hoja.getByText('Instituto', { exact: false }).first()).toBeVisible({ timeout: 15000 });
+            await page.screenshot({ path: path.join(EVIDENCIA, 'pagos-comprobante-hoja.png') });
+            const [descarga] = await Promise.all([page.waitForEvent('download'), hoja.getByRole('button', { name: 'Compartir' }).click()]);
             const archivo = path.join(EVIDENCIA, descarga.suggestedFilename());
             await descarga.saveAs(archivo);
             expect(fs.readFileSync(archivo).subarray(0, 4).toString('hex')).toBe('89504e47');
 
-            await dialogo.getByRole('button', { name: 'Anular pago' }).first().click();
-            await dialogo.getByPlaceholder('Motivo de la anulación').fill('Prueba automática');
-            await dialogo.getByRole('button', { name: 'Anular', exact: true }).click();
-            await expect(page.getByText('Pago anulado')).toBeVisible({ timeout: 15000 });
+            await hoja.getByRole('button', { name: 'Anular pago' }).click();
+            await hoja.getByPlaceholder('Motivo de la anulación').fill('Prueba automática');
+            await hoja.getByRole('button', { name: 'Anular', exact: true }).click();
+            await expect(page.getByText('Pago anulado').first()).toBeVisible({ timeout: 15000 });
+            await expect(hoja).toHaveCount(0);
             const [anulado] = await queryTenantDb(`SELECT "annulReason" FROM payments WHERE id = $1`, [pago.id]);
             expect(anulado.annulReason).toBe('Prueba automática');
 
@@ -160,7 +164,7 @@ test.describe.serial('Pagos', () => {
             await expect(seccion.getByRole('heading', { name: 'Historial de pagos' })).toBeVisible();
             await expect(seccion.getByRole('button', { name: 'Registrar pago' })).toHaveCount(0);
             await expect(seccion.getByRole('button', { name: 'Anular pago' })).toHaveCount(0);
-            await expect(seccion.getByRole('button', { name: 'Comprobante en imagen' }).first()).toBeVisible();
+            await expect(seccion.getByRole('button', { name: /Comprobante Nº/ }).first()).toBeVisible();
             await page.screenshot({ path: path.join(EVIDENCIA, 'pagos-representante.png'), fullPage: true });
 
             // Y no entra a la pantalla del admin.

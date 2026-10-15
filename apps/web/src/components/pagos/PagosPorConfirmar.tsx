@@ -4,7 +4,7 @@ import * as React from 'react';
 import { toast } from 'sonner';
 import { BellRing, Check, Image as Imagen, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { descargarComprobante } from '@/lib/comprobante-de-pago';
+import { abrirComprobante } from '@/lib/comprobante-abierto';
 import { dinero, errorDe, PagoPorConfirmar, useConfirmarReporte, usePagosPorConfirmar, useRechazarReporte, verCaptura } from '@/hooks/usePagos';
 
 /**
@@ -44,7 +44,7 @@ function Reporte({ r }: { r: PagoPorConfirmar }) {
         try {
             const pago = await confirmar.mutateAsync(r.id);
             toast.success(`Pago confirmado · comprobante Nº ${String(pago.receiptNumber).padStart(6, '0')}`, {
-                action: { label: 'Descargar', onClick: () => descargarComprobante(pago.id, 'png') },
+                action: { label: 'Ver', onClick: () => abrirComprobante({ tipo: 'cobro', id: pago.id, editable: true }) },
             });
         } catch (e) {
             toast.error(errorDe(e, 'No se pudo confirmar el pago'));

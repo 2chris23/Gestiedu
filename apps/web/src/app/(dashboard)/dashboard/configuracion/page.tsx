@@ -57,6 +57,9 @@ const ContrasenaYAcceso = diferido(() => import('@/components/configuracion/Cont
  * ficha trae ahora solo Configuración y Cerrar sesión. Lo del liceo lo
  * protege el servidor; aquí solo no se le enseña a quien no es admin.
  */
+/** Lo mismo que la variante `lateral:` de tailwind.config.js: la lista y el apartado, lado a lado. */
+const LATERAL = '(min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (min-height: 600px)';
+
 interface Apartado {
     id: string;
     nombre: string;
@@ -141,7 +144,23 @@ function Configuracion() {
         .map((g) => ({ ...g, apartados: q ? g.apartados.filter((a) => plano(`${a.nombre} ${a.pista} ${a.otras}`).includes(q)) : g.apartados }))
         .filter((g) => g.apartados.length > 0);
 
-    const abrir = (id: string) => router.push(`/dashboard/configuracion?seccion=${id}`);
+    // La flecha de un apartado VUELVE atrás (no empuja otra vez la lista): si
+    // empujara, la flecha de la lista llevaba de nuevo al apartado (Cristian:
+    // «le das a la flecha otra vez y te vuelve a llevar a Comedor»). En el
+    // ordenador la lista se ve al lado: cambiar de apartado no deja rastro.
+    const vinoDeLaLista = React.useRef(false);
+    const abrir = (id: string) => {
+        const url = `/dashboard/configuracion?seccion=${id}`;
+        if (window.matchMedia(LATERAL).matches) return router.replace(url, { scroll: false });
+        vinoDeLaLista.current = true;
+        router.push(url);
+    };
+    const volverALaLista = (e: React.MouseEvent) => {
+        if (!vinoDeLaLista.current) return; // Llegó por un enlace: el Link reemplaza.
+        e.preventDefault();
+        vinoDeLaLista.current = false;
+        router.back();
+    };
     const nombreCompleto = `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || 'Usuario';
 
     return (
@@ -256,6 +275,8 @@ function Configuracion() {
                     <div className="relative flex min-h-[48px] items-center justify-center px-14 lateral:justify-start lateral:px-0">
                         <Link
                             href="/dashboard/configuracion"
+                            replace
+                            onClick={volverALaLista}
                             aria-label="Volver a Configuración"
                             className="absolute left-0 top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white text-gray-900 shadow-sm ring-1 ring-gray-200 active:bg-gray-100 lateral:hidden"
                         >

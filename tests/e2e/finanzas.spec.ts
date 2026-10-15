@@ -73,6 +73,8 @@ test.describe.serial('Finanzas', () => {
         try {
             await loginViaUI(page, 'admin@testing.edu.ve', '123456');
             await page.goto(`${WEB_BASE}/dashboard/pagos?vista=personal`);
+            // La lista va de 20 en 20: se busca, como haría el admin con 30 profesores.
+            await page.getByLabel('Buscar en el personal').fill(profe.nombre, { timeout: 30000 });
             await page.getByRole('button', { name: new RegExp(profe.nombre) }).first().click({ timeout: 30000 });
             const ficha = page.getByRole('dialog');
             await ficha.getByRole('radio', { name: 'Mensual' }).click();
@@ -220,13 +222,41 @@ test.describe.serial('Finanzas', () => {
         }
     });
 
+    test('FIN-UI-06: con cientos de estudiantes no hay lista sin fin: años → secciones → alumnos, y el mes por sección', async ({ page }, testInfo) => {
+        try {
+            await loginViaUI(page, 'admin@testing.edu.ve', '123456');
+            await page.goto(`${WEB_BASE}/dashboard/pagos?vista=estudiantes`);
+            const anos = page.getByRole('list', { name: 'Años' });
+            await expect(anos).toBeVisible({ timeout: 30000 });
+            // Lo que se pinta de entrada: los años, no los alumnos.
+            expect(await page.locator('main li').count()).toBeLessThan(60);
+            await anos.getByRole('button').first().click();
+            const secciones = page.getByRole('list', { name: /^Secciones de / });
+            await expect(secciones).toBeVisible();
+            await secciones.getByRole('button').first().click();
+            // Una sección: como mucho 20 de golpe.
+            const alumnos = page.locator('main ul[aria-label] > li');
+            expect(await alumnos.count()).toBeLessThanOrEqual(20);
+
+            // El mes abierto: quién debe va por sección.
+            await page.getByRole('button', { name: /cobrado/ }).first().click();
+            await expect(page.getByRole('list', { name: 'Deben, por sección' }).or(page.getByText('Nadie debe de este mes.'))).toBeVisible({ timeout: 15000 });
+        } catch (e) {
+            await captureEvidence(testInfo, page, 'FIN-UI-06', 'Listas cortas en Estudiantes', e);
+            throw e;
+        }
+    });
+
     test('MISPAGOS-UI-01: el profesor ve lo suyo, y nada de las finanzas del liceo', async ({ page }, testInfo) => {
         try {
             await loginViaUI(page, profe.email, '123456');
             await page.goto(`${WEB_BASE}/dashboard/mis-pagos`);
             await expect(page.getByText('Tu próximo pago')).toBeVisible({ timeout: 30000 });
             await expect(page.getByRole('heading', { name: 'Tus recibos' })).toBeVisible();
-            await expect(page.getByRole('button', { name: 'Recibo en imagen' }).first()).toBeVisible();
+            // Como un Pago Móvil: se toca el recibo y sale la hoja con «Compartir».
+            await page.getByRole('button', { name: /Recibo del/ }).first().click();
+            await expect(page.getByRole('dialog', { name: 'Pago al personal' }).getByRole('button', { name: 'Compartir' })).toBeVisible({ timeout: 15000 });
+            await page.keyboard.press('Escape');
             // Finanzas del liceo: no.
             await page.goto(`${WEB_BASE}/dashboard/pagos`);
             await expect(page).not.toHaveURL(/\/dashboard\/pagos/);

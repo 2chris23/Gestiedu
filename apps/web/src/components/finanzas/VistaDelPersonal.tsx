@@ -2,7 +2,9 @@
 
 import * as React from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, CalendarDays, Loader2, Palmtree, Plus, Save, Search, UserPlus, Users } from 'lucide-react';
+import { CalendarDays, ChevronRight, Loader2, Plus, Save, Search, UserPlus, Users } from 'lucide-react';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import { VerMas } from '@/components/pagos/listas-de-finanzas';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -38,12 +40,12 @@ import { cn } from '@/lib/utils';
  * lista: cada persona con lo acordado, su próximo pago y si algo está atrasado.
  */
 
-const fechaCorta = (ymd: string) => ymd.split('-').reverse().join('/');
 
 export function VistaDelPersonal({ ciclo }: { ciclo: string | null }) {
     const { data, isLoading } = usePersonal(true, ciclo);
     const [abierta, setAbierta] = React.useState<string | null>(null);
     const [ajustando, setAjustando] = React.useState(false);
+    const [poniendo, setPoniendo] = React.useState(false);
     const [busqueda, setBusqueda] = React.useState('');
     const [areaVista, setAreaVista] = React.useState('Profesor');
 
@@ -62,80 +64,78 @@ export function VistaDelPersonal({ ciclo }: { ciclo: string | null }) {
     const areas = data.areas?.length ? data.areas : ['Profesor'];
     const laArea = areas.find((a) => a === areaVista) ?? areas[0];
 
+    const vacaciones = n.mesesDeVacaciones.length ? n.mesesDeVacaciones.map((m) => nombreDelMes(m).split(' ')[0].toLowerCase()).join(', ') : 'sin vacaciones';
+
     return (
+        // Como Rial (2026-10-14): lo de todos y quién no tiene sueldo son dos
+        // filas, no dos cajas; la lista va por áreas y de 20 en 20.
         <div className="space-y-6">
             {data.traidos.traidos > 0 && (
-                <p className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
-                    Se trajeron {data.traidos.traidos} {data.traidos.traidos === 1 ? 'persona' : 'personas'} del ciclo {data.traidos.desde}, con lo mismo acordado. Revisa si
-                    a alguien le cambió el sueldo.
+                <p className="rounded-2xl bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+                    {data.traidos.traidos} {data.traidos.traidos === 1 ? 'persona traída' : 'personas traídas'} del ciclo {data.traidos.desde}.
                 </p>
             )}
 
-            <section className="rounded-2xl border border-gray-200 bg-white p-4" aria-labelledby="titulo-para-todos">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                        <h2 id="titulo-para-todos" className="text-lg font-bold text-gray-900">
-                            Para todos
-                        </h2>
-                        <ul className="mt-1 space-y-1 text-sm text-gray-700">
-                            <li className="flex items-center gap-2">
-                                <CalendarDays className="h-4 w-4 text-indigo-600" aria-hidden />
-                                Se paga {n.diaDePago >= 31 ? 'el último día de cada mes' : `el día ${n.diaDePago} de cada mes`} (las quincenas, el 15 y el último)
-                            </li>
-                            <li className="flex items-center gap-2">
-                                <Palmtree className="h-4 w-4 text-amber-700" aria-hidden />
-                                Vacaciones: {n.mesesDeVacaciones.length ? n.mesesDeVacaciones.map(nombreDelMes).join(', ') : 'ningún mes marcado'} ·{' '}
-                                {n.cobraEnVacaciones ? 'se cobran' : 'no se cobran'}
-                                {Number(n.bonoVacacional) > 0 ? ` · bono de ${fmt(n.bonoVacacional)}` : ''}
-                            </li>
-                        </ul>
-                        <p className="mt-1 text-xs text-gray-600">Cada persona puede tener lo suyo: se cambia en su ficha.</p>
-                    </div>
-                    {!data.closed && (
-                        <Button variant="contorno" onClick={() => setAjustando(true)}>
-                            Cambiar para todos
-                        </Button>
-                    )}
-                </div>
-            </section>
-
-            {!data.closed && sinSueldo.length > 0 && <SinSueldo personas={sinSueldo} ciclo={ciclo} moneda={data.currency} />}
+            <ul className="divide-y divide-gray-100 overflow-hidden rounded-[24px] bg-white ring-1 ring-gray-200">
+                <li>
+                    <button
+                        type="button"
+                        onClick={() => setAjustando(true)}
+                        disabled={data.closed}
+                        aria-label="Cambiar para todos"
+                        className="flex min-h-[64px] w-full items-center gap-4 px-4 py-3 text-left active:bg-gray-50 disabled:cursor-default"
+                    >
+                        <CalendarDays className="h-6 w-6 shrink-0 text-gray-700" aria-hidden />
+                        <span className="min-w-0 flex-1">
+                            <span className="block text-[15px] text-gray-900">{n.diaDePago >= 31 ? 'Se paga el último día' : `Se paga el día ${n.diaDePago}`}</span>
+                            <span className="block text-sm text-gray-600">
+                                Vacaciones: {vacaciones}
+                                {Number(n.bonoVacacional) > 0 ? ` · bono ${fmt(n.bonoVacacional)}` : ''}
+                            </span>
+                        </span>
+                        {!data.closed && <ChevronRight className="h-5 w-5 shrink-0 text-gray-500" aria-hidden />}
+                    </button>
+                </li>
+                {!data.closed && sinSueldo.length > 0 && (
+                    <li>
+                        <button type="button" onClick={() => setPoniendo(true)} className="flex min-h-[64px] w-full items-center gap-4 px-4 py-3 text-left active:bg-gray-50">
+                            <Users className="h-6 w-6 shrink-0 text-amber-700" aria-hidden />
+                            <span className="min-w-0 flex-1 text-[15px] text-gray-900">{sinSueldo.length} sin sueldo</span>
+                            <span className="shrink-0 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Poner sueldo</span>
+                        </button>
+                    </li>
+                )}
+            </ul>
 
             <section aria-labelledby="titulo-personal" className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 id="titulo-personal" className="text-lg font-bold text-gray-900">
-                        Personal ({data.personas.filter((p) => p.activo).length})
+                        Personal <span className="font-normal text-gray-500">{data.personas.filter((p) => p.activo).length}</span>
                     </h2>
                     {!data.closed && <CrearArea areas={areas} alCrear={setAreaVista} />}
                 </div>
-                <div className="relative">
-                    <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden />
+                <label className="flex min-h-[48px] items-center gap-3 rounded-full bg-white px-4 ring-1 ring-gray-200 focus-within:ring-2 focus-within:ring-indigo-500">
+                    <Search className="h-5 w-5 shrink-0 text-gray-500" aria-hidden />
                     <input
                         type="search"
                         aria-label="Buscar en el personal"
                         value={busqueda}
                         onChange={(e) => setBusqueda(e.target.value)}
                         placeholder="Buscar por nombre, área o cédula"
-                        className="min-h-[44px] w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                        className="min-h-[44px] min-w-0 flex-1 bg-transparent text-[15px] text-gray-900 outline-none placeholder:text-gray-500"
                     />
-                </div>
+                </label>
                 {texto ? (
-                    <>
-                        <ul className="grid gap-2 lg:grid-cols-2">
-                            {visibles.map((p) => (
-                                <li key={p.id}>
-                                    <TarjetaDePersona persona={p} fmt={fmt} alAbrir={() => setAbierta(p.id)} />
-                                </li>
-                            ))}
-                        </ul>
-                        {visibles.length === 0 && <p className="py-6 text-center text-sm text-gray-700">Nadie coincide con «{busqueda}».</p>}
-                    </>
+                    <div className="overflow-hidden rounded-[24px] bg-white ring-1 ring-gray-200">
+                        <VerMas cosas={visibles} etiqueta="Personal encontrado" vacio={`Nadie coincide con «${busqueda}».`}>
+                            {(p) => <FilaDePersona key={p.id} persona={p} fmt={fmt} conArea alAbrir={() => setAbierta(p.id)} />}
+                        </VerMas>
+                    </div>
                 ) : (
                     // Por área: Profesores siempre (salen solos de sus cuentas) y las
-                    // que crea el admin. Se elige arriba: con 29 profesores, la
-                    // Cocina quedaba al fondo de la pantalla.
+                    // que crea el admin, en un carril de píldoras.
                     <>
-                        <div className="flex flex-wrap gap-2" role="group" aria-label="Áreas del personal">
+                        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:px-0" role="group" aria-label="Áreas del personal">
                             {areas.map((a) => {
                                 const cuantas = data.personas.filter((p) => p.activo && delArea(p, a)).length;
                                 return (
@@ -145,8 +145,8 @@ export function VistaDelPersonal({ ciclo }: { ciclo: string | null }) {
                                         aria-pressed={a === laArea}
                                         onClick={() => setAreaVista(a)}
                                         className={cn(
-                                            'min-h-[44px] rounded-full px-4 text-sm font-medium',
-                                            a === laArea ? 'bg-indigo-600 text-white' : 'bg-white text-gray-800 shadow-sm ring-1 ring-gray-200'
+                                            'min-h-[44px] shrink-0 rounded-full px-4 text-sm font-medium',
+                                            a === laArea ? 'bg-indigo-600 text-white' : 'bg-white text-gray-800 ring-1 ring-gray-200'
                                         )}
                                     >
                                         {nombreDelArea(a)} ({cuantas})
@@ -169,46 +169,30 @@ export function VistaDelPersonal({ ciclo }: { ciclo: string | null }) {
 
             {abierta && <DialogoDePersona id={abierta} ciclo={ciclo} alCerrar={() => setAbierta(null)} />}
             {ajustando && <AjustesDeNomina lista={data} ciclo={ciclo} alCerrar={() => setAjustando(false)} />}
+            {poniendo && <PonerSueldo personas={sinSueldo} ciclo={ciclo} moneda={data.currency} alCerrar={() => setPoniendo(false)} />}
         </div>
     );
 }
 
-function TarjetaDePersona({ persona: p, fmt, alAbrir }: { persona: PersonaDelPersonal; fmt: (n: string | number) => string; alAbrir: () => void }) {
+/** Una persona, como una fila de Rial: el sueldo debajo y, si se le debe, a la derecha en rojo. */
+function FilaDePersona({ persona: p, fmt, conArea, alAbrir }: { persona: PersonaDelPersonal; fmt: (n: string | number) => string; conArea?: boolean; alAbrir: () => void }) {
     const a = p.acuerdo;
     const r = p.resumen;
     const atrasado = r && Number(r.vencido) > 0;
+    const detalle = [conArea ? nombreDelArea(p.cargo) : null, a ? `${fmt(a.monto)} ${FRECUENCIA[a.frecuencia].toLowerCase()}` : null, !p.activo ? 'ya no trabaja aquí' : null]
+        .filter(Boolean)
+        .join(' · ');
     return (
-        <button
-            type="button"
-            onClick={alAbrir}
-            className={cn('flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left hover:bg-gray-50', p.activo ? 'border-gray-200' : 'border-dashed border-gray-300 opacity-70')}
-        >
-            <UserAvatar name={p.nombre} className="h-10 w-10" initialsClassName="text-sm" />
-            <span className="min-w-0 flex-1">
-                <span className="block break-words text-sm font-semibold text-gray-900">{p.nombre}</span>
-                <span className="block text-xs text-gray-600">
-                    {p.cargo}
-                    {!p.conCuenta && ' · sin cuenta'}
-                    {!p.activo && ' · ya no trabaja aquí'}
+        <li>
+            <button type="button" onClick={alAbrir} className={cn('flex min-h-[60px] w-full items-center gap-3 px-4 py-2 text-left active:bg-gray-100', !p.activo && 'opacity-60')}>
+                <UserAvatar name={p.nombre} className="h-9 w-9" initialsClassName="text-xs" />
+                <span className="min-w-0 flex-1">
+                    <span className="block break-words text-[15px] text-gray-900">{p.nombre}</span>
+                    {detalle ? <span className="block text-sm text-gray-600">{detalle}</span> : <span className="block text-sm font-medium text-amber-800">Sin sueldo</span>}
                 </span>
-                <span className="mt-0.5 block text-xs text-gray-700">
-                    {a ? (
-                        <>
-                            {fmt(a.monto)} · {FRECUENCIA[a.frecuencia].toLowerCase()}
-                            {r?.proximo ? ` · próximo el ${fechaCorta(r.proximo.fecha)}` : r ? ' · todo pagado' : ''}
-                        </>
-                    ) : (
-                        <span className="font-semibold text-amber-800">Sin sueldo fijado</span>
-                    )}
-                </span>
-            </span>
-            {atrasado && (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800">
-                    <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-                    Atrasado {fmt(r!.vencido)}
-                </span>
-            )}
-        </button>
+                {atrasado && <span className="shrink-0 text-sm font-semibold tabular-nums text-red-700">{fmt(r!.vencido)}</span>}
+            </button>
+        </li>
     );
 }
 
@@ -233,74 +217,99 @@ function DialogoDePersona({ id, ciclo, alCerrar }: { id: string; ciclo: string |
     );
 }
 
-function SinSueldo({ personas, ciclo, moneda }: { personas: PersonaDelPersonal[]; ciclo: string | null; moneda: string }) {
+/** «Poner sueldo»: una hoja con el monto grande, cada cuánto y a quiénes (todos marcados). */
+function PonerSueldo({ personas, ciclo, moneda, alCerrar }: { personas: PersonaDelPersonal[]; ciclo: string | null; moneda: string; alCerrar: () => void }) {
     const aplicar = useAplicarATodos(ciclo);
-    const [elegidas, setElegidas] = React.useState<Set<string>>(new Set(personas.map((p) => p.id)));
+    const [elegidas, setElegidas] = React.useState<Set<string>>(() => new Set(personas.map((p) => p.id)));
     const [monto, setMonto] = React.useState('');
     const [frecuencia, setFrecuencia] = React.useState<FrecuenciaDelPersonal>('MENSUAL');
-    React.useEffect(() => setElegidas(new Set(personas.map((p) => p.id))), [personas]);
     const enviar = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
             const r = await aplicar.mutateAsync({ monto, frecuencia, personalIds: [...elegidas] });
             toast.success(`Sueldo puesto a ${r.aplicados} ${r.aplicados === 1 ? 'persona' : 'personas'}`);
+            alCerrar();
         } catch (err) {
             toast.error(errorDe(err, 'No se pudo aplicar'));
         }
     };
+    const todas = elegidas.size === personas.length;
     return (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4" aria-labelledby="titulo-sin-sueldo">
-            <h2 id="titulo-sin-sueldo" className="flex items-center gap-2 text-base font-bold text-amber-900">
-                <Users className="h-5 w-5" aria-hidden />
-                {personas.length} sin sueldo fijado
-            </h2>
-            <p className="mt-1 text-sm text-amber-900">Ponles el mismo sueldo de una vez; luego, a quien sea distinto, se le cambia en su ficha.</p>
-            <ul className="mt-3 flex flex-wrap gap-2">
-                {personas.map((p) => (
-                    <li key={p.id}>
-                        <label className="flex min-h-[44px] items-center gap-2 rounded-full border border-amber-300 bg-white px-3 text-sm text-gray-800">
+        <Sheet open onOpenChange={(v) => !v && alCerrar()}>
+            <SheetContent side="bottom" onOpenAutoFocus={(e) => e.preventDefault()} className="zona-segura-abajo flex max-h-[90dvh] flex-col rounded-t-[28px] bg-gray-50 px-4 pb-4 pt-6 sm:mx-auto sm:max-w-lg">
+                <SheetTitle className="pr-12 text-lg font-bold text-gray-900">Poner sueldo</SheetTitle>
+                <SheetDescription className="sr-only">El mismo sueldo para las personas marcadas</SheetDescription>
+                <form onSubmit={enviar} className="mt-4 flex min-h-0 flex-1 flex-col gap-4">
+                    <label className="flex flex-col items-center">
+                        <span className="sr-only">Cuánto ({moneda === 'USD' ? '$' : 'Bs'})</span>
+                        <span className="flex items-baseline gap-1 text-4xl font-bold text-gray-900">
+                            <span className="text-gray-400">{moneda === 'USD' ? '$' : 'Bs'}</span>
                             <input
-                                type="checkbox"
-                                checked={elegidas.has(p.id)}
-                                onChange={() =>
-                                    setElegidas((s) => {
-                                        const n = new Set(s);
-                                        n.has(p.id) ? n.delete(p.id) : n.add(p.id);
-                                        return n;
-                                    })
-                                }
-                                className="h-4 w-4 accent-indigo-600"
+                                required
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                inputMode="decimal"
+                                value={monto}
+                                onChange={(e) => setMonto(e.target.value)}
+                                placeholder="0,00"
+                                style={{ width: `${Math.max(4, monto.length + 0.5)}ch` }}
+                                className="!border-0 !bg-transparent !p-0 text-left text-4xl font-bold tabular-nums text-gray-900 outline-none placeholder:text-gray-300"
                             />
-                            {p.nombre}
-                        </label>
-                    </li>
-                ))}
-            </ul>
-            <form onSubmit={enviar} className="mt-3 flex flex-wrap items-end gap-2">
-                <label className="text-sm font-medium text-gray-800">
-                    Cuánto ({moneda === 'USD' ? '$' : 'Bs'})
-                    <input required type="number" min="0.01" step="0.01" inputMode="decimal" value={monto} onChange={(e) => setMonto(e.target.value)} className={cn(campo, 'w-36')} />
-                </label>
-                <div className="flex gap-2" role="radiogroup" aria-label="Cada cuánto">
-                    {(['MENSUAL', 'QUINCENAL'] as FrecuenciaDelPersonal[]).map((f) => (
+                        </span>
+                    </label>
+                    <div className="mx-auto flex rounded-full bg-gray-200/70 p-1" role="radiogroup" aria-label="Cada cuánto">
+                        {(['MENSUAL', 'QUINCENAL'] as FrecuenciaDelPersonal[]).map((f) => (
+                            <button
+                                key={f}
+                                type="button"
+                                role="radio"
+                                aria-checked={frecuencia === f}
+                                onClick={() => setFrecuencia(f)}
+                                className={cn('min-h-[44px] rounded-full px-5 text-sm', frecuencia === f ? 'bg-white font-semibold text-gray-900 shadow-sm' : 'text-gray-700')}
+                            >
+                                {FRECUENCIA[f]}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[22px] bg-white ring-1 ring-gray-200">
                         <button
-                            key={f}
                             type="button"
-                            role="radio"
-                            aria-checked={frecuencia === f}
-                            onClick={() => setFrecuencia(f)}
-                            className={cn('min-h-[44px] rounded-lg border px-3 text-sm', frecuencia === f ? 'border-indigo-600 bg-indigo-600 font-semibold text-white' : 'border-gray-300 bg-white text-gray-800')}
+                            onClick={() => setElegidas(todas ? new Set() : new Set(personas.map((p) => p.id)))}
+                            className="flex min-h-[48px] items-center justify-between border-b border-gray-100 px-4 text-sm"
                         >
-                            {FRECUENCIA[f]}
+                            <span className="font-semibold text-gray-900">{elegidas.size} de {personas.length}</span>
+                            <span className="font-semibold text-indigo-700">{todas ? 'Quitar todas' : 'Marcar todas'}</span>
                         </button>
-                    ))}
-                </div>
-                <Button type="submit" disabled={aplicar.isPending || !monto || elegidas.size === 0}>
-                    {aplicar.isPending ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
-                    Ponerles este sueldo ({elegidas.size})
-                </Button>
-            </form>
-        </section>
+                        <ul className="min-h-0 flex-1 divide-y divide-gray-100 overflow-y-auto">
+                            {personas.map((p) => (
+                                <li key={p.id}>
+                                    <label className="flex min-h-[52px] items-center gap-3 px-4 text-[15px] text-gray-900">
+                                        <input
+                                            type="checkbox"
+                                            checked={elegidas.has(p.id)}
+                                            onChange={() =>
+                                                setElegidas((s) => {
+                                                    const n = new Set(s);
+                                                    n.has(p.id) ? n.delete(p.id) : n.add(p.id);
+                                                    return n;
+                                                })
+                                            }
+                                            className="h-5 w-5 accent-indigo-600"
+                                        />
+                                        {p.nombre}
+                                    </label>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                    <Button type="submit" disabled={aplicar.isPending || !monto || elegidas.size === 0} className="min-h-[52px] rounded-full text-base">
+                        {aplicar.isPending && <Loader2 className="animate-spin" aria-hidden />}
+                        Ponerles este sueldo ({elegidas.size})
+                    </Button>
+                </form>
+            </SheetContent>
+        </Sheet>
     );
 }
 
@@ -354,28 +363,22 @@ function AreaDelPersonal({
         }
     };
     return (
-        <section aria-label={nombreDelArea(area)} className="space-y-2 rounded-3xl bg-gray-100/70 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-                <h3 className="text-base font-bold text-gray-900">
-                    {nombreDelArea(area)} <span className="font-normal text-gray-600">({activas})</span>
-                </h3>
-                {!cerrado && !esDeProfesores && (
-                    <div className="flex gap-1">
-                        {personas.length === 0 && (
-                            <Button variant="contorno" onClick={quitar} disabled={guardarAreas.isPending}>
-                                Quitar área
-                            </Button>
-                        )}
-                        <Button onClick={() => setAnadiendo((v) => !v)} aria-expanded={anadiendo}>
-                            <UserPlus aria-hidden />
-                            Añadir persona
+        <section aria-label={nombreDelArea(area)} className="overflow-hidden rounded-[24px] bg-white ring-1 ring-gray-200">
+            {!cerrado && !esDeProfesores && (
+                <div className="flex flex-wrap items-center justify-end gap-2 border-b border-gray-100 px-3 py-2">
+                    {personas.length === 0 && (
+                        <Button variant="contorno" onClick={quitar} disabled={guardarAreas.isPending}>
+                            Quitar área
                         </Button>
-                    </div>
-                )}
-            </div>
-            {esDeProfesores && <p className="px-1 text-xs text-gray-600">Salen solos de sus cuentas de profesor.</p>}
+                    )}
+                    <Button onClick={() => setAnadiendo((v) => !v)} aria-expanded={anadiendo}>
+                        <UserPlus aria-hidden />
+                        Añadir persona
+                    </Button>
+                </div>
+            )}
             {anadiendo && (
-                <form onSubmit={anadir} className="flex flex-wrap items-center gap-2 rounded-2xl bg-white p-2">
+                <form onSubmit={anadir} className="flex flex-wrap items-center gap-2 border-b border-gray-100 p-3">
                     <label className="sr-only" htmlFor={`nombre-${area}`}>
                         Nombre y apellido
                     </label>
@@ -388,7 +391,7 @@ function AreaDelPersonal({
                         value={nombre}
                         onChange={(e) => setNombre(e.target.value)}
                         placeholder="Nombre y apellido"
-                        className="min-h-[44px] min-w-0 flex-1 rounded-lg border border-gray-300 px-3 text-sm text-gray-900 outline-none focus:border-indigo-500"
+                        className="min-h-[44px] min-w-0 flex-1 rounded-full bg-gray-100 px-4 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                     <Button type="submit" disabled={crear.isPending || nombre.trim().length < 3}>
                         {crear.isPending ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
@@ -396,17 +399,9 @@ function AreaDelPersonal({
                     </Button>
                 </form>
             )}
-            {personas.length === 0 ? (
-                <p className="px-1 py-2 text-sm text-gray-600">Nadie todavía.</p>
-            ) : (
-                <ul className="grid gap-2 lg:grid-cols-2">
-                    {personas.map((p) => (
-                        <li key={p.id}>
-                            <TarjetaDePersona persona={p} fmt={fmt} alAbrir={() => alAbrir(p.id)} />
-                        </li>
-                    ))}
-                </ul>
-            )}
+            <VerMas cosas={personas} etiqueta={`${nombreDelArea(area)}: ${activas}`} vacio="Nadie todavía.">
+                {(p) => <FilaDePersona key={p.id} persona={p} fmt={fmt} alAbrir={() => alAbrir(p.id)} />}
+            </VerMas>
         </section>
     );
 }

@@ -291,6 +291,18 @@ responde 403. Reglas en `MAPA` §8b y §8g.
   factura** en los gastos.
 - Sin conexión solo se anotan fondos y gastos (sin la foto); pagar al personal
   y confirmar pagos piden servidor: es dinero y llevan recibo correlativo.
+- **Ninguna lista de más de 20 filas de golpe** (Cristian, 14-oct-2026: con
+  599 alumnos «la app parece interminable»). Estudiantes va por años →
+  secciones → alumnos (con búsqueda o filtro, lista plana de 20 en 20,
+  `components/pagos/listas-de-finanzas.tsx`, `VerMas`); los meses son un
+  carril de pastillas (`CarrilDeMeses`) y un mes abierto enseña quién debe
+  **por sección** (`MesAbierto`; los días, detrás de «Por días»). Personal:
+  «sin sueldo» es una fila que abre una hoja (`PonerSueldo`). FIN-UI-06.
+- **El comprobante es como un Pago Móvil**: se toca un pago y sale una hoja
+  con el monto y los datos, «Compartir» (la imagen al compartir del teléfono;
+  en el ordenador se baja) y «Cerrar»; anular va dentro. Sin PDF. Vive una vez
+  en el armazón (`HojaDeComprobante`, se abre con `abrirComprobante()` de
+  `lib/comprobante-abierto.ts`) y su imagen sale de `lib/comprobante-de-pago.ts`.
 
 ## Asistencia por QR
 
@@ -961,7 +973,10 @@ el admin, «El liceo» (los nueve apartados de siempre). Al tocar uno se ve solo
 (`?seccion=`); en el ordenador, la lista a la izquierda y el apartado a la
 derecha. Lo del liceo lo sigue negando el servidor a los demás (ROL-03).
 La equis de las ventanas ya no enseña el anillo del foco al tocar (solo con
-teclado, `focus-visible`).
+teclado, `focus-visible`). **La flecha de un apartado hace «atrás»** si se
+llegó desde la lista (si empujara la lista, la flecha de la lista volvía al
+apartado; CONFIG-VOLVER-01); en el ordenador, cambiar de apartado no deja
+rastro en el historial.
 
 **Cada apartado con el mismo juego de piezas** (`components/configuracion/ajustes.tsx`):
 `Grupo` (título pequeño y una caja blanca con filas), `FilaCampo` (el rótulo

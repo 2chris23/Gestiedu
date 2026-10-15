@@ -1,12 +1,12 @@
 'use client';
 
 import * as React from 'react';
-import { toast } from 'sonner';
-import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, Download, FileText, Gift, Loader2, Palmtree, Receipt, Wallet } from 'lucide-react';
+
+import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, Gift, Loader2, Palmtree, Receipt, Wallet } from 'lucide-react';
 import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import { ESTADO_DE_PAGO_AL_PERSONAL, FRECUENCIA, useMisPagos } from '@/hooks/useFinanzas';
-import { dinero, errorDe, usePagosActivos } from '@/hooks/usePagos';
-import { descargarReciboDelPersonal } from '@/lib/comprobante-de-pago';
+import { dinero, usePagosActivos } from '@/hooks/usePagos';
+import { abrirComprobante } from '@/lib/comprobante-abierto';
 import { nombreDelMes } from '@/lib/calendario-del-ciclo';
 import { cn } from '@/lib/utils';
 
@@ -24,19 +24,6 @@ export default function MisPagosPage() {
     const { data: ajustes } = usePagosActivos();
     const activo = Boolean(ajustes?.enabled);
     const { data, isLoading } = useMisPagos(activo);
-    const [bajando, setBajando] = React.useState<string | null>(null);
-
-    const bajar = async (id: string, f: 'png' | 'pdf') => {
-        setBajando(`${id}${f}`);
-        try {
-            await descargarReciboDelPersonal(id, f);
-        } catch (e) {
-            toast.error(errorDe(e, 'No se pudo generar el recibo'));
-        } finally {
-            setBajando(null);
-        }
-    };
-
     const cabecera = <EncabezadoDePantalla titulo="Mis pagos" descripcion="Lo que el liceo te paga en este ciclo: tu próximo pago, lo pagado y tus recibos." />;
 
     if (!activo || isLoading) {
@@ -144,23 +131,28 @@ export default function MisPagosPage() {
                 {(data.pagos ?? []).length === 0 ? (
                     <p className="text-sm text-gray-700">Todavía no hay pagos en este ciclo.</p>
                 ) : (
-                    <ul className="space-y-2">
+                    <ul className="divide-y divide-gray-100 overflow-hidden rounded-[22px] bg-white ring-1 ring-gray-200">
                         {data.pagos!.map((p) => (
-                            <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
-                                <Receipt size={16} className="text-gray-500" aria-hidden />
-                                <span className="text-sm font-semibold text-gray-900">{fmt(p.montoBase)}</span>
-                                <span className="text-sm text-gray-700">
-                                    {fechaCorta(p.fecha)} · {p.metodo}
-                                </span>
-                                <span className="text-xs text-gray-600">{p.asignaciones.map((x) => x.etiqueta).join(', ')}</span>
-                                <span className="ml-auto flex gap-1">
-                                    <button type="button" onClick={() => bajar(p.id, 'png')} disabled={!!bajando} aria-label="Recibo en imagen" title="Recibo en imagen" className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100">
-                                        {bajando === `${p.id}png` ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                                    </button>
-                                    <button type="button" onClick={() => bajar(p.id, 'pdf')} disabled={!!bajando} aria-label="Recibo en PDF" title="Recibo en PDF" className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100">
-                                        {bajando === `${p.id}pdf` ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
-                                    </button>
-                                </span>
+                            <li key={p.id}>
+                                {/* Como un Pago Móvil: se toca y sale el recibo, con «Compartir». */}
+                                <button
+                                    type="button"
+                                    onClick={() => abrirComprobante({ tipo: 'personal', id: p.id })}
+                                    aria-label={`Recibo del ${fechaCorta(p.fecha)}`}
+                                    className="flex min-h-[64px] w-full items-center gap-3 px-4 py-2.5 text-left active:bg-gray-100"
+                                >
+                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+                                        <Receipt className="h-5 w-5" aria-hidden />
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block text-[15px] font-semibold tabular-nums text-gray-900">
+                                            {fmt(p.montoBase)} <span className="font-normal text-gray-600">· {p.metodo}</span>
+                                        </span>
+                                        <span className="block truncate text-sm text-gray-600">
+                                            {fechaCorta(p.fecha)} · {p.asignaciones.map((x) => x.etiqueta).join(', ')}
+                                        </span>
+                                    </span>
+                                </button>
                             </li>
                         ))}
                     </ul>
