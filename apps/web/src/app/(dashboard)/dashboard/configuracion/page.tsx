@@ -11,6 +11,7 @@ import {
     FileText,
     GraduationCap,
     KeyRound,
+    LogOut,
     Palette,
     QrCode,
     Search,
@@ -25,6 +26,7 @@ import { GeneralSettings } from './components/GeneralSettings';
 import { diferido } from '@/components/common/Diferido';
 import ColorYModo from '@/components/configuracion/ColorYModo';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
+import { useCerrarSesion } from '@/hooks/useCerrarSesion';
 import { useAuthStore } from '@/store/auth.store';
 import { cn } from '@/lib/utils';
 
@@ -66,7 +68,7 @@ interface Apartado {
 
 const DE_LA_PERSONA: Apartado[] = [
     { id: 'acceso', nombre: 'Contraseña y acceso', pista: 'Tu contraseña, la huella y tus sesiones', otras: 'seguridad clave pin sesiones biometria', icono: KeyRound },
-    { id: 'color', nombre: 'Color y modo', pista: 'El color de la app; claro, oscuro o del teléfono', otras: 'apariencia tema oscuro claro', icono: SwatchBook },
+    { id: 'color', nombre: 'Color y modo', pista: 'El color de la app, claro u oscuro', otras: 'apariencia tema oscuro claro', icono: SwatchBook },
 ];
 
 const DEL_LICEO: Apartado[] = [
@@ -78,7 +80,7 @@ const DEL_LICEO: Apartado[] = [
     { id: 'pae', nombre: 'Comedor (PAE)', pista: 'Activar y ajustar el comedor', otras: 'comedor pae', icono: UtensilsCrossed },
     { id: 'qr', nombre: 'Asistencia por QR', pista: 'Escanear para pasar lista', otras: 'qr asistencia faro', icono: QrCode },
     { id: 'notifications', nombre: 'Notificaciones', pista: 'Qué avisos se envían', otras: 'avisos notificaciones', icono: Bell },
-    { id: 'security', nombre: 'Seguridad', pista: 'Tiempo de sesión, contraseñas e intentos', otras: 'sesiones tiempo de espera', icono: Shield },
+    { id: 'security', nombre: 'Seguridad', pista: 'Sesión, contraseñas e intentos', otras: 'sesiones tiempo de espera', icono: Shield },
 ];
 
 const CONTENIDO: Record<string, React.ComponentType> = {
@@ -119,6 +121,7 @@ function Configuracion() {
     React.useEffect(() => setMontado(true), []);
     const esAdmin = montado && yo?.role === 'ADMIN';
     const [busqueda, setBusqueda] = React.useState('');
+    const cerrarSesion = useCerrarSesion();
 
     const grupos = React.useMemo(
         () => [
@@ -222,6 +225,28 @@ function Configuracion() {
                         Nada con «{busqueda.trim()}».
                     </p>
                 )}
+
+                {/* Como Rial: lo que saca de la cuenta va al final, en rojo, y
+                    debajo la marca de la app con su versión. */}
+                {!q && (
+                    <ul className="overflow-hidden rounded-[24px] bg-white shadow-sm ring-1 ring-gray-200">
+                        <li>
+                            <button
+                                type="button"
+                                onClick={() => void cerrarSesion()}
+                                className="flex min-h-[68px] w-full items-center gap-4 px-5 py-3 text-left transition-colors active:bg-red-50"
+                            >
+                                <LogOut className="h-6 w-6 shrink-0 text-red-600" aria-hidden />
+                                <span className="min-w-0 flex-1">
+                                    <span className="block text-base text-gray-900">Cerrar sesión</span>
+                                    <span className="block text-sm text-gray-600">Sales de la app en este aparato</span>
+                                </span>
+                                <ChevronRight className="h-5 w-5 shrink-0 text-gray-500" aria-hidden />
+                            </button>
+                        </li>
+                    </ul>
+                )}
+                <MarcaYVersion />
             </div>
 
             {/* EL APARTADO ABIERTO. En el teléfono, solo con uno elegido. */}
@@ -251,4 +276,31 @@ function Contenido({ id, nombreCompleto }: { id: string; nombreCompleto: string 
     if (id === 'color') return <ColorYModo />;
     const Componente = CONTENIDO[id];
     return <Componente />;
+}
+
+/** La versión de la APK (Capacitor); en el navegador no hay número que dar. */
+function useVersionDeLaApp(): string | null {
+    const [version, setVersion] = React.useState<string | null>(null);
+    React.useEffect(() => {
+        const app = (window as unknown as { Capacitor?: { Plugins?: { App?: { getInfo?: () => Promise<{ version: string }> } } } }).Capacitor?.Plugins?.App;
+        if (!app?.getInfo) return;
+        Promise.resolve(app.getInfo())
+            .then((i) => setVersion(i.version))
+            .catch(() => undefined);
+    }, []);
+    return version;
+}
+
+function MarcaYVersion() {
+    const version = useVersionDeLaApp();
+    return (
+        <footer className="flex flex-col items-center gap-1 pb-2 pt-4 text-center">
+            <span className="flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/favicon.svg" alt="" width={28} height={28} className="h-7 w-7" />
+                <span className="text-xl font-bold tracking-tight text-gray-900">Gestiedu</span>
+            </span>
+            <span className="text-sm text-gray-600">{version ? `Versión ${version}` : 'Versión web'}</span>
+        </footer>
+    );
 }

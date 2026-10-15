@@ -140,12 +140,12 @@ export function AppearanceSettings() {
                 </div>
             )}
 
-            <Grupo id="colores" titulo="Colores del Sistema" pie="El sistema saca solo los tonos claros y oscuros de este color.">
+            <Grupo id="colores" titulo="Color del liceo" pie="Va en la página de entrada del liceo y en el icono de su app. El color de la app por dentro lo elige cada persona en «Color y modo».">
                 <div className="p-4">
-                    <ColorPicker label="Color Primario" value={primaryColor} onChange={setPrimaryColor} />
+                    <ColorPicker label="Color del liceo" value={primaryColor} onChange={setPrimaryColor} />
                 </div>
             </Grupo>
-            <BotonGuardar type="button" texto="Guardar Colores" onClick={handleSaveColors} guardando={updateColorsMutation.isPending} />
+            <BotonGuardar type="button" texto="Guardar el color" onClick={handleSaveColors} guardando={updateColorsMutation.isPending} />
 
             <Grupo id="paleta" titulo="Paleta de Colores para Materias" descripcion="Los colores que se le pueden dar a cada materia.">
                 {palette.length === 0 ? (

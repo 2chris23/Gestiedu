@@ -17,6 +17,10 @@ import { cn } from '@/lib/utils';
 export function ColorYModo() {
     const [elegido, setElegido] = React.useState<Acento>(ACENTO_POR_DEFECTO);
     const [modo, setModo] = React.useState<Modo>(MODO_POR_DEFECTO);
+    // En el ordenador no es «el teléfono»: se nombra lo que se tiene delante.
+    const [enTelefono, setEnTelefono] = React.useState(true);
+    React.useEffect(() => setEnTelefono(window.matchMedia('(pointer: coarse)').matches), []);
+    const nombreDe = (m: Modo) => (m === 'sistema' ? (enTelefono ? 'Como el teléfono' : 'Como el ordenador') : MODOS[m]);
     React.useEffect(() => {
         setElegido(acentoGuardado());
         setModo(modoGuardado());
@@ -76,7 +80,7 @@ export function ColorYModo() {
                                 className="flex flex-col items-center gap-2"
                             >
                                 <Miniatura modo={m} activo={activo} />
-                                <span className={cn('text-sm', activo ? 'font-semibold text-gray-900' : 'text-gray-600')}>{MODOS[m]}</span>
+                                <span className={cn('text-sm', activo ? 'font-semibold text-gray-900' : 'text-gray-600')}>{nombreDe(m)}</span>
                             </button>
                         );
                     })}
@@ -97,7 +101,7 @@ function Miniatura({ modo, activo }: { modo: Modo; activo: boolean }) {
             aria-hidden
             className={cn(
                 'modo-claro relative block aspect-[16/10] w-full overflow-hidden rounded-2xl transition-shadow',
-                activo ? 'ring-2 ring-gray-900 ring-offset-2 ring-offset-white' : 'ring-1 ring-black/10'
+                activo ? 'ring-2 ring-indigo-600 ring-offset-2 ring-offset-white' : 'ring-1 ring-gray-300'
             )}
             style={{ background: fondo }}
         >
