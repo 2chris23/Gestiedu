@@ -1,15 +1,23 @@
 'use client';
 
-import { useState, useEffect, useRef, use, useMemo } from 'react';
+import { useState, useEffect, use, useMemo } from 'react';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { createPortal } from 'react-dom';
+
 import Image from 'next/image';
 import { conseguirCredencial } from '@/lib/credencial-en-memoria';
 import {
-    ChevronLeft, Calendar, Clock,
-    BookOpen, Users, GraduationCap, Bell, Search,
-    Filter, UserPlus, Trash2,
-    CheckCircle2, FileText, ClipboardCheck, HeartHandshake
+    BookOpen,
+    Users,
+    GraduationCap,
+    Bell,
+    Search,
+    UserPlus,
+    Trash2,
+    CheckCircle2,
+    FileText,
+    ClipboardCheck,
+    HeartHandshake,
+    IdCard,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { instituteService } from '@/services/institute.service';
@@ -24,7 +32,6 @@ import { useClassroomSchedule, transformScheduleData } from '@/hooks/useSchedule
 import { Pagination } from '@/components/ui';
 import { toast } from 'sonner';
 import { SubjectCard } from '@/components/academic/SubjectCard';
-import { useAuthStore } from '@/store/auth.store';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
 import StudentScheduleSection from '@/components/schedule/StudentScheduleSection';
 import LapsoSelector from '@/components/academic/LapsoSelector'; // Fase 3.5 — filtro por lapso
@@ -39,20 +46,19 @@ import { diferido } from '@/components/common/Diferido';
 const RemoveStudentSecureModal = diferido(() => import('@/components/academic/RemoveStudentSecureModal'), { sinEsqueleto: true });
 const AssignTeacherModal = diferido(() => import('@/components/academic/AssignTeacherModal'), { sinEsqueleto: true });
 const AssignSubjectModal = diferido(() => import('@/components/academic/AssignSubjectModal').then((m) => ({ default: m.AssignSubjectModal })), { sinEsqueleto: true });
-const EvaluationPlanSection = diferido(() => import('@/components/evaluation/EvaluationPlanSection'), { alto: 400 });
 const SectionObservationsTab = diferido(() => import('@/components/classroom/SectionObservationsTab'), { alto: 300 });
 const StudentObservationsModal = diferido(() => import('@/components/observations/StudentObservationsModal'), { sinEsqueleto: true });
 // Dentro de la sección, como el plan de evaluación (lo pidió Cristian, 2026-10-12): antes eran pantallas del menú.
 const PendientesDeLaSeccion = diferido(() => import('@/components/pendientes/PendientesDeLaSeccion'), { alto: 300 });
 const LaborSocialDeLaSeccion = diferido(() => import('@/components/labor-social/LaborSocialDeLaSeccion'), { alto: 300 });
 import CargandoSeccion from './loading';
+import { BotonDeDocumentos, BuscadorDeAlumnos, CabezaDeLaClase, PartesDeLaPantalla } from '@/components/academic/CabezaDeLaClase';
 
 // Params refactored: year -> cycleId, slug -> sectionId
 export default function SectionPage({ params }: { params: Promise<{ cycleId: string, sectionId: string }> }) {
     const { cycleId, sectionId } = use(params);
     const router = useRouter();
     const [activeTab, setActiveTab] = useState('estudiantes');
-    const [selectedLapso, setSelectedLapso] = useState('1');
     const [page, setPage] = useState(1);
     const [limit] = useState(20);
     const [isAssignTeacherModalOpen, setIsAssignTeacherModalOpen] = useState(false);
@@ -88,7 +94,6 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     const [isAssignSubjectModalOpen, setIsAssignSubjectModalOpen] = useState(false);
     const [selectedStudentForObs, setSelectedStudentForObs] = useState<any | null>(null);
 
-
     const targetYearId = classroom?.academicYearId || classroom?.academicYear?.id;
 
     const debouncedSearchAvailable = useDebouncedValue(searchAvailableTerm, 350);
@@ -119,7 +124,6 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     // Obtener horario de la sección
     const { data: scheduleData } = useClassroomSchedule(classroomId || '');
     const scheduleBlocks = transformScheduleData(scheduleData);
-    const { user } = useAuthStore();
 
     const filteredStudents = useMemo(() => {
         if (!searchTerm) return students;
@@ -337,67 +341,44 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
         */
         <div className="space-y-5 text-slate-800">
             <header className="flex flex-col gap-4">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
-                    <Link href={`/dashboard/academico/${cycleId}`} className="hover:text-indigo-600 flex items-center gap-1">
-                        <ChevronLeft className="w-4 h-4" /> Volver
-                    </Link>
-                    <span>/</span>
-                    <span>{classroom?.academicYear?.name || cycleId}</span>
-                    <span>/</span>
-                    <span className="font-semibold text-gray-700">{classroom?.name || 'Sección...'}</span>
-                </div>
+                <CabezaDeLaClase
+                    volverA={`/dashboard/academico/${cycleId}`}
+                    rotuloVolver="Volver al año escolar"
+                    titulo={classroom.name}
+                    subtitulo={classroom.academicYear?.name}
+                >
+                    <LapsoSelector
+                        periods={((classroom as any)?.academicYear?.periods || []).map((p: any) => ({ id: p.id, name: p.name }))}
+                        value={lapsoId}
+                        onChange={setLapsoId}
+                        compact
+                    />
+                    {classroomId && (
+                        <BotonDeDocumentos
+                            titulo="Documentos de la sección"
+                            documentos={[
+                                // El resumen final: el admin y el guía de la sección (lo decide el servidor).
+                                ...((yo?.role === 'ADMIN' || (yo?.role === 'TEACHER' && ((classroom as any)?.teacherId ?? (classroom?.teacher as any)?.id) === yo?.id))
+                                    ? [{ href: `/dashboard/resumen-final/${encodeURIComponent(classroomId)}`, titulo: 'Resumen final', detalle: 'Las notas definitivas del año, para el Ministerio', icono: FileText }]
+                                    : []),
+                                // El consejo de sección: lo escriben el admin y el guía; lo leen los profesores de la sección.
+                                ...(yo?.role === 'ADMIN' || yo?.role === 'TEACHER'
+                                    ? [{ href: `/dashboard/consejo/${encodeURIComponent(classroomId)}`, titulo: 'Consejo de sección', detalle: 'El acta de cada lapso, alumno por alumno', icono: Users }]
+                                    : []),
+                                ...(yo?.role === 'ADMIN'
+                                    ? [{ href: `/dashboard/carnets?seccion=${encodeURIComponent(classroomId)}`, titulo: 'Carnets', detalle: 'Los carnets de los estudiantes, para imprimir', icono: IdCard }]
+                                    : []),
+                            ]}
+                        />
+                    )}
+                </CabezaDeLaClase>
 
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="min-w-0">
-                        <h1 className="text-seccion font-bold text-gray-900 sm:text-pantalla">
-                            {classroom ? `${classroom.name}` : 'Cargando...'}
-                        </h1>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-gray-500">
-                            <span className="flex items-center gap-1 text-sm">
-                                <Users className="w-4 h-4" /> {students.length} Estudiantes
-                            </span>
-                            {/* El resumen final: el admin y el guía de la sección (lo decide el servidor). */}
-                            {classroomId && (yo?.role === 'ADMIN' || (yo?.role === 'TEACHER' && ((classroom as any)?.teacherId ?? (classroom?.teacher as any)?.id) === yo?.id)) && (
-                                <Link
-                                    href={`/dashboard/resumen-final/${encodeURIComponent(classroomId)}`}
-                                    className="inline-flex min-h-[44px] items-center gap-1 rounded-lg px-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
-                                >
-                                    <FileText className="w-4 h-4" /> Resumen final
-                                </Link>
-                            )}
-                            {/* El consejo de sección: lo escriben el admin y el guía; lo leen los profesores de la sección. */}
-                            {classroomId && (yo?.role === 'ADMIN' || yo?.role === 'TEACHER') && (
-                                <Link
-                                    href={`/dashboard/consejo/${encodeURIComponent(classroomId)}`}
-                                    className="inline-flex min-h-[44px] items-center gap-1 rounded-lg px-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
-                                >
-                                    <FileText className="w-4 h-4" /> Consejo de sección
-                                </Link>
-                            )}
-                            {classroomId && yo?.role === 'ADMIN' && (
-                                <Link
-                                    href={`/dashboard/carnets?seccion=${encodeURIComponent(classroomId)}`}
-                                    className="inline-flex min-h-[44px] items-center gap-1 rounded-lg px-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
-                                >
-                                    <FileText className="w-4 h-4" /> Carnets de la sección
-                                </Link>
-                            )}
-                            <span className="ml-2">
-                                <LapsoSelector
-                                    periods={((classroom as any)?.academicYear?.periods || []).map((p: any) => ({ id: p.id, name: p.name }))}
-                                    value={lapsoId}
-                                    onChange={setLapsoId}
-                                    compact
-                                />
-                            </span>
-                        </div>
-                    </div>
-
+                <div>
                     {/* Tarjeta del Profesor Guía - Inline.
                         `min-w-[400px]` en una pantalla de 390 px hace exactamente
                         lo que dice: sacar la pantalla de ancho. Solo se exige
                         cuando hay sitio. */}
-                    <div className="w-full rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:w-auto sm:min-w-[400px]">
+                    <div className="w-full rounded-[24px] bg-white px-4 py-3 ring-1 ring-gray-200 sm:max-w-md">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 {classroom?.teacher ? (
@@ -437,9 +418,9 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                             </div>
 
                             {/* Botón de acción: el guía lo pone el administrador (el servidor lo exige) */}
-                            {user?.role === 'ADMIN' && (
+                            {yo?.role === 'ADMIN' && (
                             <button
-                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+                                className="flex min-h-[44px] items-center gap-1.5 rounded-full bg-indigo-50 px-4 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100"
                                 onClick={() => setIsAssignTeacherModalOpen(true)}
                             >
                                 <UserPlus className="w-3.5 h-3.5" />
@@ -464,7 +445,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
             <div className="relative">
                 <StudentScheduleSection
                     schedule={scheduleBlocks}
-                    role={user?.role === 'TEACHER' || user?.role === 'ADMIN' ? 'teacher' : 'student'}
+                    role={yo?.role === 'TEACHER' || yo?.role === 'ADMIN' ? 'teacher' : 'student'}
                     showActions={true}
                     classroomId={classroomId}
                     // El horario lo arma el admin (el servidor lo exige): al profesor el lápiz
@@ -475,59 +456,36 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
             </div>
 
             <div>
-                <div className="border-b border-gray-200 mb-6">
-                    <nav className="-mb-px flex flex-wrap gap-x-6">
-                        {[
-                            { id: 'estudiantes', label: 'Estudiantes', icon: Users },
-                            { id: 'materias', label: 'Materias', icon: BookOpen },
-                            { id: 'calificaciones', label: 'Calificaciones', icon: GraduationCap },
-                            { id: 'observaciones', label: 'Observaciones', icon: Bell },
-                            ...(esGuiaOAdmin ? [{ id: 'pendientes', label: 'Pendientes', icon: ClipboardCheck }] : []),
-                            ...(conLaborSocial ? [{ id: 'labor-social', label: 'Labor social', icon: HeartHandshake }] : []),
-                        ].map((tab) => {
-                            const Icon = tab.icon;
-                            const isActive = activeTab === tab.id;
-                            return (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => setActiveTab(tab.id)}
-                                    data-pestana
-                                    className={`group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-colors ${isActive ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                                >
-                                    <Icon className={`-ml-0.5 mr-2 h-5 w-5 ${isActive ? 'text-indigo-500' : 'text-gray-400 group-hover:text-gray-500'}`} />
-                                    {tab.label}
-                                </button>
-                            );
-                        })}
-                    </nav>
+                <div className="mb-5">
+                    <PartesDeLaPantalla
+                        etiqueta="Partes de la sección"
+                        activa={activeTab}
+                        alElegir={setActiveTab}
+                        partes={[
+                            { id: 'estudiantes', nombre: 'Estudiantes', icono: Users },
+                            { id: 'materias', nombre: 'Materias', icono: BookOpen },
+                            { id: 'observaciones', nombre: 'Observaciones', icono: Bell },
+                            ...(esGuiaOAdmin ? [{ id: 'pendientes', nombre: 'Pendientes', icono: ClipboardCheck }] : []),
+                            ...(conLaborSocial ? [{ id: 'labor-social', nombre: 'Labor social', icono: HeartHandshake }] : []),
+                        ]}
+                    />
                 </div>
 
                 {activeTab === 'estudiantes' && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-                        <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                            <div className="relative max-w-sm w-full">
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <Search className="h-5 w-5 text-gray-400" />
-                                </div>
-                                <input
-                                    type="text"
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition duration-150 ease-in-out"
-                                    placeholder="Buscar alumno por nombre o cédula..."
-                                />
-                            </div>
+                    <div className="overflow-hidden rounded-[24px] bg-white ring-1 ring-gray-200">
+                        <div className="flex items-center gap-2 border-b border-gray-100 p-4">
+                            <BuscadorDeAlumnos valor={searchTerm} alCambiar={setSearchTerm} />
                             {/* Inscribir es del administrador (control de estudios): el servidor lo exige */}
-                            {user?.role === 'ADMIN' && (
-                            <div className="flex items-center gap-3">
+                            {yo?.role === 'ADMIN' && (
                                 <button
+                                    type="button"
                                     onClick={handleOpenAddModal}
-                                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
+                                    aria-label="Inscribir estudiantes"
+                                    title="Inscribir estudiantes"
+                                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white transition-colors hover:bg-indigo-700"
                                 >
-                                    <UserPlus className="-ml-1 mr-2 h-4 w-4" />
-                                    Nuevo Estudiante
+                                    <UserPlus className="h-5 w-5" aria-hidden />
                                 </button>
-                            </div>
                             )}
                         </div>
 
@@ -550,7 +508,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                             ordenar. Lo demás está en su ficha, a un toque. En
                             pantalla ancha sigue siendo la tabla de siempre.
                         */}
-                        <div className="p-3 sm:p-5">
+                        <div className="p-2 sm:p-5">
                             <TablaAdaptable<SectionStudent>
                                 compacta
                                 datos={sortedStudents}
@@ -776,7 +734,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                         titulo: 'Acciones',
                                         acciones: true,
                                         alinear: 'derecha',
-                                        celda: (a) => user?.role !== 'ADMIN' ? null : (
+                                        celda: (a) => yo?.role !== 'ADMIN' ? null : (
                                             <button
                                                 type="button"
                                                 onClick={(e) => {
@@ -796,8 +754,6 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                             />
                         </div>
 
-
-
                         {pagination && pagination.totalPages > 1 && (
                             <Pagination currentPage={page} totalPages={pagination.totalPages} onPageChange={setPage} />
                         )}
@@ -806,7 +762,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
 
                 {/* Materias Tab */}
                 {activeTab === 'materias' && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+                    <div className="overflow-hidden rounded-[24px] bg-white ring-1 ring-gray-200">
                         <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div>
                                 <h2 className="text-lg font-semibold text-gray-900">Materias Asignadas</h2>
@@ -814,7 +770,7 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                     {subjectsWithStats?.length || 0} materia{(subjectsWithStats?.length || 0) !== 1 ? 's' : ''} asignada{(subjectsWithStats?.length || 0) !== 1 ? 's' : ''}
                                 </p>
                             </div>
-                            {user?.role === 'ADMIN' && (
+                            {yo?.role === 'ADMIN' && (
                                 <button
                                     onClick={() => setIsAssignSubjectModalOpen(true)}
                                     className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
@@ -836,9 +792,9 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                     <BookOpen className="mx-auto h-12 w-12 text-gray-400" />
                                     <h3 className="mt-2 text-sm font-medium text-gray-900">No hay materias asignadas</h3>
                                     <p className="mt-1 text-sm text-gray-500">
-                                        {user?.role === 'ADMIN' ? 'Comienza asignando materias a esta sección' : 'No tienes materias asignadas en esta sección.'}
+                                        {yo?.role === 'ADMIN' ? 'Comienza asignando materias a esta sección' : 'No tienes materias asignadas en esta sección.'}
                                     </p>
-                                    {user?.role === 'ADMIN' && (
+                                    {yo?.role === 'ADMIN' && (
                                         <div className="mt-6">
                                             <button
                                                 onClick={() => setIsAssignSubjectModalOpen(true)}
@@ -868,63 +824,6 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                 </div>
                             )}
                         </div>
-                    </div>
-                )}
-
-                {/* Calificaciones Tab */}
-                {activeTab === 'calificaciones' && (
-                    <div className="space-y-4">
-                        {/* Lapso Selector */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 flex items-center gap-3">
-                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide shrink-0">Momento:</span>
-                            <div className="flex gap-2">
-                                {[
-                                    { id: '1', label: '1er Momento', color: 'from-blue-500 to-indigo-600' },
-                                    { id: '2', label: '2do Momento', color: 'from-violet-500 to-purple-600' },
-                                    { id: '3', label: '3er Momento', color: 'from-amber-500 to-orange-600' },
-                                ].map(l => (
-                                    <button
-                                        key={l.id}
-                                        onClick={() => setSelectedLapso(l.id)}
-                                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                            selectedLapso === l.id
-                                                ? `bg-gradient-to-r ${l.color} text-white shadow-md`
-                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                        }`}
-                                    >
-                                        {l.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Subject Selector for Evaluation */}
-                        {subjectsWithStats && subjectsWithStats.length > 0 ? (
-                            <>
-                                {subjectsWithStats.map((subject) => (
-                                    <div key={subject.id} id={`eval-${subject.id}`}>
-                                        <div className="flex items-center gap-2 mb-3">
-                                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: subject.color || '#6366f1' }} />
-                                            <h3 className="text-sm font-bold text-gray-700">{subject.name}</h3>
-                                        </div>
-                                        <EvaluationPlanSection
-                                            classroomId={classroomId || ''}
-                                            subjectId={subject.id}
-                                            lapso={selectedLapso}
-                                            canEdit={yo?.role === 'ADMIN' || yo?.role === 'TEACHER'}
-                                        />
-                                    </div>
-                                ))}
-                            </>
-                        ) : (
-                            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-                                <GraduationCap className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                                <h3 className="text-base font-bold text-gray-800 mb-1">Sin materias asignadas</h3>
-                                <p className="text-sm text-gray-500">
-                                    Primero asigna materias a esta sección para crear evaluaciones.
-                                </p>
-                            </div>
-                        )}
                     </div>
                 )}
 

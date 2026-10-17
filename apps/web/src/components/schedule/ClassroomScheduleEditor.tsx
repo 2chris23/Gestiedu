@@ -1,5 +1,7 @@
 'use client';
 
+import { useDejarGirar } from '@/hooks/useDejarGirar';
+
 import React, { useState, useEffect } from 'react';
 import { useConfirm } from '@/hooks/useConfirm';
 import {
@@ -155,6 +157,8 @@ function DroppableCell({ id, block, onRemove, tocada, alTocar }: { id: string, b
 export default function ClassroomScheduleEditor({ classroomId, initialBlocks, subjects, shift, titulo }: ClassroomScheduleEditorProps) {
     const router = useRouter();
     const esTelefono = useEsTelefono();
+    // Editar el horario es de las pocas pantallas que dejan girar el teléfono.
+    useDejarGirar();
 
     /**
      * ARRASTRAR CON EL DEDO

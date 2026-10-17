@@ -1,23 +1,34 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { BotonComoFunciona } from '@/components/common/Recorrido';
 import { useConfirm } from '@/hooks/useConfirm';
 import { toast } from 'sonner';
 import {
-  Save, Printer, ArrowLeft, Edit2,
-  Sparkles, BookOpen, Plus, Trash2, RotateCcw, Zap, ChevronDown, GripVertical, X, Upload, Copy, AlertTriangle
+    Save,
+    ArrowLeft,
+    Edit2,
+    Maximize2,
+    Download,
+    Sparkles,
+    Plus,
+    RotateCcw,
+    Zap,
+    ChevronDown,
+    GripVertical,
+    X,
+    Upload,
+    Copy,
+    AlertTriangle,
 } from 'lucide-react';
 import {
-  useEvaluationPlanMetadata,
-  useUpsertEvaluationPlanMetadata,
-  useEvaluationPlanRows,
-  useBatchUpsertRows,
-  useCopyTargets,
-  useCopyPlan,
-  type EvaluationPlanRow,
-  type EvaluationPlanMetadata,
-  type AutoPopulatedData
+    useEvaluationPlanMetadata,
+    useUpsertEvaluationPlanMetadata,
+    useEvaluationPlanRows,
+    useBatchUpsertRows,
+    useCopyTargets,
+    useCopyPlan,
+    type EvaluationPlanMetadata,
+    type AutoPopulatedData,
 } from '@/hooks/useEvaluationPlan';
 import api from '@/lib/axios';
 import Link from 'next/link';
@@ -25,6 +36,8 @@ import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_PLAN_COLUMNS, type PlanColumnDef } from './planColumns';
 import PlanPorBloques from './PlanPorBloques';
+import PlanEnFilas from './PlanEnFilas';
+import { useDejarGirar } from '@/hooks/useDejarGirar';
 const InstrumentosDelPlan = dynamic(() => import('./InstrumentosDelPlan'), {
   ssr: false,
   loading: () => <div className="p-4 text-center text-sm text-gray-500">Cargando instrumentos de evaluación...</div>,
@@ -215,6 +228,7 @@ export default function EvaluationPlanSection({
 
   // ── Copiar el plan a otras secciones ─────────
   const [copiandoAbierto, setCopiandoAbierto] = useState(false);
+  const [verCompleto, setVerCompleto] = useState(false);
   const [destinosElegidos, setDestinosElegidos] = useState<string[]>([]);
   const { data: destinos = [], isLoading: cargandoDestinos } = useCopyTargets({
     sourceClassroomId: classroomId,
@@ -1043,6 +1057,10 @@ export default function EvaluationPlanSection({
     );
   };
 
+  // Lo que dice la cabecera de la vista: los puntos repartidos y cuántas evaluaciones.
+  const totalPuntosDelPlan = Math.round(weeks.reduce((t, w) => t + (Number(w.data['puntos']) > 0 ? Number(w.data['puntos']) : 0), 0) * 100) / 100;
+  const evaluacionesDelPlan = weeks.filter((w) => Number(w.data['puntos']) > 0).length;
+
   // ────────────────────────────────────────────────
   // LOADING
   // ────────────────────────────────────────────────
@@ -1179,50 +1197,69 @@ export default function EvaluationPlanSection({
   // ────────────────────────────────────────────────
   return (
     <>
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 240px)', minHeight: 400 }}>
-      {/* Top bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-white px-4 py-3 rounded-xl shadow-sm border border-gray-100 print:hidden mb-3 shrink-0">
-        <div>
-          <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <BookOpen className="w-4 h-4 text-indigo-600" /> Plan de Evaluación
-            <span className="text-xs font-normal text-gray-400 ml-1">— {LAPSOS.find(l => l.id === selectedLapso)?.name}</span>
-          </h2>
-          {/* El liceo puso semanas antes del plan (diagnóstico): se dice desde
-              cuándo cuenta la Semana 1. */}
-          {autoPopulated?.inicioDelLapso && autoPopulated?.lapsoStartDate &&
-            String(autoPopulated.lapsoStartDate).slice(0, 10) > String(autoPopulated.inicioDelLapso).slice(0, 10) && (
-            <p className="mt-0.5 text-xs text-amber-800">
-              Semana 1: desde el {String(autoPopulated.lapsoStartDate).slice(0, 10).split('-').reverse().join('/')}. Antes, {(autoPopulated.nombreAntesDelPlan || 'Diagnóstico').toLowerCase()} (contenido del profesor).
+    <div className="flex flex-col gap-4">
+      {/*
+          EL PLAN EN LA PANTALLA NO ES EL PAPEL (Cristian, 16-oct-2026)
+
+          Arriba, cuánto se lleva repartido y cuatro accesos: verlo completo
+          (la hoja con su membrete, donde se deja girar el teléfono),
+          descargarlo, copiarlo y editarlo. Debajo, las semanas en filas, como
+          los Movimientos de Finanzas. Sin «¿Cómo funciona?»: ya está el «?» de
+          arriba.
+      */}
+      <div className="rounded-[24px] bg-white p-4 ring-1 ring-gray-200 print:hidden">
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">Plan de evaluación</p>
+            <p className="mt-0.5 text-2xl font-bold tabular-nums text-gray-900">
+              {totalPuntosDelPlan} <span className="text-base font-semibold text-gray-500">/ 20 pts</span>
             </p>
-          )}
+          </div>
+          <p className="shrink-0 text-right text-sm text-gray-600">
+            {evaluacionesDelPlan} {evaluacionesDelPlan === 1 ? 'evaluación' : 'evaluaciones'}
+            <br />
+            {weeks.length} semanas
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <BotonComoFunciona recorrido="plan-de-evaluacion" />
-          {/* El plan en papel tiene su propia hoja (`plan-de-evaluacion/...`):
-              imprimir esta pantalla sacaba la sección entera, cortada a una hoja. */}
-          <Link
-            href={`/dashboard/plan-de-evaluacion/${encodeURIComponent(classroomId)}/${encodeURIComponent(subjectId)}?lapso=${selectedLapso}`}
-            className="flex items-center px-3 py-1.5 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs"
-            data-recorrido="plan-imprimir"
-          >
-            <Printer className="w-3.5 h-3.5 mr-1.5" /> Imprimir
-          </Link>
-          {canEdit && (
-            <button
-              onClick={() => setCopiandoAbierto(true)}
-              data-recorrido="plan-copiar"
-              className="flex items-center px-3 py-1.5 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs"
-              title="Usar este mismo plan en otra sección donde das esta materia"
-            >
-              <Copy className="w-3.5 h-3.5 mr-1.5" /> Copiar a otra sección
-            </button>
-          )}
-          {canEdit && (
-            <button onClick={empezarAEditar} data-recorrido="plan-editar" className="flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-bold text-xs">
-              <Edit2 className="w-3.5 h-3.5 mr-1.5" /> Editar Plan
-            </button>
-          )}
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
+          <div
+            className={`h-full rounded-full ${totalPuntosDelPlan > 20 ? 'bg-red-500' : totalPuntosDelPlan === 20 ? 'bg-emerald-500' : 'bg-indigo-500'}`}
+            style={{ width: `${Math.min(100, (totalPuntosDelPlan / 20) * 100)}%` }}
+          />
         </div>
+        {/* El liceo puso semanas antes del plan (diagnóstico): se dice desde
+            cuándo cuenta la Semana 1. */}
+        {autoPopulated?.inicioDelLapso && autoPopulated?.lapsoStartDate &&
+          String(autoPopulated.lapsoStartDate).slice(0, 10) > String(autoPopulated.inicioDelLapso).slice(0, 10) && (
+          <p className="mt-2 text-xs text-amber-800">
+            Semana 1: desde el {String(autoPopulated.lapsoStartDate).slice(0, 10).split('-').reverse().join('/')}. Antes, {(autoPopulated.nombreAntesDelPlan || 'Diagnóstico').toLowerCase()}.
+          </p>
+        )}
+
+        <nav className="mt-4 grid grid-cols-4 gap-1" aria-label="Acciones del plan">
+          {[
+            { id: 'ver', nombre: 'Ver todo', rotulo: 'Ver todo el plan', icono: Maximize2, alPulsar: () => setVerCompleto(true) },
+            { id: 'bajar', nombre: 'Descargar', rotulo: 'Descargar el plan', icono: Download, href: `/dashboard/plan-de-evaluacion/${encodeURIComponent(classroomId)}/${encodeURIComponent(subjectId)}?lapso=${selectedLapso}`, recorrido: 'plan-imprimir' },
+            ...(canEdit ? [{ id: 'copiar', nombre: 'Copiar', rotulo: 'Copiar a otra sección', icono: Copy, alPulsar: () => setCopiandoAbierto(true), recorrido: 'plan-copiar' }] : []),
+            ...(canEdit ? [{ id: 'editar', nombre: 'Editar', rotulo: 'Editar el plan', icono: Edit2, alPulsar: empezarAEditar, recorrido: 'plan-editar', principal: true }] : []),
+          ].map((a: any) => {
+            const Icono = a.icono;
+            const dentro = (
+              <>
+                <span className={`flex h-[52px] w-[52px] items-center justify-center rounded-[18px] transition-colors group-active:scale-95 ${a.principal ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-cabecera-tinta group-hover:bg-gray-200'}`}>
+                  <Icono className="h-[22px] w-[22px]" aria-hidden />
+                </span>
+                <span className="max-w-full truncate text-xs font-medium leading-tight text-gray-800">{a.nombre}</span>
+              </>
+            );
+            const clases = 'group flex min-h-[44px] min-w-0 flex-col items-center gap-1.5 rounded-2xl py-1 text-center';
+            return a.href ? (
+              <Link key={a.id} href={a.href} className={clases} data-recorrido={a.recorrido} aria-label={a.rotulo}>{dentro}</Link>
+            ) : (
+              <button key={a.id} type="button" onClick={a.alPulsar} className={clases} data-recorrido={a.recorrido} aria-label={a.rotulo}>{dentro}</button>
+            );
+          })}
+        </nav>
       </div>
 
       {/* ── Copiar el plan a otras secciones ───────────────────────── */}
@@ -1301,40 +1338,45 @@ export default function EvaluationPlanSection({
         </div>
       )}
 
-      {/* Membrete + Table occupying remaining space */}
-      <div className="flex flex-col flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden print:border-none print:shadow-none" data-recorrido="plan-rejilla">
-        {/* Membrete (fixed height) */}
-        <div className="shrink-0">
+      <div data-recorrido="plan-rejilla">
+        <PlanEnFilas semanas={weeks} columnas={columns} fechasDe={fechasDeLaSemana} />
+      </div>
+    </div>
+
+    {/* La hoja completa, con su membrete: aquí sí se deja girar el teléfono. */}
+    {verCompleto && (
+      <PlanCompleto alCerrar={() => setVerCompleto(false)} titulo={`Plan de evaluación · ${LAPSOS.find(l => l.id === selectedLapso)?.name ?? ''}`}>
+        <div className="rejilla-densa min-w-[900px] bg-white">
           {renderMembrete('view')}
-        </div>
-        {/*
-            DE PIE, POR BLOQUES
-
-            La tabla del plan son diez columnas por dieciocho semanas: mil y
-            pico de píxeles. De pie se enseña lo mismo contado como lo que es
-            —bloques de trabajo con sus semanas dentro—, y la tabla sale en
-            cuanto hay ancho, incluido el teléfono tumbado.
-        */}
-        <div className="flex-1 overflow-auto p-3 min-[700px]:hidden print:hidden">
-          <PlanPorBloques
-            semanas={weeks}
-            columnas={columns}
-            fechasDe={fechasDeLaSemana}
-            puedeEditar={false}
-            alEscribir={() => {}}
-            alAlargar={() => {}}
-            alAcortar={() => {}}
-          />
-        </div>
-
-        {/* Table fills remaining height */}
-        <div className="rejilla-densa hidden flex-1 overflow-hidden min-[700px]:block print:block">
           {renderViewTable()}
         </div>
-      </div>
-
-    </div>
+      </PlanCompleto>
+    )}
     <InstrumentosDelPlan classroomId={classroomId} subjectId={subjectId} lapso={selectedLapso} canEdit={Boolean(canEdit)} />
     </>
+  );
+}
+
+/** La hoja del plan a pantalla completa: se arrastra en las dos direcciones y deja girar el teléfono. */
+function PlanCompleto({ titulo, alCerrar, children }: { titulo: string; alCerrar: () => void; children: React.ReactNode }) {
+  useDejarGirar();
+  useEffect(() => {
+    const alPulsar = (e: KeyboardEvent) => e.key === 'Escape' && alCerrar();
+    window.addEventListener('keydown', alPulsar);
+    return () => window.removeEventListener('keydown', alPulsar);
+  }, [alCerrar]);
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col bg-gray-100" role="dialog" aria-modal="true" aria-label={titulo}>
+      <div className="zona-segura-arriba flex shrink-0 items-center gap-2 bg-white px-2 py-2 shadow-sm">
+        <button type="button" onClick={alCerrar} aria-label="Cerrar" className="flex h-11 w-11 items-center justify-center rounded-full text-gray-700 hover:bg-gray-100">
+          <ArrowLeft className="h-5 w-5" aria-hidden />
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-base font-bold text-gray-900">{titulo}</p>
+          <p className="truncate text-xs text-gray-600 min-[700px]:hidden">Gira el teléfono para verlo mejor</p>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto p-2 sm:p-4">{children}</div>
+    </div>
   );
 }

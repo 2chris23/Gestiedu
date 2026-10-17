@@ -855,7 +855,7 @@ export async function getPaymentReceipt(request: FastifyRequest<{ Params: { paym
         const pago = await prisma.payment.findUnique({
             where: { id: request.params.paymentId },
             include: {
-                student: { select: { id: true, firstName: true, lastName: true } },
+                student: { select: { id: true, firstName: true, lastName: true, studentCode: true } },
                 academicYear: { include: { periods: true } },
                 allocations: true,
             },

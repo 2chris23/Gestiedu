@@ -11,30 +11,28 @@ export default function CargandoSeccion() {
     <div className="space-y-6" aria-busy="true" aria-live="polite">
       <span className="sr-only">Cargando seccion y estudiantes...</span>
 
-      {/* 1. Cabecera: Titulo, enlaces y Tarjeta de Profesor Guia */}
+      {/* 1. Cabecera en una línea (flecha, título, lapso y documentos) y el profesor guía */}
       <header className="space-y-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <BaseSkeleton className="h-6 w-20 rounded-md bg-slate-200/60" />
-              <BaseSkeleton className="h-4 w-4 rounded-full bg-slate-200/40" />
-              <BaseSkeleton className="h-6 w-28 rounded-md bg-slate-200/60" />
-            </div>
-            <BaseSkeleton className="h-8 w-44 rounded-lg bg-slate-200/80" />
+        <div className="flex items-center gap-2">
+          <BaseSkeleton className="h-11 w-11 rounded-full bg-slate-200/40" />
+          <div className="flex-1 space-y-1.5">
+            <BaseSkeleton className="h-6 w-28 rounded-lg bg-slate-200/80" />
+            <BaseSkeleton className="h-3 w-16 rounded-full bg-slate-200/50" />
           </div>
+          <BaseSkeleton className="h-11 w-28 rounded-xl bg-slate-200/50" />
+          <BaseSkeleton className="h-11 w-11 rounded-full bg-slate-200/50" />
+        </div>
 
-          {/* Tarjeta de Profesor Guia */}
-          <div className="w-full rounded-xl border border-gray-100 bg-white p-4 shadow-xs sm:w-auto sm:min-w-[360px]">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <BaseSkeleton className="h-12 w-12 rounded-full bg-slate-200/70" />
-                <div className="space-y-1.5">
-                  <BaseSkeleton className="h-3 w-20 rounded-full bg-slate-200/50" />
-                  <BaseSkeleton className="h-4 w-32 rounded-full bg-slate-200/80" />
-                </div>
+        <div className="w-full rounded-[24px] bg-white px-4 py-3 ring-1 ring-gray-200 sm:max-w-md">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <BaseSkeleton className="h-12 w-12 rounded-full bg-slate-200/70" />
+              <div className="space-y-1.5">
+                <BaseSkeleton className="h-3 w-20 rounded-full bg-slate-200/50" />
+                <BaseSkeleton className="h-4 w-32 rounded-full bg-slate-200/80" />
               </div>
-              <BaseSkeleton className="h-8 w-20 rounded-lg bg-slate-200/50" />
             </div>
+            <BaseSkeleton className="h-11 w-24 rounded-full bg-slate-200/50" />
           </div>
         </div>
 
@@ -49,12 +47,14 @@ export default function CargandoSeccion() {
         </div>
       </header>
 
-      {/* 3. Pestanas de navegacion (Estudiantes, Materias, Calificaciones, Observaciones) */}
-      <div className="flex gap-6 border-b border-gray-200 pb-2">
-        <BaseSkeleton className="h-5 w-24 rounded-full bg-indigo-200/70" />
-        <BaseSkeleton className="h-5 w-20 rounded-full bg-slate-200/50" />
-        <BaseSkeleton className="h-5 w-28 rounded-full bg-slate-200/50" />
-        <BaseSkeleton className="h-5 w-24 rounded-full bg-slate-200/50" />
+      {/* 3. Las partes, en cuadros (Estudiantes, Materias, Observaciones…) */}
+      <div className="grid grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="flex flex-col items-center gap-1.5">
+            <BaseSkeleton className={`h-[52px] w-[52px] rounded-[18px] ${i === 0 ? 'bg-indigo-200/70' : 'bg-slate-200/50'}`} />
+            <BaseSkeleton className="h-3 w-14 rounded-full bg-slate-200/50" />
+          </div>
+        ))}
       </div>
 
       {/* 4. Tabla de Estudiantes */}

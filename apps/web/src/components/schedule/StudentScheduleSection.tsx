@@ -769,7 +769,6 @@ export default function StudentScheduleSection({ schedule, role, showActions = f
                                     type: p.type,
                                 }))}
                                 cargando={isLoading}
-                                motivoDelGiro="Para ver la semana entera"
                                 loDeLaHora={(dia, periodo) => {
                                     const clase = schedule.find(
                                         (c) =>

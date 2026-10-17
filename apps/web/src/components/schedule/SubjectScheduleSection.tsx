@@ -1,17 +1,21 @@
 'use client';
 
-import React, { useMemo, useRef, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-    Calendar, Clock, Edit, MapPin,
-    ChevronLeft, ChevronRight, BookOpen, CalendarDays
+    Calendar,
+    Clock,
+    Edit,
+    MapPin,
+    CalendarDays,
 } from 'lucide-react';
 import { ScheduleBlock } from '@/components/schedule/UniversalScheduleViewer';
+import { Carril } from '@/components/ui/carril';
 import { DescargarHorario } from '@/components/schedule/DescargarHorario';
 import ScheduleHistoryModal from '@/components/schedule/ScheduleHistoryModal';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLiveOverview } from '@/hooks/useLiveClass';
-import { toLocalYMD } from '@/utils/date.utils';
+
 import { useRelojDelLiceo } from '@/hooks/useSchoolTime';
 
 interface Props {
@@ -55,7 +59,6 @@ export default function SubjectScheduleSection({
 }: Props) {
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [selectedHistoryDate, setSelectedHistoryDate] = useState<string | null>(null);
-    const carouselRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
 
     // Día y hora del LICEO, no los del aparato (RELOJ-01).
@@ -191,33 +194,6 @@ export default function SubjectScheduleSection({
         };
     }, [schedule, selectedHistoryDate, currentTime, todayDateStr]);
 
-    // Scroll automático para centrar en las 2 anteriores + Hoy + 2 siguientes
-    useEffect(() => {
-        if (carouselRef.current && classSequence.classes.length > 0) {
-            const container = carouselRef.current;
-            const targetIndex = Math.max(0, classSequence.todayIndex - 2);
-            const firstChild = container.firstElementChild as HTMLElement;
-            if (firstChild) {
-                const cardWidth = firstChild.offsetWidth + 12;
-                container.scrollTo({
-                    left: targetIndex * cardWidth,
-                    behavior: 'smooth',
-                });
-            }
-        }
-    }, [classSequence]);
-
-    const scrollCarousel = (direction: 'prev' | 'next') => {
-        if (!carouselRef.current) return;
-        const container = carouselRef.current;
-        const firstChild = container.firstElementChild as HTMLElement;
-        const cardWidth = firstChild ? firstChild.offsetWidth + 12 : 220;
-        container.scrollBy({
-            left: direction === 'next' ? cardWidth : -cardWidth,
-            behavior: 'smooth',
-        });
-    };
-
     const handleCardClick = (session: SubjectClassSession) => {
         if (role !== 'teacher' || !classroomId || !subject.id) return;
         router.push(
@@ -246,7 +222,7 @@ export default function SubjectScheduleSection({
                         <h3 className="font-bold text-gray-900 text-sm sm:text-base leading-tight">
                             Horario en Vivo <span className="text-indigo-600 font-medium text-xs sm:text-sm">• {subject.name}</span>
                         </h3>
-                        <p className="text-[11px] text-gray-500 font-medium">
+                        <p className="text-xs text-gray-500 font-medium">
                             {headerDateText}
                         </p>
                     </div>
@@ -254,36 +230,14 @@ export default function SubjectScheduleSection({
 
                 {/* Controles y Botones */}
                 <div className="flex items-center gap-2">
-                    {/* Flechas de navegación para desplazarse entre clases */}
-                    {classSequence.classes.length > 5 && (
-                        <div className="flex items-center gap-1 bg-gray-50 p-0.5 rounded-lg border border-gray-200/60">
-                            <button
-                                type="button"
-                                onClick={() => scrollCarousel('prev')}
-                                className="p-1 text-gray-500 hover:text-gray-900 hover:bg-gray-200/80 rounded-md transition-colors"
-                                title="Clase anterior"
-                            >
-                                <ChevronLeft size={14} />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => scrollCarousel('next')}
-                                className="p-1 text-gray-500 hover:text-gray-900 hover:bg-gray-200/80 rounded-md transition-colors"
-                                title="Clase siguiente"
-                            >
-                                <ChevronRight size={14} />
-                            </button>
-                        </div>
-                    )}
-
                     <DescargarHorario bloques={schedule} titulo={subject.name} subtitulo={subtitulo} />
 
                     {showActions && (
-                        <div className="flex items-center gap-1 mr-1 pr-1 border-r border-gray-200">
+                        <div className="flex items-center">
                             {editUrl && (
                                 <Link
                                     href={editUrl}
-                                    className="p-1.5 text-indigo-600 hover:bg-indigo-100 bg-indigo-50 rounded-lg transition-colors shadow-2xs"
+                                    className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 transition-colors hover:bg-indigo-100"
                                     title="Editar horario"
                                 >
                                     <Edit size={15} />
@@ -298,7 +252,7 @@ export default function SubjectScheduleSection({
                             <button
                                 type="button"
                                 onClick={() => setSelectedHistoryDate(null)}
-                                className="px-2.5 py-1 text-xs font-bold rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors shadow-2xs"
+                                className="min-h-[44px] px-3 text-xs font-bold rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors shadow-2xs"
                             >
                                 Volver a Hoy
                             </button>
@@ -306,7 +260,7 @@ export default function SubjectScheduleSection({
                         <button
                             type="button"
                             onClick={() => setIsHistoryOpen(true)}
-                            className={`px-3 py-1 text-xs font-bold rounded-lg transition-all inline-flex items-center gap-1.5 ${
+                            className={`min-h-[44px] px-3.5 text-xs font-bold rounded-full transition-all inline-flex items-center gap-1.5 ${
                                 selectedHistoryDate
                                     ? 'bg-indigo-600 text-white shadow-xs'
                                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:text-gray-900 border border-gray-200/60'
@@ -320,140 +274,106 @@ export default function SubjectScheduleSection({
                 </div>
             </div>
 
-            {/* VISTA DE CLASES SECUENCIALES (2 ANTERIORES + HOY + SIGUIENTES HASTA 10) */}
-            <div
-                ref={carouselRef}
-                /* De pie, en vertical: cinco tarjetas de 190 px no caben en 390,
-                   y arrastrar de lado para ver la clase de las 10 es un fastidio. */
-                className="flex w-full flex-col gap-3 pb-2 pt-0.5 min-[700px]:flex-row min-[700px]:snap-x min-[700px]:snap-mandatory min-[700px]:overflow-x-auto min-[700px]:scroll-smooth min-[700px]:no-scrollbar"
-                style={{
-                    scrollbarWidth: 'none',
-                    msOverflowStyle: 'none',
-                }}
-            >
-                {classSequence.classes.length === 0 ? (
-                    <div className="w-full text-center py-8 text-gray-400 text-xs font-medium flex flex-col items-center justify-center">
-                        <Clock className="w-8 h-8 mb-2 text-gray-300" />
-                        <span>Esta materia no tiene bloques de horario asignados.</span>
-                    </div>
-                ) : (
-                    classSequence.classes.map((session, index) => {
-                        const isClickable = role === 'teacher' && classroomId;
+            {/* Las clases, EN UN CARRIL DE LADO, como el horario de la sección
+                (Cristian, 16-oct-2026: en el teléfono iban una debajo de otra y
+                ocupaban media pantalla). En el teléfono se ven dos y se asoma la
+                tercera; arranca en la de hoy (o la próxima). */}
+            {classSequence.classes.length === 0 ? (
+                <div className="w-full text-center py-8 text-gray-500 text-xs font-medium flex flex-col items-center justify-center">
+                    <Clock className="w-8 h-8 mb-2 text-gray-300" aria-hidden />
+                    <span>Esta materia no tiene bloques de horario asignados.</span>
+                </div>
+            ) : (
+                <Carril
+                    etiqueta={`Clases de ${subject.name}`}
+                    conFlechas={false}
+                    anchoDeCada="w-[44%] min-w-[148px] min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[170px]"
+                    hueco="gap-2.5 min-[700px]:gap-3"
+                    inicio={Math.max(0, classSequence.todayIndex)}
+                    className="pb-1"
+                >
+                    {classSequence.classes.map((session, index) => {
+                        // La primera que todavía no pasó (hoy o después).
+                        const laProxima = classSequence.classes.findIndex((c) => c.status !== 'past');
+                        const isClickable = role === 'teacher' && !!classroomId;
                         const isCurrent = session.status === 'current';
                         const isToday = session.status === 'today';
                         const isPast = session.status === 'past';
-
                         const temaGenerador = subjectInfo?.antesDelPlan
                             ? subjectInfo.nombreAntesDelPlan || 'Diagnóstico'
-                            : subjectInfo?.temaGenerador || 'Tema de clase programado';
+                            : subjectInfo?.temaGenerador || '—';
                         const firstColLabel = subjectInfo?.firstColumnLabel || 'Tema Generador';
                         const todayActCount = subjectInfo?.todayActivitiesCount ?? 0;
                         const nextActCount = subjectInfo?.nextActivitiesCount ?? 0;
                         const hasClassroom =
-                            session.block.classroom &&
+                            !!session.block.classroom &&
                             session.block.classroom !== 'Sin asignar' &&
                             session.block.classroom !== 'Sin aula' &&
                             session.block.classroom.trim() !== '';
+                        const esDeHoy = session.dateStr === todayDateStr;
+                        const etiqueta = isCurrent ? 'En curso' : esDeHoy ? 'Hoy' : index === laProxima ? 'Próxima' : null;
 
                         return (
                             <div
                                 key={`${session.dateStr}-${session.block.id}-${index}`}
                                 onClick={() => handleCardClick(session)}
-                                style={
-                                    session.block?.color
-                                        ? {
-                                              backgroundColor: isCurrent ? '#f0fdf4' : `${session.block.color}08`,
-                                              borderColor: isCurrent ? '#10b981' : isToday ? '#6366f1' : `${session.block.color}35`,
-                                          }
-                                        : undefined
-                                }
-                                className={`w-full min-h-[96px] min-[700px]:snap-start min-[700px]:flex-shrink-0 min-[700px]:w-[calc((100%-48px)/5)] min-[700px]:min-w-[190px] min-[700px]:min-h-[160px] p-3.5 rounded-2xl border-2 transition-all flex flex-col justify-between ${
-                                    isClickable ? 'cursor-pointer hover:ring-2 hover:ring-indigo-400 hover:shadow-xs' : ''
+                                className={`h-full w-full min-h-[104px] p-2.5 min-[700px]:min-h-[145px] min-[700px]:p-3 rounded-2xl border-2 transition-all flex flex-col justify-between ${
+                                    isClickable ? 'cursor-pointer hover:ring-2 hover:ring-indigo-400' : ''
                                 } ${
                                     isCurrent
-                                        ? 'bg-emerald-50/90 border-emerald-500 shadow-xs ring-2 ring-emerald-200'
+                                        ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-200'
                                         : isToday
-                                        ? 'bg-indigo-50/70 border-indigo-400 shadow-xs ring-1 ring-indigo-200'
+                                        ? 'bg-indigo-50/70 border-indigo-400'
                                         : isPast
-                                        ? 'bg-gray-50/70 border-gray-200 opacity-70 hover:opacity-100'
-                                        : 'bg-blue-50/40 border-blue-200/90'
+                                        ? 'bg-gray-50 border-gray-200 opacity-70'
+                                        : 'bg-white border-gray-200'
                                 }`}
                             >
-                                {/* Cabecera del Bloque: Fecha/Hora + Badge de Estado */}
                                 <div>
-                                    <div className="flex items-center justify-between mb-1">
-                                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-wide truncate">
-                                            {session.formattedDate}
-                                        </span>
-                                        {isCurrent ? (
-                                            <span className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500 text-white text-[9px] font-black rounded-full shadow-2xs animate-pulse">
-                                                <span className="w-1 h-1 rounded-full bg-white animate-ping" />
-                                                EN CURSO
-                                            </span>
-                                        ) : isToday ? (
-                                            <span className="px-1.5 py-0.5 bg-indigo-600 text-white text-[9px] font-black rounded-full shadow-2xs">
-                                                HOY
-                                            </span>
-                                        ) : isPast ? (
-                                            <span className="px-1.5 py-0.5 bg-gray-200 text-gray-600 text-[8px] font-bold rounded-full">
-                                                ANTERIOR
-                                            </span>
-                                        ) : (
-                                            <span className="px-1.5 py-0.5 bg-sky-100 text-sky-700 text-[8px] font-extrabold rounded-full">
-                                                {session.statusLabel}
+                                    <div className="flex flex-wrap items-center justify-between gap-1">
+                                        <span className="text-[11px] font-black uppercase tracking-wide text-gray-600">{session.formattedDate.replace(/^HOY /, '')}</span>
+                                        {etiqueta && (
+                                            <span
+                                                className={`rounded-md px-1.5 py-0.5 text-[10px] font-black ${
+                                                    isCurrent ? 'bg-emerald-100 text-emerald-800' : isPast ? 'bg-gray-200 text-gray-700' : esDeHoy ? 'bg-indigo-600 text-white' : 'bg-sky-100 text-sky-800'
+                                                }`}
+                                            >
+                                                {etiqueta.toUpperCase()}
                                             </span>
                                         )}
                                     </div>
-
-                                    <div className="text-[11px] font-bold text-gray-700 flex items-center gap-1">
-                                        <Clock size={11} className="text-gray-400 shrink-0" />
-                                        <span>{session.block.startTime} - {session.block.endTime}</span>
+                                    <div className="mt-0.5 font-mono text-[11px] font-bold text-gray-600">
+                                        {session.block.startTime} - {session.block.endTime}
                                     </div>
-                                </div>
-
-                                {/* Cuerpo: Materia y Tema Generador */}
-                                <div className="my-2">
-                                    <h4 className="font-extrabold text-gray-900 text-sm leading-tight truncate">
-                                        {subject.name}
-                                    </h4>
-                                    <div className="mt-1">
-                                        <p className="text-[9px] uppercase font-bold text-gray-400 tracking-wider">
-                                            {firstColLabel}:
-                                        </p>
-                                        <p className="text-[11px] font-semibold text-gray-800 line-clamp-2 leading-tight">
+                                    <div className="mt-1.5 rounded-lg border border-gray-100 bg-white/80 px-1.5 py-1">
+                                        <span className="hidden text-[10px] font-bold uppercase tracking-tight text-gray-500 min-[700px]:block">{firstColLabel}:</span>
+                                        <p className="line-clamp-2 text-[11px] font-bold leading-tight text-gray-800">
+                                            <span className="sr-only min-[700px]:hidden">{firstColLabel}: </span>
                                             {temaGenerador}
                                         </p>
                                     </div>
                                 </div>
-
-                                {/* Footer: Actividades y Aula (solo si está asignada) */}
-                                <div className="flex items-center justify-between border-t border-gray-100/80 pt-2 text-[10px] text-gray-500">
-                                    <div className="flex items-center gap-1.5 font-bold">
-                                        <span
-                                            className="text-indigo-600 bg-indigo-50 px-1 py-0.2 rounded"
-                                            title="Actividades que tocan en esta clase"
-                                        >
+                                <div className="mt-2 flex items-center justify-between gap-1 border-t border-gray-100 pt-2">
+                                    <div className="flex items-center gap-1">
+                                        <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold ${(isToday || isCurrent) && todayActCount > 0 ? 'bg-blue-100 text-blue-900' : 'bg-gray-100 text-gray-600'}`} title="Actividades que tocan en esta clase">
                                             {isToday || isCurrent ? todayActCount : 0} hoy
                                         </span>
-                                        <span
-                                            className="text-gray-500 bg-gray-100 px-1 py-0.2 rounded"
-                                            title="Actividades que se dejaron en esta clase para otro día"
-                                        >
+                                        <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold ${nextActCount > 0 ? 'bg-purple-100 text-purple-900' : 'bg-gray-100 text-gray-600'}`} title="Actividades que se dejaron en esta clase para otro día">
                                             {nextActCount} después
                                         </span>
                                     </div>
                                     {hasClassroom && (
-                                        <div className="flex items-center gap-1 font-semibold text-gray-600 truncate max-w-[85px]" title={session.block.classroom}>
-                                            <MapPin size={10} className="shrink-0 text-gray-400" />
+                                        <span className="flex max-w-[70px] items-center gap-1 truncate text-[11px] text-gray-600" title={session.block.classroom}>
+                                            <MapPin size={10} className="shrink-0" aria-hidden />
                                             <span className="truncate">{session.block.classroom}</span>
-                                        </div>
+                                        </span>
                                     )}
                                 </div>
                             </div>
                         );
-                    })
-                )}
-            </div>
+                    })}
+                </Carril>
+            )}
 
             {/* Modal de Historial con Días Restringidos */}
             {isHistoryOpen && (

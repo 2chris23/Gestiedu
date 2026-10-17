@@ -84,19 +84,61 @@ export async function aHorizontal(): Promise<boolean> {
     }
 }
 
-/** Deshace lo anterior: la pantalla vuelve a girar con el teléfono. */
-export async function soltarLaPantalla(): Promise<void> {
+/*
+ * ─── DE PIE SIEMPRE, SALVO DONDE SE PIDE ────────────────────────────────────
+ *
+ * Cristian (16-oct-2026): en el teléfono la app va siempre de pie y no se
+ * voltea; solo se deja girar al editar el horario y al ver (o editar) el plan
+ * de evaluación. Lo fija la APK (`ScreenOrientation`) y la app instalada desde
+ * el navegador (`screen.orientation.lock`, que ahí sí vale); en una pestaña
+ * normal del navegador nadie puede fijarlo, y se deja como está.
+ *
+ * Las pantallas que dejan girar lo piden con `useDejarGirar()`: se cuentan,
+ * para que al cerrar una ventana que dejaba girar dentro de otra pantalla que
+ * también lo deja, la pantalla no se quede clavada de pie.
+ */
+let permisos = 0;
+
+function esLaAppInstalada(): boolean {
+    if (typeof window === 'undefined') return false;
+    return !!window.matchMedia?.('(display-mode: standalone)').matches || !!window.matchMedia?.('(display-mode: fullscreen)').matches;
+}
+
+async function bloquear(orientacion: 'portrait' | 'any'): Promise<void> {
     const plugin = elPluginDeCapacitor();
-    if (plugin?.unlock) {
-        await plugin.unlock().catch(() => {});
-    } else {
-        const orientacion = window.screen?.orientation as (ScreenOrientation & { unlock?: () => void }) | undefined;
-        try {
-            orientacion?.unlock?.();
-        } catch {
-            // Da igual: la pantalla se queda como estaba.
-        }
+    if (plugin) {
+        if (orientacion === 'any') await plugin.unlock?.().catch(() => {});
+        else await plugin.lock?.({ orientation: 'portrait' }).catch(() => {});
+        return;
     }
+    if (!esLaAppInstalada()) return;
+    const o = window.screen?.orientation as (ScreenOrientation & { lock?: (o: string) => Promise<void> }) | undefined;
+    await o?.lock?.(orientacion).catch(() => {});
+}
+
+/** La app, de pie (si ninguna pantalla abierta deja girar). */
+export async function fijarVertical(): Promise<void> {
+    if (permisos > 0) return;
+    await bloquear('portrait');
+}
+
+/** Esta pantalla deja girar; devuelve con qué devolverla a de pie. */
+export function dejarGirar(): () => void {
+    permisos += 1;
+    void bloquear('any');
+    let hecho = false;
+    return () => {
+        if (hecho) return;
+        hecho = true;
+        permisos = Math.max(0, permisos - 1);
+        void fijarVertical();
+    };
+}
+
+/** Deshace lo anterior: la pantalla vuelve a girar con el teléfono (o de pie, si aquí no se deja girar). */
+export async function soltarLaPantalla(): Promise<void> {
+    if (permisos > 0) await bloquear('any');
+    else await bloquear('portrait');
 
     if (typeof document !== 'undefined' && document.fullscreenElement && document.exitFullscreen) {
         await document.exitFullscreen().catch(() => {});

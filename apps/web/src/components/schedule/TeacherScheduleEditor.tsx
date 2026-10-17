@@ -1,5 +1,7 @@
 'use client';
 
+import { useDejarGirar } from '@/hooks/useDejarGirar';
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { DndContext, useDraggable, useDroppable, DragEndEvent, DragOverlay } from '@dnd-kit/core';
 import {
@@ -283,6 +285,8 @@ export default function TeacherScheduleEditor({
     assignments,
     readOnly = false,
 }: TeacherScheduleEditorProps) {
+    // Editar el horario es de las pocas pantallas que dejan girar el teléfono.
+    useDejarGirar(!readOnly);
     const [blocks, setBlocks] = useState<EditorBlock[]>([]);
     const [deletedIds, setDeletedIds] = useState<string[]>([]);
     const [isDirty, setIsDirty] = useState(false);

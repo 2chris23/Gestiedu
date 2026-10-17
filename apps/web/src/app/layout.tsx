@@ -17,6 +17,7 @@ import { CORTINA_DEL_ARRANQUE } from '@/lib/cortina-del-arranque';
 import { COLOR_ANTES_DE_PINTAR } from '@/lib/tema-de-la-app';
 import { MODO_ANTES_DE_PINTAR } from '@/lib/modo-de-la-app';
 import { SeguirElModo } from '@/components/layout/SeguirElModo';
+import { DePie } from '@/components/common/DePie';
 import { LATERAL_ANTES_DE_PINTAR } from '@/lib/barra-lateral';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -102,6 +103,7 @@ export default function RootLayout({
             <body className={inter.className} suppressHydrationWarning={true}>
                 <MarcaDeArranque />
                 <SeguirElModo />
+                <DePie />
                 <QueryProvider>
                     <ConfirmProvider>
                         <DynamicFavicon />

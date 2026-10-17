@@ -42,7 +42,8 @@ export function Hoja({ pedido, alCerrar }: { pedido: ComprobantePedido; alCerrar
         if (!data) return;
         setCompartiendo(true);
         try {
-            await compartirComprobante(data);
+            const r = await compartirComprobante(data);
+            if (r === 'actualizar') toast.error('Para compartir, actualiza la app');
         } catch (e) {
             toast.error(errorDe(e, 'No se pudo preparar la imagen'));
         } finally {

@@ -207,12 +207,12 @@ const RECORRIDOS: Array<{ ruta: RegExp } & Recorrido> = [
             {
                 donde: 'plan-rejilla',
                 titulo: 'Una fila por semana',
-                texto: 'Cada fila es una semana del lapso. Las columnas las pone el profesor (tema, contenido, actividad…) y una celda puede abarcar varias semanas.',
+                texto: 'Cada fila es una semana del lapso: tócala y se abre con todo lo suyo. «Ver todo» enseña la hoja entera, como en papel.',
             },
             {
                 donde: 'plan-editar',
                 titulo: 'Las evaluaciones y sus puntos',
-                texto: 'En «Editar Plan» marcas qué semanas son de evaluación y cuánto valen, y armas su instrumento si quieres (lista de cotejo, escala, rúbrica). Desde ahí, «Importar Word» lo lee de un archivo.',
+                texto: 'En «Editar» marcas qué semanas son de evaluación y cuánto valen, y armas su instrumento si quieres (lista de cotejo, escala, rúbrica). Desde ahí, «Importar Word» lo lee de un archivo.',
             },
             {
                 donde: 'plan-copiar',
@@ -221,8 +221,8 @@ const RECORRIDOS: Array<{ ruta: RegExp } & Recorrido> = [
             },
             {
                 donde: 'plan-imprimir',
-                titulo: 'En papel',
-                texto: 'Saca la hoja del plan con el membrete del liceo, lista para firmar.',
+                titulo: 'Descargar',
+                texto: 'Saca la hoja del plan con el membrete del liceo, lista para firmar o guardar en PDF.',
             },
             {
                 titulo: 'Y en la clase',

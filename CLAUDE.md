@@ -317,6 +317,36 @@ responde 403. Reglas en `MAPA` §8b y §8g.
   verde lo cobrado y rojo lo que quedó sin cobrar de los meses vencidos. Los
   filtros de Estudiantes, una barra segmentada de cuatro (sin arrastrar).
 
+## La sección y la materia (16-oct-2026)
+
+Pedido por Cristian. **Cabecera en una línea** (`components/academic/CabezaDeLaClase.tsx`):
+la flecha, el título con el año (o la sección y las horas) en gris, el lapso y
+**UN botón de documentos** que abre su ventana (Resumen final, Consejo de
+sección, Carnets): Cristian prefiere siempre un botón con ventana a un botón
+por documento. Sin miga de pan (repetía el título) ni «20 Estudiantes» (contaba
+solo la primera página). Las pestañas son **cuadros como los de Finanzas**
+(`PartesDeLaPantalla`); la sección ya no tiene «Calificaciones»: el plan vive
+en cada materia. La tabla de alumnos de la materia es la misma que la de la
+sección (`compacta`), y el buscador lleva al lado el botón de inscribir (solo
+el icono). El horario en vivo de la materia es un carril de lado, como el de la
+sección. El rol de los botones lo dice `useQuienSoy`, no `auth.store`.
+
+**El plan de evaluación en la pantalla no es el papel** (`PlanEnFilas`): arriba,
+los puntos repartidos y cuatro accesos (Ver todo · Descargar · Copiar ·
+Editar); debajo, cada semana es una fila como los Movimientos y al tocarla se
+abre con todo lo suyo (lo unido de arriba se repite en cada semana). «Ver
+todo» enseña la hoja con su membrete a pantalla completa. Sin «¿Cómo
+funciona?»: está el «?» de arriba.
+
+**De pie siempre** (`lib/girar-la-pantalla.ts`, `DePie`): la APK y la app
+instalada no giran, salvo al **editar el horario** y en el **plan de
+evaluación** (ver todo y editar), que lo piden con `useDejarGirar()`. En una
+pestaña normal del navegador no se puede fijar. El manifiesto dice `portrait`.
+
+**Compartir en la APK** (`CompartirPlugin.java`): el WebView no trae
+`navigator.share` ni baja un `blob:`; el complemento deja el archivo en la
+caché y abre el selector de Android. Una APK anterior dice «actualiza la app».
+
 ## Asistencia por QR
 
 Tres formas de pasar lista y **la de a mano no se quita nunca**. El profesor abre

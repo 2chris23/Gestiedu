@@ -17,7 +17,7 @@ import { entregarArchivo } from '@/lib/horario-en-archivo';
 export interface DatosDelComprobante {
     institute: { name: string };
     receiptNumber: number;
-    student: { id: string; firstName: string; lastName: string };
+    student: { id: string; firstName: string; lastName: string; studentCode?: string | null };
     academicYear: string;
     paidAt: string;
     method: string;
@@ -61,7 +61,10 @@ export function renglonesDelComprobante(d: DatosDelComprobante): Array<[string, 
     const r: Array<[string, string]> = [];
     if (d.receiptNumber > 0) r.push(['Número de recibo', String(d.receiptNumber).padStart(6, '0')]);
     r.push([d.rotuloPersona ?? 'Estudiante', `${d.student.firstName} ${d.student.lastName}`.trim()]);
-    if (d.student.id) r.push(['Cédula', d.student.id]);
+    // La cédula es el id del alumno, salvo en cuentas viejas cuyo id es un
+    // código interno («ck1vv8…»): eso no es una cédula y no se enseña.
+    const cedula = d.student.studentCode || (/^c[a-z0-9]{20,}$/.test(d.student.id) ? '' : d.student.id);
+    if (cedula) r.push(['Cédula', cedula]);
     if (d.cargo) r.push(['Cargo', d.cargo]);
     r.push(['Fecha', fechaLarga(d.paidAt)]);
     if (d.method) r.push(['Forma de pago', d.method]);
