@@ -56,7 +56,7 @@ test('INSTR-UI-01: armar una lista de cotejo en el plan', async ({ page }, testI
         await seccion.getByRole('button', { name: 'Armar instrumento' }).first().click();
         const ventana = page.getByRole('dialog', { name: 'Instrumento de evaluación' });
         await ventana.getByRole('radio', { name: 'Lista de cotejo' }).click();
-        await expect(ventana.getByText(/Vale 20 puntos en total/)).toBeVisible();
+        await expect(ventana.getByRole('status')).toContainText(/Lleva\s*20\s*pts/);
         await ventana.getByRole('button', { name: 'Guardar instrumento' }).click();
         await expect(ventana).toBeHidden({ timeout: 15000 });
         await expect(seccion.getByText(/Lista de cotejo · 5 criterios · vale 20/).first()).toBeVisible({ timeout: 15000 });

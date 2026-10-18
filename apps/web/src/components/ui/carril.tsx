@@ -187,9 +187,16 @@ export function Carril({
                     ratón. Queda sucio y encima deja el texto seleccionado al
                     soltar.
                 */}
-                <div className={cn('flex cursor-grab select-none py-1 active:cursor-grabbing', hueco)}>
+                {/*
+                    Un poco de aire en las orillas: el carril recorta justo en
+                    su borde y se comía el filo y la sombra de la primera
+                    tarjeta (la clase que va, con su aro de color). Embla lo
+                    cuenta: el de inicio por el relleno del carril y el del
+                    final por el margen de la última. Con bucle no hay orillas.
+                */}
+                <div className={cn('flex cursor-grab select-none py-1.5 active:cursor-grabbing', !bucle && 'pl-1.5', hueco)}>
                     {React.Children.map(children, (hijo, i) => (
-                        <div key={i} className={cn('min-w-0 shrink-0 grow-0', anchoDeCada)}>
+                        <div key={i} className={cn('min-w-0 shrink-0 grow-0', !bucle && 'last:mr-1.5', anchoDeCada)}>
                             {hijo}
                         </div>
                     ))}

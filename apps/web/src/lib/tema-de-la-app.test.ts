@@ -28,12 +28,13 @@ describe('El color de la app', () => {
         }
     });
 
-    it('TEMA-02: «Azul» es lo de siempre, idéntico', () => {
+    it('TEMA-02: «Azul» es el azul de la cabecera, no el índigo (que sale morado)', () => {
         const azul = paleta.ACENTOS.azul;
         expect(azul.cabecera.fondo).toBe('#0D47A1');
         expect(azul.acento).toBe('#00BFA5');
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        expect(azul.escala).toEqual(require('tailwindcss/colors').indigo);
+        // Cristian (18-oct-2026): «el estilo del sistema lo coloqué azul».
+        expect(azul.escala['600']).toBe('#1565C0');
+        expect(azul.escala['700']).toBe('#0D47A1');
     });
 
     it('TEMA-03: con cada color, la letra de la cabecera y la de los botones se lee (4,5:1)', () => {

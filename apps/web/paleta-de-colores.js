@@ -109,12 +109,21 @@ function deColorOscuro(escala) {
  */
 const unTonoMasHondo = (e) => ({ ...e, 500: e['600'], 600: e['700'], 700: e['800'], 800: e['900'], 900: e['950'], 950: e['950'] });
 
+/** La familia del azul de la cabecera (los azules de Material). */
+const AZUL = {
+    50: '#E3F2FD', 100: '#BBDEFB', 200: '#90CAF9', 300: '#64B5F6', 400: '#42A5F5', 500: '#1E88E5',
+    600: '#1565C0', 700: '#0D47A1', 800: '#0B3F94', 900: '#08326F', 950: '#061F45',
+};
+
 const ACENTOS = {
     azul: {
         nombre: 'Azul',
         acento: '#00BFA5',
-        // Lo de siempre, idéntico.
-        escala: tw.indigo,
+        // El azul de la cabecera (#0D47A1) en toda la escala. Era el índigo de
+        // Tailwind (#4F46E5), que en la pantalla sale MORADO: Cristian
+        // (18-oct-2026) «el estilo del sistema lo coloqué azul». El 600 (botón
+        // con letra blanca) da 5,8:1 y el 700 (letra sobre blanco), 8,6:1.
+        escala: AZUL,
         cabecera: { fondo: '#0D47A1', medio: '#0B3F94', hondo: '#08326F', texto: '#FFFFFF', suave: '#BBDEFB', celeste: '#90CAF9', sobreCeleste: '#0D47A1', claro: '#E3F2FD', tinta: '#0D47A1', tintaOscura: '#90CAF9' },
     },
     turquesa: {

@@ -2,7 +2,8 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, FileText, Search, type LucideIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileText, Pencil, Search, UserRound, type LucideIcon } from 'lucide-react';
+import UserAvatar from '@/components/ui/UserAvatar';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 
@@ -21,12 +22,15 @@ export function CabezaDeLaClase({
     rotuloVolver,
     titulo,
     subtitulo,
+    profesor,
     children,
 }: {
     volverA: string;
     rotuloVolver: string;
     titulo: React.ReactNode;
     subtitulo?: React.ReactNode;
+    /** El profesor (o el guía): arriba a la derecha en el ordenador; en el teléfono, una línea bajo el título. */
+    profesor?: Profesor;
     /** Lo de la derecha: el selector de lapso, los documentos… */
     children?: React.ReactNode;
 }) {
@@ -42,9 +46,90 @@ export function CabezaDeLaClase({
             <div className="min-w-0 flex-1">
                 <h1 className="truncate text-xl font-bold leading-tight text-gray-900 sm:text-2xl">{titulo}</h1>
                 {subtitulo && <p className="truncate text-xs font-medium text-gray-600 sm:text-sm">{subtitulo}</p>}
+                {profesor && <ProfesorDebajo {...profesor} />}
             </div>
-            {children && <div className="flex shrink-0 items-center gap-2">{children}</div>}
+            {(children || profesor) && (
+                <div className="flex shrink-0 items-center gap-2">
+                    {profesor && <ProfesorEnLaCabeza {...profesor} />}
+                    {children}
+                </div>
+            )}
         </header>
+    );
+}
+
+export interface Profesor {
+    rotulo: string;
+    nombre: string | null;
+    avatar?: string | null;
+    /** Solo si quien mira lo puede cambiar (el admin). */
+    alCambiar?: () => void;
+}
+
+/**
+ * EL PROFESOR, EN LA CABECERA
+ *
+ * Cristian (18-oct-2026): el profesor (o el guía) ocupaba una fila para él
+ * solo. En el ordenador va arriba, junto al lapso: su foto, el rótulo y el
+ * nombre. En el teléfono la foto le quitaba el ancho al título («1er A…»):
+ * ahí es una línea gris debajo del año. Si quien mira lo puede cambiar (el
+ * admin), es un botón.
+ */
+function ProfesorEnLaCabeza({ rotulo, nombre, avatar, alCambiar }: Profesor) {
+    const dentro = (
+        <>
+            {nombre ? (
+                <UserAvatar name={nombre} src={avatar ?? undefined} className="h-9 w-9 shrink-0" initialsClassName="text-xs" />
+            ) : (
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+                    <UserRound className="h-5 w-5" aria-hidden />
+                </span>
+            )}
+            <span className="min-w-0 text-left">
+                <span className="block text-[11px] font-medium uppercase leading-tight tracking-wide text-gray-600">{rotulo}</span>
+                <span className="block max-w-[180px] truncate text-sm font-semibold leading-tight text-gray-900">{nombre ?? 'Sin asignar'}</span>
+            </span>
+            {alCambiar && <Pencil className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-hidden />}
+        </>
+    );
+    const clases = 'hidden min-h-[44px] items-center gap-2 rounded-full bg-white py-1 pl-1 pr-4 ring-1 ring-gray-200 sm:flex';
+    return alCambiar ? (
+        <button
+            type="button"
+            onClick={alCambiar}
+            aria-label={`${nombre ? 'Cambiar' : 'Asignar'} ${rotulo.toLowerCase()} (${nombre ?? 'sin asignar'})`}
+            className={cn(clases, 'transition-colors hover:bg-indigo-50')}
+        >
+            {dentro}
+        </button>
+    ) : (
+        <div className={clases}>{dentro}</div>
+    );
+}
+
+/** En el teléfono: «Guía: nombre» bajo el título; tocable (44 px de alto) si se puede cambiar. */
+function ProfesorDebajo({ rotulo, nombre, alCambiar }: Profesor) {
+    const texto = (
+        <>
+            {/* En el teléfono, corto: el nombre es lo que importa. */}
+            <span className="text-gray-600">{rotulo === 'Profesor guía' ? 'Guía' : rotulo}: </span>
+            <span className="font-semibold text-gray-800">{nombre ?? 'sin asignar'}</span>
+        </>
+    );
+    return alCambiar ? (
+        <button
+            type="button"
+            onClick={alCambiar}
+            aria-label={`${nombre ? 'Cambiar' : 'Asignar'} ${rotulo.toLowerCase()} (${nombre ?? 'sin asignar'})`}
+            // El alto de 44 px para el dedo, sin empujar nada: el relleno se
+            // come con el margen negativo.
+            className="-my-[14px] flex max-w-full items-center gap-1 py-[14px] text-left text-xs sm:hidden"
+        >
+            <span className="truncate">{texto}</span>
+            <Pencil className="h-3 w-3 shrink-0 text-gray-500" aria-hidden />
+        </button>
+    ) : (
+        <p className="truncate text-xs sm:hidden">{texto}</p>
     );
 }
 

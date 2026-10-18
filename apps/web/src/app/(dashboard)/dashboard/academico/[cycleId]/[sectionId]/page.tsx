@@ -8,7 +8,6 @@ import { conseguirCredencial } from '@/lib/credencial-en-memoria';
 import {
     BookOpen,
     Users,
-    GraduationCap,
     Bell,
     Search,
     UserPlus,
@@ -346,6 +345,12 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                     rotuloVolver="Volver al año escolar"
                     titulo={classroom.name}
                     subtitulo={classroom.academicYear?.name}
+                    profesor={{
+                        rotulo: 'Profesor guía',
+                        nombre: classroom.teacher ? `${classroom.teacher.firstName} ${classroom.teacher.lastName}` : null,
+                        avatar: (classroom.teacher as any)?.avatar,
+                        alCambiar: yo?.role === 'ADMIN' ? () => setIsAssignTeacherModalOpen(true) : undefined,
+                    }}
                 >
                     <LapsoSelector
                         periods={((classroom as any)?.academicYear?.periods || []).map((p: any) => ({ id: p.id, name: p.name }))}
@@ -372,64 +377,6 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                         />
                     )}
                 </CabezaDeLaClase>
-
-                <div>
-                    {/* Tarjeta del Profesor Guía - Inline.
-                        `min-w-[400px]` en una pantalla de 390 px hace exactamente
-                        lo que dice: sacar la pantalla de ancho. Solo se exige
-                        cuando hay sitio. */}
-                    <div className="w-full rounded-[24px] bg-white px-4 py-3 ring-1 ring-gray-200 sm:max-w-md">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                {classroom?.teacher ? (
-                                    <>
-                                        {/* Avatar del profesor */}
-                                        <div className="relative">
-                                            <UserAvatar
-                                                name={`${classroom.teacher.firstName} ${classroom.teacher.lastName}`}
-                                                src={(classroom.teacher as any).avatar}
-                                                className="h-12 w-12 shadow-md"
-                                                initialsClassName="text-sm"
-                                            />
-                                            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></div>
-                                        </div>
-
-                                        {/* Información del profesor */}
-                                        <div>
-                                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Profesor Guía</p>
-                                            <h3 className="text-sm font-bold text-gray-900">
-                                                {classroom.teacher.firstName} {classroom.teacher.lastName}
-                                            </h3>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <>
-                                        {/* Estado sin profesor */}
-                                        <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-                                            <GraduationCap className="w-6 h-6 text-gray-400" />
-                                        </div>
-                                        <div>
-                                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Profesor Guía</p>
-                                            <h3 className="text-sm font-semibold text-gray-700">Sin profesor asignado</h3>
-                                            <p className="text-xs text-gray-500">Asigna un profesor guía</p>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-
-                            {/* Botón de acción: el guía lo pone el administrador (el servidor lo exige) */}
-                            {yo?.role === 'ADMIN' && (
-                            <button
-                                className="flex min-h-[44px] items-center gap-1.5 rounded-full bg-indigo-50 px-4 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100"
-                                onClick={() => setIsAssignTeacherModalOpen(true)}
-                            >
-                                <UserPlus className="w-3.5 h-3.5" />
-                                {classroom?.teacher ? 'Cambiar' : 'Asignar'}
-                            </button>
-                            )}
-                        </div>
-                    </div>
-                </div>
 
                 {/* Estadísticas Académicas de la Sección */}
                 <div>

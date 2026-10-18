@@ -35,13 +35,6 @@ import { NOMBRE_DEL_TIPO } from './nombres-de-instrumentos';
  * pendiente): parte de lo que se le da y entrega lo armado, sin guardar nada.
  */
 
-const AYUDA: Record<TipoDeInstrumento, string> = {
-    COTEJO: 'Cada indicador vale sus puntos; al calificar se le da de 0 a lo que vale (la portada mal hecha, 1 de 2).',
-    ESCALA: 'Cada criterio se ubica en un nivel (logro destacado, esperado, en proceso, en inicio).',
-    RUBRICA: 'Como la escala, y cada casilla dice qué se espera en ese nivel.',
-    PUNTOS: 'Ser, Hacer, Conocer y Convivir (o los que pongas): cada criterio recibe de 0 a sus puntos.',
-};
-
 const ICONO_DEL_TIPO: Record<TipoDeInstrumento, LucideIcon> = { COTEJO: ListChecks, ESCALA: BarChart3, RUBRICA: Grid3x3, PUNTOS: Hash };
 
 // Campos suaves, sin raya dura: fondo gris claro y, al escribir, el filo del
@@ -157,15 +150,23 @@ export default function EditorDeInstrumento({
                                 {problema ? (
                                     <p className="text-sm font-medium">{problema}</p>
                                 ) : (
-                                    <>
-                                        <p className={rotuloDeGrupo.replace('px-1 ', '')}>En total</p>
-                                        <p className="mt-0.5 text-gray-900">
-                                            Vale <strong className="text-2xl font-bold tabular-nums">{maximo}</strong> puntos en total
-                                        </p>
-                                        <p className="mt-1 text-sm text-gray-600">
-                                            La nota se lleva a 20 como cualquier otra{data?.fila.puntos ? ` y aporta hasta ${data.fila.puntos} pts. al lapso` : ''}.
-                                        </p>
-                                    </>
+                                    // Dos cifras y nada que leer (Cristian, 18-oct-2026): lo que
+                                    // lleva el instrumento y lo que aporta al lapso.
+                                    <div className="grid grid-cols-2 divide-x divide-gray-100">
+                                        <div className="pr-3">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">Lleva</p>
+                                            <p className="mt-0.5 text-2xl font-bold tabular-nums text-gray-900">
+                                                {maximo} <span className="text-base font-semibold text-gray-500">pts</span>
+                                            </p>
+                                        </div>
+                                        <div className="pl-3">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">Aporta al lapso</p>
+                                            <p className="mt-0.5 text-2xl font-bold tabular-nums text-indigo-700">
+                                                {data?.fila.puntos ? Math.round(Number(data.fila.puntos) * 100) / 100 : '—'}{' '}
+                                                <span className="text-base font-semibold text-gray-500">pts</span>
+                                            </p>
+                                        </div>
+                                    </div>
                                 )}
                             </div>
 
@@ -195,7 +196,6 @@ export default function EditorDeInstrumento({
                                         );
                                     })}
                                 </div>
-                                <p className="mt-2 px-1 text-sm text-gray-600">{AYUDA[def.tipo]}</p>
                             </fieldset>
 
                             {!porPuntos && (
@@ -264,7 +264,7 @@ export default function EditorDeInstrumento({
                                             {/* Qué se mira en este indicador: sale en la hoja impresa y al calificar. */}
                                             <textarea
                                                 aria-label={`Descripción de ${c.texto || `el criterio ${i + 1}`}`}
-                                                placeholder="Qué se mira (opcional). Ej.: nombre, fecha, título y logo del liceo."
+                                                placeholder="Descripción (opcional)"
                                                 rows={2}
                                                 maxLength={1000}
                                                 value={c.descripcion ?? ''}

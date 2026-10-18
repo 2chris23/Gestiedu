@@ -330,6 +330,11 @@ en cada materia. La tabla de alumnos de la materia es la misma que la de la
 sección (`compacta`), y el buscador lleva al lado el botón de inscribir (solo
 el icono). El horario en vivo de la materia es un carril de lado, como el de la
 sección. El rol de los botones lo dice `useQuienSoy`, no `auth.store`.
+**El profesor (o el guía) va en la cabecera** (`profesor` de
+`CabezaDeLaClase`), no en una fila suya: en el ordenador, su foto y nombre
+junto al lapso; en el teléfono, una línea gris bajo el año (la foto le quitaba
+el ancho al título). El admin lo toca para cambiarlo. El carril del horario
+deja aire en sus orillas: recortaba el filo de la primera tarjeta.
 
 **El plan de evaluación en la pantalla no es el papel** (`PlanEnFilas`): arriba,
 los puntos repartidos y cuatro accesos (Ver todo · Descargar · Copiar ·
@@ -1053,7 +1058,9 @@ la primera vez, Claro): fondo negro, cajas #121212.
   lean variables que cambian con `<html data-acento>` y la clase `dark`. Cada
   familia lleva tres juegos (fondo `-f`, letra `-t`, borde `-b`): `gray-900`
   como letra se aclara, como fondo de un globo sigue oscuro. En claro son los
-  colores de Tailwind de siempre.
+  colores de Tailwind de siempre, **salvo el Azul**: su `indigo-*` es la
+  familia del azul de la cabecera (#1565C0 el botón, #0D47A1 la letra). El
+  índigo de Tailwind salía morado (Cristian, 18-oct-2026).
 - **Lo escrito a mano del diseño** va con nombre: `cabecera-*` (fondo, texto,
   suave, celeste, sobreceleste, claro, tinta), `texto-*`, `superficie-*`,
   `borde-*`. Un `#0D47A1` o un `text-white` sobre la cabecera NO cambia con el

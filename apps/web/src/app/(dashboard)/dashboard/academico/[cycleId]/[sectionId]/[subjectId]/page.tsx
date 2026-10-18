@@ -12,7 +12,6 @@ import {
     Bell,
     FileText,
     CheckCircle,
-    UserCircle,
     ListTodo,
     ClipboardCheck,
 } from 'lucide-react';
@@ -201,9 +200,6 @@ export default function SectionSubjectDashboard() {
     }));
 
     // Iniciales del profesor
-    const teacherInitials = teacher
-        ? `${teacher.firstName?.[0] || ''}${teacher.lastName?.[0] || ''}`
-        : '';
     const teacherName = teacher
         ? `${teacher.firstName} ${teacher.lastName}`
         : 'Sin profesor asignado';
@@ -311,36 +307,16 @@ export default function SectionSubjectDashboard() {
                     rotuloVolver={`Volver a ${sectionName}`}
                     titulo={subject.name}
                     subtitulo={`${sectionName} · ${Number(hoursPerWeek).toLocaleString('es-VE')} h/sem`}
+                    profesor={{
+                        rotulo: 'Profesor',
+                        nombre: teacher ? teacherName : null,
+                        avatar: (teacher as any)?.avatar,
+                        alCambiar: yo?.role === 'ADMIN' ? () => setIsAssignModalOpen(true) : undefined,
+                    }}
                 >
                     {periods.length > 0 && <LapsoSelector periods={periods} value={lapsoId} onChange={setLapsoId} compact />}
                 </CabezaDeLaClase>
 
-                {/* El profesor, en una fila (antes una píldora con las horas, que ya
-                    van arriba en gris). */}
-                <div className="flex items-center gap-3 rounded-[24px] bg-white px-4 py-3 ring-1 ring-gray-200 sm:max-w-md">
-                    {teacher ? (
-                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-rose-600 text-sm font-bold text-white">
-                            {teacherInitials}
-                        </span>
-                    ) : (
-                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gray-100">
-                            <UserCircle className="h-6 w-6 text-gray-500" aria-hidden />
-                        </span>
-                    )}
-                    <div className="min-w-0 flex-1">
-                        <p className="text-xs font-medium uppercase tracking-wide text-gray-600">Profesor</p>
-                        <p className="truncate text-sm font-semibold text-gray-900">{teacherName}</p>
-                    </div>
-                    {yo?.role === 'ADMIN' && (
-                        <button
-                            type="button"
-                            onClick={() => setIsAssignModalOpen(true)}
-                            className="min-h-[44px] shrink-0 rounded-full bg-indigo-50 px-4 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100"
-                        >
-                            {teacher ? 'Cambiar' : 'Asignar'}
-                        </button>
-                    )}
-                </div>
             </div>
 
             <div>
