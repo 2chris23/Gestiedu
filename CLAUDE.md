@@ -394,10 +394,14 @@ turno; cuatro áreas). El GCRP de UNA sección sigue siendo una materia normal.
   `academicConfig.gruposEstables`. Pedir, aceptar y asignar **necesitan
   servidor** (es un cupo).
 - Hecho: la base y el servidor (`services/grupos-estables.service.ts`,
-  `/api/grupos-estables`, GRUPO-01…07, `MAPA` §8i). **Falta:** las pantallas
-  del admin, del alumno y del profesor del grupo, la apreciación y la
-  asistencia del grupo, y la hora común en el horario (bloque `GRUPO` del
-  profesor). Plan en `~/.claude/plans/zesty-scribbling-bee.md` (parte B).
+  `/api/grupos-estables`, GRUPO-01…07, `MAPA` §8i) y **el admin**: el
+  interruptor «Los estudiantes eligen grupo» en la ventana de la materia (solo
+  con apreciación) y, en la materia, Secciones · Grupos · Sin grupo
+  (`components/subject/GruposDeLaMateria.tsx`, `lib/grupos-estables.ts`); sus
+  cifras son grupos, sin grupo y secciones (no hay promedio sobre 20); «Sin
+  grupo» va por secciones que se abren, de 20 en 20 (GRUPO-UI-01). **Falta:**
+  el alumno, el profesor del grupo, la apreciación y la asistencia del grupo, y
+  la hora común en el horario (bloque `GRUPO` del profesor). Plan en `~/.claude/plans/zesty-scribbling-bee.md` (parte B).
 
 ## Asistencia por QR
 

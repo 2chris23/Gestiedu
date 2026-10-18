@@ -3,10 +3,11 @@
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { AlertCircle, BookOpen, ChevronRight, UserPen, UserPlus } from 'lucide-react';
+import { AlertCircle, BookOpen, ChevronRight, LayoutGrid, UserPen, UserPlus, UserX, UsersRound } from 'lucide-react';
 import { useSubject } from '@/hooks/useSubjects';
 import { useAcademicYears } from '@/hooks/useAcademicYears';
-import { CabezaDeLaClase } from '@/components/academic/CabezaDeLaClase';
+import { CabezaDeLaClase, PartesDeLaPantalla } from '@/components/academic/CabezaDeLaClase';
+import { CifrasDeLosGrupos, PestanaDeGrupos, PestanaSinGrupo } from '@/components/subject/GruposDeLaMateria';
 import { ElegirCiclo } from '@/components/subject/ElegirCiclo';
 import { AssignSubjectTeacherModal } from '@/components/subject/AssignSubjectTeacherModal';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -56,6 +57,7 @@ export default function SubjectDashboard() {
     const subjectId = params.subjectId as string;
     const cycleName = params.cycleId as string;
     const [asignando, setAsignando] = useState<Seccion | null>(null);
+    const [parte, setParte] = useState<'secciones' | 'grupos' | 'sin-grupo'>('secciones');
 
     const { data: subject, isLoading, error } = useSubject(subjectId, cycleName);
     // El año no detiene la pantalla: solo hace falta para el selector.
@@ -94,6 +96,7 @@ export default function SubjectDashboard() {
         );
     }
 
+    const anoId: string = subject.academicYear?.id ?? cicloActual;
     const conPromedio = secciones.filter((s) => s.average > 0);
     const promedio = conPromedio.length ? Math.round((conPromedio.reduce((t, s) => t + s.average, 0) / conPromedio.length) * 10) / 10 : 0;
     const aprobacion = conPromedio.length ? Math.round((conPromedio.filter((s) => s.average >= 10).length / conPromedio.length) * 100) : 0;
@@ -121,6 +124,9 @@ export default function SubjectDashboard() {
             </CabezaDeLaClase>
 
             {/* Tres cifras en una caja, como las de la sección. */}
+            {subject.porGrupos && anoId ? (
+                <CifrasDeLosGrupos subjectId={subject.id} academicYearId={anoId} secciones={secciones.length} />
+            ) : (
             <dl className="grid grid-cols-3 divide-x divide-gray-100 rounded-[24px] bg-white py-4 ring-1 ring-gray-200">
                 <div className="px-4">
                     <dt className="text-xs font-semibold uppercase tracking-wide text-gray-600">Promedio</dt>
@@ -138,19 +144,38 @@ export default function SubjectDashboard() {
                     <dd className="mt-0.5 text-2xl font-bold tabular-nums text-gray-900">{secciones.length}</dd>
                 </div>
             </dl>
+            )}
 
             {/* Una columna en el teléfono (sin `grid-cols-1` la columna se estiraba
                 al ancho de la fila más larga y la página se salía de lado). */}
+            {/* La materia por grupos (los grupos estables): sus grupos y quién está sin uno. */}
+            {subject.porGrupos && (
+                <PartesDeLaPantalla
+                    etiqueta="Partes de la materia"
+                    activa={parte}
+                    alElegir={(id) => setParte(id as typeof parte)}
+                    partes={[
+                        { id: 'secciones', nombre: 'Secciones', icono: LayoutGrid },
+                        { id: 'grupos', nombre: 'Grupos', icono: UsersRound },
+                        { id: 'sin-grupo', nombre: 'Sin grupo', icono: UserX },
+                    ]}
+                />
+            )}
+            {subject.porGrupos && parte === 'grupos' && anoId && <PestanaDeGrupos subjectId={subject.id} academicYearId={anoId} />}
+            {subject.porGrupos && parte === 'sin-grupo' && anoId && <PestanaSinGrupo subjectId={subject.id} academicYearId={anoId} />}
+
+            {(!subject.porGrupos || parte === 'secciones') && (
             <div className="grid grid-cols-1 gap-5 lateral:grid-cols-3">
                 {/* Las secciones, por año. */}
-                <div className="min-w-0 space-y-4 lateral:col-span-2">
+                <div className={cn('min-w-0 space-y-4', subject.porGrupos ? 'lateral:col-span-3' : 'lateral:col-span-2')}>
                     {porAno.length === 0 && (
                         <p className="rounded-[24px] bg-white px-4 py-8 text-center text-sm text-gray-600 ring-1 ring-gray-200">
                             Ninguna sección da esta materia en {cycleName}.
                         </p>
                     )}
                     {porAno.map(([ano, lista]) => {
-                        const conProfesor = lista.filter((s) => s.teacher).length;
+                        // Por grupos, la sección no lleva profesor: lo lleva cada grupo.
+                        const conProfesor = subject.porGrupos ? lista.length : lista.filter((s) => s.teacher).length;
                         return (
                             <section key={ano} aria-label={NOMBRE_DEL_ANO[ano] ?? `${ano}.º año`}>
                                 <div className="flex items-baseline justify-between px-1">
@@ -168,7 +193,11 @@ export default function SubjectDashboard() {
                                                     href={aLaClase(s)}
                                                     className="flex min-h-[64px] min-w-0 flex-1 items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50"
                                                 >
-                                                    {s.teacher ? (
+                                                    {subject.porGrupos ? (
+                                                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-700">
+                                                            <UsersRound className="h-5 w-5" aria-hidden />
+                                                        </span>
+                                                    ) : s.teacher ? (
                                                         <UserAvatar name={s.teacher.name} src={s.teacher.avatar} className="h-10 w-10 shrink-0" initialsClassName="text-xs" />
                                                     ) : (
                                                         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-700">
@@ -177,8 +206,8 @@ export default function SubjectDashboard() {
                                                     )}
                                                     <span className="min-w-0 flex-1">
                                                         <span className="block truncate text-[15px] font-medium text-gray-900">{s.name}</span>
-                                                        <span className={cn('block truncate text-sm', s.teacher ? 'text-gray-600' : 'font-medium text-amber-800')}>
-                                                            {s.teacher ? s.teacher.name : 'Sin profesor'} · {horas(h)} h/sem
+                                                        <span className={cn('block truncate text-sm', s.teacher || subject.porGrupos ? 'text-gray-600' : 'font-medium text-amber-800')}>
+                                                            {subject.porGrupos ? 'Por grupos' : s.teacher ? s.teacher.name : 'Sin profesor'} · {horas(h)} h/sem
                                                         </span>
                                                     </span>
                                                     <span className={cn('shrink-0 text-[15px] font-bold tabular-nums', colorDelPromedio(s.average))}>
@@ -186,6 +215,7 @@ export default function SubjectDashboard() {
                                                     </span>
                                                     <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" aria-hidden />
                                                 </Link>
+                                                {!subject.porGrupos && (
                                                 <button
                                                     type="button"
                                                     onClick={() => setAsignando(s)}
@@ -198,6 +228,7 @@ export default function SubjectDashboard() {
                                                 >
                                                     {s.teacher ? <UserPen className="h-5 w-5" aria-hidden /> : <UserPlus className="h-5 w-5" aria-hidden />}
                                                 </button>
+                                                )}
                                             </li>
                                         );
                                     })}
@@ -208,7 +239,9 @@ export default function SubjectDashboard() {
                 </div>
 
                 {/* El equipo: cada profesor con su promedio y su asistencia en esta materia. */}
-                {/* En el teléfono va antes que las secciones: son cuatro filas, no veinte. */}
+                {/* En el teléfono va antes que las secciones: son cuatro filas, no veinte.
+                    Por grupos, el equipo son los profesores de los grupos (pestaña Grupos). */}
+                {!subject.porGrupos && (
                 <section aria-label="Equipo docente" className="order-first min-w-0 lateral:sticky lateral:top-6 lateral:order-none lateral:self-start">
                     <div className="flex items-baseline justify-between px-1">
                         <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-600">Equipo docente</h2>
@@ -246,7 +279,9 @@ export default function SubjectDashboard() {
                         </ul>
                     )}
                 </section>
+                )}
             </div>
+            )}
 
             {asignando && (
                 <AssignSubjectTeacherModal

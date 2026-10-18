@@ -57,6 +57,8 @@ export interface Subject {
     code?: string;
     color: string;
     evaluacion?: EvaluacionDeMateria;
+    /** Los estudiantes eligen grupo (los grupos estables). */
+    porGrupos?: boolean;
     createdAt: string;
     updatedAt: string;
     teacherCount?: number;
@@ -92,12 +94,14 @@ export interface CreateSubjectData {
     name: string;
     color?: string;
     evaluacion?: EvaluacionDeMateria;
+    porGrupos?: boolean;
 }
 
 export interface UpdateSubjectData {
     name?: string;
     color?: string;
     evaluacion?: EvaluacionDeMateria;
+    porGrupos?: boolean;
 }
 
 class SubjectsService {

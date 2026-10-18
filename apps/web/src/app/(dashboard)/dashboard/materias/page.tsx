@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
-import { Calendar, ChevronRight, MoreVertical, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Calendar, ChevronRight, MoreVertical, Pencil, Plus, Search, Trash2, UsersRound } from 'lucide-react';
+import { FilaInterruptor, Grupo } from '@/components/configuracion/ajustes';
 import { useSubjects, useCreateSubject, useUpdateSubject, useDeleteSubject } from '@/hooks/useSubjects';
 import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -285,6 +286,7 @@ function VentanaDeMateria({
         name: inicial?.name || '',
         color: inicial?.color || '#3B82F6',
         evaluacion: inicial?.evaluacion || 'NUMERICA',
+        porGrupos: inicial?.porGrupos ?? false,
     });
     const [guardando, setGuardando] = useState(false);
 
@@ -350,7 +352,8 @@ function VentanaDeMateria({
                                         type="button"
                                         role="radio"
                                         aria-checked={datos.evaluacion === valor}
-                                        onClick={() => setDatos({ ...datos, evaluacion: valor })}
+                                        // Con nota no hay grupos: los grupos se evalúan con apreciación.
+                                        onClick={() => setDatos({ ...datos, evaluacion: valor, porGrupos: valor === 'NUMERICA' ? false : datos.porGrupos })}
                                         className={cn(
                                             'min-h-[44px] min-w-0 flex-1 rounded-full px-2 text-[13px] font-semibold transition-colors',
                                             datos.evaluacion === valor ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'
@@ -361,6 +364,20 @@ function VentanaDeMateria({
                                 ))}
                             </div>
                         </div>
+
+                        {/* Los grupos estables: a la misma hora, cada alumno va al grupo que eligió. */}
+                        {datos.evaluacion === 'CUALITATIVA' && (
+                            <Grupo>
+                                <FilaInterruptor
+                                    titulo="Los estudiantes eligen grupo"
+                                    descripcion="Fútbol, costura, lectura…: cada uno con su profesor"
+                                    icono={UsersRound}
+                                    checked={Boolean(datos.porGrupos)}
+                                    onChange={(v) => setDatos({ ...datos, porGrupos: v })}
+                                    comoInterruptor
+                                />
+                            </Grupo>
+                        )}
                     </div>
                     <div className="zona-segura-abajo flex shrink-0 gap-2 border-t border-gray-200 bg-white px-4 py-3">
                         <button
