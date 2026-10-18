@@ -335,7 +335,8 @@ sección. El rol de los botones lo dice `useQuienSoy`, no `auth.store`.
 los puntos repartidos y cuatro accesos (Ver todo · Descargar · Copiar ·
 Editar); debajo, cada semana es una fila como los Movimientos y al tocarla se
 abre con todo lo suyo (lo unido de arriba se repite en cada semana). «Ver
-todo» enseña la hoja con su membrete a pantalla completa. Sin «¿Cómo
+todo» enseña la hoja con su membrete a pantalla completa. **Eso es el
+teléfono**: en el ordenador (`lateral:`) sale la hoja entera, sin «Ver todo». Sin «¿Cómo
 funciona?»: está el «?» de arriba.
 
 **De pie siempre** (`lib/girar-la-pantalla.ts`, `DePie`): la APK y la app

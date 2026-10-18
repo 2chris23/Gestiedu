@@ -1236,9 +1236,9 @@ export default function EvaluationPlanSection({
           </p>
         )}
 
-        <nav className="mt-4 grid grid-cols-4 gap-1" aria-label="Acciones del plan">
+        <nav className="mt-4 grid grid-cols-4 gap-1 lateral:flex lateral:gap-2" aria-label="Acciones del plan">
           {[
-            { id: 'ver', nombre: 'Ver todo', rotulo: 'Ver todo el plan', icono: Maximize2, alPulsar: () => setVerCompleto(true) },
+            { id: 'ver', nombre: 'Ver todo', rotulo: 'Ver todo el plan', icono: Maximize2, alPulsar: () => setVerCompleto(true), soloTelefono: true },
             { id: 'bajar', nombre: 'Descargar', rotulo: 'Descargar el plan', icono: Download, href: `/dashboard/plan-de-evaluacion/${encodeURIComponent(classroomId)}/${encodeURIComponent(subjectId)}?lapso=${selectedLapso}`, recorrido: 'plan-imprimir' },
             ...(canEdit ? [{ id: 'copiar', nombre: 'Copiar', rotulo: 'Copiar a otra sección', icono: Copy, alPulsar: () => setCopiandoAbierto(true), recorrido: 'plan-copiar' }] : []),
             ...(canEdit ? [{ id: 'editar', nombre: 'Editar', rotulo: 'Editar el plan', icono: Edit2, alPulsar: empezarAEditar, recorrido: 'plan-editar', principal: true }] : []),
@@ -1252,7 +1252,7 @@ export default function EvaluationPlanSection({
                 <span className="max-w-full truncate text-xs font-medium leading-tight text-gray-800">{a.nombre}</span>
               </>
             );
-            const clases = 'group flex min-h-[44px] min-w-0 flex-col items-center gap-1.5 rounded-2xl py-1 text-center';
+            const clases = `group flex min-h-[44px] min-w-0 flex-col items-center gap-1.5 rounded-2xl py-1 text-center lateral:w-[92px] ${a.soloTelefono ? 'lateral:hidden' : ''}`;
             return a.href ? (
               <Link key={a.id} href={a.href} className={clases} data-recorrido={a.recorrido} aria-label={a.rotulo}>{dentro}</Link>
             ) : (
@@ -1338,8 +1338,16 @@ export default function EvaluationPlanSection({
         </div>
       )}
 
+      {/* En el teléfono, las semanas en filas; en el ordenador (Cristian,
+          18-oct-2026), la hoja entera con su membrete: ahí sí cabe. */}
       <div data-recorrido="plan-rejilla">
-        <PlanEnFilas semanas={weeks} columnas={columns} fechasDe={fechasDeLaSemana} />
+        <div className="lateral:hidden">
+          <PlanEnFilas semanas={weeks} columnas={columns} fechasDe={fechasDeLaSemana} />
+        </div>
+        <div className="hidden h-[calc(100vh-160px)] min-h-[520px] flex-col overflow-hidden rounded-[24px] bg-white ring-1 ring-gray-200 lateral:flex">
+          <div className="shrink-0">{renderMembrete('view')}</div>
+          <div className="rejilla-densa min-h-0 flex-1 overflow-hidden">{renderViewTable()}</div>
+        </div>
       </div>
     </div>
 
