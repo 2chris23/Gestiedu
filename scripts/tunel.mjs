@@ -117,6 +117,8 @@ function levantar(nombre, carpeta, variables, orden, programa) {
 // Lo que va dentro de la compilación y lo que lee el servidor de pantallas.
 const DE_LAS_PANTALLAS = {
     NEXT_PUBLIC_API_URL: `${web}/api`,
+    // El navegador, por la dirección por la que abrió (túnel o localhost:3100).
+    NEXT_PUBLIC_API_MISMO_ORIGEN: '1',
     API_DEL_SERVIDOR: interna,
 };
 

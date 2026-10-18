@@ -1,5 +1,6 @@
 'use client';
 
+import { BACKEND_URL } from '@/config/env';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
@@ -29,7 +30,8 @@ interface DashboardData {
     }>;
 }
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '');
+// La misma dirección que el resto de la app (`config/env.ts`; con el túnel, la de la página).
+const API_URL = BACKEND_URL;
 
 /**
  * La llave corta ya no está en las cookies: vive en la memoria de la pestaña
