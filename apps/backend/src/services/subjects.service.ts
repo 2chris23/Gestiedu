@@ -1,3 +1,4 @@
+import { createError } from '../middleware/error.middleware';
 import { CreateSubjectInput, UpdateSubjectInput } from '../utils/validators';
 import { subjectSectionAverage, studentsWithNoteInSubject, promediosDeLaSeccion } from './aggregation.service';
 import * as closeCycleService from './promotion/close-cycle.service';
@@ -5,6 +6,16 @@ import { findTeacherAssignmentConflicts, ScheduleConflictError } from './schedul
 import { borrarGuardandoCopia, QuienBorra } from '../utils/papelera';
 import { NotFoundError } from '../utils/errors';
 import { olvidarMateriasCualitativas } from './apreciaciones.service';
+
+/**
+ * UNA MATERIA «POR GRUPOS» SE EVALÚA CON APRECIACIÓN: el profesor de cada
+ * grupo pone la apreciación de sus miembros (los grupos estables / GCRP).
+ */
+function porGruposSoloConApreciacion(porGrupos: boolean | undefined, evaluacion: string | undefined) {
+    if (porGrupos && evaluacion !== 'CUALITATIVA') {
+        throw createError(400, 'Una materia por grupos se evalúa con apreciación', 'GRUPOS_SOLO_APRECIACION');
+    }
+}
 
 export class SubjectsService {
     async getAllSubjects(filters: any = {}, prisma: any) {
@@ -504,6 +515,7 @@ export class SubjectsService {
 
     async createSubject(data: CreateSubjectInput, prisma: any) {
         const { generateSlug } = await import('../utils/slug');
+        porGruposSoloConApreciacion((data as any).porGrupos, data.evaluacion);
 
         const materia = await prisma.subject.create({
             data: {
@@ -516,6 +528,10 @@ export class SubjectsService {
     }
 
     async updateSubject(id: string, data: UpdateSubjectInput, prisma: any) {
+        if ((data as any).porGrupos !== undefined || data.evaluacion !== undefined) {
+            const actual = await prisma.subject.findUnique({ where: { id }, select: { porGrupos: true, evaluacion: true } });
+            porGruposSoloConApreciacion((data as any).porGrupos ?? actual?.porGrupos, data.evaluacion ?? actual?.evaluacion);
+        }
         const materia = await prisma.subject.update({
             where: { id },
             data

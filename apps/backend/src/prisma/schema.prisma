@@ -294,6 +294,10 @@ model User {
   notasDeRevision         NotaDeRevision[]         @relation("RevisionAlumno")
   apreciaciones           Apreciacion[]            @relation("ApreciacionAlumno")
   apreciacionesPuestas    Apreciacion[]            @relation("ApreciacionPuestaPor")
+  gruposQueDirige         GrupoEstable[]           @relation("GrupoEstableProfesor")
+  solicitudesDeGrupo      SolicitudDeGrupo[]       @relation("SolicitudDeGrupoAlumno")
+  solicitudesRevisadas    SolicitudDeGrupo[]       @relation("SolicitudDeGrupoRevisor")
+  asistenciaEnGrupos      AsistenciaDeGrupo[]      @relation("AsistenciaDeGrupoAlumno")
   decisionesDeFinDeAno    DecisionDeFinDeAno[]     @relation("DecisionFinDeAnoAlumno")
   materiasPendientes      MateriaPendiente[]       @relation("PendienteAlumno")
   pendientesQueEvalua     MateriaPendiente[]       @relation("PendienteProfesor")
@@ -429,6 +433,9 @@ model AcademicYear {
   momentosDePendientes  MomentoDePendiente[]
   laborSocial           ActividadDeLaborSocial[]
   titulos               Titulo[]
+  gruposEstables        GrupoEstable[]
+  horarioDeGrupos       HorarioDeGrupos[]
+  solicitudesDeGrupo    SolicitudDeGrupo[]
   institute             Institute?               @relation(fields: [instituteId], references: [id])
   instituteId           String?
 
@@ -477,6 +484,9 @@ model Subject {
   color       String?
   /// Con nota (01 a 20) o con apreciación; la eligen en el liceo.
   evaluacion  EvaluacionDeMateria @default(NUMERICA)
+  /// Los estudiantes eligen grupo (los grupos estables / GCRP): a la misma
+  /// hora, cada uno va al suyo, de cualquier sección y año.
+  porGrupos   Boolean             @default(false)
 
   // Instituto
   // Timestamps
@@ -500,6 +510,9 @@ model Subject {
   observations       Observation[]
   notasDeRevision    NotaDeRevision[]
   notasDeOtroPlantel NotaDeOtroPlantel[]
+  gruposEstables     GrupoEstable[]
+  horarioDeGrupos    HorarioDeGrupos[]
+  solicitudesDeGrupo SolicitudDeGrupo[]
   institute          Institute?          @relation(fields: [instituteId], references: [id])
   instituteId        String?
 
@@ -974,8 +987,8 @@ model DailyAttendance {
   classSessionId String?
   classSession   ClassSession? @relation(fields: [classSessionId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
   /// Quién la cambió por última vez (la crea `teacherId`).
   modificadoPorId String?
 
@@ -2074,14 +2087,14 @@ model AjustesDePagosDelCiclo {
   methods            Json    @default("[\"Efectivo\", \"Pago Móvil\", \"Transferencia\", \"Zelle\"]")
 
   /// Descuento automático desde el 2.º hijo del mismo representante (0–100).
-  descuentoHermanosPct Int     @default(0)
+  descuentoHermanosPct  Int     @default(0)
   /// Recargo por cuota vencida: NINGUNA | FIJA | PORCENTAJE. Una vez por cuota.
-  moraTipo             String  @default("NINGUNA")
-  moraValor            Decimal @default(0) @db.Decimal(12, 2)
+  moraTipo              String  @default("NINGUNA")
+  moraValor             Decimal @default(0) @db.Decimal(12, 2)
   /// Días después de la gracia en que se cobra el recargo.
-  moraDiasDespues      Int     @default(0)
+  moraDiasDespues       Int     @default(0)
   /// Cuántos días antes del vencimiento se le recuerda al representante (0 = no).
-  recordatorioDiasAntes Int    @default(3)
+  recordatorioDiasAntes Int     @default(3)
 
   updatedById String?
   createdAt   DateTime @default(now())
@@ -2101,9 +2114,9 @@ model StudentPaymentPlan {
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
 
-  dueDay       Int?
-  exempt       Boolean @default(false)
-  exemptReason String?
+  dueDay          Int?
+  exempt          Boolean @default(false)
+  exemptReason    String?
   /// Beca o descuento propio (0–100 %), con su motivo (2026-10-01).
   descuentoPct    Int     @default(0)
   descuentoMotivo String?
@@ -2400,9 +2413,9 @@ model InstrumentoDeEvaluacion {
   planRow   EvaluationPlanRow @relation(fields: [planRowId], references: [id], onDelete: Cascade)
 
   /// COTEJO | ESCALA | RUBRICA | PUNTOS
-  tipo       String
-  definicion Json
-  version    Int    @default(1)
+  tipo        String
+  definicion  Json
+  version     Int     @default(1)
   /// Quién lo cambió por última vez: a quien se le pregunta si llegan marcas del anterior.
   cambiadoPor String?
 
@@ -2540,18 +2553,18 @@ model Comprobante {
 /// Una persona a la que el liceo le paga: un profesor (con cuenta) u otro
 /// personal (sin cuenta: la señora de la limpieza, el vigilante…).
 model Personal {
-  id     String  @id @default(cuid())
+  id                        String  @id @default(cuid())
   /// Si tiene cuenta en el sistema (profesor o admin).
-  userId String? @unique
-  user   User?   @relation("PersonalConCuenta", fields: [userId], references: [id], onDelete: SetNull)
+  userId                    String? @unique
+  user                      User?   @relation("PersonalConCuenta", fields: [userId], references: [id], onDelete: SetNull)
   /// Si no tiene cuenta, su nombre.
-  nombre String?
-  cedula String?
-  cargo  String
-  activo Boolean @default(true)
+  nombre                    String?
+  cedula                    String?
+  cargo                     String
+  activo                    Boolean @default(true)
   /// Se trae solo al ciclo siguiente, con su mismo acuerdo.
   seQuedaParaProximosCiclos Boolean @default(true)
-  notas  String?
+  notas                     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2600,11 +2613,11 @@ model AjustesDeNomina {
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
 
   /// Día del mes del pago mensual (31 = el último día del mes).
-  diaDePago         Int      @default(31)
+  diaDePago         Int       @default(31)
   /// Meses de vacaciones, como «AAAA-MM».
-  mesesDeVacaciones Json     @default("[]")
-  cobraEnVacaciones Boolean  @default(true)
-  bonoVacacional    Decimal  @default(0) @db.Decimal(12, 2)
+  mesesDeVacaciones Json      @default("[]")
+  cobraEnVacaciones Boolean   @default(true)
+  bonoVacacional    Decimal   @default(0) @db.Decimal(12, 2)
   fechaBono         DateTime? @db.Date
 
   updatedById String?
@@ -2699,7 +2712,6 @@ model PagoReportado {
   @@map("pagos_reportados")
 }
 
-
 /// La foto del cuadro de honor de un sábado (`reglas-del-cuadro.ts`, MAPA §8h).
 /// Una fila por alumno, ciclo, alcance (un lapso o el ciclo entero) y sábado:
 /// comparando con la foto anterior se sabe cuántos puestos subió. Única, así
@@ -2773,3 +2785,114 @@ model PaqueteDePrecarga {
   @@map("paquetes_de_precarga")
 }
 
+/// LOS GRUPOS ESTABLES (Grupos de Creación, Recreación y Producción)
+///
+/// A una hora común de la semana, cada estudiante va a SU grupo —fútbol,
+/// costura, lectura…—, de cualquier sección y año. Los crea el admin dentro
+/// de una materia «por grupos» (`Subject.porGrupos`); el alumno pide entrar y
+/// el profesor del grupo acepta o rechaza. La apreciación sigue en
+/// `Apreciacion` (de la materia, con la sección del alumno): la boleta y el
+/// resumen final no cambian. Ver `services/grupos-estables.service.ts`.
+model GrupoEstable {
+  id String @id @default(cuid())
+
+  subjectId      String
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  nombre      String
+  descripcion String?
+  /// Una de las cuatro áreas del MPPE (ARTE_Y_PATRIMONIO, ACCION_CIENTIFICA,
+  /// ACTIVIDAD_FISICA, PRODUCCION) o vacío.
+  area        String?
+  profesorId  String?
+  profesor    User?   @relation("GrupoEstableProfesor", fields: [profesorId], references: [id], onDelete: SetNull)
+  cupo        Int
+  /// MANANA | TARDE | INTEGRAL; vacío = de cualquier turno.
+  turno       String?
+  activo      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  solicitudes SolicitudDeGrupo[]
+  asistencias AsistenciaDeGrupo[]
+
+  @@unique([subjectId, academicYearId, nombre])
+  @@index([profesorId])
+  @@map("grupos_estables")
+}
+
+/// La hora común de los grupos de una materia, por turno.
+model HorarioDeGrupos {
+  id String @id @default(cuid())
+
+  subjectId      String
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  turno     String
+  dayOfWeek Int
+  startTime String
+  endTime   String
+
+  createdAt DateTime @default(now())
+
+  @@index([subjectId, academicYearId])
+  @@map("horario_de_grupos")
+}
+
+/// El alumno pide entrar a un grupo; el profesor del grupo acepta o rechaza.
+/// Una sola viva (PENDIENTE o ACEPTADA) por alumno, materia y momento: un
+/// índice parcial en la migración lo hace cumplir aunque pidan dos a la vez.
+model SolicitudDeGrupo {
+  id String @id @default(cuid())
+
+  grupoId        String
+  grupo          GrupoEstable @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+  subjectId      String
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        User         @relation("SolicitudDeGrupoAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  /// «ANUAL» si el liceo elige una vez al año; si no, el id del lapso.
+  momento        String
+
+  /// PENDIENTE | ACEPTADA | RECHAZADA | RETIRADA
+  estado           String    @default("PENDIENTE")
+  motivoRechazo    String?
+  revisadoPorId    String?
+  revisadoPor      User?     @relation("SolicitudDeGrupoRevisor", fields: [revisadoPorId], references: [id], onDelete: SetNull)
+  revisadoEn       DateTime?
+  asignadaPorAdmin Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([grupoId, estado])
+  @@index([studentId, subjectId, academicYearId, momento])
+  @@map("solicitudes_de_grupo")
+}
+
+/// La asistencia de cada encuentro del grupo (aparte de la diaria de la sección).
+model AsistenciaDeGrupo {
+  id String @id @default(cuid())
+
+  grupoId         String
+  grupo           GrupoEstable @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         User         @relation("AsistenciaDeGrupoAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+  fecha           DateTime     @db.Date
+  /// PRESENTE | AUSENTE | JUSTIFICADO
+  estado          String
+  registradaPorId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([grupoId, studentId, fecha])
+  @@map("asistencia_de_grupo")
+}

@@ -272,6 +272,22 @@ Implementación: `services/reglas-del-cuadro.ts` (cuenta pura), `services/cuadro
 
 ---
 
+## 8i. Los grupos estables (2026-10-18)
+
+`services/grupos-estables.service.ts`; reglas del liceo en
+`academicConfig.gruposEstables` (`reglas-de-grupos.ts`). Pruebas GRUPO-01…07.
+
+| Qué | Regla |
+| :--- | :--- |
+| El momento | «ANUAL» si el liceo elige una vez al año; si elige en cada lapso, el lapso de HOY (fecha del liceo, `lapsoDeLaFecha`). Cada momento es una elección aparte. |
+| El cupo | Cuentan solo las solicitudes **ACEPTADAS** del grupo en ese momento; las pendientes no ocupan lugar. Aceptar (o asignar) bloquea la fila del grupo y cuenta dentro de la misma transacción: dos a la vez no pasan del cupo. El cupo no se baja por debajo de los aceptados. |
+| Una solicitud viva | Por alumno, materia y momento, una sola PENDIENTE o ACEPTADA (índice parcial `solicitudes_de_grupo_una_viva_key`). Rechazada o retirada, puede pedir otra, también al mismo grupo. |
+| El turno | Un grupo con turno solo recibe a alumnos de secciones de ese turno; la sección INTEGRAL, a cualquiera; un grupo sin turno, a todos. |
+| Sin grupo | Alumno activo de una sección que tiene la materia y **sin solicitud aceptada** en el momento (si tiene una pendiente, se dice en cuál). |
+| La apreciación | La del grupo se guarda como la de la materia (`Apreciacion`, con la sección del alumno): la boleta y el resumen final no cambian. |
+
+---
+
 ## 8c. El fin del año escolar (cierre)
 
 **Rehecho el 2026-09-26** (`services/promotion/close-cycle.service.ts`, `services/fin-de-ano.service.ts`,

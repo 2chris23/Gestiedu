@@ -369,6 +369,36 @@ pestaña normal del navegador no se puede fijar. El manifiesto dice `portrait`.
 `navigator.share` ni baja un `blob:`; el complemento deja el archivo en la
 caché y abre el selector de Android. Una APK anterior dice «actualiza la app».
 
+## Los grupos estables (octubre 2026, en curso)
+
+Pedido por Cristian: a una hora común de la semana cada alumno va a SU grupo
+(fútbol, costura, lectura…), de cualquier sección y año: los **Grupos de
+Creación, Recreación y Producción** del MPPE (antes «grupos estables»),
+requisito para el título (Res. 143, G.O. 41.044, art. 12; 4 o 6 h según el
+turno; cuatro áreas). El GCRP de UNA sección sigue siendo una materia normal.
+
+- **La materia «por grupos»** (`Subject.porGrupos`, solo con apreciación,
+  400 `GRUPOS_SOLO_APRECIACION`) es la de siempre en el horario, la boleta y el
+  resumen final; los grupos son una capa encima. La apreciación del grupo se
+  guardará en `Apreciacion` de la materia con la sección del alumno: nada de
+  abajo cambia.
+- **Grupos** (`grupos_estables`: profesor, cupo, turno, área), **solicitudes**
+  (`solicitudes_de_grupo`, PENDIENTE/ACEPTADA/RECHAZADA/RETIRADA) y
+  **asistencia** propia (`asistencia_de_grupo`). El alumno pide un grupo de su
+  turno con cupo (no ve quién está); el profesor de ESE grupo acepta o
+  rechaza; rechazado, pide otro o el mismo. **Una sola solicitud viva** por
+  alumno, materia y momento (índice parcial en la migración: `deriva-del-esquema`
+  lo enseña porque Prisma no sabe decirlo, y no es deriva). El cupo se cuenta
+  con la fila del grupo bloqueada. «Sin grupo»: el admin lo ve y asigna.
+- Elegir una vez al año o en cada lapso, y abierta o no:
+  `academicConfig.gruposEstables`. Pedir, aceptar y asignar **necesitan
+  servidor** (es un cupo).
+- Hecho: la base y el servidor (`services/grupos-estables.service.ts`,
+  `/api/grupos-estables`, GRUPO-01…07, `MAPA` §8i). **Falta:** las pantallas
+  del admin, del alumno y del profesor del grupo, la apreciación y la
+  asistencia del grupo, y la hora común en el horario (bloque `GRUPO` del
+  profesor). Plan en `~/.claude/plans/zesty-scribbling-bee.md` (parte B).
+
 ## Asistencia por QR
 
 Tres formas de pasar lista y **la de a mano no se quita nunca**. El profesor abre

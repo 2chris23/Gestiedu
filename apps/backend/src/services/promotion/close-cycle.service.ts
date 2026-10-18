@@ -1,4 +1,5 @@
 import { esReglasDelCuadro, limpiarReglasDelCuadro, REGLAS_DEL_CUADRO_POR_DEFECTO, ReglasDelCuadro } from '../reglas-del-cuadro';
+import { REGLAS_DE_GRUPOS_POR_DEFECTO, esReglasDeGrupos, limpiarReglasDeGrupos, type ReglasDeGrupos } from '../reglas-de-grupos';
 import { PrismaClient } from '@prisma/client';
 import { gradesService, redondearComoElMPPE } from '../grades.service';
 import { bulkSubjectAveragesConDatos, BulkAverageDetail } from '../bulk-averages.service';
@@ -30,6 +31,8 @@ import {
 import { asignarLasClases } from './clase-de-la-pendiente';
 
 export interface AcademicConfig {
+    /** Los grupos estables: elegir una vez al año o en cada lapso, y si está abierta. */
+    gruposEstables?: ReglasDeGrupos;
     notaMinimaAprobatoria: number;
     maxMateriasPendientesParaPromover: number;
     /**
@@ -128,6 +131,7 @@ export async function getAcademicConfig(instituteId: string): Promise<AcademicCo
             ? completarLaborSocial(raw.laborSocial)
             : { ...LABOR_SOCIAL_POR_DEFECTO, grados: [typeof raw.maxGradeLevel === 'number' ? raw.maxGradeLevel : defaultMax] },
         cuadroDeHonor: esReglasDelCuadro(raw.cuadroDeHonor) ? limpiarReglasDelCuadro(raw.cuadroDeHonor) : REGLAS_DEL_CUADRO_POR_DEFECTO,
+        gruposEstables: esReglasDeGrupos(raw.gruposEstables) ? limpiarReglasDeGrupos(raw.gruposEstables) : REGLAS_DE_GRUPOS_POR_DEFECTO,
     };
 }
 
@@ -165,6 +169,7 @@ export async function updateAcademicConfig(instituteId: string, patch: Partial<A
         pendientes: esReglasDePendientes(patch.pendientes) ? completarPendientes(patch.pendientes) : current.pendientes,
         laborSocial: esReglasDeLaborSocial(patch.laborSocial) ? completarLaborSocial(patch.laborSocial) : current.laborSocial,
         cuadroDeHonor: esReglasDelCuadro(patch.cuadroDeHonor) ? limpiarReglasDelCuadro(patch.cuadroDeHonor) : current.cuadroDeHonor,
+        gruposEstables: esReglasDeGrupos(patch.gruposEstables) ? limpiarReglasDeGrupos(patch.gruposEstables) : current.gruposEstables,
     };
     await platformPrisma.institute.update({
         where: { id: instituteId },

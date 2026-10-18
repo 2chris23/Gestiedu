@@ -154,6 +154,8 @@ export const createSubjectSchema = z.object({
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Color debe ser un código hexadecimal válido').optional(),
   /** Con nota (01 a 20) o con apreciación (sin nota, fuera de los promedios). */
   evaluacion: z.enum(['NUMERICA', 'CUALITATIVA']).optional(),
+  /** Los estudiantes eligen grupo (los grupos estables). Solo con apreciación. */
+  porGrupos: z.boolean().optional(),
 });
 
 export const updateSubjectSchema = createSubjectSchema.partial().omit({ code: true });

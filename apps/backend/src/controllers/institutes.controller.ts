@@ -1,5 +1,6 @@
 /// <reference path="../types/fastify.d.ts" />
 import { esReglasDelCuadro, limpiarReglasDelCuadro } from '../services/reglas-del-cuadro';
+import { esReglasDeGrupos, limpiarReglasDeGrupos } from '../services/reglas-de-grupos';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { InstitutesService } from '../services/institutes.service';
 import { SUCCESS_MESSAGES } from '../utils/constants';
@@ -212,6 +213,13 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
             });
           }
           nextAcademicConfig.cuadroDeHonor = limpiarReglasDelCuadro(configObj.cuadroDeHonor);
+        }
+        // Los grupos estables: elegir una vez al año o en cada lapso (`reglas-de-grupos.ts`).
+        if (configObj.gruposEstables !== undefined) {
+          if (!esReglasDeGrupos(configObj.gruposEstables)) {
+            return reply.status(400).send({ error: 'Grupos estables: la elección es ANUAL o POR_LAPSO, y abierta sí o no.', code: 'REGLA_INVALIDA' });
+          }
+          nextAcademicConfig.gruposEstables = limpiarReglasDeGrupos(configObj.gruposEstables);
         }
         if (configObj.schedule) horarioPedido = configObj.schedule;
         if (configObj.confirmarClasesFuera === true) confirmarClasesFuera = true;
@@ -524,6 +532,10 @@ export async function updateAcademicConfigEndpoint(request: FastifyRequest, repl
         return mal('Cuadro de honor: el peso de las notas y el de la asistencia, de 0 a 100 (no los dos en 0), y lo que resta cada observación, de 0 a 50.', 'REGLA_INVALIDA');
       }
       patch.cuadroDeHonor = body.cuadroDeHonor;
+    }
+    if (body.gruposEstables !== undefined) {
+      if (!esReglasDeGrupos(body.gruposEstables)) return mal('Grupos estables: la elección es ANUAL o POR_LAPSO, y abierta sí o no.', 'REGLA_INVALIDA');
+      patch.gruposEstables = limpiarReglasDeGrupos(body.gruposEstables);
     }
     const instId = getInstId(request);
     const config = await updateAcademicConfig(instId, patch);
