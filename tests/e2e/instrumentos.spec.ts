@@ -43,7 +43,9 @@ test.afterAll(async () => {
 async function alPlan(page: Page) {
     await loginViaUI(page, c.profe, '123456');
     await page.goto(`${WEB_BASE}/dashboard/academico/${c.ciclo}/${c.seccion_slug}/${c.materia_slug}`);
-    await page.getByRole('button', { name: /Plan de Evaluación/ }).first().click({ timeout: 60000 });
+    await page.getByRole('button', { name: 'Plan de evaluación' }).first().click({ timeout: 60000 });
+    // Los instrumentos viven en su ventana, detrás del botón del plan.
+    await page.getByRole('navigation', { name: 'Acciones del plan' }).getByRole('button', { name: 'Instrumentos de evaluación' }).click({ timeout: 60000 });
 }
 
 test('INSTR-UI-01: armar una lista de cotejo en el plan', async ({ page }, testInfo) => {

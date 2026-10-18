@@ -99,7 +99,7 @@ test.describe('El plan no se pisa', () => {
 
             // Elige cargar lo guardado, y lo ve.
             await page.getByRole('button', { name: /cargar lo guardado/i }).click();
-            await expect(page.getByText(marca).first()).toBeVisible({ timeout: 20000 });
+            await expect(page.getByText(marca).filter({ visible: true }).first()).toBeVisible({ timeout: 20000 });
         } catch (error) {
             await captureEvidence(testInfo, page, 'PLANUI-01', 'El plan no se pisa', error);
             throw error;

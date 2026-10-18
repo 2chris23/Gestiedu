@@ -337,7 +337,12 @@ Editar); debajo, cada semana es una fila como los Movimientos y al tocarla se
 abre con todo lo suyo (lo unido de arriba se repite en cada semana). «Ver
 todo» enseña la hoja con su membrete a pantalla completa. **Eso es el
 teléfono**: en el ordenador (`lateral:`) sale la hoja entera, sin «Ver todo». Sin «¿Cómo
-funciona?»: está el «?» de arriba.
+funciona?»: está el «?» de arriba. Arriba ya no van los puntos (se ven en cada
+semana) sino **las actividades del lapso: creadas y realizadas** (`isDone`,
+con el mismo filtro de lapso que la pestaña Actividades). **Instrumentos** es
+un quinto acceso que abre su ventana (`InstrumentosDelPlan`, ya no una caja
+debajo del plan): el acta, «Imprimir todos» y cada evaluación en una fila que
+abre el editor (17-oct-2026).
 
 **De pie siempre** (`lib/girar-la-pantalla.ts`, `DePie`): la APK y la app
 instalada no giran, salvo al **editar el horario** y en el **plan de

@@ -19,6 +19,7 @@ import {
     Upload,
     Copy,
     AlertTriangle,
+    ClipboardList,
 } from 'lucide-react';
 import {
     useEvaluationPlanMetadata,
@@ -38,6 +39,7 @@ import { DEFAULT_PLAN_COLUMNS, type PlanColumnDef } from './planColumns';
 import PlanPorBloques from './PlanPorBloques';
 import PlanEnFilas from './PlanEnFilas';
 import { useDejarGirar } from '@/hooks/useDejarGirar';
+import { useClassActivities } from '@/hooks/useLiveClass';
 const InstrumentosDelPlan = dynamic(() => import('./InstrumentosDelPlan'), {
   ssr: false,
   loading: () => <div className="p-4 text-center text-sm text-gray-500">Cargando instrumentos de evaluación...</div>,
@@ -204,6 +206,8 @@ export default function EvaluationPlanSection({
   // ── Server data ──────────────────────────────
   const { data: metaData, isLoading: isLoadingMeta } = useEvaluationPlanMetadata({ classroomId, subjectId, lapso });
   const { data: rowsData, isLoading: isLoadingRows } = useEvaluationPlanRows({ classroomId, subjectId, lapso });
+  const { data: actividadesData } = useClassActivities(classroomId, subjectId);
+  const [instrumentosAbierto, setInstrumentosAbierto] = useState(false);
   const { mutateAsync: saveMeta, isPending: isSavingMeta } = useUpsertEvaluationPlanMetadata();
   const { mutateAsync: saveRows, isPending: isSavingRows } = useBatchUpsertRows();
   const queryClient = useQueryClient();
@@ -1057,9 +1061,15 @@ export default function EvaluationPlanSection({
     );
   };
 
-  // Lo que dice la cabecera de la vista: los puntos repartidos y cuántas evaluaciones.
-  const totalPuntosDelPlan = Math.round(weeks.reduce((t, w) => t + (Number(w.data['puntos']) > 0 ? Number(w.data['puntos']) : 0), 0) * 100) / 100;
+  // Lo que dice la cabecera de la vista: cuántas evaluaciones y lo hecho del lapso.
   const evaluacionesDelPlan = weeks.filter((w) => Number(w.data['puntos']) > 0).length;
+  // Igual que la pestaña Actividades: la que va unida a una fila del plan es
+  // de ese lapso; la suelta, del primero.
+  const actividadesDelLapso = useMemo(() => {
+    const filas = new Set((rowsData?.rows ?? []).map((r: any) => r.id));
+    const delLapso = (actividadesData?.activities ?? []).filter((a) => (a.planRowId ? filas.has(a.planRowId) : selectedLapso === '1'));
+    return { creadas: delLapso.length, realizadas: delLapso.filter((a) => a.isDone).length };
+  }, [actividadesData, rowsData, selectedLapso]);
 
   // ────────────────────────────────────────────────
   // LOADING
@@ -1208,11 +1218,15 @@ export default function EvaluationPlanSection({
           arriba.
       */}
       <div className="rounded-[24px] bg-white p-4 ring-1 ring-gray-200 print:hidden">
+        {/* Lo que se lleva hecho del lapso (Cristian, 17-oct-2026): las
+            actividades creadas en la clase y cuántas ya se realizaron. Los
+            puntos repartidos ya se ven en cada semana. */}
         <div className="flex items-end justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">Plan de evaluación</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">Actividades del lapso</p>
             <p className="mt-0.5 text-2xl font-bold tabular-nums text-gray-900">
-              {totalPuntosDelPlan} <span className="text-base font-semibold text-gray-500">/ 20 pts</span>
+              {actividadesDelLapso.realizadas}{' '}
+              <span className="text-base font-semibold text-gray-500">de {actividadesDelLapso.creadas} realizadas</span>
             </p>
           </div>
           <p className="shrink-0 text-right text-sm text-gray-600">
@@ -1223,8 +1237,8 @@ export default function EvaluationPlanSection({
         </div>
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
           <div
-            className={`h-full rounded-full ${totalPuntosDelPlan > 20 ? 'bg-red-500' : totalPuntosDelPlan === 20 ? 'bg-emerald-500' : 'bg-indigo-500'}`}
-            style={{ width: `${Math.min(100, (totalPuntosDelPlan / 20) * 100)}%` }}
+            className={`h-full rounded-full ${actividadesDelLapso.creadas > 0 && actividadesDelLapso.realizadas === actividadesDelLapso.creadas ? 'bg-emerald-500' : 'bg-indigo-500'}`}
+            style={{ width: `${actividadesDelLapso.creadas ? Math.min(100, (actividadesDelLapso.realizadas / actividadesDelLapso.creadas) * 100) : 0}%` }}
           />
         </div>
         {/* El liceo puso semanas antes del plan (diagnóstico): se dice desde
@@ -1236,12 +1250,13 @@ export default function EvaluationPlanSection({
           </p>
         )}
 
-        <nav className="mt-4 grid grid-cols-4 gap-1 lateral:flex lateral:gap-2" aria-label="Acciones del plan">
+        <nav className="-mx-2 mt-4 grid grid-cols-5 lateral:mx-0 lateral:flex lateral:gap-2" aria-label="Acciones del plan">
           {[
             { id: 'ver', nombre: 'Ver todo', rotulo: 'Ver todo el plan', icono: Maximize2, alPulsar: () => setVerCompleto(true), soloTelefono: true },
             { id: 'bajar', nombre: 'Descargar', rotulo: 'Descargar el plan', icono: Download, href: `/dashboard/plan-de-evaluacion/${encodeURIComponent(classroomId)}/${encodeURIComponent(subjectId)}?lapso=${selectedLapso}`, recorrido: 'plan-imprimir' },
             ...(canEdit ? [{ id: 'copiar', nombre: 'Copiar', rotulo: 'Copiar a otra sección', icono: Copy, alPulsar: () => setCopiandoAbierto(true), recorrido: 'plan-copiar' }] : []),
             ...(canEdit ? [{ id: 'editar', nombre: 'Editar', rotulo: 'Editar el plan', icono: Edit2, alPulsar: empezarAEditar, recorrido: 'plan-editar', principal: true }] : []),
+            { id: 'instrumentos', nombre: 'Instrumentos', rotulo: 'Instrumentos de evaluación', icono: ClipboardList, alPulsar: () => setInstrumentosAbierto(true) },
           ].map((a: any) => {
             const Icono = a.icono;
             const dentro = (
@@ -1249,7 +1264,7 @@ export default function EvaluationPlanSection({
                 <span className={`flex h-[52px] w-[52px] items-center justify-center rounded-[18px] transition-[transform,background-color,box-shadow,color] duration-200 ease-out group-hover:-translate-y-0.5 group-hover:shadow-[0_6px_14px_-6px_rgba(13,71,161,0.35)] group-active:translate-y-0 group-active:scale-95 group-focus-visible:ring-2 group-focus-visible:ring-indigo-500 group-focus-visible:ring-offset-2 motion-reduce:transform-none ${a.principal ? 'bg-indigo-600 text-white group-hover:bg-indigo-700' : 'bg-gray-100 text-cabecera-tinta group-hover:bg-indigo-50 group-hover:text-indigo-700'}`}>
                   <Icono className="h-[22px] w-[22px]" aria-hidden />
                 </span>
-                <span className="max-w-full truncate text-xs font-medium leading-tight text-gray-800">{a.nombre}</span>
+                <span className="whitespace-nowrap text-xs font-medium leading-tight tracking-tight text-gray-800">{a.nombre}</span>
               </>
             );
             const clases = `group flex min-h-[44px] min-w-0 flex-col items-center gap-1.5 rounded-2xl py-1 text-center outline-none focus-visible:outline-none lateral:w-[92px] ${a.soloTelefono ? 'lateral:hidden' : ''}`;
@@ -1360,7 +1375,10 @@ export default function EvaluationPlanSection({
         </div>
       </PlanCompleto>
     )}
-    <InstrumentosDelPlan classroomId={classroomId} subjectId={subjectId} lapso={selectedLapso} canEdit={Boolean(canEdit)} />
+    {/* Los instrumentos, en su ventana (un botón arriba, no una caja debajo del plan). */}
+    {instrumentosAbierto && (
+      <InstrumentosDelPlan classroomId={classroomId} subjectId={subjectId} lapso={selectedLapso} canEdit={Boolean(canEdit)} alCerrar={() => setInstrumentosAbierto(false)} />
+    )}
     </>
   );
 }
