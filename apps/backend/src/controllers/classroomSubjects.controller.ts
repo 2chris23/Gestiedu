@@ -6,6 +6,7 @@ import { gradesService } from '../services/grades.service';
 import { getAcademicConfig } from '../services/promotion/close-cycle.service';
 import { findTeacherAssignmentConflicts } from '../services/schedule-conflicts.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
+import { horasDeLosBloques } from '../services/personal.service';
 
 interface AssignSubjectToClassroomRequest {
     Params: {
@@ -329,8 +330,10 @@ export async function assignSubjectToClassroom(
             }
         }
 
-        // Calcular horas por semana (cada bloque = 0.75 horas = 45 minutos)
-        const hoursPerWeek = weeklyBlocks * 0.75;
+        // Las horas: bloques × la hora de clase del turno de la sección.
+        const liceo = (request as any).institute?.id ?? (request.user as any)?.instituteId ?? '';
+        const seccion = await request.tenantPrisma.classroom.findUnique({ where: { id: classroomId }, select: { shift: true } });
+        const hoursPerWeek = await horasDeLosBloques(liceo, seccion?.shift, weeklyBlocks ?? 0);
 
         // Crear la asignación
         const classroomSubject = await request.tenantPrisma.classroomSubject.create({
@@ -425,7 +428,13 @@ export async function updateClassroomSubject(
         }
 
         // Calcular horas si se proporciona weeklyBlocks
-        const calculatedHours = weeklyBlocks !== undefined ? weeklyBlocks * 0.75 : hoursPerWeek;
+        // Con bloques, las horas salen de la hora de clase del turno de la sección.
+        let calculatedHours = hoursPerWeek;
+        if (weeklyBlocks !== undefined) {
+            const liceo = (request as any).institute?.id ?? (request.user as any)?.instituteId ?? '';
+            const seccion = await request.tenantPrisma.classroom.findUnique({ where: { id: classroomId }, select: { shift: true } });
+            calculatedHours = await horasDeLosBloques(liceo, seccion?.shift, weeklyBlocks);
+        }
 
         const updated = await request.tenantPrisma.classroomSubject.update({
             where: {

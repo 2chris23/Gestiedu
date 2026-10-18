@@ -240,6 +240,9 @@ model User {
 
   // Campos específicos para profesores
   specialization String?
+  /// Las horas de su cargo (36, 24, 12…); sin ellas, el máximo del liceo
+  /// (`academicConfig.cargaHoraria`). `personal.service.ts`.
+  horasDelCargo  Int?
 
   // Campos específicos para estudiantes
   studentCode String?

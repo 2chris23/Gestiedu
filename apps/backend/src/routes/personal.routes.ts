@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authenticate, requireAdmin, requireTeacher } from '../middleware/auth.middleware';
-import { cargaHoraria, constanciaDeTrabajo, reglasDeCargaHoraria, ponerReglasDeCargaHoraria } from '../services/personal.service';
+import { cargaHoraria, constanciaDeTrabajo, reglasDeCargaHoraria, ponerReglasDeCargaHoraria, ponerHorasDelCargo } from '../services/personal.service';
 import { carnetDelAlumno, carnetsDeLaSeccion } from '../services/carnet.service';
 import { instituteTimezone, todayInTimezone } from '../utils/school-time';
 import { responderErrorClaro } from '../utils/error-claro';
@@ -9,6 +9,7 @@ import { AppErrors } from '../middleware/error.middleware';
 /**
  * EL PERSONAL (`/api/...`), `services/personal.service.ts`:
  *   GET /teachers/:id/carga-horaria            su carga (el admin, o el propio profesor)
+ *   PUT /teachers/:id/horas-del-cargo           las horas de su cargo; null = las del liceo (admin)
  *   GET /users/:id/constancia-de-trabajo       la constancia (admin)
  *   GET|PUT /institutes/current/carga-horaria  el rango recomendado del liceo (admin)
  *   GET /students/:id/carnet                   el carnet de un alumno (admin, `carnet.service`)
@@ -38,6 +39,17 @@ export async function personalRoutes(fastify: FastifyInstance) {
             }
             return cargaHoraria(r.tenantPrisma, liceoDe(r), r.params.id, await hoyDe(r));
         }) as any
+    );
+    fastify.put(
+        '/teachers/:id/horas-del-cargo',
+        {
+            preHandler: [authenticate, requireAdmin],
+            schema: {
+                params: { type: 'object', properties: { id } },
+                body: { type: 'object', additionalProperties: false, required: ['horas'], properties: { horas: { type: ['integer', 'null'] } } },
+            },
+        },
+        responder((r) => ponerHorasDelCargo(r.tenantPrisma, r.params.id, (r.body as any).horas)) as any
     );
     fastify.get(
         '/users/:id/constancia-de-trabajo',

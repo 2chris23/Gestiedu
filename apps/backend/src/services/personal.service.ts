@@ -54,43 +54,145 @@ export async function ponerReglasDeCargaHoraria(instituteId: string, r: { minimo
 
 const nombre = (u: { firstName: string; lastName: string }) => `${u.firstName} ${u.lastName}`;
 
-export async function cargaHoraria(prisma: any, instituteId: string, teacherId: string, hoy: string) {
-    const profe = await prisma.user.findUnique({ where: { id: teacherId }, select: { id: true, firstName: true, lastName: true, role: true, joinDate: true } });
-    if (!profe || (profe.role !== 'TEACHER' && profe.role !== 'ADMIN')) throw AppErrors.NotFound('Profesor');
-    const [reglas, inst, plantel, clases] = await Promise.all([
-        reglasDeCargaHoraria(instituteId),
+/**
+ * Lo que tiene de cargo cada profesor (`User.horasDelCargo`: 36, 24, 12…) o,
+ * sin eso, el máximo del liceo. Con las suyas, «en rango» es tenerlas
+ * completas (le falta menos de una hora) y «sobrecarga» pasarlas; con el
+ * rango del liceo, como siempre. `MAPA_DE_CALCULOS.md` §1e.
+ */
+export type EstadoDeLaCarga = 'SOBRECARGA' | 'EN_RANGO' | 'POR_DEBAJO';
+export function estadoDeLaCarga(total: number, reglas: ReglasDeCargaHoraria, horasDelCargo: number | null | undefined): EstadoDeLaCarga {
+    if (horasDelCargo != null && horasDelCargo > 0) {
+        if (total > horasDelCargo + 0.001) return 'SOBRECARGA';
+        return horasDelCargo - total < 1 ? 'EN_RANGO' : 'POR_DEBAJO';
+    }
+    return total > reglas.maximo ? 'SOBRECARGA' : total >= reglas.minimo ? 'EN_RANGO' : 'POR_DEBAJO';
+}
+export const horasDeCargoDe = (reglas: ReglasDeCargaHoraria, horasDelCargo: number | null | undefined) =>
+    horasDelCargo != null && horasDelCargo > 0 ? horasDelCargo : reglas.maximo;
+
+export interface ClaseDeLaCarga {
+    claseId: string;
+    classroomId: string;
+    subjectId: string;
+    seccion: string;
+    seccionSlug: string;
+    grado: number;
+    turno: string;
+    materia: string;
+    bloques: number | null;
+    horas: number | null;
+}
+export interface CargaDeUnProfesor {
+    filas: ClaseDeLaCarga[];
+    total: number;
+    bloques: number;
+    sinHoras: number;
+}
+
+/**
+ * LA CARGA DE VARIOS PROFESORES EN UNA SOLA CONSULTA (todos si no se dice
+ * cuáles). Una sola regla para todo el sistema: el año ACTIVO, las horas de
+ * la fila o los bloques por la duración de la clase de SU turno. Antes la
+ * lista de usuarios y el modal de asignar contaban 45 min fijos y sumaban los
+ * años pasados.
+ */
+export async function cargaDeLosProfesores(prisma: any, instituteId: string, teacherIds?: string[]): Promise<Map<string, CargaDeUnProfesor>> {
+    const [inst, clases] = await Promise.all([
         platformPrisma.institute.findUnique({ where: { id: instituteId }, select: { academicConfig: true } }),
-        datosDelPlantel(instituteId, hoy),
         prisma.classroomSubject.findMany({
-            where: { teacherId, classroom: { academicYear: { status: 'ACTIVE' } } },
+            where: {
+                teacherId: teacherIds ? { in: teacherIds } : { not: null },
+                classroom: { academicYear: { status: 'ACTIVE' } },
+            },
             select: {
+                id: true,
+                teacherId: true,
                 hoursPerWeek: true,
                 weeklyBlocks: true,
-                subject: { select: { name: true } },
-                classroom: { select: { name: true, grade: true, section: true, shift: true, academicYear: { select: { name: true } } } },
+                subject: { select: { id: true, name: true } },
+                classroom: { select: { id: true, name: true, slug: true, grade: true, shift: true } },
             },
         }),
     ]);
     const turnos = turnosDeLaConfig(((inst?.academicConfig ?? {}) as any).schedule);
-    const filas = clases
-        .map((c: any) => {
-            const duracion = (c.classroom.shift === 'TARDE' ? turnos.TARDE : turnos.MANANA).duracion;
-            const horas = c.hoursPerWeek > 0 ? c.hoursPerWeek : c.weeklyBlocks > 0 ? Math.round(((c.weeklyBlocks * duracion) / 60) * 100) / 100 : null;
-            return { seccion: c.classroom.name, grado: c.classroom.grade, materia: c.subject.name, bloques: c.weeklyBlocks || null, horas };
-        })
-        .sort((a: any, b: any) => a.grado - b.grado || a.seccion.localeCompare(b.seccion, 'es') || a.materia.localeCompare(b.materia, 'es'));
-    const total = Math.round(filas.reduce((s: number, f: any) => s + (f.horas ?? 0), 0) * 100) / 100;
+    const porProfe = new Map<string, CargaDeUnProfesor>();
+    for (const id of teacherIds ?? []) porProfe.set(id, { filas: [], total: 0, bloques: 0, sinHoras: 0 });
+    for (const c of clases as any[]) {
+        const duracion = (c.classroom.shift === 'TARDE' ? turnos.TARDE : turnos.MANANA).duracion;
+        const horas = c.hoursPerWeek > 0 ? c.hoursPerWeek : c.weeklyBlocks > 0 ? Math.round(((c.weeklyBlocks * duracion) / 60) * 100) / 100 : null;
+        const carga = porProfe.get(c.teacherId) ?? { filas: [], total: 0, bloques: 0, sinHoras: 0 };
+        carga.filas.push({
+            claseId: c.id,
+            classroomId: c.classroom.id,
+            subjectId: c.subject.id,
+            seccion: c.classroom.name,
+            seccionSlug: c.classroom.slug,
+            grado: c.classroom.grade,
+            turno: c.classroom.shift,
+            materia: c.subject.name,
+            bloques: c.weeklyBlocks || null,
+            horas,
+        });
+        porProfe.set(c.teacherId, carga);
+    }
+    for (const carga of porProfe.values()) {
+        carga.filas.sort((a, b) => a.grado - b.grado || a.seccion.localeCompare(b.seccion, 'es') || a.materia.localeCompare(b.materia, 'es'));
+        carga.total = Math.round(carga.filas.reduce((t, f) => t + (f.horas ?? 0), 0) * 100) / 100;
+        carga.bloques = carga.filas.reduce((t, f) => t + (f.bloques ?? 0), 0);
+        carga.sinHoras = carga.filas.filter((f) => f.horas === null).length;
+    }
+    return porProfe;
+}
+
+/**
+ * Las horas de N bloques en una sección: bloques × la duración de la hora de
+ * clase de SU turno (la tarde puede tener otra). Antes: 45 min fijos.
+ */
+export async function horasDeLosBloques(instituteId: string, turno: string | null | undefined, bloques: number) {
+    const inst = await platformPrisma.institute.findUnique({ where: { id: instituteId }, select: { academicConfig: true } });
+    const turnos = turnosDeLaConfig(((inst?.academicConfig ?? {}) as any).schedule);
+    const duracion = (turno === 'TARDE' ? turnos.TARDE : turnos.MANANA).duracion;
+    return Math.round(((bloques * duracion) / 60) * 100) / 100;
+}
+
+export async function cargaHoraria(prisma: any, instituteId: string, teacherId: string, hoy: string) {
+    const profe = await prisma.user.findUnique({
+        where: { id: teacherId },
+        select: { id: true, firstName: true, lastName: true, role: true, joinDate: true, horasDelCargo: true },
+    });
+    if (!profe || (profe.role !== 'TEACHER' && profe.role !== 'ADMIN')) throw AppErrors.NotFound('Profesor');
+    const [reglas, plantel, cargas, ciclo] = await Promise.all([
+        reglasDeCargaHoraria(instituteId),
+        datosDelPlantel(instituteId, hoy),
+        cargaDeLosProfesores(prisma, instituteId, [teacherId]),
+        prisma.academicYear.findFirst({ where: { status: 'ACTIVE' }, select: { name: true } }),
+    ]);
+    const carga = cargas.get(teacherId)!;
     return {
         profesor: { id: profe.id, nombre: nombre(profe), ingreso: profe.joinDate ? profe.joinDate.toISOString().slice(0, 10) : null },
-        ciclo: clases[0]?.classroom.academicYear.name ?? null,
-        filas,
-        total,
-        sinHoras: filas.filter((f: any) => f.horas === null).length,
+        ciclo: carga.filas.length ? (ciclo?.name ?? null) : null,
+        filas: carga.filas.map(({ seccion, grado, materia, bloques, horas }) => ({ seccion, grado, materia, bloques, horas })),
+        total: carga.total,
+        sinHoras: carga.sinHoras,
         reglas,
-        estado: total > reglas.maximo ? 'SOBRECARGA' : total >= reglas.minimo ? 'EN_RANGO' : 'POR_DEBAJO',
+        horasDelCargo: profe.horasDelCargo ?? null,
+        cargo: horasDeCargoDe(reglas, profe.horasDelCargo),
+        estado: estadoDeLaCarga(carga.total, reglas, profe.horasDelCargo),
         firmante: plantel.firmante,
         emitidaEl: hoy,
     };
+}
+
+/** Las horas del cargo de un profesor (admin). `null` = las del liceo. */
+export async function ponerHorasDelCargo(prisma: any, teacherId: string, horas: number | null) {
+    if (horas !== null && (!Number.isInteger(horas) || horas < 1 || horas > 80)) {
+        throw createError(400, 'Las horas del cargo van de 1 a 80', 'HORAS_INVALIDAS');
+    }
+    const profe = await prisma.user.findUnique({ where: { id: teacherId }, select: { role: true } });
+    if (!profe || profe.role !== 'TEACHER') throw AppErrors.NotFound('Profesor');
+    await prisma.user.update({ where: { id: teacherId }, data: { horasDelCargo: horas } });
+    return { id: teacherId, horasDelCargo: horas };
 }
 
 export async function constanciaDeTrabajo(prisma: any, instituteId: string, userId: string, hoy: string) {

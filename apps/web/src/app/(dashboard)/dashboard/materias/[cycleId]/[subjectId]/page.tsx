@@ -18,6 +18,7 @@ interface Seccion {
     name: string;
     slug?: string;
     grade?: number;
+    shift?: string;
     weeklyBlocks?: number;
     hoursPerWeek?: number;
     teacher?: { id?: string; name: string; avatar?: string | null } | null;
@@ -290,6 +291,7 @@ export default function SubjectDashboard() {
                     subjectSlug={subjectId}
                     currentTeacherId={asignando.teacher?.id}
                     initialWeeklyBlocks={asignando.weeklyBlocks}
+                    turno={asignando.shift}
                     onClose={() => setAsignando(null)}
                 />
             )}

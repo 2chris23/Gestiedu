@@ -167,6 +167,7 @@ export class SubjectsService {
                                 name: true,
                                 slug: true,
                                 grade: true,
+                                shift: true,
                                 capacity: true,
                                 academicYearId: true,
                                 academicYear: {
@@ -379,6 +380,7 @@ export class SubjectsService {
                     name: cs.classroom.name,
                     slug: cs.classroom.slug,
                     grade: cs.classroom.grade,
+                    shift: cs.classroom.shift,
                     capacity,
                     studentCount,
                     weeklyBlocks: cs.weeklyBlocks,

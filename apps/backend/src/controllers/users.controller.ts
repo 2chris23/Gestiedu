@@ -19,6 +19,7 @@ import {
 } from '../middleware/plan-limits.middleware';
 import { avisarSiFalla } from '../utils/sin-callar';
 import { encargarElPaquete } from '../services/paquete-de-precarga.service';
+import { cargaDeLosProfesores, estadoDeLaCarga, horasDeCargoDe, reglasDeCargaHoraria } from '../services/personal.service';
 
 /**
  * Lo que piden los documentos del Ministerio (nacionalidad, lugar y entidad de
@@ -375,6 +376,7 @@ export async function getUsers(
           avatar: true,
           isActive: true,
           createdAt: true,
+          horasDelCargo: true,
           studentClassrooms: {
             where: { isActive: true },
             orderBy: [
@@ -427,10 +429,23 @@ export async function getUsers(
 
     const totalPages = Math.ceil(total / limit);
 
+    // La carga de los profesores de esta página, con la cuenta de siempre
+    // (`personal.service`: el año en curso y la hora de clase de su turno),
+    // en una consulta. Antes: 45 min fijos y los años pasados sumados.
+    const liceo = getInstituteId(request) ?? '';
+    const profes = users.filter((u: any) => u.role === 'TEACHER').map((u: any) => u.id);
+    const [cargas, reglas] = profes.length
+      ? await Promise.all([cargaDeLosProfesores(request.tenantPrisma, liceo, profes), reglasDeCargaHoraria(liceo)])
+      : [new Map(), null];
+
     return reply.status(200).send({
       users: users.map((u: any) => {
-        const totalWeeklyBlocks = u.subjectTeachings?.reduce((sum: number, st: any) => sum + (st.weeklyBlocks || 0), 0) || 0;
-        const totalWeeklyHours = u.subjectTeachings?.reduce((sum: number, st: any) => sum + (st.hoursPerWeek || ((st.weeklyBlocks || 0) * 45 / 60)), 0) || 0;
+        const carga = cargas.get(u.id);
+        const totalWeeklyBlocks = carga?.bloques ?? 0;
+        const totalWeeklyHours = carga?.total ?? 0;
+        const cargaHoraria = carga && reglas
+          ? { total: carga.total, cargo: horasDeCargoDe(reglas, u.horasDelCargo), horasDelCargo: u.horasDelCargo ?? null, estado: estadoDeLaCarga(carga.total, reglas, u.horasDelCargo) }
+          : undefined;
 
         const latestEnrollment = u.studentClassrooms?.[0] || null;
         const activeClassroom = latestEnrollment?.classroom ? {
@@ -443,6 +458,7 @@ export async function getUsers(
           classroom: activeClassroom,
           totalWeeklyBlocks,
           totalWeeklyHours,
+          cargaHoraria,
         };
       }),
       pagination: {
@@ -720,14 +736,10 @@ export async function getUser(
         teacherAverages[g.subjectId] = g._avg.score ? Math.round(g._avg.score * 10) / 10 : 0;
       });
 
-      if (user.subjectTeachings) {
-        user.subjectTeachings.forEach((st: any) => {
-          const blocks = st.weeklyBlocks || 0;
-          const hours = st.hoursPerWeek || (blocks * 45 / 60);
-          totalWeeklyBlocks += blocks;
-          totalWeeklyHours += hours;
-        });
-      }
+      // La carga, con la cuenta de siempre (`personal.service`).
+      const carga = (await cargaDeLosProfesores(request.tenantPrisma, getInstituteId(request) ?? '', [user.id])).get(user.id);
+      totalWeeklyBlocks = carga?.bloques ?? 0;
+      totalWeeklyHours = carga?.total ?? 0;
     }
 
     const activeStudentClassroom = (user as any).studentClassrooms?.[0] || null;

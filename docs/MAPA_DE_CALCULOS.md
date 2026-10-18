@@ -104,6 +104,28 @@ profesor.
 
 ---
 
+### 1e. La carga horaria de un profesor (2026-10-18)
+
+Una sola cuenta, `personal.service.ts → cargaDeLosProfesores` (todos en una
+consulta; `cargaHoraria` la usa para uno):
+
+- Cuentan las clases (`classroom_subjects` con su `teacherId`) de las secciones
+  del **año ACTIVO**. Las de años pasados no.
+- Horas de una clase: `hoursPerWeek` si es > 0; si no, `weeklyBlocks ×` la
+  duración de la hora de clase **del turno de la sección** (Configuración →
+  Académica); sin nada, «sin horas» (no suma). Poner bloques a una clase
+  guarda sus horas igual (`horasDeLosBloques`). Antes: 0,75 h por bloque y 45
+  min en la lista de usuarios y en el modal, con los años pasados sumados.
+- **Contra qué se mide**: las horas del cargo del profesor
+  (`users.horasDelCargo`, las fija el admin) o, sin ellas, el rango del liceo
+  (`academicConfig.cargaHoraria`, 30–40 por defecto).
+  - Con las suyas: **SOBRECARGA** si las pasa; **EN_RANGO** si le falta menos
+    de una hora; **POR_DEBAJO** si le falta más.
+  - Sin ellas: SOBRECARGA > máximo; EN_RANGO entre mínimo y máximo;
+    POR_DEBAJO bajo el mínimo.
+- Copiada en `apps/web/src/lib/carga-horaria.tsx` solo para la proyección en
+  vivo al asignar. PROF-01…04.
+
 ## 2. Plan de Evaluación y Ponderaciones
 
 | Pantalla / Componente | Dato Mostrado | Fórmula Exacta | Función / Archivo | Fuente de Datos (Tablas) | Reglas / Validaciones |

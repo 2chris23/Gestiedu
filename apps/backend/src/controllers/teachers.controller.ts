@@ -6,6 +6,7 @@ import { logger } from '../utils/logger';
 import { incrementTeacherCount, decrementTeacherCount } from '../middleware/plan-limits.middleware';
 import { avisarSiFalla } from '../utils/sin-callar';
 import { encargarElPaquete } from '../services/paquete-de-precarga.service';
+import { cargaDeLosProfesores } from '../services/personal.service';
 
 interface CreateTeacherRequest {
   Body: CreateUserInput;
@@ -209,11 +210,14 @@ export async function getTeachers(
     ]);
 
     const totalPages = Math.ceil(total / limit);
+    // La carga con la cuenta de siempre (`personal.service`), en una consulta.
+    const liceo = (request as any).institute?.id ?? (request.user as any)?.instituteId ?? '';
+    const cargas = teachers.length ? await cargaDeLosProfesores(request.tenantPrisma, liceo, teachers.map((t: any) => t.id)) : new Map();
 
     return reply.status(200).send({
       teachers: teachers.map((teacher: any) => {
-        const totalWeeklyBlocks = teacher.subjectTeachings?.reduce((sum: number, st: any) => sum + (st.weeklyBlocks || 0), 0) || 0;
-        const totalWeeklyHours = teacher.subjectTeachings?.reduce((sum: number, st: any) => sum + (st.hoursPerWeek || ((st.weeklyBlocks || 0) * 45 / 60)), 0) || 0;
+        const totalWeeklyBlocks = cargas.get(teacher.id)?.bloques ?? 0;
+        const totalWeeklyHours = cargas.get(teacher.id)?.total ?? 0;
 
         return {
           ...teacher,
