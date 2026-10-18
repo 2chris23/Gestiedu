@@ -142,7 +142,10 @@ export function PartesDeLaPantalla({
     etiqueta: string;
 }) {
     return (
-        <nav className="-mx-1 grid grid-cols-4 gap-y-3" aria-label={etiqueta}>
+        // En el teléfono, cuatro por fila; con sitio (tableta, ordenador), todos en
+        // UNA fila, cada cuadro con su ancho: estirados a cuatro columnas en 1600 px
+        // quedaban sueltos y bajaban a una segunda fila sin necesidad.
+        <nav className="-mx-1 grid grid-cols-4 gap-y-3 sm:mx-0 sm:flex sm:flex-wrap sm:gap-x-2" aria-label={etiqueta}>
             {partes.map((p) => {
                 const Icono = p.icono;
                 const esta = activa === p.id;
@@ -154,7 +157,7 @@ export function PartesDeLaPantalla({
                         data-pestana
                         aria-current={esta ? 'page' : undefined}
                         aria-label={p.rotulo}
-                        className="group flex min-h-[44px] min-w-0 flex-col items-center gap-1.5 rounded-2xl py-1 text-center"
+                        className="group flex min-h-[44px] min-w-0 flex-col items-center gap-1.5 rounded-2xl py-1 text-center sm:w-[92px]"
                     >
                         <span
                             className={cn(
