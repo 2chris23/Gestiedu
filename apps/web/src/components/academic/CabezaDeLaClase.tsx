@@ -157,17 +157,17 @@ export function PartesDeLaPantalla({
                         data-pestana
                         aria-current={esta ? 'page' : undefined}
                         aria-label={p.rotulo}
-                        className="group flex min-h-[44px] min-w-0 flex-col items-center gap-1.5 rounded-2xl py-1 text-center sm:w-[92px]"
+                        className="group flex min-h-[44px] min-w-0 flex-col items-center gap-1.5 rounded-2xl py-1 text-center outline-none focus-visible:outline-none sm:w-[92px]"
                     >
                         <span
                             className={cn(
-                                'flex h-[52px] w-[52px] items-center justify-center rounded-[18px] shadow-[0_1px_2px_rgba(13,71,161,0.08)] transition-colors group-active:scale-95',
-                                esta ? 'bg-indigo-600 text-white' : 'bg-white text-cabecera-tinta group-hover:bg-gray-50'
+                                'flex h-[52px] w-[52px] items-center justify-center rounded-[18px] shadow-[0_1px_2px_rgba(13,71,161,0.08)] transition-[transform,background-color,box-shadow,color] duration-200 ease-out group-hover:-translate-y-0.5 group-hover:shadow-[0_6px_14px_-6px_rgba(13,71,161,0.35)] group-active:translate-y-0 group-active:scale-95 group-focus-visible:ring-2 group-focus-visible:ring-indigo-500 group-focus-visible:ring-offset-2 motion-reduce:transform-none',
+                                esta ? 'bg-indigo-600 text-white' : 'bg-white text-cabecera-tinta group-hover:bg-indigo-50 group-hover:text-indigo-700'
                             )}
                         >
                             <Icono className="h-[22px] w-[22px]" aria-hidden />
                         </span>
-                        <span className={cn('max-w-full truncate text-xs leading-tight tracking-tight', esta ? 'font-bold text-gray-900' : 'font-medium text-gray-800')}>
+                        <span className={cn('max-w-full truncate text-xs leading-tight tracking-tight', esta ? 'font-bold text-gray-900' : 'font-medium text-gray-800 group-hover:text-indigo-700')}>
                             {p.nombre}
                         </span>
                     </button>

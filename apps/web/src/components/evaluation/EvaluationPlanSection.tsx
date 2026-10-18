@@ -1246,13 +1246,13 @@ export default function EvaluationPlanSection({
             const Icono = a.icono;
             const dentro = (
               <>
-                <span className={`flex h-[52px] w-[52px] items-center justify-center rounded-[18px] transition-colors group-active:scale-95 ${a.principal ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-cabecera-tinta group-hover:bg-gray-200'}`}>
+                <span className={`flex h-[52px] w-[52px] items-center justify-center rounded-[18px] transition-[transform,background-color,box-shadow,color] duration-200 ease-out group-hover:-translate-y-0.5 group-hover:shadow-[0_6px_14px_-6px_rgba(13,71,161,0.35)] group-active:translate-y-0 group-active:scale-95 group-focus-visible:ring-2 group-focus-visible:ring-indigo-500 group-focus-visible:ring-offset-2 motion-reduce:transform-none ${a.principal ? 'bg-indigo-600 text-white group-hover:bg-indigo-700' : 'bg-gray-100 text-cabecera-tinta group-hover:bg-indigo-50 group-hover:text-indigo-700'}`}>
                   <Icono className="h-[22px] w-[22px]" aria-hidden />
                 </span>
                 <span className="max-w-full truncate text-xs font-medium leading-tight text-gray-800">{a.nombre}</span>
               </>
             );
-            const clases = `group flex min-h-[44px] min-w-0 flex-col items-center gap-1.5 rounded-2xl py-1 text-center lateral:w-[92px] ${a.soloTelefono ? 'lateral:hidden' : ''}`;
+            const clases = `group flex min-h-[44px] min-w-0 flex-col items-center gap-1.5 rounded-2xl py-1 text-center outline-none focus-visible:outline-none lateral:w-[92px] ${a.soloTelefono ? 'lateral:hidden' : ''}`;
             return a.href ? (
               <Link key={a.id} href={a.href} className={clases} data-recorrido={a.recorrido} aria-label={a.rotulo}>{dentro}</Link>
             ) : (
