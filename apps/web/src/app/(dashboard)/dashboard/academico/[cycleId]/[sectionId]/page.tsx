@@ -44,7 +44,6 @@ import { diferido } from '@/components/common/Diferido';
 // Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
 const RemoveStudentSecureModal = diferido(() => import('@/components/academic/RemoveStudentSecureModal'), { sinEsqueleto: true });
 const AssignTeacherModal = diferido(() => import('@/components/academic/AssignTeacherModal'), { sinEsqueleto: true });
-const AssignSubjectModal = diferido(() => import('@/components/academic/AssignSubjectModal').then((m) => ({ default: m.AssignSubjectModal })), { sinEsqueleto: true });
 const SectionObservationsTab = diferido(() => import('@/components/classroom/SectionObservationsTab'), { alto: 300 });
 const StudentObservationsModal = diferido(() => import('@/components/observations/StudentObservationsModal'), { sinEsqueleto: true });
 // Dentro de la sección, como el plan de evaluación (lo pidió Cristian, 2026-10-12): antes eran pantallas del menú.
@@ -90,7 +89,6 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
     const [studentToRemove, setStudentToRemove] = useState<{ id: string; name: string } | null>(null);
 
     // Subject assignment state
-    const [isAssignSubjectModalOpen, setIsAssignSubjectModalOpen] = useState(false);
     const [selectedStudentForObs, setSelectedStudentForObs] = useState<any | null>(null);
 
     const targetYearId = classroom?.academicYearId || classroom?.academicYear?.id;
@@ -226,11 +224,6 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
             refetchSubjects();
         }
     }, [activeTab, refetchSubjects]);
-
-    const handleSubjectAssignSuccess = () => {
-        refetchSubjects();
-        toast.success('Materias asignadas exitosamente');
-    };
 
     const handleOpenAddModal = () => {
         setIsAddStudentModalOpen(true);
@@ -717,14 +710,16 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                     {subjectsWithStats?.length || 0} materia{(subjectsWithStats?.length || 0) !== 1 ? 's' : ''} asignada{(subjectsWithStats?.length || 0) !== 1 ? 's' : ''}
                                 </p>
                             </div>
+                            {/* Las materias de la sección se deciden en Materias («Dónde se da»), y
+                                el profesor en Profesores: aquí solo se ven (Cristian, 18-oct-2026). */}
                             {yo?.role === 'ADMIN' && (
-                                <button
-                                    onClick={() => setIsAssignSubjectModalOpen(true)}
-                                    className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                                <Link
+                                    href="/dashboard/materias"
+                                    className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-indigo-50 px-4 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-100"
                                 >
-                                    <BookOpen className="w-4 h-4 mr-2" />
-                                    Asignar Materia
-                                </button>
+                                    <BookOpen className="h-4 w-4" aria-hidden />
+                                    Cambiar en Materias
+                                </Link>
                             )}
                         </div>
 
@@ -739,19 +734,8 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
                                     <BookOpen className="mx-auto h-12 w-12 text-gray-400" />
                                     <h3 className="mt-2 text-sm font-medium text-gray-900">No hay materias asignadas</h3>
                                     <p className="mt-1 text-sm text-gray-500">
-                                        {yo?.role === 'ADMIN' ? 'Comienza asignando materias a esta sección' : 'No tienes materias asignadas en esta sección.'}
+                                        {yo?.role === 'ADMIN' ? 'Se ponen en Materias, en «Dónde se da».' : 'No tienes materias asignadas en esta sección.'}
                                     </p>
-                                    {yo?.role === 'ADMIN' && (
-                                        <div className="mt-6">
-                                            <button
-                                                onClick={() => setIsAssignSubjectModalOpen(true)}
-                                                className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
-                                            >
-                                                <BookOpen className="w-4 h-4 mr-2" />
-                                                Asignar Primera Materia
-                                            </button>
-                                        </div>
-                                    )}
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -913,14 +897,6 @@ export default function SectionPage({ params }: { params: Promise<{ cycleId: str
             />
             )}
 
-            {isAssignSubjectModalOpen && (
-            <AssignSubjectModal
-                isOpen
-                onClose={() => setIsAssignSubjectModalOpen(false)}
-                classroomId={classroomId || ''}
-                onSuccess={handleSubjectAssignSuccess}
-            />
-            )}
 
             {selectedStudentForObs && (
                 <StudentObservationsModal

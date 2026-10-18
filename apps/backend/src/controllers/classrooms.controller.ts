@@ -5,6 +5,7 @@ import * as closeCycleService from '../services/promotion/close-cycle.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 import { canSeeClassroom } from '../services/authorization.service';
 import { NOTAS_QUE_CUENTAN } from '../services/apreciaciones.service';
+import { materiasDeSuAno } from '../services/secciones-de-la-materia.service';
 
 /**
  * MIRAR UNA SECCIÓN ES DE QUIEN TIENE QUE VER CON ELLA
@@ -117,6 +118,11 @@ export const createClassroom = async (request: FastifyRequest, reply: FastifyRep
         // Ignorar error si ya existe (aunque id es nuevo)
       });
     }
+
+    // 5. Las materias de su año (las de sus hermanas), sin profesor: la sección
+    // ya no añade materias; eso se hace en Materias (SECC-MAT-04).
+    const liceo = String((request.user as any)?.instituteId ?? (request as any).institute?.id ?? '');
+    await materiasDeSuAno(request.tenantPrisma, liceo, newClassroom.id);
 
     return reply.status(201).send(newClassroom);
   } catch (error) {

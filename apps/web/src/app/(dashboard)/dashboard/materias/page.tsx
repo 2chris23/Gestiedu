@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Calendar, ChevronRight, MoreVertical, Pencil, Plus, Search, Trash2, UsersRound } from 'lucide-react';
 import { FilaInterruptor, Grupo } from '@/components/configuracion/ajustes';
 import { useSubjects, useCreateSubject, useUpdateSubject, useDeleteSubject } from '@/hooks/useSubjects';
@@ -43,6 +44,7 @@ export default function MateriasPage() {
  * eliminar van juntos en UN botón que abre su ventana.
  */
 function AdminMateriasPage() {
+    const router = useRouter();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedYearId, setSelectedYearId] = useState<string>('');
     const [creando, setCreando] = useState(false);
@@ -243,8 +245,10 @@ function AdminMateriasPage() {
                     titulo="Nueva Materia"
                     alCerrar={() => setCreando(false)}
                     alGuardar={async (d) => {
-                        await createMutation.mutateAsync(d);
+                        const nueva = await createMutation.mutateAsync(d);
                         setCreando(false);
+                        // Crear y decir dónde va, en un solo paso.
+                        if (nueva?.slug && selectedCycleName) router.push(`/dashboard/materias/${selectedCycleName}/${nueva.slug}?dondeSeDa=1`);
                     }}
                 />
             )}

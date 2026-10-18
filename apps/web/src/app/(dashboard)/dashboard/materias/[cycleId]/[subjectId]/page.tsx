@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { AlertCircle, BookOpen, ChevronRight, LayoutGrid, UserPen, UserPlus, UserX, UsersRound } from 'lucide-react';
@@ -10,6 +10,7 @@ import { CabezaDeLaClase, PartesDeLaPantalla } from '@/components/academic/Cabez
 import { CifrasDeLosGrupos, PestanaDeGrupos, PestanaSinGrupo } from '@/components/subject/GruposDeLaMateria';
 import { ElegirCiclo } from '@/components/subject/ElegirCiclo';
 import { AssignSubjectTeacherModal } from '@/components/subject/AssignSubjectTeacherModal';
+import { DondeSeDa } from '@/components/subject/DondeSeDa';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { cn } from '@/lib/utils';
 
@@ -59,6 +60,11 @@ export default function SubjectDashboard() {
     const cycleName = params.cycleId as string;
     const [asignando, setAsignando] = useState<Seccion | null>(null);
     const [parte, setParte] = useState<'secciones' | 'grupos' | 'sin-grupo'>('secciones');
+    // Recién creada, la materia abre con «Dónde se da» (`?dondeSeDa=1`).
+    const [dondeSeDa, setDondeSeDa] = useState(false);
+    useEffect(() => {
+        if (new URLSearchParams(window.location.search).get('dondeSeDa') === '1') setDondeSeDa(true);
+    }, []);
 
     const { data: subject, isLoading, error } = useSubject(subjectId, cycleName);
     // El año no detiene la pantalla: solo hace falta para el selector.
@@ -169,10 +175,24 @@ export default function SubjectDashboard() {
             <div className="grid grid-cols-1 gap-5 lateral:grid-cols-3">
                 {/* Las secciones, por año. */}
                 <div className={cn('min-w-0 space-y-4', subject.porGrupos ? 'lateral:col-span-3' : 'lateral:col-span-2')}>
-                    {porAno.length === 0 && (
-                        <p className="rounded-[24px] bg-white px-4 py-8 text-center text-sm text-gray-600 ring-1 ring-gray-200">
-                            Ninguna sección da esta materia en {cycleName}.
-                        </p>
+                    {/* En qué secciones se da: aquí, por año (la sección ya no lo edita). */}
+                    {anoId && (
+                        <button
+                            type="button"
+                            onClick={() => setDondeSeDa(true)}
+                            className="flex min-h-[60px] w-full items-center gap-3 rounded-[24px] bg-white px-4 py-2.5 text-left ring-1 ring-gray-200 transition-colors hover:bg-gray-50"
+                        >
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-700">
+                                <LayoutGrid className="h-5 w-5" aria-hidden />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                                <span className="block text-[15px] font-medium text-gray-900">Dónde se da</span>
+                                <span className="block text-sm text-gray-600">
+                                    {secciones.length === 0 ? 'En ninguna sección todavía' : `${secciones.length} ${secciones.length === 1 ? 'sección' : 'secciones'} · elegir por año`}
+                                </span>
+                            </span>
+                            <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" aria-hidden />
+                        </button>
                     )}
                     {porAno.map(([ano, lista]) => {
                         // Por grupos, la sección no lleva profesor: lo lleva cada grupo.
@@ -283,6 +303,8 @@ export default function SubjectDashboard() {
                 )}
             </div>
             )}
+
+            {dondeSeDa && anoId && <DondeSeDa subjectId={subject.id} academicYearId={anoId} alCerrar={() => setDondeSeDa(false)} />}
 
             {asignando && (
                 <AssignSubjectTeacherModal

@@ -31,7 +31,6 @@ import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { BuscadorDeAlumnos, CabezaDeLaClase, ElegirMomento, PartesDeLaPantalla } from '@/components/academic/CabezaDeLaClase';
 
 // Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
-const AssignSubjectTeacherModal = diferido(() => import('@/components/subject/AssignSubjectTeacherModal').then((m) => ({ default: m.AssignSubjectTeacherModal })), { sinEsqueleto: true });
 const EvaluationPlanSection = diferido(() => import('@/components/evaluation/EvaluationPlanSection'), { alto: 400 });
 const SubjectActivitiesTab = diferido(() => import('@/components/subject/SubjectActivitiesTab'), { alto: 300 });
 const SubjectObservationsTab = diferido(() => import('@/components/subject/SubjectObservationsTab'), { alto: 300 });
@@ -59,7 +58,6 @@ export default function SectionSubjectDashboard() {
     const router = useRouter();
     const [activeTab, setActiveTab] = useState('estudiantes');
     const [searchTerm, setSearchTerm] = useState('');
-    const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [selectedLapso, setSelectedLapso] = useState('1');
     const [selectedStudentForObs, setSelectedStudentForObs] = useState<any | null>(null);
     
@@ -311,7 +309,8 @@ export default function SectionSubjectDashboard() {
                         rotulo: 'Profesor',
                         nombre: teacher ? teacherName : null,
                         avatar: (teacher as any)?.avatar,
-                        alCambiar: yo?.role === 'ADMIN' ? () => setIsAssignModalOpen(true) : undefined,
+                        // El profesor se cambia en Profesores (Cristian, 18-oct-2026): ahí se ve su carga.
+                        alCambiar: yo?.role === 'ADMIN' ? () => router.push(teacher?.id ? `/dashboard/profesores/${encodeURIComponent(teacher.id)}` : '/dashboard/profesores') : undefined,
                     }}
                 >
                     {periods.length > 0 && <LapsoSelector periods={periods} value={lapsoId} onChange={setLapsoId} compact />}
@@ -635,15 +634,6 @@ export default function SectionSubjectDashboard() {
                 />
             )}
 
-            {isAssignModalOpen && classroomId && (
-                <AssignSubjectTeacherModal
-                    sectionId={classroomId}
-                    sectionName={sectionName}
-                    subjectSlug={subjectId}
-                    currentTeacherId={teacher?.id}
-                    onClose={() => setIsAssignModalOpen(false)}
-                />
-            )}
         </div>
     );
 }

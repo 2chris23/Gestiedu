@@ -15,6 +15,9 @@ import {
 import { authenticate, requireAdmin, requireTeacher } from '../middleware/auth.middleware';
 import { validateBody, validateParams, validateQuery } from '../middleware/validation.middleware';
 import validators from '../utils/validators';
+import { dondeSeDa, ponerEnSecciones } from '../services/secciones-de-la-materia.service';
+import { responderErrorClaro } from '../utils/error-claro';
+import { quienBorra } from '../utils/papelera';
 
 const subjectsRoutes: FastifyPluginAsync = async (fastify) => {
   // Esquemas para validación
@@ -184,6 +187,57 @@ const subjectsRoutes: FastifyPluginAsync = async (fastify) => {
     },
     preHandler: [authenticate, requireAdmin]
   }, deleteSubject);
+
+  // Dónde se da la materia (por año y sección): desde Materias, no desde cada
+  // sección (`services/secciones-de-la-materia.service.ts`, SECC-MAT-*).
+  const liceoDe = (r: any) => String(r.user?.instituteId ?? r.institute?.id ?? '');
+  fastify.get('/:id/secciones', {
+    schema: {
+      params: { type: 'object', required: ['id'], properties: { id: { type: 'string', minLength: 1, maxLength: 64 } } },
+      querystring: { type: 'object', required: ['academicYearId'], properties: { academicYearId: { type: 'string', minLength: 1, maxLength: 64 } } },
+    },
+    preHandler: [authenticate, requireAdmin],
+  }, async (request: any, reply) => {
+    try {
+      return reply.send({ success: true, data: await dondeSeDa(request.tenantPrisma, request.params.id, request.query.academicYearId) });
+    } catch (e) {
+      return responderErrorClaro(reply, e);
+    }
+  });
+  fastify.put('/:id/secciones', {
+    schema: {
+      params: { type: 'object', required: ['id'], properties: { id: { type: 'string', minLength: 1, maxLength: 64 } } },
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['academicYearId', 'poner', 'quitar'],
+        properties: {
+          academicYearId: { type: 'string', minLength: 1, maxLength: 64 },
+          poner: {
+            type: 'array',
+            maxItems: 200,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['classroomId', 'weeklyBlocks'],
+              properties: { classroomId: { type: 'string', minLength: 1, maxLength: 64 }, weeklyBlocks: { type: 'integer', minimum: 0, maximum: 40 } },
+            },
+          },
+          quitar: { type: 'array', maxItems: 200, items: { type: 'string', minLength: 1, maxLength: 64 } },
+        },
+      },
+    },
+    preHandler: [authenticate, requireAdmin],
+  }, async (request: any, reply) => {
+    try {
+      return reply.send({
+        success: true,
+        data: await ponerEnSecciones(request.tenantPrisma, liceoDe(request), request.params.id, request.body, quienBorra(request)),
+      });
+    } catch (e) {
+      return responderErrorClaro(reply, e);
+    }
+  });
 
   // Nueva ruta: Asignar materia a un grado completo
   fastify.post('/grade/:grade/assign', {

@@ -369,6 +369,34 @@ pestaña normal del navegador no se puede fijar. El manifiesto dice `portrait`.
 `navigator.share` ni baja un `blob:`; el complemento deja el archivo en la
 caché y abre el selector de Android. Una APK anterior dice «actualiza la app».
 
+## Profesores, y dónde se da cada materia (18-oct-2026)
+
+Pedido por Cristian: «no sé cuántas horas lleva el profesor y en qué secciones
+con qué materia». Cada cosa en su sitio:
+
+- **Profesores** (`/dashboard/profesores`, solo el admin, en el menú tras
+  Materias): cada uno con su barra de horas frente a **las de su cargo**
+  (`users.horasDelCargo`, que fija el admin; sin ellas, el máximo del liceo),
+  su promedio y sus clases; arriba, «N clases sin profesor». Su ficha: horas,
+  promedio, asistencia, sus clases por año (⋯: cambiar bloques, quitarle la
+  clase), por materia, y UN botón con lo suyo (horas del cargo, asignar clase,
+  horario, carga horaria, constancia, su ficha). `services/profesores.service.ts`,
+  PROF-01…08, PROF-UI-01.
+- **La carga es una sola cuenta** (`personal.service → cargaDeLosProfesores`,
+  `MAPA` §1e): el año activo y la hora de clase del turno de cada sección.
+  Antes la lista, el modal y el servidor contaban 45 min por bloque y sumaban
+  los años pasados; el modal decía «30–40 h» fijo.
+- **Dónde se da una materia se decide en Materias** («Dónde se da»: por año,
+  todas sus secciones de un toque, cada una desmarcable, con sus bloques;
+  `services/secciones-de-la-materia.service.ts`, SECC-MAT-01…05,
+  SECC-MAT-UI-01). La clase nace sin profesor. Quitarla con notas, actividades,
+  plan o apreciaciones: 409 `CLASE_CON_TRABAJO` y no se quita nada. Al crear
+  una materia se abre con esa hoja. **Una sección nueva recibe las materias de
+  su año** (las de sus hermanas), sin profesor.
+- **La sección ya no edita sus materias ni su profesor**: «Cambiar en
+  Materias», y tocar el profesor lleva a su ficha en Profesores. El profesor
+  se asigna en Profesores o en las filas de la materia (el mismo modal).
+
 ## Los grupos estables (octubre 2026, en curso)
 
 Pedido por Cristian: a una hora común de la semana cada alumno va a SU grupo
