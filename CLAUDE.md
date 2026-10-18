@@ -336,6 +336,17 @@ junto al lapso; en el teléfono, una línea gris bajo el año (la foto le quitab
 el ancho al título). El admin lo toca para cambiarlo. El carril del horario
 deja aire en sus orillas: recortaba el filo de la primera tarjeta.
 
+**Materias, con las mismas piezas** (18-oct-2026). El catálogo: «Materias» con
+cuántas, el año (`components/subject/ElegirCiclo.tsx`) y «+»; cada materia una
+fila con su círculo de color (`CirculoDeMateria`) y un ⋯ que abre Editar /
+Eliminar; todas de una vez (`limit` 100: con 20, la 21.ª se perdía en otra
+página). La materia por dentro: la cabecera de la sección, tres cifras, las
+secciones por año en filas (el profesor sin correo, h/sem, el promedio; tocar
+abre la clase) y el **equipo docente con el promedio y la asistencia de cada
+profesor en la materia** (`MAPA` §1d). Sin el número de estudiantes. **Abría
+lento** (1,75 s): calculaba el promedio alumno por alumno; ahora en bloque
+(`promediosDeLaSeccion`), 0,26 s y los mismos números en las 21 materias.
+
 **El plan de evaluación en la pantalla no es el papel** (`PlanEnFilas`): arriba,
 los puntos repartidos y cuatro accesos (Ver todo · Descargar · Copiar ·
 Editar); debajo, cada semana es una fila como los Movimientos y al tocarla se
@@ -1060,7 +1071,9 @@ la primera vez, Claro): fondo negro, cajas #121212.
   como letra se aclara, como fondo de un globo sigue oscuro. En claro son los
   colores de Tailwind de siempre, **salvo el Azul**: su `indigo-*` es la
   familia del azul de la cabecera (#1565C0 el botón, #0D47A1 la letra). El
-  índigo de Tailwind salía morado (Cristian, 18-oct-2026).
+  índigo de Tailwind salía morado (Cristian, 18-oct-2026). Y los tokens con
+  nombre (`bg-indigo`, `primary`, `accent`: el `Button` de shadcn) también
+  salen de la paleta (`indigoConNombre`); en globals.css eran morado fijo.
 - **Lo escrito a mano del diseño** va con nombre: `cabecera-*` (fondo, texto,
   suave, celeste, sobreceleste, claro, tinta), `texto-*`, `superficie-*`,
   `borde-*`. Un `#0D47A1` o un `text-white` sobre la cabecera NO cambia con el

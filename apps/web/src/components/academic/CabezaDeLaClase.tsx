@@ -35,25 +35,29 @@ export function CabezaDeLaClase({
     children?: React.ReactNode;
 }) {
     return (
-        <header className="flex items-center gap-2">
-            <Link
-                href={volverA}
-                aria-label={rotuloVolver}
-                className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-700 transition-colors hover:bg-gray-100"
-            >
-                <ChevronLeft className="h-6 w-6" aria-hidden />
-            </Link>
-            <div className="min-w-0 flex-1">
-                <h1 className="truncate text-xl font-bold leading-tight text-gray-900 sm:text-2xl">{titulo}</h1>
-                {subtitulo && <p className="truncate text-xs font-medium text-gray-600 sm:text-sm">{subtitulo}</p>}
-                {profesor && <ProfesorDebajo {...profesor} />}
-            </div>
-            {(children || profesor) && (
-                <div className="flex shrink-0 items-center gap-2">
-                    {profesor && <ProfesorEnLaCabeza {...profesor} />}
-                    {children}
+        <header>
+            <div className="flex items-center gap-2">
+                <Link
+                    href={volverA}
+                    aria-label={rotuloVolver}
+                    className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-700 transition-colors hover:bg-gray-100"
+                >
+                    <ChevronLeft className="h-6 w-6" aria-hidden />
+                </Link>
+                <div className="min-w-0 flex-1">
+                    <h1 className="truncate text-seccion font-bold text-gray-900 sm:text-pantalla">{titulo}</h1>
+                    {subtitulo && <p className="truncate text-xs font-medium text-gray-600 sm:text-sm">{subtitulo}</p>}
                 </div>
-            )}
+                {(children || profesor) && (
+                    <div className="flex shrink-0 items-center gap-2">
+                        {profesor && <ProfesorEnLaCabeza {...profesor} />}
+                        {children}
+                    </div>
+                )}
+            </div>
+            {/* En el teléfono, el profesor va en una línea gris debajo, alineada con
+                el título y a todo el ancho: junto al lapso no cabía entero. */}
+            {profesor && <ProfesorDebajo {...profesor} />}
         </header>
     );
 }
@@ -123,13 +127,13 @@ function ProfesorDebajo({ rotulo, nombre, alCambiar }: Profesor) {
             aria-label={`${nombre ? 'Cambiar' : 'Asignar'} ${rotulo.toLowerCase()} (${nombre ?? 'sin asignar'})`}
             // El alto de 44 px para el dedo, sin empujar nada: el relleno se
             // come con el margen negativo.
-            className="-my-[14px] flex max-w-full items-center gap-1 py-[14px] text-left text-xs sm:hidden"
+            className="-mb-[14px] -mt-[10px] ml-11 flex max-w-[calc(100%-2.75rem)] items-center gap-1 pb-[14px] pt-[10px] text-left text-xs sm:hidden"
         >
-            <span className="truncate">{texto}</span>
+            <span className="min-w-0 truncate">{texto}</span>
             <Pencil className="h-3 w-3 shrink-0 text-gray-500" aria-hidden />
         </button>
     ) : (
-        <p className="truncate text-xs sm:hidden">{texto}</p>
+        <p className="ml-11 truncate text-xs sm:hidden">{texto}</p>
     );
 }
 

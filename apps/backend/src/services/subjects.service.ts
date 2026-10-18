@@ -1,6 +1,5 @@
 import { CreateSubjectInput, UpdateSubjectInput } from '../utils/validators';
-import { subjectSectionAverage, studentsWithNoteInSubject } from './aggregation.service';
-import { gradesService } from './grades.service';
+import { subjectSectionAverage, studentsWithNoteInSubject, promediosDeLaSeccion } from './aggregation.service';
 import * as closeCycleService from './promotion/close-cycle.service';
 import { findTeacherAssignmentConflicts, ScheduleConflictError } from './schedule-conflicts.service';
 import { borrarGuardandoCopia, QuienBorra } from '../utils/papelera';
@@ -282,6 +281,8 @@ export class SubjectsService {
         });
 
         let allSubjectScores: number[] = [];
+        // Las notas de cada sección: con ellas sale el promedio de cada profesor.
+        const notasPorSeccion = new Map<string, number[]>();
         let totalSubjectRisk = 0;
         let totalSubjectCapacity = 0;
 
@@ -325,14 +326,17 @@ export class SubjectsService {
                 const secScores: number[] = [];
 
                 try {
-                    const withData = await studentsWithNoteInSubject(prisma, classroomId, subject.id, periodId);
+                    // EN BLOQUE (Cristian, 18-oct-2026: «tarda demasiado» al abrir una
+                    // materia del catálogo). Antes, alumno por alumno: con 20
+                    // secciones, ~600 cálculos de unas 30 consultas cada uno. Las
+                    // mismas reglas, un puñado de consultas por sección
+                    // (`bulk-averages-parity.test.ts` vigila que dé lo mismo).
+                    const [withData, promedios] = await Promise.all([
+                        studentsWithNoteInSubject(prisma, classroomId, subject.id, periodId),
+                        promediosDeLaSeccion(prisma, classroomId, periodId, [subject.id]),
+                    ]);
                     for (const studentId of withData) {
-                        const stuAvg = await gradesService.calculateWeightedSubjectAverage(
-                            prisma,
-                            studentId,
-                            subject.id,
-                            periodId
-                        );
+                        const stuAvg = promedios.get(studentId)?.get(subject.id) ?? 0;
                         if (stuAvg > 0) {
                             secScores.push(stuAvg);
                             allSubjectScores.push(stuAvg);
@@ -349,6 +353,7 @@ export class SubjectsService {
                         }
                     }
 
+                    notasPorSeccion.set(classroomId, secScores);
                     if (secScores.length > 0) {
                         secMin = Math.min(...secScores);
                         secMax = Math.max(...secScores);
@@ -463,6 +468,25 @@ export class SubjectsService {
             }
         });
 
+        // EL PROFESOR EN ESTA MATERIA (Cristian, 18-oct-2026): su promedio es
+        // el de todos los alumnos con nota de las secciones donde la da (la
+        // misma regla que el promedio de la materia: quien no tiene nota no
+        // cuenta), y su asistencia, la de esas secciones (presente o tarde
+        // sobre lo pasado). MAPA_DE_CALCULOS §1d.
+        subject.classroomSubjects.forEach((cs: any) => {
+            if (!cs.teacher) return;
+            const t = teachersMap.get(cs.teacher.id);
+            t._notas = (t._notas || []).concat(notasPorSeccion.get(cs.classroom.id) || []);
+            const a = attMap.get(cs.classroom.id);
+            t._asistio = (t._asistio || 0) + (a?.attended || 0);
+            t._pasadas = (t._pasadas || 0) + (a?.total || 0);
+        });
+        const teachers = Array.from(teachersMap.values()).map(({ _notas = [], _asistio = 0, _pasadas = 0, ...t }: any) => ({
+            ...t,
+            average: _notas.length > 0 ? Math.round((_notas.reduce((x: number, y: number) => x + y, 0) / _notas.length) * 10) / 10 : 0,
+            attendance: _pasadas > 0 ? Math.round((_asistio / _pasadas) * 100) : null,
+        }));
+
         const { classroomSubjects, ...subjectData } = subject;
 
         return {
@@ -471,7 +495,7 @@ export class SubjectsService {
             stats,
             gradeStats,
             sections,
-            teachers: Array.from(teachersMap.values()),
+            teachers,
             sectionCount: sections.length,
             teacherCount: teachersMap.size,
             totalStudents: totalEnrolledStudents

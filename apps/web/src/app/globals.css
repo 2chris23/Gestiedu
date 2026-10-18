@@ -60,11 +60,8 @@
     --tinta-tenue: 220 12% 44%;
 
     /* ── 1. ÍNDIGO — lo que se pulsa ──────────────────────────────────── */
-    --indigo-claro: 243 100% 97%;
-    --indigo-suave: 243 90% 92%;
-    --indigo: 243 75% 59%;
-    --indigo-hondo: 243 68% 48%;
-    --indigo-encima: 0 0% 100%;
+    /* --indigo, -hondo, -claro, -suave y -encima los pone el color de la app
+       (paleta-de-colores.js, `indigoConNombre`): aquí eran morado fijo. */
 
     /* ── 2. MENTA — va bien ───────────────────────────────────────────── */
     --menta-claro: 160 70% 95%;
@@ -189,11 +186,6 @@
       --tinta-suave: 0 0% 70%;
       --tinta-tenue: 0 0% 62%;
 
-      --indigo-claro: 243 45% 18%;
-      --indigo-suave: 243 45% 26%;
-      --indigo: 243 90% 72%;
-      --indigo-hondo: 243 95% 80%;
-      --indigo-encima: 243 60% 10%;
 
       --menta-claro: 162 45% 13%;
       --menta-suave: 162 40% 22%;

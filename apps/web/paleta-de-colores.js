@@ -60,6 +60,22 @@ const mezcla = (a, b, t) => {
     const y = rgb(b);
     return aHex(x.map((v, i) => v * t + y[i] * (1 - t)));
 };
+/** «h s% l%», la forma de las variables con nombre de globals.css (`hsl(var(--indigo))`). */
+const aHsl = (hex) => {
+    const [r, g, b] = rgb(hex).map((v) => v / 255);
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    let h = 0;
+    let s = 0;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+        h *= 60;
+    }
+    return `${Math.round(h)} ${Math.round(s * 1000) / 10}% ${Math.round(l * 1000) / 10}%`;
+};
 const luz = (hex) => {
     const lin = (c) => {
         const x = c / 255;
@@ -168,6 +184,34 @@ function variablesDelAcento(hex) {
     };
 }
 
+/**
+ * EL ÍNDIGO CON NOMBRE TAMBIÉN ES EL COLOR DE LA APP
+ *
+ * `bg-indigo`, `primary`, `accent` y la primera gráfica (el `Button` de
+ * shadcn, «Nueva Materia»…) leían `--indigo`, que vivía fijo en globals.css
+ * con el tono 243: morado con cualquier color elegido (Cristian, 18-oct-2026).
+ * Ahora salen de la escala del color, como `indigo-600`.
+ */
+function indigoConNombre(escala, oscuro = false) {
+    if (!oscuro) {
+        return {
+            '--indigo': aHsl(escala['600']),
+            '--indigo-hondo': aHsl(escala['700']),
+            '--indigo-claro': aHsl(escala['50']),
+            '--indigo-suave': aHsl(escala['100']),
+            '--indigo-encima': aHsl('#FFFFFF'),
+        };
+    }
+    // En oscuro, el botón claro con la letra honda, como estaba.
+    return {
+        '--indigo': aHsl(escala['400']),
+        '--indigo-hondo': aHsl(escala['300']),
+        '--indigo-claro': aHsl(mezcla(escala['500'], OSCURO.caja, 0.18)),
+        '--indigo-suave': aHsl(mezcla(escala['500'], OSCURO.caja, 0.28)),
+        '--indigo-encima': aHsl(escala['950']),
+    };
+}
+
 /** Las variables de la cabecera; en canales («r g b») para el `/opacidad` de Tailwind. */
 function variablesDeLaCabecera(c) {
     const v = {};
@@ -272,8 +316,8 @@ function cssDeLaPaleta() {
     const porAcento = {};
     for (const [id, a] of Object.entries(ACENTOS)) {
         porAcento[id] = {
-            claro: { ...escalaComoVariables('indigo', a.escala), ...variablesDeLaCabecera(a.cabecera), ...variablesDelAcento(a.acento) },
-            oscuro: { ...escalaComoVariables('indigo', a.escala, deColorOscuro(a.escala)), ...variablesDeLaCabeceraOscura(a) },
+            claro: { ...escalaComoVariables('indigo', a.escala), ...indigoConNombre(a.escala), ...variablesDeLaCabecera(a.cabecera), ...variablesDelAcento(a.acento) },
+            oscuro: { ...escalaComoVariables('indigo', a.escala, deColorOscuro(a.escala)), ...indigoConNombre(a.escala, true), ...variablesDeLaCabeceraOscura(a) },
         };
     }
 

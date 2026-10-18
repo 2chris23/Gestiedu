@@ -196,8 +196,8 @@
       "/institutes/current/config",
       "/pae/config",
       "/payments/settings",
-      "/subjects?academicYearId={anio}&grade=&limit=20&page=1&search=",
-      "/subjects?grade=&limit=20&page=1&search="
+      "/subjects?academicYearId={anio}&grade=&limit=100&page=1&search=",
+      "/subjects?grade=&limit=100&page=1&search="
     ],
     "ADMIN:/dashboard/materias/{ciclo}/{materiaSlug}": [
       "/academic-years",
@@ -509,8 +509,8 @@
       "/classrooms/mis-secciones-guia",
       "/institutes/current/config",
       "/payments/settings",
-      "/subjects?academicYearId={anio}&grade=&limit=20&page=1&search=",
-      "/subjects?grade=&limit=20&page=1&search="
+      "/subjects?academicYearId={anio}&grade=&limit=100&page=1&search=",
+      "/subjects?grade=&limit=100&page=1&search="
     ],
     "TEACHER:/dashboard/mis-pagos": [
       "/avisos",

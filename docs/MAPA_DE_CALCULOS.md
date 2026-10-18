@@ -90,6 +90,18 @@ lapso que cursó allá, emparejada con una materia de aquí.
 Los años anteriores del archivo van a la certificación como «de otro plantel»
 (`calificaciones_externas`). Pruebas: TRAS-05…07.
 
+### 1d. La materia en el catálogo: cada sección y cada profesor
+
+**2026-10-18** (`subjectsService.getSubjectById`, `GET /subjects/:id`). La
+pantalla de una materia (Materias → una) enseña su promedio por sección y por
+profesor.
+
+| Qué | Regla |
+| :--- | :--- |
+| Promedio de una sección | La media del **nivel 2** de sus alumnos **con nota** en la materia (quien no tiene, no cuenta). Ahora en bloque (`promediosDeLaSeccion`); antes, alumno por alumno: el mismo resultado, medido materia por materia y lapso por lapso (21 materias, 0 diferencias), de ~300 a ~80 ms. |
+| Promedio del profesor | La media del nivel 2 de **todos** los alumnos con nota de las secciones donde la da (no la media de las secciones: una sección de 35 pesa más que una de 12). |
+| Asistencia del profesor | Presente o tarde sobre lo pasado, en la asistencia diaria de esas secciones (la misma cuenta que la de cada sección). |
+
 ---
 
 ## 2. Plan de Evaluación y Ponderaciones

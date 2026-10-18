@@ -1,24 +1,19 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import { useState, useMemo, useEffect } from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import {
-    ChevronLeft, Plus, Search, Edit, Trash2, BookOpen,
-    Filter, MoreVertical, X, ArrowUpDown, ArrowUp, ArrowDown, Calendar
-} from 'lucide-react';
 import Link from 'next/link';
+import { Calendar, ChevronRight, MoreVertical, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { useSubjects, useCreateSubject, useUpdateSubject, useDeleteSubject } from '@/hooks/useSubjects';
-import { useSubjectPalette } from '@/hooks/useInstitute';
 import { useAcademicYears } from '@/hooks/useAcademicYears';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useConfirm } from '@/hooks/useConfirm';
 import { CreateSubjectData, UpdateSubjectData, Subject } from '@/services/subjects.service';
-import { Pagination } from '@/components/ui';
-import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
 import { PaletteColorSelector } from '@/components/ui/PaletteColorSelector';
-import { Lista } from '@/components/ui/lista';
-import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import { ElegirCiclo } from '@/components/subject/ElegirCiclo';
+import { CirculoDeMateria } from '@/components/subject/CirculoDeMateria';
+import { cn } from '@/lib/utils';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
 import MateriasDelAlumno from '@/components/subject/MateriasDelAlumno';
 import CargandoMaterias from './loading';
@@ -37,18 +32,22 @@ export default function MateriasPage() {
     return <AdminMateriasPage />;
 }
 
+/**
+ * EL CATÁLOGO DE MATERIAS, COMO LOS MOVIMIENTOS
+ *
+ * Rediseño pedido por Cristian (18-oct-2026), con el estilo de Finanzas y de
+ * la sección: sin miga de pan ni explicación arriba; el título con el año en
+ * gris, el año y «+» a la derecha; un buscador redondo y cada materia una
+ * fila (su color, el nombre, cuántas secciones y profesores). Editar y
+ * eliminar van juntos en UN botón que abre su ventana.
+ */
 function AdminMateriasPage() {
-    const [page, setPage] = useState(1);
-    const [limit] = useState(20);
     const [searchTerm, setSearchTerm] = useState('');
-    const [gradeFilter, setGradeFilter] = useState<string>('');
     const [selectedYearId, setSelectedYearId] = useState<string>('');
-    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-    const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
-    const [sortField, setSortField] = useState<'name' | 'sectionCount' | 'teacherCount' | null>(null);
-    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+    const [creando, setCreando] = useState(false);
+    const [editando, setEditando] = useState<Subject | null>(null);
+    const [conOpciones, setConOpciones] = useState<Subject | null>(null);
+    const confirmar = useConfirm();
 
     const { data: academicYears, isLoading: isLoadingYears } = useAcademicYears();
     const debouncedSearch = useDebouncedValue(searchTerm, 300);
@@ -56,85 +55,37 @@ function AdminMateriasPage() {
     // Predeterminado: ciclo activo
     useEffect(() => {
         if (academicYears && academicYears.length > 0 && !selectedYearId) {
-            const active = academicYears.find(y => y.status === 'ACTIVE');
+            const active = academicYears.find((y) => y.status === 'ACTIVE');
             setSelectedYearId(active?.id || academicYears[0].id);
         }
     }, [academicYears, selectedYearId]);
 
+    // Un liceo tiene unas veinte materias: todas de una vez (con 20 por página,
+    // la 21.ª se iba a una segunda página que nadie veía).
     const { data: subjectsData, isLoading } = useSubjects({
-        page,
-        limit,
+        page: 1,
+        limit: 100,
         search: debouncedSearch,
-        grade: gradeFilter,
-        academicYearId: selectedYearId === 'all' ? undefined : (selectedYearId || undefined)
+        grade: '',
+        academicYearId: selectedYearId || undefined,
     });
     const createMutation = useCreateSubject();
     const updateMutation = useUpdateSubject();
     const deleteMutation = useDeleteSubject();
 
     const subjects = useMemo(() => subjectsData?.subjects ?? [], [subjectsData]);
-
-    // Obtener nombre del ciclo seleccionado para URLs legibles
-    const selectedYear = academicYears?.find(y => y.id === selectedYearId);
+    const selectedYear = academicYears?.find((y) => y.id === selectedYearId);
     const selectedCycleName = selectedYear?.name || '';
-    const hasAcademicYears = !isLoadingYears && !!academicYears && academicYears.length > 0;
+    const sinCiclos = !isLoadingYears && (!academicYears || academicYears.length === 0);
 
-    // Función de ordenamiento
-    const handleSort = (field: 'name' | 'sectionCount' | 'teacherCount') => {
-        if (sortField === field) {
-            setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-        } else {
-            setSortField(field);
-            setSortDirection('asc');
-        }
-    };
-
-    // Ordenar materias
-    const sortedSubjects = useMemo(() => {
-        if (!sortField) return subjects;
-
-        return [...subjects].sort((a, b) => {
-            const aValue = a[sortField];
-            const bValue = b[sortField];
-
-            if (typeof aValue === 'string' && typeof bValue === 'string') {
-                return sortDirection === 'asc'
-                    ? aValue.localeCompare(bValue)
-                    : bValue.localeCompare(aValue);
-            }
-
-            if (typeof aValue === 'number' && typeof bValue === 'number') {
-                return sortDirection === 'asc'
-                    ? aValue - bValue
-                    : bValue - aValue;
-            }
-
-            return 0;
+    const borrar = async (m: Subject) => {
+        setConOpciones(null);
+        const si = await confirmar({
+            title: `¿Eliminar ${m.name}?`,
+            description: 'Se lleva sus notas, su plan y sus horarios en todas las secciones (queda una copia en la papelera).',
+            confirmLabel: 'Eliminar',
         });
-    }, [subjects, sortField, sortDirection]);
-    const pagination = subjectsData ? {
-        currentPage: subjectsData.page,
-        totalPages: subjectsData.totalPages,
-        total: subjectsData.total
-    } : null;
-
-    const handleCreateSubject = async (data: CreateSubjectData) => {
-        await createMutation.mutateAsync(data);
-        setIsCreateModalOpen(false);
-    };
-
-    const handleUpdateSubject = async (data: UpdateSubjectData) => {
-        if (!selectedSubject) return;
-        await updateMutation.mutateAsync({ id: selectedSubject.id, data });
-        setIsEditModalOpen(false);
-        setSelectedSubject(null);
-    };
-
-    const handleDeleteSubject = async () => {
-        if (!selectedSubject) return;
-        await deleteMutation.mutateAsync(selectedSubject.id);
-        setIsDeleteModalOpen(false);
-        setSelectedSubject(null);
+        if (si) await deleteMutation.mutateAsync(m.id);
     };
 
     if (isLoading && !subjectsData) {
@@ -142,411 +93,293 @@ function AdminMateriasPage() {
     }
 
     return (
-        <div className="space-y-6">
-            <EncabezadoDePantalla
-                migas={
-                    <nav aria-label="Ruta" className="flex items-center gap-2 text-sm text-gray-600">
-                        {/* 44 px para el dedo sin mover la línea: el margen negativo
-                            devuelve lo que añade el relleno. */}
-                        <Link href="/dashboard" className="-my-3 inline-flex min-h-11 min-w-11 items-center hover:text-gray-900">
-                            Inicio
-                        </Link>
-                        <span aria-hidden>/</span>
-                        <span className="font-medium text-gray-900">Materias</span>
-                    </nav>
-                }
-                titulo="Catálogo de Materias"
-                descripcion="Gestiona el catálogo global de materias del sistema"
-                acciones={
-                    <Button onClick={() => setIsCreateModalOpen(true)}>
-                        <Plus aria-hidden />
-                        Nueva Materia
-                    </Button>
-                }
-            />
-
-            {/* No academic years state */}
-            {!isLoadingYears && (!academicYears || academicYears.length === 0) && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-8 text-center">
-                    <Calendar className="w-12 h-12 text-amber-500 mx-auto mb-4" />
-                    <h2 className="text-lg font-semibold text-gray-900 mb-2">
-                        No hay ciclos académicos configurados
-                    </h2>
-                    <p className="text-gray-600 mb-4 max-w-md mx-auto">
-                        Para asignar materias a secciones primero debes crear un ciclo académico (año escolar).
+        <div className="space-y-4">
+            <header className="flex items-center gap-2">
+                <div className="min-w-0 flex-1" data-recorrido="pantalla">
+                    <h1 className="truncate text-seccion font-bold text-gray-900 sm:text-pantalla">Materias</h1>
+                    <p className="truncate text-xs font-medium text-gray-600 sm:text-sm">
+                        {/* El año ya lo dice el selector de al lado. */}
+                        {subjects.length} {subjects.length === 1 ? 'materia' : 'materias'}
                     </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2" data-recorrido="acciones">
+                    <ElegirCiclo ciclos={academicYears ?? []} valor={selectedYearId} alCambiar={setSelectedYearId} />
+                    <button
+                        type="button"
+                        onClick={() => setCreando(true)}
+                        aria-label="Nueva Materia"
+                        title="Nueva materia"
+                        className="flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-full bg-indigo-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 sm:px-4"
+                    >
+                        <Plus className="h-5 w-5" aria-hidden />
+                        <span className="hidden sm:inline">Nueva materia</span>
+                    </button>
+                </div>
+            </header>
+
+            {sinCiclos && (
+                <div className="rounded-[24px] bg-white p-6 text-center ring-1 ring-gray-200">
+                    <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-700">
+                        <Calendar className="h-6 w-6" aria-hidden />
+                    </span>
+                    <p className="mt-3 font-semibold text-gray-900">Todavía no hay un año escolar</p>
                     <Link
                         href="/dashboard/academico"
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors"
+                        className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-indigo-600 px-5 text-sm font-semibold text-white hover:bg-indigo-700"
                     >
-                        <Plus className="w-4 h-4" />
-                        Crear Ciclo Académico
+                        <Plus className="h-4 w-4" aria-hidden /> Crear el año escolar
                     </Link>
                 </div>
             )}
 
-            {/* Filters */}
-            {hasAcademicYears && (
-            <>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Search Bar */}
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            {!sinCiclos && (
+                <>
+                    <label className="relative block">
+                        <span className="sr-only">Buscar materia</span>
+                        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500" aria-hidden />
                         <input
-                            type="text"
+                            type="search"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            placeholder="Buscar por nombre o código..."
-                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            placeholder="Buscar materia"
+                            className="!h-11 w-full !rounded-full !border-gray-200 !bg-white pl-11 pr-4 text-sm text-gray-900 placeholder:text-gray-500 focus:!border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         />
-                    </div>
+                    </label>
 
-                    {/* Academic Year Filter */}
-                    <div className="relative">
-                        <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                        <Select value={selectedYearId || undefined} onValueChange={setSelectedYearId}>
-                            <SelectTrigger className="w-full pl-10">
-                                <SelectValue placeholder="Seleccionar año" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {academicYears?.map((year) => (
-                                    <SelectItem key={year.id} value={year.id}>
-                                        {year.name} {year.status === 'ACTIVE' ? '(Actual)' : ''}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                </div>
-            </div>
-
-            {/* Table */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-4 sm:p-5">
-                    <TablaAdaptable<(typeof sortedSubjects)[number]>
-                        datos={sortedSubjects}
-                        cargando={isLoading}
-                        clave={(m) => m.id}
-                        orden={sortField ? { por: sortField, hacia: sortDirection } : null}
-                        alOrdenar={(por) => handleSort(por as 'name' | 'sectionCount' | 'teacherCount')}
-                        vacio={<p className="text-cuerpo text-tinta-suave">No hay materias registradas</p>}
-                        columnas={[
-                            {
-                                id: 'name',
-                                titulo: 'Materia',
-                                principal: true,
-                                ordenable: true,
-                                celda: (m) => (
-                                    <Link
-                                        href={`/dashboard/materias/${selectedCycleName}/${m.slug}`}
-                                        className="group flex items-center gap-3"
-                                    >
-                                        <span
-                                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-bold text-white"
-                                            style={{ backgroundColor: m.color }}
+                    {subjects.length === 0 ? (
+                        <p className="rounded-[24px] bg-white px-4 py-8 text-center text-sm text-gray-600 ring-1 ring-gray-200">
+                            {debouncedSearch ? 'Ninguna materia se llama así.' : 'No hay materias todavía.'}
+                        </p>
+                    ) : (
+                        <ul aria-label="Materias" className="divide-y divide-gray-100 overflow-hidden rounded-[24px] bg-white ring-1 ring-gray-200">
+                            {subjects.map((m) => {
+                                const secciones = m.sectionCount || 0;
+                                const profesores = m.teacherCount || 0;
+                                return (
+                                    <li key={m.id} className="flex items-center">
+                                        <Link
+                                            href={`/dashboard/materias/${selectedCycleName}/${m.slug}`}
+                                            className="flex min-h-[64px] min-w-0 flex-1 items-center gap-3 px-4 py-2.5 transition-colors hover:bg-gray-50"
                                         >
-                                            {m.name.charAt(0)}
-                                        </span>
-                                        {/* El nombre en dos líneas si hace falta y «Apreciación» debajo: en una
-                                            sola línea no dejaban encoger la tabla, y en una tableta se salía de
-                                            ancho (Editar y Eliminar quedaban fuera). */}
-                                        <span className="flex min-w-0 flex-col items-start gap-1">
-                                            <span className="break-words font-medium text-gray-900 group-hover:text-indigo-600">{m.name}</span>
-                                            {m.evaluacion === 'CUALITATIVA' && (
-                                                <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800">Apreciación</span>
-                                            )}
-                                        </span>
-                                    </Link>
-                                ),
-                            },
-                            {
-                                id: 'sectionCount',
-                                titulo: 'Secciones',
-                                ordenable: true,
-                                alinear: 'derecha',
-                                celda: (m) => <span className="text-sm text-gray-900">{m.sectionCount || 0}</span>,
-                            },
-                            {
-                                id: 'teacherCount',
-                                titulo: 'Profesores',
-                                ordenable: true,
-                                alinear: 'derecha',
-                                celda: (m) => <span className="text-sm text-gray-900">{m.teacherCount || 0}</span>,
-                            },
-                            {
-                                id: 'acciones',
-                                titulo: 'Acciones',
-                                acciones: true,
-                                alinear: 'derecha',
-                                celda: (m) => (
-                                    <span className="flex items-center justify-end gap-2">
+                                            <CirculoDeMateria nombre={m.name} color={m.color} />
+                                            <span className="min-w-0 flex-1">
+                                                <span className="flex items-center gap-2">
+                                                    <span className="truncate text-[15px] font-medium text-gray-900">{m.name}</span>
+                                                    {m.evaluacion === 'CUALITATIVA' && (
+                                                        <span className="shrink-0 rounded-full bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800">Apreciación</span>
+                                                    )}
+                                                </span>
+                                                <span className="block truncate text-sm text-gray-600">
+                                                    {secciones} {secciones === 1 ? 'sección' : 'secciones'} · {profesores} {profesores === 1 ? 'profesor' : 'profesores'}
+                                                </span>
+                                            </span>
+                                            <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" aria-hidden />
+                                        </Link>
                                         <button
                                             type="button"
-                                            onClick={() => {
-                                                setSelectedSubject(m);
-                                                setIsEditModalOpen(true);
-                                            }}
-                                            title="Editar materia"
-                                            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                                            onClick={() => setConOpciones(m)}
+                                            aria-label={`Opciones de ${m.name}`}
+                                            className="mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
                                         >
-                                            <Edit className="h-4 w-4" />
-                                            <span className="sr-only">Editar</span>
+                                            <MoreVertical className="h-5 w-5" aria-hidden />
                                         </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setSelectedSubject(m);
-                                                setIsDeleteModalOpen(true);
-                                            }}
-                                            title="Eliminar materia"
-                                            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                            <span className="sr-only">Eliminar</span>
-                                        </button>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
+                </>
+            )}
+
+            {/* Editar y eliminar: un botón, una ventana. */}
+            {conOpciones && (
+                <Sheet open onOpenChange={(v) => !v && setConOpciones(null)}>
+                    <SheetContent
+                        side="bottom"
+                        onOpenAutoFocus={(e) => e.preventDefault()}
+                        className="zona-segura-abajo flex max-h-[90dvh] flex-col rounded-t-[28px] bg-gray-50 px-4 pb-4 pt-6 sm:mx-auto sm:max-w-lg"
+                    >
+                        <div className="flex items-center gap-3 pr-12">
+                            <CirculoDeMateria nombre={conOpciones.name} color={conOpciones.color} />
+                            <SheetTitle className="truncate text-lg font-bold text-gray-900">{conOpciones.name}</SheetTitle>
+                        </div>
+                        <SheetDescription className="sr-only">Editar o eliminar la materia</SheetDescription>
+                        <ul className="mt-4 divide-y divide-gray-100 overflow-hidden rounded-[22px] bg-white ring-1 ring-gray-200">
+                            <li>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setEditando(conOpciones);
+                                        setConOpciones(null);
+                                    }}
+                                    className="flex min-h-[56px] w-full items-center gap-3 px-4 text-left transition-colors hover:bg-gray-50"
+                                >
+                                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50 text-indigo-700">
+                                        <Pencil className="h-4 w-4" aria-hidden />
                                     </span>
-                                ),
-                            },
-                        ]}
-                    />
-                </div>
-
-                {pagination && pagination.totalPages > 1 && (
-                    <div className="px-6 py-4 border-t border-gray-200">
-                        <Pagination
-                            currentPage={pagination.currentPage}
-                            totalPages={pagination.totalPages}
-                            onPageChange={setPage}
-                        />
-                    </div>
-                )}
-            </div>
-            </>
+                                    <span className="text-[15px] font-medium text-gray-900">Editar materia</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button
+                                    type="button"
+                                    onClick={() => borrar(conOpciones)}
+                                    className="flex min-h-[56px] w-full items-center gap-3 px-4 text-left transition-colors hover:bg-red-50"
+                                >
+                                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-700">
+                                        <Trash2 className="h-4 w-4" aria-hidden />
+                                    </span>
+                                    <span className="text-[15px] font-medium text-red-700">Eliminar materia</span>
+                                </button>
+                            </li>
+                        </ul>
+                    </SheetContent>
+                </Sheet>
             )}
 
-            {/* Create Modal */}
-            {isCreateModalOpen && (
-                <SubjectFormModal
-                    isOpen={isCreateModalOpen}
-                    onClose={() => setIsCreateModalOpen(false)}
-                    onSubmit={handleCreateSubject}
-                    title="Nueva Materia"
+            {creando && (
+                <VentanaDeMateria
+                    titulo="Nueva Materia"
+                    alCerrar={() => setCreando(false)}
+                    alGuardar={async (d) => {
+                        await createMutation.mutateAsync(d);
+                        setCreando(false);
+                    }}
                 />
             )}
 
-            {/* Edit Modal */}
-            {isEditModalOpen && selectedSubject && (
-                <SubjectFormModal
-                    isOpen={isEditModalOpen}
-                    onClose={() => {
-                        setIsEditModalOpen(false);
-                        setSelectedSubject(null);
+            {editando && (
+                <VentanaDeMateria
+                    titulo="Editar Materia"
+                    inicial={editando}
+                    alCerrar={() => setEditando(null)}
+                    alGuardar={async (d: UpdateSubjectData) => {
+                        await updateMutation.mutateAsync({ id: editando.id, data: d });
+                        setEditando(null);
                     }}
-                    onSubmit={handleUpdateSubject}
-                    title="Editar Materia"
-                    initialData={selectedSubject}
-                />
-            )}
-
-            {/* Delete Modal */}
-            {isDeleteModalOpen && selectedSubject && (
-                <DeleteConfirmModal
-                    isOpen={isDeleteModalOpen}
-                    onClose={() => {
-                        setIsDeleteModalOpen(false);
-                        setSelectedSubject(null);
-                    }}
-                    onConfirm={handleDeleteSubject}
-                    subjectName={selectedSubject.name}
-                    isLoading={deleteMutation.isPending}
                 />
             )}
         </div>
     );
 }
 
-// Subject Form Modal Component
-function SubjectFormModal({
-    isOpen,
-    onClose,
-    onSubmit,
-    title,
-    initialData,
+/**
+ * CREAR O EDITAR UNA MATERIA
+ *
+ * Como el editor de instrumentos: fondo gris claro, cajas blancas, el nombre,
+ * el color y cómo se evalúa (dos opciones en una barra, sin explicación
+ * larga) y abajo, fijos, «Cancelar» y «Guardar».
+ */
+function VentanaDeMateria({
+    titulo,
+    inicial,
+    alCerrar,
+    alGuardar,
 }: {
-    isOpen: boolean;
-    onClose: () => void;
-    onSubmit: (data: CreateSubjectData) => Promise<void>;
-    title: string;
-    initialData?: Subject;
+    titulo: string;
+    inicial?: Subject;
+    alCerrar: () => void;
+    alGuardar: (d: CreateSubjectData) => Promise<void>;
 }) {
-    const [formData, setFormData] = useState<CreateSubjectData>({
-        name: initialData?.name || '',
-        color: initialData?.color || '#3B82F6',
-        evaluacion: initialData?.evaluacion || 'NUMERICA',
+    const [datos, setDatos] = useState<CreateSubjectData>({
+        name: inicial?.name || '',
+        color: inicial?.color || '#3B82F6',
+        evaluacion: inicial?.evaluacion || 'NUMERICA',
     });
+    const [guardando, setGuardando] = useState(false);
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const enviar = async (e: React.FormEvent) => {
         e.preventDefault();
-        await onSubmit(formData);
+        setGuardando(true);
+        try {
+            await alGuardar(datos);
+        } finally {
+            setGuardando(false);
+        }
     };
 
-    if (!isOpen) return null;
-
     return (
-        <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label={title}>
-            <div className="flex items-center justify-center min-h-full p-4 text-center">
-                <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} aria-hidden="true" onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        onClose();
-                    }
-                }} />
+        <Dialog open onOpenChange={(v) => !v && alCerrar()}>
+            <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-lg flex-col gap-0 overflow-hidden rounded-[28px] bg-gray-50 p-0 sm:rounded-[28px]">
+                <form onSubmit={enviar} className="flex min-h-0 flex-1 flex-col">
+                    <DialogHeader className="shrink-0 px-5 pb-3 pr-14 pt-5 text-left">
+                        <DialogTitle className="text-lg font-bold text-gray-900">{titulo}</DialogTitle>
+                        <DialogDescription className="sr-only">El nombre, el color y cómo se evalúa</DialogDescription>
+                    </DialogHeader>
+                    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-4">
+                        <div>
+                            <label htmlFor="subjectName" className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                                Nombre de la materia
+                            </label>
+                            <input
+                                id="subjectName"
+                                type="text"
+                                required
+                                autoFocus={!inicial}
+                                value={datos.name}
+                                onChange={(e) => setDatos({ ...datos, name: e.target.value })}
+                                placeholder="Ej: Matemáticas"
+                                className="mt-2 w-full !min-h-[48px] !rounded-[18px] !border-transparent !bg-white px-4 text-[15px] text-gray-900 ring-1 ring-gray-200 outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                        </div>
 
-                <div className="relative w-full max-w-lg bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all">
-                    <form onSubmit={handleSubmit}>
-                        <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-lg font-medium text-gray-900">{title}</h3>
-                                <button type="button" onClick={onClose} aria-label="Cerrar" className="-mr-2 flex h-11 w-11 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700">
-                                    <X className="w-5 h-5" aria-hidden />
-                                </button>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div>
-                                    <label htmlFor="subjectName" className="block text-sm font-medium text-gray-700 mb-1">
-                                        Nombre de la materia *
-                                    </label>
-                                    <input
-                                        id="subjectName"
-                                        type="text"
-                                        required
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                                        placeholder="Ej: Matemáticas"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label htmlFor="subjectColor" className="block text-sm font-medium text-gray-700 mb-2">
-                                        Color de la materia
-                                    </label>
-                                    <PaletteColorSelector
-                                        id="subjectColor"
-                                        selectedColor={formData.color || '#3B82F6'}
-                                        onSelectColor={(color) => setFormData({ ...formData, color: color })}
-                                    />
-                                </div>
-
-                                <div>
-                                    <span className="block text-sm font-medium text-gray-700 mb-1">Cómo se evalúa</span>
-                                    <Lista
-                                        etiqueta="Cómo se evalúa"
-                                        valor={formData.evaluacion || 'NUMERICA'}
-                                        alCambiar={(v) => setFormData({ ...formData, evaluacion: v as CreateSubjectData['evaluacion'] })}
-                                        opciones={[
-                                            { valor: 'NUMERICA', texto: 'Con nota (01 a 20)' },
-                                            { valor: 'CUALITATIVA', texto: 'Con apreciación (sin nota)' },
-                                        ]}
-                                    />
-                                    <p className="mt-1 text-xs text-gray-600">
-                                        Con apreciación, como Orientación o Grupos de Creación: el profesor pone
-                                        «Consolidado», «En proceso»… y la materia no entra en los promedios ni en la
-                                        promoción.
-                                    </p>
-                                </div>
+                        <div>
+                            <span className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-600">Color</span>
+                            <div className="mt-2 rounded-[22px] bg-white p-3 ring-1 ring-gray-200">
+                                <PaletteColorSelector
+                                    id="subjectColor"
+                                    selectedColor={datos.color || '#3B82F6'}
+                                    onSelectColor={(color) => setDatos({ ...datos, color })}
+                                />
                             </div>
                         </div>
 
-                        <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-2">
-                            <button
-                                type="submit"
-                                className="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
-                            >
-                                {initialData ? 'Actualizar' : 'Crear'} Materia
-                            </button>
-                            <button
-                                type="button"
-                                onClick={onClose}
-                                className="w-full sm:w-auto mt-3 sm:mt-0 px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg font-medium transition-colors"
-                            >
-                                Cancelar
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div >
-        </div >
-    );
-}
-
-// Delete Confirmation Modal
-function DeleteConfirmModal({
-    isOpen,
-    onClose,
-    onConfirm,
-    subjectName,
-    isLoading,
-}: {
-    isOpen: boolean;
-    onClose: () => void;
-    onConfirm: () => void;
-    subjectName: string;
-    isLoading: boolean;
-}) {
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Borrar materia">
-            <div className="flex items-center justify-center min-h-full p-4 text-center">
-                <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} aria-hidden="true" onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        onClose();
-                    }
-                }} />
-
-                <div className="relative w-full max-w-lg bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all">
-                    <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                        <div className="sm:flex sm:items-start">
-                            <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
-                                <Trash2 className="h-6 w-6 text-red-600" />
-                            </div>
-                            <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                                <h3 className="text-lg leading-6 font-medium text-gray-900">
-                                    Eliminar Materia
-                                </h3>
-                                <div className="mt-2">
-                                    <p className="text-sm text-gray-500">
-                                        ¿Estás seguro de que deseas eliminar la materia <strong>{subjectName}</strong>?
-                                        Esta acción no se puede deshacer.
-                                    </p>
-                                </div>
+                        <div>
+                            <span id="como-se-evalua" className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                                Cómo se evalúa
+                            </span>
+                            <div className="mt-2 flex rounded-full bg-gray-200/70 p-1" role="radiogroup" aria-labelledby="como-se-evalua">
+                                {(
+                                    [
+                                        ['NUMERICA', 'Con nota (01 a 20)'],
+                                        ['CUALITATIVA', 'Con apreciación'],
+                                    ] as const
+                                ).map(([valor, texto]) => (
+                                    <button
+                                        key={valor}
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={datos.evaluacion === valor}
+                                        onClick={() => setDatos({ ...datos, evaluacion: valor })}
+                                        className={cn(
+                                            'min-h-[44px] min-w-0 flex-1 rounded-full px-2 text-[13px] font-semibold transition-colors',
+                                            datos.evaluacion === valor ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'
+                                        )}
+                                    >
+                                        {texto}
+                                    </button>
+                                ))}
                             </div>
                         </div>
                     </div>
-                    <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-2">
+                    <div className="zona-segura-abajo flex shrink-0 gap-2 border-t border-gray-200 bg-white px-4 py-3">
                         <button
                             type="button"
-                            onClick={onConfirm}
-                            disabled={isLoading}
-                            className="w-full sm:w-auto px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-                        >
-                            {isLoading ? 'Eliminando...' : 'Eliminar'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            disabled={isLoading}
-                            className="w-full sm:w-auto mt-3 sm:mt-0 px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg font-medium transition-colors"
+                            onClick={alCerrar}
+                            className="min-h-[48px] flex-1 rounded-full bg-gray-100 px-4 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-200"
                         >
                             Cancelar
                         </button>
+                        <button
+                            type="submit"
+                            disabled={guardando || !datos.name.trim()}
+                            className="min-h-[48px] flex-[2] rounded-full bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:opacity-60"
+                        >
+                            {inicial ? 'Guardar cambios' : 'Crear materia'}
+                        </button>
                     </div>
-                </div>
-            </div>
-        </div>
+                </form>
+            </DialogContent>
+        </Dialog>
     );
 }
