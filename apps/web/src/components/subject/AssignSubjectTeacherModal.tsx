@@ -9,11 +9,11 @@ import UserAvatar from '@/components/ui/UserAvatar';
 import { useTeachers } from '@/hooks/useTeachers';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useAcademicConfig } from '@/hooks/useAcademicConfig';
-import { useAssignTeacherToSubject, useUpdateClassroomSubject } from '@/hooks/useClassroomSubjects';
+import { classroomSubjectsService } from '@/services/classroomSubjects.service';
 import { turnosDeLaConfig } from '@/lib/franjas-del-horario';
 import { BarraDeCarga, colorDeLaCarga, estadoDeLaCarga, horas, type EstadoDeLaCarga } from '@/lib/carga-horaria';
 import api from '@/lib/axios';
-import { cn } from '@/lib/utils';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 
 interface AssignModalProps {
     sectionId: string;
@@ -23,6 +23,8 @@ interface AssignModalProps {
     initialWeeklyBlocks?: number;
     /** El turno de la sección: la hora de clase de la tarde puede durar otra cosa. */
     turno?: string;
+    /** Desde la ficha de un profesor: solo él, sin buscar. */
+    soloEste?: { id: string; nombre: string; avatar: string | null; total: number; cargo: number; horasDelCargo: number | null; estado: EstadoDeLaCarga };
     onClose: () => void;
 }
 
@@ -40,9 +42,9 @@ interface CargaDelProfesor {
  * cargo o, sin ellas, el máximo del liceo (`personal.service`, una sola
  * cuenta). Antes: 45 min por bloque y «30 – 40 h» fijos para todos.
  */
-export function AssignSubjectTeacherModal({ sectionId, sectionName, subjectSlug, currentTeacherId, initialWeeklyBlocks, turno, onClose }: AssignModalProps) {
+export function AssignSubjectTeacherModal({ sectionId, sectionName, subjectSlug, currentTeacherId, initialWeeklyBlocks, turno, soloEste, onClose }: AssignModalProps) {
     const [buscar, setBuscar] = useState('');
-    const [elegido, setElegido] = useState(currentTeacherId || '');
+    const [elegido, setElegido] = useState(soloEste?.id || currentTeacherId || '');
     const [bloques, setBloques] = useState(initialWeeklyBlocks || 4);
 
     const { data: config } = useAcademicConfig();
@@ -58,10 +60,12 @@ export function AssignSubjectTeacherModal({ sectionId, sectionName, subjectSlug,
     });
 
     const debounced = useDebouncedValue(buscar, 300);
-    const { data: teachersData, isLoading } = useTeachers(debounced);
-    const profes: any[] = Array.isArray(teachersData) ? teachersData : [];
-    const asignar = useAssignTeacherToSubject();
-    const ponerBloques = useUpdateClassroomSubject();
+    const { data: teachersData, isLoading: cargandoProfes } = useTeachers(debounced, { enabled: !soloEste });
+    const profes: any[] = soloEste
+        ? [{ id: soloEste.id, firstName: soloEste.nombre, lastName: '', avatar: soloEste.avatar, cargaHoraria: soloEste }]
+        : Array.isArray(teachersData) ? teachersData : [];
+    const isLoading = !soloEste && cargandoProfes;
+    const [guardando, setGuardando] = useState(false);
     const qc = useQueryClient();
 
     const cargaDe = (t: any): CargaDelProfesor => {
@@ -81,20 +85,23 @@ export function AssignSubjectTeacherModal({ sectionId, sectionName, subjectSlug,
           })()
         : null;
 
+    // Un solo aviso: los ganchos de antes avisaban cada uno por su lado (tres a la vez).
     const guardar = async () => {
         if (!elegido) return toast.error('Elige un profesor');
+        setGuardando(true);
         try {
-            await asignar.mutateAsync({ classroomId: sectionId, subjectId: subjectSlug, data: { teacherId: elegido } });
+            await classroomSubjectsService.assignTeacherToSubject(sectionId, subjectSlug, { teacherId: elegido });
             // Las horas las pone el servidor: los bloques por la hora de clase del turno.
-            await ponerBloques.mutateAsync({ classroomId: sectionId, subjectId: subjectSlug, data: { weeklyBlocks: bloques } });
-            for (const k of ['subject', 'subjects', 'classroomSubject', 'teachers', 'profesores']) qc.invalidateQueries({ queryKey: [k] });
+            await classroomSubjectsService.updateClassroomSubject(sectionId, subjectSlug, { weeklyBlocks: bloques });
+            for (const k of ['subject', 'subjects', 'classroomSubject', 'classroomSubjects', 'teachers', 'profesores']) qc.invalidateQueries({ queryKey: [k] });
             toast.success('Profesor asignado');
             onClose();
-        } catch {
-            // Los ganchos ya dicen qué pasó.
+        } catch (e) {
+            toast.error(getApiErrorMessage(e, 'No se pudo asignar'));
+        } finally {
+            setGuardando(false);
         }
     };
-    const guardando = asignar.isPending || ponerBloques.isPending;
 
     return (
         <Dialog open onOpenChange={(v) => !v && onClose()}>
@@ -139,6 +146,7 @@ export function AssignSubjectTeacherModal({ sectionId, sectionName, subjectSlug,
                         </button>
                     </div>
 
+                    {!soloEste && (
                     <label className="relative block">
                         <span className="sr-only">Buscar profesor</span>
                         <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" aria-hidden />
@@ -149,6 +157,7 @@ export function AssignSubjectTeacherModal({ sectionId, sectionName, subjectSlug,
                             className="!h-12 w-full !rounded-full !border-0 !bg-white pl-11 pr-4 text-[15px] !ring-1 !ring-gray-200 focus:!ring-2 focus:!ring-indigo-500"
                         />
                     </label>
+                    )}
 
                     <ul className="divide-y divide-gray-100 overflow-hidden rounded-[22px] bg-white ring-1 ring-gray-200" aria-label="Profesores">
                         {isLoading ? (

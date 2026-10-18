@@ -604,7 +604,7 @@ export default function UserProfilePage({ params }: PageProps) {
                                                         Carga Horaria Semanal
                                                     </h4>
                                                     <p className="text-sm font-black text-gray-900">
-                                                        {totalHours.toFixed(1)}h / semana <span className="text-xs font-normal text-gray-500">({totalBlocks} bloques de 45 min)</span>
+                                                        {totalHours.toFixed(1)}h / semana <span className="text-xs font-normal text-gray-500">({totalBlocks} bloques)</span>
                                                     </p>
                                                 </div>
                                             </div>
@@ -622,7 +622,12 @@ export default function UserProfilePage({ params }: PageProps) {
 
                                         <div className="space-y-1">
                                             <div className="flex justify-between text-xs text-gray-500 font-medium">
-                                                <span>Recomendado por el liceo: {minimo} a {maximo} horas{sinHoras > 0 ? ` · ${sinHoras} sin horas puestas` : ''}</span>
+                                                <span>
+                                                    Recomendado por el liceo: {minimo} a {maximo} horas{sinHoras > 0 ? ` · ${sinHoras} sin horas puestas` : ''} ·{' '}
+                                                    <Link href={`/dashboard/profesores/${encodeURIComponent(cedula)}`} className="font-semibold text-indigo-700 hover:underline">
+                                                        Sus horas en Profesores
+                                                    </Link>
+                                                </span>
                                                 <span className="font-bold">{percentage}% de jornada máx.</span>
                                             </div>
                                             <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">

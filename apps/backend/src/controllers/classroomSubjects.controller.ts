@@ -54,7 +54,8 @@ interface AssignTeacherToSubjectRequest {
         subjectId: string;
     };
     Body: {
-        teacherId: string;
+        /** `null` quita el profesor de la clase. */
+        teacherId: string | null;
         notes?: string;
     };
 }
@@ -491,6 +492,18 @@ export async function assignTeacherToSubject(
         const subjectId = await resolveSubjectId(request.tenantPrisma, rawSubjectId);
         if (!subjectId) {
             return reply.status(404).send({ error: 'Materia no encontrada', code: 'SUBJECT_NOT_FOUND' });
+        }
+
+        // `teacherId: null` quita el profesor: la clase queda «sin profesor»
+        // (Profesores → su ficha → Quitar). Su historial se cierra.
+        if (teacherId === null) {
+            const cs = await request.tenantPrisma.classroomSubject.findUnique({ where: { classroomId_subjectId: { classroomId, subjectId } } });
+            if (!cs) return reply.status(404).send({ error: 'Materia no encontrada en esta sección', code: 'CLASSROOM_SUBJECT_NOT_FOUND' });
+            const quitada = await request.tenantPrisma.$transaction(async (prisma) => {
+                await prisma.subjectTeacherHistory.updateMany({ where: { classroomSubjectId: cs.id, isActive: true }, data: { isActive: false, endDate: new Date() } });
+                return prisma.classroomSubject.update({ where: { id: cs.id }, data: { teacherId: null } });
+            });
+            return reply.status(200).send({ message: 'Profesor quitado', classroomSubject: quitada });
         }
 
         // Verificar que el profesor existe y está activo

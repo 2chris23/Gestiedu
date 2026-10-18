@@ -46,7 +46,7 @@ export async function personalRoutes(fastify: FastifyInstance) {
             preHandler: [authenticate, requireAdmin],
             schema: {
                 params: { type: 'object', properties: { id } },
-                body: { type: 'object', additionalProperties: false, required: ['horas'], properties: { horas: { type: ['integer', 'null'] } } },
+                body: { type: 'object', additionalProperties: false, required: ['horas'], properties: { horas: { type: 'integer', nullable: true } } },
             },
         },
         responder((r) => ponerHorasDelCargo(r.tenantPrisma, r.params.id, (r.body as any).horas)) as any

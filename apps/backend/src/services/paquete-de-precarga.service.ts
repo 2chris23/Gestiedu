@@ -62,6 +62,12 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = fa
             pista: 'Las materias del liceo',
         },
         {
+            name: 'Profesores',
+            href: '/dashboard/profesores',
+            roles: ['ADMIN'],
+            pista: 'Sus horas, sus clases y su promedio',
+        },
+        {
             name: 'Observaciones',
             href: '/dashboard/observaciones',
             roles: ['ADMIN', 'TEACHER'],

@@ -1,5 +1,6 @@
 import {
     Home,
+    GraduationCap,
     Users,
     BookOpen,
     Library,
@@ -62,6 +63,13 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = fa
             icon: Library,
             roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'],
             pista: 'Las materias del liceo',
+        },
+        {
+            name: 'Profesores',
+            href: '/dashboard/profesores',
+            icon: GraduationCap,
+            roles: ['ADMIN'],
+            pista: 'Sus horas, sus clases y su promedio',
         },
         {
             name: 'Observaciones',

@@ -18,7 +18,12 @@ import { cargaDeLosProfesores, cargaHoraria } from '../../src/services/personal.
  *   PROF-03  la lista de usuarios dice las mismas horas (antes: 45 min fijos
  *            y los años pasados sumados);
  *   PROF-04  poner bloques a una clase da sus horas con la hora de clase de
- *            SU turno (antes: 0,75 h por bloque siempre).
+ *            SU turno (antes: 0,75 h por bloque siempre);
+ *   PROF-05  la lista de Profesores: horas, cargo, estado, clases y las que
+ *            faltan por asignar (sin las materias «por grupos»);
+ *   PROF-06  la ficha: sus clases, por materia, y la sección que guía;
+ *   PROF-07  todo es del admin: el profesor y el alumno, 403;
+ *   PROF-08  quitar el profesor de una clase: queda sin profesor y sale en «sin asignar».
  */
 
 const SLUG = 'test-institute';
@@ -136,5 +141,58 @@ describe('La carga de los profesores (PROF-01…04)', () => {
             .expect(200);
         const manana = await prisma.classroomSubject.findUnique({ where: { classroomId_subjectId: { classroomId: a.id, subjectId: m.id } } });
         expect(manana!.hoursPerWeek).toBe(2.25); // 3 × 45 min
+    });
+
+    it('PROF-05: la lista de Profesores y las clases sin profesor', async () => {
+        const q = await prisma.subject.create({ data: { id: gId(), name: 'Química', code: 'QU-01', slug: `qu-${gId()}`, instituteId: 'institute' } as any });
+        const g = await prisma.subject.create({ data: { id: gId(), name: 'GCRP', code: 'GC-01', slug: `gc-${gId()}`, instituteId: 'institute', evaluacion: 'CUALITATIVA', porGrupos: true } as any });
+        await prisma.classroomSubject.create({ data: { classroomId: a.id, subjectId: q.id, weeklyBlocks: 4, hoursPerWeek: 3 } as any });
+        await prisma.classroomSubject.create({ data: { classroomId: a.id, subjectId: g.id, weeklyBlocks: 2, hoursPerWeek: 1.5 } as any });
+        await api().put(`/api/teachers/${otro.id}/horas-del-cargo`).set(como(admin, UserRole.ADMIN)).send({ horas: 3 }).expect(200);
+
+        const r = (await api().get('/api/profesores').set(como(admin, UserRole.ADMIN)).expect(200)).body.data;
+        expect(r.clasesSinProfesor).toBe(1); // Química; el GCRP por grupos no cuenta
+        const marta = r.profesores.find((p: any) => p.id === profe.id);
+        const luis = r.profesores.find((p: any) => p.id === otro.id);
+        expect(marta).toMatchObject({ nombre: 'Marta Rojas', horas: 10, cargo: 40, horasDelCargo: null, estado: 'POR_DEBAJO', clases: 2, secciones: 2, promedio: null });
+        expect(luis).toMatchObject({ horas: 3, cargo: 3, horasDelCargo: 3, estado: 'EN_RANGO', clases: 1 });
+
+        const sin = (await api().get('/api/profesores/sin-asignar').set(como(admin, UserRole.ADMIN)).expect(200)).body.data;
+        expect(sin).toHaveLength(1);
+        expect(sin[0]).toMatchObject({ classroomId: a.id, materia: 'Química', grado: 1, turno: 'MANANA', bloques: 4 });
+    });
+
+    it('PROF-06: la ficha de un profesor', async () => {
+        await prisma.classroom.update({ where: { id: a.id }, data: { teacherId: profe.id } });
+        const f = (await api().get(`/api/profesores/${profe.id}`).set(como(admin, UserRole.ADMIN)).expect(200)).body.data;
+        expect(f.profesor).toMatchObject({ id: profe.id, nombre: 'Marta Rojas' });
+        expect(f.guiaDe).toEqual([{ id: a.id, nombre: '1º A' }]);
+        expect(f).toMatchObject({ horas: 10, bloques: 14, cargo: 40, estado: 'POR_DEBAJO' });
+        expect(f.clases.map((c: any) => [c.seccion, c.materia, c.horas])).toEqual([
+            ['1º A', 'Matemática', 6],
+            ['1º B', 'Matemática', 4],
+        ]);
+        expect(f.porMateria).toEqual([{ subjectId: m.id, materia: 'Matemática', secciones: 2, horas: 10, promedio: null }]);
+        await api().get(`/api/profesores/${admin.id}`).set(como(admin, UserRole.ADMIN)).expect(404);
+    });
+
+    it('PROF-07: Profesores es del admin', async () => {
+        const alumno = (await createTestUser(prisma, UserRole.STUDENT)).user;
+        for (const [u, rol] of [[profe, UserRole.TEACHER], [alumno, UserRole.STUDENT]] as const) {
+            await api().get('/api/profesores').set(como(u, rol)).expect(403);
+            await api().get('/api/profesores/sin-asignar').set(como(u, rol)).expect(403);
+            await api().get(`/api/profesores/${profe.id}`).set(como(u, rol)).expect(403);
+        }
+    });
+
+    it('PROF-08: quitar el profesor de una clase', async () => {
+        await api().patch(`/api/classrooms/${b.id}/subjects/${m.id}/teacher`).set(como(admin, UserRole.ADMIN)).send({ teacherId: null }).expect(200);
+        const cs = await prisma.classroomSubject.findUnique({ where: { classroomId_subjectId: { classroomId: b.id, subjectId: m.id } } });
+        expect(cs!.teacherId).toBeNull();
+        const sin = (await api().get('/api/profesores/sin-asignar').set(como(admin, UserRole.ADMIN)).expect(200)).body.data;
+        expect(sin.map((c: any) => c.classroomId)).toEqual([b.id]);
+        const f = (await api().get(`/api/profesores/${profe.id}`).set(como(admin, UserRole.ADMIN)).expect(200)).body.data;
+        expect(f.horas).toBe(6);
+        await api().patch(`/api/classrooms/${a.id}/subjects/${m.id}/teacher`).set(como(profe, UserRole.TEACHER)).send({ teacherId: null }).expect(403);
     });
 });
