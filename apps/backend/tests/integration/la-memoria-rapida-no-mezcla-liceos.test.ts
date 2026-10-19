@@ -310,6 +310,12 @@ describe('La memoria rápida no mezcla liceos', () => {
                 'la clave lleva la credencial de quien pide, que es de un liceo y de una persona',
             'src/services/a-quien-afecta.service.ts|personalPorSeccion':
                 'la clave lleva el liceo delante (clavePorLiceo)',
+            'src/services/cubos-de-precarga.service.ts|ROLES_CON_SECCION_COMPARTIDA':
+                'son los nombres de los roles que comparten el cubo de su sección, no datos de nadie',
+            'src/services/cubos-de-precarga.service.ts|conTrabajo':
+                'guarda solo ids de liceos con trabajo en la cola de los cubos; el trabajo se hace dentro de conLiceo(ese liceo)',
+            'src/services/cubos-de-precarga.service.ts|ultimoAviso':
+                'la clave es el liceo; solo guarda la hora del último aviso en el registro, nada de nadie',
             'src/middleware/smart-cache.middleware.ts|READ_ONLY_ROLES':
                 'son los nombres de los roles, no datos de nadie',
             'src/plugins/avisar-cambios.ts|METODOS_QUE_ESCRIBEN':
