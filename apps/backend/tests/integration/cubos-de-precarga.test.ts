@@ -5,7 +5,7 @@ import * as zlib from 'zlib';
 import { UserRole } from '../../src/utils/prisma-enums';
 import { createTestServer, createTestPrismaClient, createTestUser, generateTestToken, createTestAcademicYear, createTestClassroom } from '../helpers';
 import { cambiarLosMoldes } from '../../src/services/precarga.service';
-import { prepararAUnaPersona, hacerElTrabajoDe, pedirQueSePrepare, ensuciarPorLosCambios, laClaveDelCubo, PRIORIDAD } from '../../src/services/cubos-de-precarga.service';
+import { prepararAUnaPersona, hacerElTrabajoDe, pedirQueSePrepare, ensuciarPorLosCambios, laClaveDelCubo, PRIORIDAD, elDiaNuevo } from '../../src/services/cubos-de-precarga.service';
 
 /**
  * LA DESCARGA EN CUBOS (`services/cubos-de-precarga.service.ts`)
@@ -203,5 +203,22 @@ describe('La descarga en cubos', () => {
         // El cubo de la sección se armó una vez y lo comparten los seis (más A y A2).
         const [s] = await prisma.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) n FROM "indices_de_precarga" WHERE $1 = ANY("claves")`, `seccion:STUDENT:${secA.id}`);
         expect(Number(s.n)).toBe(8);
+    }, 90000);
+
+    it('CUBO-07: al cambiar el día, quien tiene el índice de ayer se rehace solo (sin esperar a la noche)', async () => {
+        // Todos al día: el barrido no pone a nadie en la cola.
+        await hacerElTrabajoDe(server, instituto);
+        expect(await elDiaNuevo(instituto)).toBe(0);
+        // Amanece: el índice de A es de ayer. Lo de «hoy» (la clase en vivo, los reemplazos) lleva otra fecha.
+        await prisma.$executeRawUnsafe(`UPDATE "indices_de_precarga" SET "dia" = '2000-01-01' WHERE "usuarioId" = $1`, id.alumnoA);
+        const r = await indice('alumnoA');
+        expect(r.status).toBe(200); // se entrega el que hay: nadie espera
+        await hacerElTrabajoDe(server, instituto);
+        const [i] = await prisma.$queryRawUnsafe<Array<{ dia: string; pendiente: boolean }>>(`SELECT "dia","pendiente" FROM "indices_de_precarga" WHERE "usuarioId" = $1`, id.alumnoA);
+        expect(i.pendiente).toBe(false);
+        expect(i.dia).not.toBe('2000-01-01');
+        // Y sin que nadie entre: el barrido solo lo encuentra.
+        await prisma.$executeRawUnsafe(`UPDATE "indices_de_precarga" SET "dia" = '2000-01-01' WHERE "usuarioId" = $1`, id.alumnoA2);
+        expect(await elDiaNuevo(instituto)).toBe(1);
     }, 90000);
 });

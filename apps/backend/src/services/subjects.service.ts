@@ -669,16 +669,14 @@ export class SubjectsService {
 
         // 3. Crear (o actualizar) la relación ClassroomSubject para CADA aula
         const results = [];
+        // Las asignaciones que ya existen, de una vez (antes, una consulta por aula).
+        const yaExisten = new Map<string, any>(
+            (await prisma.classroomSubject.findMany({
+                where: { subjectId, classroomId: { in: classrooms.map((c: any) => c.id) } }
+            })).map((cs: any) => [cs.classroomId, cs])
+        );
         for (const classroom of classrooms) {
-            // Verificar si ya existe la asignación
-            const existing = await prisma.classroomSubject.findUnique({
-                where: {
-                    classroomId_subjectId: {
-                        classroomId: classroom.id,
-                        subjectId: subjectId
-                    }
-                }
-            });
+            const existing = yaExisten.get(classroom.id);
 
             if (existing) {
                 // Si ya existe, actualizamos el profesor si se proporcionó uno

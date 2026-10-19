@@ -323,6 +323,14 @@ export async function buildServer(): Promise<FastifyInstance> {
   // panel de salud del superadmin. Ver `plugins/medidor-de-rutas.ts`.
   await server.register(medidorDeRutas);
 
+  // Solo para medir la puerta 4 (`docs/LISTO-PARA-EL-PILOTO.md`): con
+  // RUTAS_PROBADAS=<carpeta>, apunta cada ruta que las pruebas pidieron de
+  // verdad, con su código. Lo lee `scripts/acciones-sin-prueba.ts --probadas`.
+  if (process.env.RUTAS_PROBADAS) {
+    const { apuntarRutasProbadas } = await import('./utils/rutas-probadas');
+    apuntarRutasProbadas(server, process.env.RUTAS_PROBADAS);
+  }
+
   // Todo 500, venga de donde venga (del manejador central o de un controlador
   // que responde el suyo), se apunta para el panel del superadmin: ver
   // `utils/fallos-del-servidor.ts`.

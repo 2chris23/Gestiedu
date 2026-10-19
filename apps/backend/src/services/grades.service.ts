@@ -1650,11 +1650,11 @@ class GradesService {
     // Obtener detalles por materia
     const subjectDetails = [];
 
-    for (const subjectAvg of subjectAverages) {
-      const grades = await prisma.grade.findMany({
+    // Todas las notas de una vez (antes, una consulta por materia).
+    const todasLasNotas = await prisma.grade.findMany({
         where: {
           studentId,
-          subjectId: subjectAvg.subjectId,
+          subjectId: { in: subjectAverages.map(s => s.subjectId) },
           periodId
         },
         include: {
@@ -1677,6 +1677,8 @@ class GradesService {
         }
       });
 
+    for (const subjectAvg of subjectAverages) {
+      const grades = todasLasNotas.filter(g => g.subjectId === subjectAvg.subjectId);
       const scale = getGradeScale(subjectAvg.average);
 
       subjectDetails.push({

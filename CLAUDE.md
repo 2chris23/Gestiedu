@@ -33,6 +33,21 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
    está terminado. Ejemplo medido: la precarga armaba el paquete de cada
    persona al entrar, de uno en uno; 300 alumnos en frío esperaban hasta 83 s
    (con 15.000, más de una hora) para bajar 27 KB cada uno.
+0-bis. **Claude es el programador jefe y dice cuándo está listo** (Cristian,
+   19-oct-2026). Cristian no busca liceo piloto hasta que Claude diga «listo»,
+   y solo se dice con las CUATRO puertas al 100 %, medidas:
+   1. **Cero errores** (jest y navegador enteros en verde, el panel de Salud sin
+      errores abiertos, el barrido de privacidad limpio);
+   2. **No se pierde nada** (lo hecho sin conexión sube, los respaldos se
+      recuperan, nada se borra sin copia, ningún cambio se pisa callado);
+   3. **Sigue siendo rápido con 100.000 personas** (medido con carga, no
+      supuesto: el pronóstico de Salud calibrado y `medir:estres` sin doblarse);
+   4. **Cada opción funciona** (crear un estudiante, poner un horario… cada
+      botón de cada rol, con su prueba de navegador).
+
+   El estado de cada puerta y la fecha estimada viven en
+   `docs/LISTO-PARA-EL-PILOTO.md`; se actualiza al cerrar cada tanda de
+   trabajo. Decir «listo» sin las cuatro es mentirle.
 1. **Evidencia antes de corregir.** Nada es un fallo ni "ya funciona" sin código, diff o
    prueba en vivo que lo demuestre. Medir, no deducir.
 2. **Las reglas de negocio son configurables por instituto**, nunca fijas en el código.

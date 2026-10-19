@@ -89,10 +89,17 @@ export async function nombreDe(prisma: Prisma, usuarioId: string | null | undefi
     return u ? `${u.firstName} ${u.lastName}`.trim() : 'alguien';
 }
 
+/** Los nombres de varios usuarios en UNA consulta (sin nombre: «alguien»). */
+export async function nombresDe(prisma: Prisma, ids: Array<string | null | undefined>): Promise<Map<string, string>> {
+    const unicos = [...new Set(ids.filter((x): x is string => !!x))];
+    const filas = unicos.length ? await prisma.user.findMany({ where: { id: { in: unicos } }, select: { id: true, firstName: true, lastName: true } }) : [];
+    return new Map(filas.map((u: any) => [u.id, `${u.firstName} ${u.lastName}`.trim()]));
+}
+
 /** Para el 409: los choques con el nombre de quien puso la otra nota. */
 export async function conNombres(prisma: Prisma, choques: ChoqueDeNota[]) {
-    const nombres = new Map<string, string>();
-    for (const c of choques) if (c.quien && !nombres.has(c.quien)) nombres.set(c.quien, await nombreDe(prisma, c.quien));
+    const nombres = await nombresDe(prisma, choques.map((c) => c.quien));
+    for (const c of choques) if (c.quien && !nombres.has(c.quien)) nombres.set(c.quien, 'alguien');
     return choques.map((c) => ({ ...c, quienNombre: c.quien ? nombres.get(c.quien) : null }));
 }
 
@@ -199,8 +206,10 @@ export async function loQueEspera(prisma: Prisma, usuarioId: string) {
         prisma.cambioEnEspera.findMany({ where: { decideId: usuarioId, resuelto: false }, orderBy: { creadoEn: 'asc' } }),
         prisma.cambioEnEspera.findMany({ where: { autorId: usuarioId, resuelto: false }, orderBy: { creadoEn: 'asc' } }),
     ]);
-    const conNombre = async (e: any) => ({ ...e, autorNombre: await nombreDe(prisma, e.autorId), decideNombre: await nombreDe(prisma, e.decideId) });
-    return { porDecidir: await Promise.all(porDecidir.map(conNombre)), esperando: await Promise.all(esperando.map(conNombre)) };
+    const nombres = await nombresDe(prisma, [...porDecidir, ...esperando].flatMap((e) => [e.autorId, e.decideId]));
+    const nombre = (id: string | null | undefined) => (id && nombres.get(id)) || 'alguien';
+    const conNombre = (e: any) => ({ ...e, autorNombre: nombre(e.autorId), decideNombre: nombre(e.decideId) });
+    return { porDecidir: porDecidir.map(conNombre), esperando: esperando.map(conNombre) };
 }
 
 /**

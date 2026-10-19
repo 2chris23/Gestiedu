@@ -197,6 +197,11 @@ describe('Los grupos estables (GRUPO-01…07)', () => {
         expect(ya.miembros.map((m: any) => m.alumno.id)).toEqual([ana.id]);
         // El admin también puede llevar el grupo.
         await api().get(`/api/grupos-estables/${costura.id}`).set(como(admin, UserRole.ADMIN)).expect(200);
+        // «Mis grupos» del profesor: solo los suyos, con cuántos van.
+        const mios = (await api().get('/api/grupos-estables/mios').set(como(profeCostura, UserRole.TEACHER)).expect(200)).body.data.grupos;
+        expect(mios.map((g: any) => [g.nombre, g.aceptados, g.pendientes])).toEqual([['Costura', 1, 0]]);
+        const deOtro = (await api().get('/api/grupos-estables/mios').set(como(profeFutbol, UserRole.TEACHER)).expect(200)).body.data.grupos;
+        expect(deOtro.map((g: any) => g.nombre)).toEqual(['Fútbol']);
     }, 60000);
 
     it('GRUPO-05: el cupo no se pasa, ni aceptando dos a la vez el último lugar', async () => {

@@ -1052,12 +1052,17 @@ export async function aplicarATodos(request: FastifyRequest<{ Querystring: { aca
         if (!ids.length) return reply.status(400).send({ error: 'Elige a quién se le aplica', code: 'SIN_PERSONAS' });
         const personas = await prisma.personal.findMany({ where: { id: { in: ids }, activo: true }, select: { id: true } });
         let hechos = 0;
+        // Lo de antes y quién tiene pagos, de una vez (antes, dos consultas por persona).
+        const personalIds = personas.map((p: any) => p.id as string);
+        const [acuerdos, conPagos] = await Promise.all([
+            prisma.acuerdoDePago.findMany({ where: { personalId: { in: personalIds }, academicYearId: ciclo.id }, select: { personalId: true, frecuencia: true } }),
+            prisma.pagoAlPersonal.groupBy({ by: ['personalId'], where: { personalId: { in: personalIds }, academicYearId: ciclo.id, anuladoEn: null } }),
+        ]);
+        const frecuenciaDe = new Map(acuerdos.map((x: any) => [x.personalId, x.frecuencia]));
+        const tienePagos = new Set(conPagos.map((x: any) => x.personalId));
         for (const p of personas) {
-            const antes = await prisma.acuerdoDePago.findUnique({ where: { personalId_academicYearId: { personalId: p.id, academicYearId: ciclo.id } } });
-            if (antes && antes.frecuencia !== a.frecuencia) {
-                const hayPagos = await prisma.pagoAlPersonal.count({ where: { personalId: p.id, academicYearId: ciclo.id, anuladoEn: null } });
-                if (hayPagos) continue;
-            }
+            const antes = frecuenciaDe.get(p.id);
+            if (antes && antes !== a.frecuencia && tienePagos.has(p.id)) continue;
             await prisma.acuerdoDePago.upsert({
                 where: { personalId_academicYearId: { personalId: p.id, academicYearId: ciclo.id } },
                 create: { personalId: p.id, academicYearId: ciclo.id, monto: deCentimos(a.montoCents), frecuencia: a.frecuencia },

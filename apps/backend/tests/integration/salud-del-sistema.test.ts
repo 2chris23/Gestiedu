@@ -10,6 +10,7 @@ import { erlangC, prever, limites, calibrar } from '../../src/utils/pronostico-d
 import { volcarLaSalud } from '../../src/services/salud-de-rutas.service';
 import { medidor } from '../../src/utils/medidor-de-rutas';
 import { nombreDeLaRuta } from '../../src/utils/nombres-de-las-rutas';
+import { unaVueltaDelRobot } from '../../src/jobs/robot-de-salud.job';
 
 /**
  * LA SALUD DEL SISTEMA (18-oct-2026)
@@ -175,6 +176,26 @@ describe('La salud del sistema', () => {
             expect([401, 403]).toContain(sin.status);
         }
     });
+
+    it('SALUD-09: el robot recorre el liceo de muestra como cada rol y el panel lo enseña', async () => {
+        const antes = process.env.SALUD_LICEO_DE_MUESTRA;
+        process.env.SALUD_LICEO_DE_MUESTRA = SLUG;
+        try {
+            // Sin guardar: la base de la plataforma es la de verdad.
+            const pasos = await unaVueltaDelRobot(server);
+            const delAdmin = pasos.filter((p) => p.paso.startsWith('admin:'));
+            expect(delAdmin.length).toBeGreaterThan(0);
+            expect(delAdmin.filter((p) => !p.ok)).toEqual([]);
+            // Un rol sin nadie se dice, no se salta callado.
+            expect(pasos.some((p) => p.paso.includes('no hay nadie') && !p.ok)).toBe(true);
+            const r = await request(server.server).get('/api/superadmin/salud/robot').set('Authorization', `Bearer ${tokenSuper}`);
+            expect(r.status).toBe(200);
+            expect(r.body).toMatchObject({ liceo: SLUG, configurado: true });
+        } finally {
+            if (antes === undefined) delete process.env.SALUD_LICEO_DE_MUESTRA;
+            else process.env.SALUD_LICEO_DE_MUESTRA = antes;
+        }
+    }, 120000);
 
     it('SALUD-08: medir cuesta menos de 0,05 ms por petición', () => {
         const m = new Medidor();

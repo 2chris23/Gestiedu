@@ -319,6 +319,16 @@ describe('El fin del año escolar (CIERRE-01…10)', () => {
         expect(await expediente(al.caro)).toMatchObject({ finalResult: 'NO_PROMOVIDO', condicionSugerida: 'NO_PROMOVIDO', motivo: null });
         // No se creó ninguna sección con valores inventados: son las copiadas.
         expect(await prisma.classroom.count({ where: { academicYearId: siguiente!.id } })).toBe(3);
+
+        // El paso 5 (expedientes) cuenta lo mismo que la base, y solo lo ve el admin.
+        const exp = (await api().get(`/api/academic-years/${year.id}/cierre/expedientes`).set(comoAdmin()).expect(200)).body.data;
+        expect(exp.ciclo.cerrado).toBe(true);
+        expect(exp.anoSiguiente.nombre).toBe('2027-2028');
+        const de = (a: any) => exp.expedientes.find((e: any) => e.alumno.id === a.id);
+        expect(de(al.dani)).toMatchObject({ condicion: 'NO_PROMOVIDO', egreso: null });
+        expect(de(al.eva)).toMatchObject({ condicion: 'PROMOVIDO', egreso: 'EGRESADO' });
+        expect(de(al.ana).destino.nombre).toBeTruthy();
+        await api().get(`/api/academic-years/${year.id}/cierre/expedientes`).set(como(profeMate, UserRole.TEACHER)).expect(403);
     }, 60000);
 
     it('CIERRE-09: corregir después de cerrar, con motivo', async () => {

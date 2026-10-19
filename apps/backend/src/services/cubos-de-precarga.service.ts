@@ -272,7 +272,7 @@ export async function rehacerUnCubo(fastify: FastifyInstance, liceo: string, cla
 
 // ── Pedir que se prepare a alguien (no espera) ──────────────────────────────
 
-export const PRIORIDAD = { ENTRANDO: 100, CAMBIO: 50, CUENTA_NUEVA: 30, NOCHE: 0 } as const;
+export const PRIORIDAD = { ENTRANDO: 100, CAMBIO: 50, CUENTA_NUEVA: 30, DIA_NUEVO: 10, NOCHE: 0 } as const;
 
 export async function pedirQueSePrepare(liceo: string, usuarioIds: string[], prioridad: number): Promise<void> {
     if (!usuarioIds.length) return;
@@ -389,6 +389,7 @@ export async function hacerElTrabajoDe(fastify: FastifyInstance, liceo: string, 
         const prisma = await getTenantPrisma(liceo);
         const [h]: Array<{ hay: boolean }> = await prisma.$queryRawUnsafe(`SELECT EXISTS (SELECT 1 FROM "indices_de_precarga") AS hay`);
         if (!h?.hay) await laNocheDeLosCubos(liceo);
+        else await elDiaNuevo(liceo);
         await ensuciarPorLosCambios(liceo);
         while (hechos < tope) {
             await cederAnteLaGente();
@@ -485,6 +486,27 @@ export async function laNocheDeLosCubos(liceo: string): Promise<{ personas: numb
            AND c."armadoEn" < now() - interval '2 days'`
     );
     return { personas: activos.length, cubosViejos };
+}
+
+/**
+ * El día cambió en el liceo: quien tenga el índice de otro día va a la cola.
+ *
+ * Lo de «hoy» (la clase en vivo, los reemplazos del día) lleva la fecha en
+ * la lectura. La noche de los cubos corre cada 24 h desde que arrancó el
+ * servidor, no a la medianoche del liceo: un servidor encendido a las 7 de
+ * la mañana dejaba a todos con lo de ayer (PRECARGA-01 lo vio). Esto va en
+ * cada barrido (cada 10 min) y es UNA consulta: no cuesta nada si ya están.
+ */
+export async function elDiaNuevo(liceo: string): Promise<number> {
+    const prisma = await getTenantPrisma(liceo);
+    const hoy = todayInTimezone(await instituteTimezone(prisma));
+    const n = await prisma.$executeRawUnsafe(
+        `UPDATE "indices_de_precarga" SET "pendiente" = true, "prioridad" = $2, "pedidoEn" = now()
+          WHERE NOT "pendiente" AND "dia" IS DISTINCT FROM $1`,
+        hoy,
+        PRIORIDAD.DIA_NUEVO
+    );
+    return Number(n);
 }
 
 // ── Leer (para las rutas) ───────────────────────────────────────────────────
