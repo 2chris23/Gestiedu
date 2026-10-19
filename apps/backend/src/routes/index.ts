@@ -54,6 +54,7 @@ import { consejoRoutes } from './consejo.routes';
 import { personalRoutes } from './personal.routes';
 import { profesoresRoutes } from './profesores.routes';
 import { reportesDeProblemasRoutes } from './reportes-de-problemas.routes';
+import { papeleraRoutes } from './papelera.routes';
 import { paeRoutes } from './pae.routes';
 import { boletaRoutes } from './boleta.routes';
 
@@ -103,6 +104,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(profesoresRoutes, { prefix: '/api/profesores' });
   // «Reportar un problema»: cualquiera lo manda, le llega al admin del liceo.
   await fastify.register(reportesDeProblemasRoutes, { prefix: '/api' });
+  await fastify.register(papeleraRoutes, { prefix: '/api' });
   await fastify.register(paeRoutes, { prefix: '/api/pae' });
   await fastify.register(schedulesRoutes, { prefix: '/api/schedules' });
   await fastify.register(scheduleBlocksRoutes, { prefix: '/api' });

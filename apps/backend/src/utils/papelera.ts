@@ -1,7 +1,10 @@
 /**
- * LA PAPELERA — NADA SE BORRA DE VERDAD
+ * LA PAPELERA — LO BORRADO SE PUEDE DEVOLVER, Y DESPUÉS SE VA DE VERDAD
  *
  * Antes de borrar una fila se guarda aquí una copia completa, tal como estaba.
+ * El admin la devuelve desde Configuración → Papelera (`services/papelera.service.ts`)
+ * dentro del plazo de su liceo; pasado el plazo, la tarea diaria la borra de la
+ * base para siempre (regla de Cristian, 19-oct-2026: borrar es borrar).
  * Las consultas no cambian: las pantallas siguen viendo lo mismo que antes. Lo
  * único que cambia es que un borrado por error deja de ser definitivo.
  *
@@ -25,6 +28,7 @@
  */
 
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 
 /** Cliente Prisma del liceo —o una transacción—, sin tipos para recorrer modelos por nombre. */
 type ClienteDelLiceo = any;
@@ -164,6 +168,12 @@ export interface QuienBorra {
     usuarioId?: string;
     /** Dónde ocurrió: normalmente el método y la ruta. */
     motivo?: string;
+    /**
+     * El borrado al que pertenece la fila: todo lo de una misma acción (el
+     * alumno, sus notas, su asistencia…) se restaura junto. Sin ella, cada
+     * `borrarGuardandoCopia` es su propia operación.
+     */
+    operacion?: string;
 }
 
 /**
@@ -188,6 +198,7 @@ export async function guardarEnPapelera(
             contenido: JSON.parse(JSON.stringify(fila)),
             borradoPor: quien.usuarioId ?? null,
             motivo: quien.motivo ?? null,
+            operacion: quien.operacion ?? null,
         })),
     });
 }
@@ -211,6 +222,7 @@ export async function borrarGuardandoCopia(
 
     const condenadas = await tabla.findMany({ where });
     if (condenadas.length === 0) return 0;
+    quien = { ...quien, operacion: quien.operacion ?? randomUUID() };
 
     await guardarEnPapelera(prisma, modelo, condenadas, quien);
 
@@ -240,7 +252,12 @@ export function quienBorra(request: {
     url?: string;
 }): QuienBorra {
     const usuario = request?.user as any;
+    // Una petición es un borrado: todo lo que borre (aunque llame varias veces)
+    // va en la misma operación de la papelera.
+    const conMarca = request as { __operacionDeBorrado?: string };
+    conMarca.__operacionDeBorrado ??= randomUUID();
     return {
+        operacion: conMarca.__operacionDeBorrado,
         usuarioId: usuario?.userId ?? usuario?.id ?? undefined,
         motivo:
             request?.method && request?.url
@@ -249,17 +266,20 @@ export function quienBorra(request: {
     };
 }
 
-/** Cuánto se guarda lo borrado antes de tirarlo de verdad. */
+/**
+ * Cuánto se guarda lo borrado antes de tirarlo de verdad, si el liceo no dice
+ * otra cosa (`papelera.dias` en su configuración, de 7 a 90: `diasDeLaPapelera`).
+ */
 export function diasQueSeGuardaLoBorrado(): number {
     const v = Number(process.env.PAPELERA_DIAS);
-    return Number.isFinite(v) && v > 0 ? Math.floor(v) : 90;
+    return Number.isFinite(v) && v > 0 ? Math.floor(v) : 30;
 }
 
 /**
  * Vacía lo que lleva demasiado tiempo en la papelera.
  *
- * 90 días por defecto: un error de borrado se nota dentro del mismo lapso. Más
- * allá de eso, quien tiene que guardar la historia es el respaldo, no esto.
+ * 30 días por defecto (cada liceo elige de 7 a 90): un error de borrado se
+ * nota pronto, y lo que el admin borra no se queda guardado para siempre.
  */
 export async function limpiarPapeleraVieja(
     prisma: ClienteDelLiceo,

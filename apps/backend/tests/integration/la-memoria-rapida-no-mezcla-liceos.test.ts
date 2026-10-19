@@ -310,6 +310,12 @@ describe('La memoria rápida no mezcla liceos', () => {
                 'la clave lleva la credencial de quien pide, que es de un liceo y de una persona',
             'src/services/a-quien-afecta.service.ts|personalPorSeccion':
                 'la clave lleva el liceo delante (clavePorLiceo)',
+            'src/services/papelera.service.ts|MODELOS':
+                'el esquema de Prisma (qué columnas tiene cada tabla): igual para todos los liceos, nada de nadie',
+            'src/services/papelera.service.ts|PADRES':
+                'de qué tabla depende cada tabla, sacado del esquema: igual para todos los liceos',
+            'src/services/papelera.service.ts|profundidad':
+                'el orden de padres a hijos de cada tabla, sacado del esquema: igual para todos los liceos',
             'src/services/cubos-de-precarga.service.ts|ROLES_CON_SECCION_COMPARTIDA':
                 'son los nombres de los roles que comparten el cubo de su sección, no datos de nadie',
             'src/services/cubos-de-precarga.service.ts|conTrabajo':

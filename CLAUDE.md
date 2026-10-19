@@ -175,15 +175,19 @@ siempre en la base, pero un borrado sin querer (un alumno, una clase…) se
 tiene que poder devolver. Por eso:
 
 - lo borrado va primero a la **papelera** (`registros_borrados`), con su
-  cascada, y desde ahí el admin lo **restaura** dentro del plazo;
-- pasado el plazo (30 días propuestos, configurable por liceo con un tope),
-  la tarea diaria lo **borra de la base para siempre** (`PAPELERA_DIAS`, hoy 90);
+  cascada y en una sola **operación** (todo lo de una petición), y el admin lo
+  **restaura** entero en Configuración → Papelera (`services/papelera.service.ts`):
+  de padres a hijos, en una transacción; si ya existe otra vez o falta lo de
+  arriba, 409 `YA_EXISTE` / `FALTA_LO_DE_ARRIBA` y no se toca nada;
+- pasado el plazo del liceo (`papelera.dias`, de 7 a 90; 30 si no dice nada),
+  la tarea diaria lo **borra de la base para siempre**;
 - «Borrar para siempre» en la papelera lo quita al instante;
 - en los respaldos sigue hasta que caduca el último que lo contenía: eso se le
   dice al admin, con la fecha.
 
-Estudio y plan: `docs/RESPALDOS-Y-PAPELERA.md`. Hasta que la papelera tenga
-pantalla para restaurar, lo de abajo sigue igual.
+Restaurar a un **profesor** devuelve su cuenta, no sus clases: al borrarlo se
+reasignan (`updateMany`) y eso no pasa por la papelera. PAPELERA-01…04,
+PAPELERA-UI-01. Estudio de los respaldos: `docs/RESPALDOS-Y-PAPELERA.md`.
 
 Todo borrado de información del liceo pasa por
 `borrarGuardandoCopia()` (`src/utils/papelera.ts`), que guarda una copia completa

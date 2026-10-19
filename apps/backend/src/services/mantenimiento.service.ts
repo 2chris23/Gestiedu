@@ -8,7 +8,7 @@ import { limpiarPapeleraVieja, diasQueSeGuardaLoBorrado } from '../utils/papeler
  * pequeño, el disco lleno tumba a TODOS los liceos a la vez. Cada noche se
  * tira lo que ya no sirve, con su plazo configurable:
  *
- *   papelera (`registros_borrados`)   PAPELERA_DIAS        90  (lo de antes, en el respaldo)
+ *   papelera (`registros_borrados`)   el plazo del liceo   30  (7–90, Configuración → Papelera)
  *   avisos leídos o caducados         AVISOS_DIAS          180 (los `persistent`, nunca)
  *   llaves de sesión caducadas        —                    7 días después de caducar
  *   cambios recibidos (`X-Cambio`)    CAMBIOS_DIAS         90
@@ -38,9 +38,10 @@ export interface LoQueSeTiro {
     paquetes: number;
 }
 
-export async function tirarLoQueNoSirve(prisma: PrismaClient, ahora = new Date()): Promise<LoQueSeTiro> {
+/** `diasDePapelera`: el plazo del liceo (`papelera.service.diasDeLaPapelera`); sin él, el de por defecto. */
+export async function tirarLoQueNoSirve(prisma: PrismaClient, ahora = new Date(), diasDePapelera = diasQueSeGuardaLoBorrado()): Promise<LoQueSeTiro> {
     const p = prisma as any;
-    const papelera = await limpiarPapeleraVieja(prisma, diasQueSeGuardaLoBorrado());
+    const papelera = await limpiarPapeleraVieja(prisma, diasDePapelera);
     const corteAvisos = haceDias(dias('AVISOS_DIAS', 180), ahora);
     const avisos = await p.notification.deleteMany({
         where: {

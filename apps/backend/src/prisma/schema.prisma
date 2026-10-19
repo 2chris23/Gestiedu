@@ -2359,8 +2359,14 @@ model RegistroBorrado {
   borradoPor String?
   motivo     String?
 
+  /// Un mismo borrado (el alumno y todo lo que arrastra): se restaura junto.
+  operacion  String?
+  /// En qué orden entró cada fila de la operación.
+  orden      BigInt  @default(autoincrement())
+
   createdAt DateTime @default(now())
 
+  @@index([operacion])
   @@index([tabla, registroId])
   @@index([createdAt])
   @@index([tabla, createdAt(sort: Desc)])

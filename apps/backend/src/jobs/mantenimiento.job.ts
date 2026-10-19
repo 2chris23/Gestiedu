@@ -4,6 +4,7 @@ import { platformPrisma, getTenantPrisma } from '../config/database';
 import { conLiceo } from '../config/ambito-del-liceo';
 import { tirarLoQueNoSirve } from '../services/mantenimiento.service';
 import { laNocheDeLosCubos } from '../services/cubos-de-precarga.service';
+import { diasDeLaPapelera } from '../services/papelera.service';
 import { latido } from '../utils/latido-de-tareas';
 import { unaVezCada } from '../utils/turno-de-la-tarea';
 import { avisarSiFalla } from '../utils/sin-callar';
@@ -27,7 +28,8 @@ export async function setupMantenimientoJob(_server: FastifyInstance) {
             for (const liceo of liceos) {
                 try {
                     const prisma = await getTenantPrisma(liceo.id);
-                    const r = await conLiceo(liceo.id, () => tirarLoQueNoSirve(prisma));
+                    const plazo = await diasDeLaPapelera(liceo.id);
+                    const r = await conLiceo(liceo.id, () => tirarLoQueNoSirve(prisma, new Date(), plazo));
                     if (r.papelera + r.avisos + r.sesiones + r.cambios + r.paquetes > 0) logger.info('Mantenimiento: tirado lo viejo', { instituteId: liceo.id, ...r });
                     // Todo el liceo al día para mañana, también quien nunca ha entrado
                     // (la cola de los cubos lo arma de fondo).
