@@ -71,7 +71,7 @@ export async function dondeSeDa(prisma: any, subjectId: string, academicYearId: 
 }
 
 /** Las clases (sección + materia) que ya tienen trabajo: no se quitan. */
-async function conTrabajo(prisma: any, subjectId: string, classroomIds: string[]) {
+export async function conTrabajo(prisma: any, subjectId: string, classroomIds: string[]) {
     if (!classroomIds.length) return new Set<string>();
     const [actividades, plan, apreciaciones, inscritos] = await Promise.all([
         prisma.classActivity.groupBy({ by: ['classroomId'], where: { subjectId, classroomId: { in: classroomIds } } }),
@@ -88,6 +88,17 @@ async function conTrabajo(prisma: any, subjectId: string, classroomIds: string[]
         for (const i of inscritos as any[]) if (conNotaSet.has(i.studentId)) con.add(i.classroomId);
     }
     return con;
+}
+
+/**
+ * Por cualquier puerta que se quite una clase, la misma regla: con notas,
+ * actividades, plan o apreciaciones, 409 y no se quita NADA (VIEJA-01).
+ */
+export async function noQuitarConTrabajo(prisma: any, subjectId: string, classroomIds: string[]): Promise<void> {
+    const ocupadas = await conTrabajo(prisma, subjectId, classroomIds);
+    if (!ocupadas.size) return;
+    const nombres = (await prisma.classroom.findMany({ where: { id: { in: [...ocupadas] } }, select: { name: true } })).map((s: any) => s.name);
+    throw createError(409, `No se puede quitar de ${nombres.join(', ')}: ya tiene notas, actividades o plan`, 'CLASE_CON_TRABAJO');
 }
 
 export async function ponerEnSecciones(

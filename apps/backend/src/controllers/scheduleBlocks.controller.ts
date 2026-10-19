@@ -302,7 +302,12 @@ export async function updateScheduleBlock(
 ) {
     try {
         const { id } = request.params;
-        const updateData = request.body;
+        // Solo lo que se mueve. Antes iba el cuerpo entero a la base: se podía
+        // cambiar la sección o la clase del bloque y la comprobación de choques
+        // miraba al profesor de antes (VIEJA-02).
+        const b: any = request.body ?? {};
+        const updateData: { dayOfWeek?: number; startTime?: string; endTime?: string; location?: string; notes?: string; blockType?: string } = {};
+        for (const k of ['dayOfWeek', 'startTime', 'endTime', 'location', 'notes'] as const) if (b[k] !== undefined) (updateData as any)[k] = b[k];
 
         const existing = await request.tenantPrisma.scheduleBlock.findUnique({
             where: { id },

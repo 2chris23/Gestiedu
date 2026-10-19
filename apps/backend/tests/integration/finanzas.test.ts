@@ -101,6 +101,10 @@ describe('Finanzas del liceo', () => {
         expect((await post(tk.admin, `/api/finanzas/fondos/${don.body.fondo.id}/anular`, { motivo: 'Otra vez' })).status).toBe(404);
         expect(await disponibles()).toBe(1000);
         expect(await prisma.fondoDelLiceo.count()).toBe(2); // sigue ahí, anulada
+        // La lista de fondos los enseña los dos; el anulado, marcado.
+        const fondos = (await get(tk.admin, '/api/finanzas/fondos')).body.fondos;
+        expect(fondos.map((f: any) => [f.concepto, Boolean(f.anuladoEn)]).sort()).toEqual([['DONACION', true], ['SALDO_INICIAL', false]]);
+        expect((await get(tk.profe1, '/api/finanzas/fondos')).status).toBe(403);
         const futuro = await post(tk.admin, '/api/finanzas/fondos', { concepto: 'OTRO', fecha: sumarDias(HOY, 3), monto: 5 });
         expect(futuro.body.code).toBe('FECHA_FUTURA');
     }, 60000);

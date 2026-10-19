@@ -6,6 +6,7 @@ import { findTeacherAssignmentConflicts, ScheduleConflictError } from './schedul
 import { borrarGuardandoCopia, QuienBorra } from '../utils/papelera';
 import { NotFoundError } from '../utils/errors';
 import { olvidarMateriasCualitativas } from './apreciaciones.service';
+import { noQuitarConTrabajo } from './secciones-de-la-materia.service';
 
 /**
  * UNA MATERIA «POR GRUPOS» SE EVALÚA CON APRECIACIÓN: el profesor de cada
@@ -719,6 +720,8 @@ export class SubjectsService {
             yearId = activeYear.id;
         }
 
+        const secciones = await prisma.classroomSubject.findMany({ where: { subjectId, classroom: { grade, academicYearId: yearId } }, select: { classroomId: true } });
+        await noQuitarConTrabajo(prisma, subjectId, secciones.map((s: any) => s.classroomId));
         // Con copia en la papelera: quitar la materia de un año se lleva la
         // asignación de cada sección con su profesor y su historial. Esto era
         // un `deleteMany` a pelo, uno de los dos borrados que se saltaban la regla.

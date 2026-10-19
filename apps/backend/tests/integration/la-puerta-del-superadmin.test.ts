@@ -59,4 +59,27 @@ describe('La puerta del superadministrador', () => {
         expect(fantasma.status).toBe(401);
         expect({ status: apagada.status, body: apagada.body }).toEqual({ status: fantasma.status, body: fantasma.body });
     }, 60000);
+
+    it('SA-RENOVAR-01: renovar cambia la llave (la vieja ya no vale) y una cuenta desactivada no renueva', async () => {
+        const email = `sa-renovar-${Date.now()}@test.com`;
+        correos.push(email);
+        await seedSuperAdmin(platformPrisma, email, CLAVE);
+        const renovar = (refreshToken: string) => request(server.server).post('/api/superadmin/auth/refresh').send({ refreshToken });
+
+        const dentro = await entrar(email, CLAVE);
+        expect(dentro.status).toBe(200);
+        const r = await renovar(dentro.body.refreshToken);
+        expect(r.status).toBe(200);
+        expect(r.body.accessToken).toBeTruthy();
+        expect(r.body.refreshToken).not.toBe(dentro.body.refreshToken);
+        // La de antes ya se usó: no vale dos veces.
+        expect((await renovar(dentro.body.refreshToken)).status).toBe(401);
+        expect((await renovar('inventada')).status).toBe(401);
+
+        // Desactivada, su llave de renovar deja de servir.
+        await platformPrisma.superAdmin.update({ where: { email }, data: { isActive: false } });
+        const apagada = await renovar(r.body.refreshToken);
+        expect(apagada.status).toBe(401);
+        expect(apagada.body.accessToken).toBeUndefined();
+    }, 60000);
 });

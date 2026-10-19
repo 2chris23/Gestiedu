@@ -360,6 +360,9 @@ async function delProfesor(prisma: any, comun: Contexto, menu: string[], yoId: s
             ctx: { ...comun, seccion: b.classroomId, materia: b.classroomSubject.subjectId, fecha, inicio: b.startTime, fin: b.endTime },
         });
     }
+    // Su horario: Horarios lo manda ahí (`horarios/page.tsx`), y sin ella
+    // sin conexión salía «no está guardada» (PRECARGA-01).
+    if (menu.includes('/dashboard/horarios')) salida.push({ molde: '/dashboard/horarios/profesor/{profe}', ctx: { ...comun, profe: yoId } });
     // Las fichas no: el profesor no las abre (`proxy.ts`, solo el admin).
     return salida;
 }

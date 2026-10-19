@@ -189,6 +189,14 @@ describe('El plan y los encuentros de las pendientes (PEND-17…20)', () => {
             data: { studentId: al.ana.id, subjectId: fisica.id, gradoDeOrigen: 1, cicloDeOrigenId: pend.ana.cicloDeOrigenId, cicloId: pend.ana.cicloId },
         });
         expect((await asistencia([{ materiaPendienteId: ajena.id, estado: 'PRESENTE' }]).expect(400)).body.code).toBe('ALUMNO_INVALIDO');
+        // Mover la evaluación: otra fecha y otra aula; el profesor de otra clase, no.
+        const mover = (u: any) => api().put(`/api/materias-pendientes/encuentros/${evaluacion.id}`).set(como(u, UserRole.TEACHER));
+        await mover(otro).send({ momento: 1, tipo: 'EVALUACION', opcion: 1, fecha: '2026-10-06' }).expect(403);
+        await mover(profe).send({ momento: 1, tipo: 'EVALUACION', opcion: 1, fecha: '2026-10-06', hora: '10:00', aula: 'Aula 5' }).expect(200);
+        const movido = (await laClase().expect(200)).body.data.encuentros.find((e: any) => e.id === evaluacion.id);
+        expect(movido).toMatchObject({ fecha: '2026-10-06', hora: '10:00', aula: 'Aula 5' });
+        // La asistencia se queda con el encuentro.
+        expect(movido.asistencias[pend.beto.id]).toBe('AUSENTE');
         // Quitar un encuentro va a la papelera, con su asistencia.
         await api().delete(`/api/materias-pendientes/encuentros/${evaluacion.id}`).set(como(profe, UserRole.TEACHER)).expect(200);
         expect(await prisma.$queryRawUnsafe<any[]>(`SELECT 1 FROM registros_borrados WHERE tabla = 'encuentroDePendiente'`)).toHaveLength(1);

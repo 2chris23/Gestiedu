@@ -207,25 +207,6 @@ export function useTeacherHistory(classroomId: string, subjectId: string) {
 }
 
 /**
- * Hook para remover una materia de una sección
- */
-export function useRemoveSubjectFromClassroom() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: ({ classroomId, subjectId }: { classroomId: string; subjectId: string }) =>
-            classroomSubjectsService.removeSubjectFromClassroom(classroomId, subjectId),
-        onSuccess: (_, variables) => {
-            queryClient.invalidateQueries({ queryKey: ['classroomSubjects', variables.classroomId] });
-            toast.success('Materia removida exitosamente');
-        },
-        onError: (error: Error) => {
-            toast.error(error.message);
-        },
-    });
-}
-
-/**
  * Hook para obtener horario completo de una sección
  */
 export function useClassroomSchedule(classroomId: string) {

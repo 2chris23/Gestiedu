@@ -1,4 +1,5 @@
 /// <reference path="../types/fastify.d.ts" />
+import { responderErrorClaro } from '../utils/error-claro';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { SubjectsService } from '../services/subjects.service';
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../utils/constants';
@@ -316,7 +317,7 @@ export async function removeSubjectFromGrade(request: FastifyRequest, reply: Fas
       message: 'Materia removida del grado exitosamente'
     });
   } catch (error) {
-    throw error;
+    return responderErrorClaro(reply, error);
   }
 }
 

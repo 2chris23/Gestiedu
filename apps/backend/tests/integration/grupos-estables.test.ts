@@ -244,6 +244,29 @@ describe('Los grupos estables (GRUPO-01…07)', () => {
         expect(losGrupos.grupos.find((g: any) => g.id === costura.id).aceptados).toBe(1);
     }, 60000);
 
+    it('GRUPO-08: el admin edita el grupo (el cupo no baja de los que hay) y lo quita con copia', async () => {
+        const { costura } = await dosGrupos();
+        await pedir(ana, costura.id).expect(200);
+        const suya = await solicitudDe(ana.id);
+        await decidir(suya!.id, 'ACEPTAR', profeCostura).expect(200);
+        await pedir(beto, costura.id).expect(200);
+        await decidir((await solicitudDe(beto.id))!.id, 'ACEPTAR', profeCostura).expect(200);
+        const editar = (d: any, u = admin, rol = UserRole.ADMIN) => api().put(`/api/grupos-estables/${costura.id}`).set(como(u, rol)).send(d);
+
+        await editar({ nombre: 'Costura y bordado' }, profeCostura, UserRole.TEACHER).expect(403);
+        expect((await editar({ cupo: 1 }).expect(409)).body.code).toBe('CUPO_MENOR');
+        await editar({ nombre: 'Costura y bordado', cupo: 12 }).expect(200);
+        expect(await prisma.grupoEstable.findUnique({ where: { id: costura.id } })).toMatchObject({ nombre: 'Costura y bordado', cupo: 12 });
+
+        await api().delete(`/api/grupos-estables/${costura.id}`).set(como(profeCostura, UserRole.TEACHER)).expect(403);
+        await api().delete(`/api/grupos-estables/${costura.id}`).set(como(admin, UserRole.ADMIN)).expect(200);
+        expect(await prisma.grupoEstable.findUnique({ where: { id: costura.id } })).toBeNull();
+        // Nada se borra de verdad: el grupo y su solicitud, en la papelera.
+        const copia = await prisma.registroBorrado.findFirst({ where: { tabla: 'grupoEstable', registroId: costura.id } });
+        expect(copia).toBeTruthy();
+        await api().delete(`/api/grupos-estables/${costura.id}`).set(como(admin, UserRole.ADMIN)).expect(404);
+    }, 60000);
+
     it('GRUPO-07: la elección cerrada no deja pedir; por lapso, cada lapso es otro momento', async () => {
         const { costura } = await dosGrupos();
         await reglas({ eleccion: 'ANUAL', abierta: false });

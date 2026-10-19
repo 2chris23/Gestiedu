@@ -7,6 +7,7 @@ import { getAcademicConfig } from '../services/promotion/close-cycle.service';
 import { findTeacherAssignmentConflicts } from '../services/schedule-conflicts.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 import { horasDeLosBloques } from '../services/personal.service';
+import { noQuitarConTrabajo } from '../services/secciones-de-la-materia.service';
 
 interface AssignSubjectToClassroomRequest {
     Params: {
@@ -716,6 +717,12 @@ export async function removeSubjectFromClassroom(
                 error: 'Materia no encontrada en esta sección',
                 code: 'CLASSROOM_SUBJECT_NOT_FOUND',
             });
+        }
+
+        try {
+            await noQuitarConTrabajo(request.tenantPrisma, subjectId, [classroomId]);
+        } catch (e: any) {
+            return reply.status(409).send({ error: e.message, code: e.code });
         }
 
         // Eliminar (esto también eliminará en cascada el historial y bloques de horario)

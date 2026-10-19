@@ -47,7 +47,33 @@ const PRUEBAS = [...archivos(path.join(RAIZ, 'tests')), ...archivos(path.resolve
 // Las pantallas también cuentan: una prueba de navegador pulsa el botón y la pantalla llama a la ruta.
 const PANTALLAS = archivos(path.resolve(RAIZ, '../web/src'));
 
-const escapar = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/**
+ * Rutas que ninguna pantalla llama (comprobado buscando en `apps/web/src`, 19-oct-2026).
+ * La puerta 4 es «cada opción funciona», y una opción es lo que se pulsa: estas
+ * se cuentan aparte. Cada una dice por qué sigue. Quitarlas es un pendiente
+ * (`docs/LISTO-PARA-EL-PILOTO.md`): menos puertas, menos que vigilar.
+ */
+const SIN_PANTALLA: Record<string, string> = {
+    'POST /api/subjects/grade/:grade/assign': 'la pantalla que la usaba (SubjectTagManager) ya no existe; la usa schedule-conflict-doors para vigilar los choques',
+    'DELETE /api/subjects/grade/:grade/:subjectId': 'igual; con trabajo responde 409 CLASE_CON_TRABAJO, como «Dónde se da»',
+    'DELETE /api/classrooms/:classroomId/subjects/:subjectId': 'se quita en Materias → «Dónde se da»; con trabajo, 409 CLASE_CON_TRABAJO',
+    'DELETE /api/schedules/:id': 'el horario viejo (Schedule): la web usa los bloques',
+    'DELETE /api/students/:id': 'los usuarios se gestionan en /users; pide un cuid y el id es la cédula: no puede funcionar',
+    'PUT /api/students/profile/me': 'nadie edita su propia ficha (solo el admin, en /users); la vigila auditoria-permisos',
+    'POST /api/teachers': 'los usuarios se crean en /users',
+    'PUT /api/teachers/:id': 'en /users; pide un cuid y el id es la cédula',
+    'DELETE /api/teachers/:id': 'en /users; pide un cuid y el id es la cédula',
+    'PUT /api/teachers/profile/me': 'nadie edita su propia ficha; la vigila auditoria-permisos',
+    'POST /api/notifications/system': 'los avisos van por /api/avisos',
+    'PUT /api/notifications/:id': 'los avisos van por /api/avisos',
+    'DELETE /api/notifications/:id': 'los avisos van por /api/avisos',
+    'PUT /api/institutes/:id/config': 'la configuración se guarda en /institutes/current/config',
+    'POST /api/superadmin/institutes/:id/reprovision': 'herramienta de operación, sin pantalla (DESPLIEGUE.md)',
+    'GET /api/superadmin/monitoring/alerts': 'herramienta de operación; el panel de Salud la sustituye',
+    'PATCH /api/superadmin/monitoring/alerts/:id/resolve': 'herramienta de operación; el panel de Salud la sustituye',
+};
+
+const escapar =(s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** `/api/students/:id/boleta` → busca `/students/<algo>/boleta`. */
 function patron(url: string): RegExp {
     const sinApi = url.replace(/^\/api/, '');
@@ -95,7 +121,7 @@ async function main() {
         .map((r) => {
             const clave = `${r.metodo} ${r.url}`;
             const enPrueba = probadas ? probadas.has(clave) : sale(r.url, textoPruebas);
-            return { ...r, enPrueba, enPantalla: sale(r.url, textoPantallas), soloRechazos: probadas ? !probadasBien.has(clave) && enPrueba : false };
+            return { ...r, enPrueba, enPantalla: sale(r.url, textoPantallas), soloRechazos: probadas ? !probadasBien.has(clave) && enPrueba && !SIN_PANTALLA[clave] : false, sinPantalla: SIN_PANTALLA[clave] ?? null };
         });
     const escritura = (m: string) => m !== 'GET';
     const sin = filas.filter((f) => !f.enPrueba);
@@ -107,6 +133,7 @@ async function main() {
         lecturasSinPrueba: sin.filter((f) => !escritura(f.metodo)).length,
         // Probadas solo por la puerta de atrás (403, 400…): nadie comprobó que funcionan.
         soloRechazos: filas.filter((f) => f.soloRechazos).length,
+        sinPantalla: filas.filter((f) => f.sinPantalla).length,
     };
     console.log(JSON.stringify(resumen, null, 2));
     console.log('\nSin ninguna prueba (las que usa una pantalla, primero):');
@@ -116,6 +143,8 @@ async function main() {
     if (probadas) {
         console.log('\nProbadas solo con rechazos (ninguna prueba vio que funcionen):');
         for (const f of filas.filter((x) => x.soloRechazos)) console.log(`  ${f.metodo.padEnd(6)} ${f.url}`);
+        console.log('\nSin pantalla (no son opciones que se pulsen; se cuentan aparte):');
+        for (const f of filas.filter((x) => x.sinPantalla)) console.log(`  ${f.metodo.padEnd(6)} ${f.url} — ${f.sinPantalla}`);
     }
     await server.close().catch(() => undefined);
     process.exit(process.argv.includes('--exigir') && sin.length ? 1 : 0);
