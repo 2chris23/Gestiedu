@@ -324,7 +324,11 @@ async function delAdmin(prisma: any, comun: Contexto, menu: string[]): Promise<P
     }
     for (const ctx of materiasDelCiclo.values()) salida.push({ molde: '/dashboard/materias/{ciclo}/{materiaSlug}', ctx });
     const profes = await prisma.user.findMany({ where: { role: 'TEACHER', isActive: true }, select: { id: true }, orderBy: { id: 'asc' } });
-    for (const p of profes) salida.push({ molde: '/dashboard/horarios/profesor/{profe}', ctx: { ...comun, profe: p.id } });
+    for (const p of profes) {
+        salida.push({ molde: '/dashboard/horarios/profesor/{profe}', ctx: { ...comun, profe: p.id } });
+        // Su ficha en Profesores (horas, clases, promedio).
+        salida.push({ molde: '/dashboard/profesores/{profe}', ctx: { ...comun, profe: p.id } });
+    }
     const todos = await prisma.user.findMany({ where: { isActive: true, role: { in: ['STUDENT', 'TEACHER', 'TUTOR', 'ADMIN'] } }, select: { id: true }, orderBy: { id: 'asc' } });
     salida.push(...(await lasFichas(prisma, todos.map((u: { id: string }) => u.id), comun)));
     // La boleta de cada alumno (la hoja para imprimir que más se pide): una

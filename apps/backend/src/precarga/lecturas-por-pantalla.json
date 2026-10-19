@@ -1,5 +1,5 @@
 {
-  "version": 9,
+  "version": 10,
   "pantallas": {
     "ADMIN:/dashboard": [
       "/avisos",
@@ -240,6 +240,23 @@
       "/institutes/current/membrete",
       "/pae/config",
       "/payments/settings"
+    ],
+    "ADMIN:/dashboard/profesores": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings",
+      "/profesores"
+    ],
+    "ADMIN:/dashboard/profesores/{profe}": [
+      "/academic-years",
+      "/avisos",
+      "/avisos/preferencias",
+      "/institutes/current/config",
+      "/pae/config",
+      "/payments/settings",
+      "/profesores/{profe}"
     ],
     "ADMIN:/dashboard/usuarios": [
       "/avisos",
