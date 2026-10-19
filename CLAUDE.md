@@ -37,17 +37,52 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
    19-oct-2026). Cristian no busca liceo piloto hasta que Claude diga «listo»,
    y solo se dice con las CUATRO puertas al 100 %, medidas:
    1. **Cero errores** (jest y navegador enteros en verde, el panel de Salud sin
-      errores abiertos, el barrido de privacidad limpio);
+      errores abiertos, el barrido de privacidad limpio, y **la misma cifra en
+      todas partes**: un alumno no tiene un promedio o una asistencia en una
+      pantalla y otro en otra);
    2. **No se pierde nada** (lo hecho sin conexión sube, los respaldos se
       recuperan, nada se borra sin copia, ningún cambio se pisa callado);
-   3. **Sigue siendo rápido con 100.000 personas** (medido con carga, no
-      supuesto: el pronóstico de Salud calibrado y `medir:estres` sin doblarse);
+   3. **Sigue siendo rápido con 100.000 personas** y **con más de 10.000 a la
+      vez responde en 100 ms o menos (p99)**, sin romperse (medido con carga,
+      no supuesto: ver 0-ter);
    4. **Cada opción funciona** (crear un estudiante, poner un horario… cada
       botón de cada rol, con su prueba de navegador).
 
    El estado de cada puerta y la fecha estimada viven en
    `docs/LISTO-PARA-EL-PILOTO.md`; se actualiza al cerrar cada tanda de
    trabajo. Decir «listo» sin las cuatro es mentirle.
+0-ter. **Desarrollo primero; producción, solo al final** (Cristian,
+   19-oct-2026: «es algo serio trabajar con instituciones y tengo que entregar
+   algo de calidad»). **Ni dominio ni servidores** hasta estar 100 % seguros de
+   que el sistema aguanta el uso masivo; con ellos esperan la copia en Drive,
+   la revisión del abogado y el titular de lo legal. Desarrollo va por cinco
+   etapas:
+   1. implementación (secciones y funciones nuevas);
+   2. corrección de diseño;
+   3. revisar todo de pie a cabeza (código, archivos y arquitectura);
+   4. que todo funcione como debe;
+   5. estrés extremo: **más de 10.000 personas a la vez sin romperse ni ponerse
+      lento, 100 ms como máximo**.
+
+   Líneas rojas: nadie espera minutos a que algo cargue; nada tarda un minuto
+   en aparecer tras tocarlo; ninguna suma, promedio ni asistencia mal; **un
+   mismo dato, la misma cifra en cada pantalla** (una sola cuenta, en
+   `MAPA_DE_CALCULOS.md`).
+
+   **Cómo se mide sin servidor** (este PC no llega a 10.000 reales):
+   `medir:estres` sube por escalones (100 → 200 → 500 → 1.000 → … hasta donde
+   el PC aguante) y saca p50/p95/p99 de cada uno, **cuánto crece en % al
+   doblar la gente** y la proyección a 1.000, 10.000 y 100.000 con dos cuentas:
+   la de Cristian (el mismo % por cada doble) y el modelo de colas de Salud
+   calibrado con lo medido. Se dice cuál vale más y por qué: mientras sobra
+   máquina el crecimiento es casi plano; cerca del techo se dispara y no en
+   línea recta. La descarga de la primera vez se mide aparte (son MB y manda
+   la red), pero el servidor nunca la hace pasar de segundos.
+
+   **El código, ordenado**: ningún archivo pasa de ~800 líneas (uno grande se
+   parte por responsabilidad, no por número); lo obsoleto se borra con
+   evidencia de que nadie lo usa; las pruebas que vigilan algo que hoy
+   funciona se quedan siempre (son las que avisan si se rompe otra vez).
 1. **Evidencia antes de corregir.** Nada es un fallo ni "ya funciona" sin código, diff o
    prueba en vivo que lo demuestre. Medir, no deducir.
 2. **Las reglas de negocio son configurables por instituto**, nunca fijas en el código.

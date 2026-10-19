@@ -7,11 +7,22 @@ con su evidencia, y se actualiza al cerrar cada tanda de trabajo.
 
 **Estado al 19-oct-2026 (tarde): NO está listo.** Lo que falta está abajo, en orden.
 
+**Desarrollo antes de producción** (CLAUDE.md, 0-ter): ni dominio ni servidores
+hasta cerrar las cinco etapas. Drive, el abogado y el titular de lo legal esperan.
+
+| Etapa | Estado |
+|---|---|
+| 1. Implementación | 🟡 Grupos estables, fases 3–5 por hacer |
+| 2. Corrección de diseño | 🟡 Continua, con Cristian mirando |
+| 3. Revisar de pie a cabeza | 🔴 Empieza ahora: arquitectura, archivos de más de 800 líneas (17 pasan de 1.000), lo obsoleto |
+| 4. Que todo funcione | 🟡 Ver puertas 1 y 4 |
+| 5. Estrés: 10.000 a la vez, ≤ 100 ms | 🔴 Medido hasta 500; falta subir los escalones y proyectar |
+
 | Puerta | Qué exige | Estado |
 |---|---|---|
-| 1. Cero errores | jest y navegador enteros en verde; Salud sin errores abiertos; barrido de privacidad limpio | 🟡 jest entero en verde (1.446). Navegador: la descarga sin conexión, 8 de 9 (falta la velocidad del admin); falta la tanda entera (316) |
+| 1. Cero errores | jest y navegador enteros en verde; Salud sin errores abiertos; barrido de privacidad limpio; la misma cifra en todas partes | 🟡 jest entero en verde (1.446). Navegador: la descarga sin conexión, 8 de 9 (falta la velocidad del admin); falta la tanda entera (316) |
 | 2. No se pierde nada | lo hecho sin conexión sube; los respaldos vuelven; nada se borra sin copia; nada se pisa callado | 🟡 Probado por partes; hoy se cerraron dos huecos. Falta la prueba de caos y la copia fuera del servidor |
-| 3. Rápido con 100.000 | medido con carga, sin doblarse | 🔴 Medido solo en este PC. Hace falta el servidor de verdad |
+| 3. Rápido con 100.000 | más de 10.000 a la vez a ≤ 100 ms (p99), sin romperse; medido por escalones en este PC y proyectado | 🔴 Medido solo en este PC. Hace falta el servidor de verdad |
 | 4. Cada opción funciona | cada botón de cada rol, con su prueba | 🟡 Servidor: 455 de 456 opciones vistas funcionando. Falta lo mismo en las pantallas |
 
 ## Puerta 1 — Cero errores

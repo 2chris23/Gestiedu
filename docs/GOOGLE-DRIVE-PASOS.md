@@ -1,5 +1,7 @@
 # Crear el proyecto de Google para la copia en Drive
 
+> **En pausa (19-oct-2026):** Cristian decidió no comprar el dominio ni servidores hasta terminar Desarrollo (CLAUDE.md, 0-ter). Esto se retoma entonces.
+
 Pasos para hacer juntos (Cristian y Claude) cuando se monte la copia automática en el Drive de cada liceo (`docs/RESPALDOS-Y-PAPELERA.md`). Todo es gratis.
 
 ## Lo que ya está listo
