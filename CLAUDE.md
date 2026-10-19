@@ -19,6 +19,20 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
 
 ## Cómo se trabaja aquí
 
+0. **Lo único que puede frenar a una persona es su dispositivo o su internet.
+   Nunca, pero nunca, el sistema** (Cristian, 18-oct-2026). Gestiedu se hace
+   para todos los liceos privados del país a la vez —15.000 personas es el piso,
+   no el techo— y TODA lógica nueva o cambiada lo respeta:
+   - ninguna espera crece con cuánta gente usa la app a la vez;
+   - lo que es igual para muchos se calcula **una vez** y se reparte;
+   - nada pesado se calcula al pedirlo si puede estar listo antes;
+   - siempre en bloque (sin N+1), con topes globales y sin colas de uno en uno.
+
+   Se demuestra midiendo con mucha gente a la vez (`medir-muchos-a-la-vez`,
+   `medir:estres`, `medir:concurrencia`), no se supone. Lo que no lo cumple no
+   está terminado. Ejemplo medido: la precarga armaba el paquete de cada
+   persona al entrar, de uno en uno; 300 alumnos en frío esperaban hasta 83 s
+   (con 15.000, más de una hora) para bajar 27 KB cada uno.
 1. **Evidencia antes de corregir.** Nada es un fallo ni "ya funciona" sin código, diff o
    prueba en vivo que lo demuestre. Medir, no deducir.
 2. **Las reglas de negocio son configurables por instituto**, nunca fijas en el código.
