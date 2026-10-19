@@ -5,6 +5,8 @@ import { join } from 'path';
 import moldesGrabados from '../precarga/lecturas-por-pantalla.json';
 import { instituteTimezone, todayInTimezone } from '../utils/school-time';
 import { RedisCache } from '../config/redis';
+import { liceoActual } from '../config/ambito-del-liceo';
+import { getAcademicConfig } from './promotion/close-cycle.service';
 
 /**
  * LA PRECARGA EN UN PAQUETE (octubre 2026, pedido por Cristian)
@@ -217,6 +219,7 @@ interface SeccionConMaterias {
     id: string;
     slug: string;
     teacherId: string | null;
+    grade: number;
     academicYear: { id: string; name: string } | null;
     subjects: Array<{ id: string; subjectId: string; teacherId: string | null; subject: { slug: string } }>;
 }
@@ -228,6 +231,7 @@ async function lasSecciones(prisma: any, where: Record<string, unknown>): Promis
             id: true,
             slug: true,
             teacherId: true,
+            grade: true,
             academicYear: { select: { id: true, name: true } },
             subjects: { select: { id: true, subjectId: true, teacherId: true, subject: { select: { slug: true } } } },
         },
@@ -248,10 +252,14 @@ function deLaSeccion(s: SeccionConMaterias): Contexto {
  * `variante`: el profesor ve los promedios solo de sus secciones GUÍA, así
  * que esa pantalla pide más en la guía que en las demás (se graba cada una).
  */
-function laSeccionEntera(s: SeccionConMaterias, comun: Contexto, conTodo: boolean, variante?: string): Pantalla[] {
+function laSeccionEntera(s: SeccionConMaterias, comun: Contexto, conTodo: boolean, variante?: string, conLabor = false): Pantalla[] {
     const ctx = { ...comun, ...deLaSeccion(s) };
     const salida: Pantalla[] = [
         { molde: '/dashboard/academico/{ciclo}/{seccionSlug}', ctx, ...(variante ? { variante } : {}) },
+        // Con labor social en su grado, la sección tiene una pestaña más: va
+        // como otra variante para que la grabadora visite una de esas secciones
+        // (con una sola por molde caía en 1.º y no la veía; PRECARGA-04).
+        ...(conLabor ? [{ molde: '/dashboard/academico/{ciclo}/{seccionSlug}', ctx, variante: 'LABOR' }] : []),
         { molde: '/dashboard/horario/{ciclo}/{seccionSlug}', ctx },
         { molde: '/dashboard/horarios/seccion/{seccion}', ctx },
     ];
@@ -306,6 +314,14 @@ async function lasFichas(prisma: any, ids: string[], comun: Contexto): Promise<P
     });
 }
 
+/** Los grados con labor social en el liceo (la pestaña de la sección la enseña al admin y al guía). */
+async function losGradosConLabor(): Promise<Set<number>> {
+    const liceo = liceoActual();
+    if (!liceo) return new Set();
+    const ls = (await getAcademicConfig(liceo).catch(() => null))?.laborSocial;
+    return new Set(ls?.activa ? ls.grados : []);
+}
+
 async function delAdmin(prisma: any, comun: Contexto, menu: string[]): Promise<Pantalla[]> {
     const salida: Pantalla[] = menu.map((m) => ({ molde: m, ctx: comun }));
     const ciclos = await prisma.academicYear.findMany({ select: { id: true, name: true }, orderBy: { startDate: 'desc' } });
@@ -314,9 +330,10 @@ async function delAdmin(prisma: any, comun: Contexto, menu: string[]): Promise<P
         for (const sub of ['', '/cierre', '/graduandos', '/matricula', '/promocion']) salida.push({ molde: `/dashboard/academico/{ciclo}${sub}`, ctx });
     }
     const secciones = await lasSecciones(prisma, {});
+    const conLabor = await losGradosConLabor();
     const materiasDelCiclo = new Map<string, Contexto>();
     for (const s of secciones) {
-        salida.push(...laSeccionEntera(s, comun, true));
+        salida.push(...laSeccionEntera(s, comun, true, undefined, conLabor.has(s.grade)));
         for (const m of s.subjects) {
             salida.push(...laMateria(s, m, comun).filter((p) => !p.molde.startsWith('/dashboard/instrumentos')));
             if (s.academicYear) materiasDelCiclo.set(`${s.academicYear.id}|${m.subjectId}`, { ...comun, ciclo: s.academicYear.name, anio: s.academicYear.id, materia: m.subjectId, materiaSlug: m.subject.slug });
@@ -341,9 +358,10 @@ async function delAdmin(prisma: any, comun: Contexto, menu: string[]): Promise<P
 async function delProfesor(prisma: any, comun: Contexto, menu: string[], yoId: string): Promise<Pantalla[]> {
     const salida: Pantalla[] = menu.map((m) => ({ molde: m, ctx: comun }));
     const secciones = await lasSecciones(prisma, { OR: [{ teacherId: yoId }, { subjects: { some: { teacherId: yoId } } }] });
+    const conLabor = await losGradosConLabor();
     for (const s of secciones) {
         const esGuia = s.teacherId === yoId;
-        salida.push(...laSeccionEntera(s, comun, esGuia, esGuia ? 'GUIA' : 'IMPARTE'));
+        salida.push(...laSeccionEntera(s, comun, esGuia, esGuia ? 'GUIA' : 'IMPARTE', esGuia && conLabor.has(s.grade)));
         for (const m of s.subjects) if (m.teacherId === yoId) salida.push(...laMateria(s, m, comun));
     }
     // Su semana de clases: la clase en vivo de cada bloque, con su fecha.

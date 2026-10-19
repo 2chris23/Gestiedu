@@ -14,7 +14,7 @@ import { API_BASE, TENANT_SLUG, loginApi, loginViaUI, queryTenantDb, representan
  * El servidor dice qué es cada trozo de esa pantalla (su contexto: `{id}`,
  * `{seccion}`, `{hoy}`…) y cada lectura se guarda en molde.
  *
- *   GRABAR=1 npx playwright test grabar-lecturas    → reescribe
+ *   GRABAR=1 npx playwright test grabar-lecturas    → AÑADE lo nuevo (GRABAR=reemplazar, reescribe)
  *       apps/backend/src/precarga/lecturas-por-pantalla.json
  *   npx playwright test grabar-lecturas             → PRECARGA-MAPA: graba
  *       igual y falla si una pantalla pide algo que el mapa no tiene
@@ -49,7 +49,10 @@ function enMolde(clave: string, ctx: Record<string, string | string[]>): { molde
     // Con el mismo valor en dos nombres (la clase de hoy: `{fecha}` y `{hoy}`;
     // un lunes: `{lunes}`), gana el de la pantalla, que va después del común:
     // si no, la clase en vivo del martes pediría la fecha del lunes.
-    const orden = new Map(Object.keys(ctx).map((k, i) => [k, i]));
+    // Los días de la semana pierden ante cualquier otro nombre con la misma
+    // fecha: grabando un lunes, `{lunes}` le ganaba a `{hoy}` (19-oct-2026).
+    const DIAS = new Set(['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'domingo']);
+    const orden = new Map(Object.keys(ctx).map((k, i) => [k, DIAS.has(k) ? -1 : i]));
     const pares = Object.entries(ctx)
         .flatMap(([k, v]) => (Array.isArray(v) ? v.map((x) => [`${k}[]`, x] as const) : [[k, v] as const]))
         .filter(([, v]) => typeof v === 'string' && v.length >= 4)
@@ -145,7 +148,16 @@ async function grabarUnRol(browser: Browser, correo: string) {
         page.on('request', (req) => {
             if (req.method() !== 'GET' || !ahora) return;
             const u = new URL(req.url());
-            if (u.origin !== api.origin || !u.pathname.startsWith(api.pathname)) return;
+            // La API directa (3001) o la que reenvía la web compilada (`/api` del 3100, el túnel):
+            // si solo se miraba la primera, con la web compilada no se grababa nada.
+            const directa = u.origin === api.origin && u.pathname.startsWith(api.pathname);
+            // Menos las rutas propias de la web (`apps/web/src/app/api/*`): `/api/estoy`
+            // no es del servidor de datos y se colaba en todas las pantallas.
+            const porLaWeb =
+                u.pathname.startsWith(api.pathname) &&
+                u.origin === new URL(page.url()).origin &&
+                !/^\/api\/(estoy|instituto|proxy|superadmin|auth)\b/.test(u.pathname);
+            if (!directa && !porLaWeb) return;
             const clave = laClave(u.pathname.slice(api.pathname.length), u.search.slice(1));
             if (NO_VA.test(clave)) return;
             const { molde, sueltos: s } = enMolde(clave, ahora.ctx);
@@ -192,9 +204,25 @@ test.describe('Grabadora de lecturas', () => {
         const nuevo: Record<string, string[]> = {};
         for (const k of [...todas.keys()].sort()) nuevo[k] = [...todas.get(k)!].sort();
 
+        // Una grabación que no vio nada (otra web, otro puerto) daba verde y, con
+        // GRABAR, dejaba el mapa vacío: la precarga de todos con él (19-oct-2026).
+        const antes = Object.keys((JSON.parse(readFileSync(ARCHIVO, 'utf-8')) as { pantallas?: Record<string, string[]> }).pantallas ?? {}).length;
+        expect(Object.keys(nuevo).length, `la grabación vio ${Object.keys(nuevo).length} pantallas y el mapa tiene ${antes}`).toBeGreaterThanOrEqual(Math.floor(antes * 0.8));
+
         if (process.env.GRABAR) {
-            const anterior = JSON.parse(readFileSync(ARCHIVO, 'utf-8')) as { version: number };
-            writeFileSync(ARCHIVO, JSON.stringify({ version: (anterior.version || 0) + 1, pantallas: nuevo }, null, 2) + '\n');
+            const anterior = JSON.parse(readFileSync(ARCHIVO, 'utf-8')) as { version: number; pantallas: Record<string, string[]> };
+            // GRABAR=1 SUMA a lo que había: una grabación que ve menos (otra web,
+            // otro día, un servidor lento) no borra lecturas que sí se hacen
+            // (pasó el 19-oct-2026 con la web compilada: 74 menos). Para empezar
+            // de cero, GRABAR=reemplazar, y mirar el diff.
+            let pantallas = nuevo;
+            if (process.env.GRABAR !== 'reemplazar') {
+                pantallas = {};
+                for (const k of [...new Set([...Object.keys(anterior.pantallas), ...Object.keys(nuevo)])].sort()) {
+                    pantallas[k] = [...new Set([...(anterior.pantallas[k] ?? []), ...(nuevo[k] ?? [])])].sort();
+                }
+            }
+            writeFileSync(ARCHIVO, JSON.stringify({ version: (anterior.version || 0) + 1, pantallas }, null, 2) + '\n');
         } else {
             const mapa = JSON.parse(readFileSync(ARCHIVO, 'utf-8')) as { pantallas: Record<string, string[]> };
             const faltan: string[] = [];

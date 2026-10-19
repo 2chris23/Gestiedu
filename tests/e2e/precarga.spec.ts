@@ -83,13 +83,28 @@ async function medir(nombre: string, ms: number, page: Page) {
 async function sinConexionSeVe(page: Page, context: BrowserContext, urls: string[]) {
     await context.setOffline(true);
     const faltas: string[] = [];
+    // Una pantalla puede mandar a otra al cargar (Horarios lleva al profesor a
+    // su horario): se espera al salto antes de leer, y vale si el destino es
+    // también una pantalla de su descarga.
+    const caminos = new Set(urls.map((u) => u.split('?')[0]));
+    const leer = async <T,>(f: () => T): Promise<T> => {
+        for (let i = 0; ; i++) {
+            try {
+                return await page.evaluate(f);
+            } catch (e) {
+                if (i >= 3 || !String(e).includes('Execution context was destroyed')) throw e;
+                await page.waitForLoadState('load').catch(() => undefined);
+            }
+        }
+    };
     try {
         for (const url of urls) {
-            await page.evaluate(() => ((window as unknown as { __lecturasSinGuardar?: string[] }).__lecturasSinGuardar = []));
+            await leer(() => ((window as unknown as { __lecturasSinGuardar?: string[] }).__lecturasSinGuardar = []));
             await page.goto(url, { waitUntil: 'load' }).catch(() => undefined);
             await page.waitForTimeout(1200);
+            await page.waitForLoadState('load').catch(() => undefined);
             const donde = new URL(page.url());
-            if (donde.searchParams.get('sin-guardar') || donde.pathname !== url.split('?')[0]) {
+            if (donde.searchParams.get('sin-guardar') || (donde.pathname !== url.split('?')[0] && !caminos.has(donde.pathname))) {
                 faltas.push(`${url}: la página no estaba guardada (acabó en ${donde.pathname}${donde.search})`);
                 continue;
             }
@@ -99,7 +114,7 @@ async function sinConexionSeVe(page: Page, context: BrowserContext, urls: string
                 await pestanas.nth(i).click({ timeout: 3000 }).catch(() => undefined);
                 await page.waitForTimeout(500);
             }
-            const sinGuardar = (await page.evaluate(() => (window as unknown as { __lecturasSinGuardar?: string[] }).__lecturasSinGuardar ?? [])).filter(
+            const sinGuardar = (await leer(() => (window as unknown as { __lecturasSinGuardar?: string[] }).__lecturasSinGuardar ?? [])).filter(
                 // La hora y la salud no se guardan nunca, a propósito.
                 (c) => !/^\/?(health|time)\b/.test(c)
             );

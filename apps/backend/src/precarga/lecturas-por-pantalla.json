@@ -1,5 +1,5 @@
 {
-  "version": 10,
+  "version": 11,
   "pantallas": {
     "ADMIN:/dashboard": [
       "/avisos",
@@ -87,6 +87,25 @@
       "/students/available?academicYearId={anio}",
       "/students?classroomId={seccion}&isActive=true&limit=20&page=1"
     ],
+    "ADMIN:/dashboard/academico/{ciclo}/{seccionSlug}#LABOR": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/class-replacements?classroomId={seccion}&from={hoy}&to={hoy}",
+      "/classrooms/slug/{seccionSlug}?academicYear={ciclo}",
+      "/classrooms/{seccionSlug}/stats",
+      "/classrooms/{seccion}/stats",
+      "/classrooms/{seccion}/subjects",
+      "/classrooms/{seccion}/subjects?stats=true",
+      "/institutes/current/config",
+      "/labor-social?classroomId={seccion}",
+      "/materias-pendientes/seccion/{seccion}",
+      "/observations/classroom/{seccion}",
+      "/pae/config",
+      "/payments/settings",
+      "/schedules/classroom/{seccion}",
+      "/sessions/live-overview?classroomId={seccion}&date={hoy}",
+      "/students?classroomId={seccion}&isActive=true&limit=20&page=1"
+    ],
     "ADMIN:/dashboard/academico/{ciclo}/{seccionSlug}/{materia}": [
       "/avisos",
       "/avisos/preferencias",
@@ -126,7 +145,8 @@
       "/institutes/subject-palette",
       "/materias-pendientes/cronograma",
       "/pae/config",
-      "/payments/settings"
+      "/payments/settings",
+      "/reportes-de-problemas"
     ],
     "ADMIN:/dashboard/consejo/{seccion}": [
       "/avisos",
@@ -500,6 +520,14 @@
       "/schedules/teacher/{yo}/blocks",
       "/schedules/teacher/{yo}/subjects",
       "/users?isActive=true&role=TEACHER"
+    ],
+    "TEACHER:/dashboard/horarios/profesor/{profe}": [
+      "/avisos",
+      "/avisos/preferencias",
+      "/classrooms/mis-secciones-guia",
+      "/institutes/current/config",
+      "/payments/settings",
+      "/schedules/teacher/{profe}/subjects"
     ],
     "TEACHER:/dashboard/horarios/seccion/{seccion}": [
       "/avisos",
