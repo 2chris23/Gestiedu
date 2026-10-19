@@ -112,6 +112,9 @@ public class MainActivity extends BridgeActivity {
     /** El diseño de la web que va dentro de la APK (ver `CascaraDeLaApk`). */
     private CascaraDeLaApk cascara;
 
+    /** La barra de gestos (o de tres botones) de abajo, en píxeles de la web. */
+    private volatile int barraDeAbajo = 0;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         // Antes de `super.onCreate`: Capacitor solo conoce los complementos
@@ -185,7 +188,8 @@ public class MainActivity extends BridgeActivity {
     /**
      * Le pide al sistema cuánto ocupan el reloj y la muesca, y aparta esa
      * altura para que la web empiece por debajo. Solo arriba: el hueco de la
-     * barra de gestos de abajo lo aparta la web (`--zona-segura-abajo`).
+     * barra de gestos de abajo lo aparta la web (`--zona-segura-abajo`), con
+     * la medida que le da `decirleLaBarraALaWeb`.
      *
      * Y a la web se le dice que arriba ya no hay nada que apartar. Las
      * versiones nuevas de Android System WebView sí miden la barra de estado en
@@ -211,6 +215,15 @@ public class MainActivity extends BridgeActivity {
             );
             vista.setPadding(vista.getPaddingLeft(), sistema.top, vista.getPaddingRight(), vista.getPaddingBottom());
 
+            // Abajo no se aparta aquí (el hueco saldría del color de la cabecera,
+            // bajo una barra blanca): se le dice a la web cuánto mide la barra
+            // de gestos y la aparta ella. En el moto g13 (Android 13)
+            // `env(safe-area-inset-bottom)` vale 0 y la línea de gestos tapaba
+            // «Inicio» (Cristian, 18-oct-2026).
+            Insets abajo = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
+            barraDeAbajo = Math.round(abajo.bottom / getResources().getDisplayMetrics().density);
+            decirleLaBarraALaWeb();
+
             Insets reloj = insets.getInsets(WindowInsetsCompat.Type.statusBars());
             Insets muesca = insets.getInsets(WindowInsetsCompat.Type.displayCutout());
             return new WindowInsetsCompat.Builder(insets)
@@ -218,6 +231,14 @@ public class MainActivity extends BridgeActivity {
                 .setInsets(WindowInsetsCompat.Type.displayCutout(), Insets.of(muesca.left, 0, muesca.right, muesca.bottom))
                 .build();
         });
+    }
+
+    /** `--barra-de-gestos` en la página (globals.css la suma a `--zona-segura-abajo`). */
+    private void decirleLaBarraALaWeb() {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        final WebView vista = getBridge().getWebView();
+        final String js = "document.documentElement&&document.documentElement.style.setProperty('--barra-de-gestos','" + barraDeAbajo + "px')";
+        vista.post(() -> vista.evaluateJavascript(js, null));
     }
 
     /**
@@ -265,6 +286,19 @@ public class MainActivity extends BridgeActivity {
         public WebResourceResponse shouldInterceptRequest(WebView vista, WebResourceRequest peticion) {
             WebResourceResponse deLaApk = cascara == null ? null : cascara.responder(peticion);
             return deLaApk != null ? deLaApk : super.shouldInterceptRequest(vista, peticion);
+        }
+
+        // Cada página nueva empieza sin la variable: se le vuelve a decir.
+        @Override
+        public void onPageCommitVisible(WebView vista, String url) {
+            super.onPageCommitVisible(vista, url);
+            decirleLaBarraALaWeb();
+        }
+
+        @Override
+        public void onPageFinished(WebView vista, String url) {
+            super.onPageFinished(vista, url);
+            decirleLaBarraALaWeb();
         }
 
         @Override

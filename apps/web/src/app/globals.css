@@ -432,7 +432,11 @@
     /* El color de la app (--azul-cabecera, --acento…) lo pone
        paleta-de-colores.js, uno por cada color que se puede elegir. */
     --zona-segura-arriba: env(safe-area-inset-top, 0px);
-    --zona-segura-abajo: env(safe-area-inset-bottom, 0px);
+    /* En la APK, Android dice cuánto mide la barra de gestos
+       (`--barra-de-gestos`, MainActivity.decirleLaBarraALaWeb): en el moto
+       g13 `env()` vale 0 y la línea de gestos tapaba «Inicio». La mayor de
+       las dos, para no apartarla dos veces donde `env()` sí la mide. */
+    --zona-segura-abajo: max(env(safe-area-inset-bottom, 0px), var(--barra-de-gestos, 0px));
     /* Tumbado, Android pone sus botones (atrás, inicio) en un lado: ahí
        tampoco va nada (lo vio un amigo de Cristian en el editor de horario). */
     --zona-segura-izquierda: env(safe-area-inset-left, 0px);
@@ -533,6 +537,17 @@
        Chrome antes de 108) descarta la línea de abajo y se queda con esta. */
     min-height: calc(100vh - var(--zona-segura-arriba) - var(--zona-segura-abajo));
     min-height: calc(100dvh - var(--zona-segura-arriba) - var(--zona-segura-abajo));
+  }
+
+  /* ── LA CABECERA DEL TELÉFONO NO TAPA EL TÍTULO ─────────────────────────
+     Al cambiar de pantalla desde una bajada, Next lleva el principio de la
+     nueva al borde de arriba (`scrollIntoView`), y ahí lo tapa la cabecera,
+     que es `sticky`: en Horarios se veía media línea gris y ni el título
+     (Cristian, 18-oct-2026; CAB-01). Se deja su alto libre arriba. */
+  @media (max-width: 1023.98px) {
+    html {
+      scroll-padding-top: calc(var(--zona-segura-arriba) + 5rem);
+    }
   }
 
   /* ── LO QUE SE ARRASTRA ──────────────────────────────────────────────────

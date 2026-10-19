@@ -134,7 +134,10 @@ const AZUL = {
 const ACENTOS = {
     azul: {
         nombre: 'Azul',
-        acento: '#00BFA5',
+        // El botón de Inicio y la marca de hoy, azules como los botones
+        // (Cristian, 18-oct-2026: «si lo pongo en azul el botón de Inicio
+        // debería ser azul»; era el turquesa del primer diseño).
+        acento: '#1565C0',
         // El azul de la cabecera (#0D47A1) en toda la escala. Era el índigo de
         // Tailwind (#4F46E5), que en la pantalla sale MORADO: Cristian
         // (18-oct-2026) «el estilo del sistema lo coloqué azul». El 600 (botón

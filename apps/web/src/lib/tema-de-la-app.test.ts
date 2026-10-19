@@ -31,7 +31,7 @@ describe('El color de la app', () => {
     it('TEMA-02: «Azul» es el azul de la cabecera, no el índigo (que sale morado)', () => {
         const azul = paleta.ACENTOS.azul;
         expect(azul.cabecera.fondo).toBe('#0D47A1');
-        expect(azul.acento).toBe('#00BFA5');
+        expect(azul.acento).toBe('#1565C0');
         // Cristian (18-oct-2026): «el estilo del sistema lo coloqué azul».
         expect(azul.escala['600']).toBe('#1565C0');
         expect(azul.escala['700']).toBe('#0D47A1');
