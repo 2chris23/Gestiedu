@@ -20,6 +20,7 @@ import {
     Shield,
     SwatchBook,
     Trash2,
+    HardDriveDownload,
     UtensilsCrossed,
     Wallet,
     X,
@@ -44,6 +45,7 @@ const PaeSettings = diferido(() => import('./components/PaeSettings').then((m) =
 const QrSettings = diferido(() => import('./components/QrSettings').then((m) => ({ default: m.QrSettings })), { alto: 480 });
 const ReportarUnProblema = diferido(() => import('@/components/configuracion/Problemas').then((m) => ({ default: m.ReportarUnProblema })), { alto: 360 });
 const ProblemasReportados = diferido(() => import('@/components/configuracion/Problemas').then((m) => ({ default: m.ProblemasReportados })), { alto: 360 });
+const MisDatos = diferido(() => import('@/components/configuracion/MisDatos'), { alto: 480 });
 const Papelera = diferido(() => import('@/components/configuracion/Papelera'), { alto: 480 });
 const ContrasenaYAcceso = diferido(() => import('@/components/configuracion/ContrasenaYAcceso').then((m) => ({ default: m.ContrasenaYAcceso })), { alto: 360 });
 
@@ -92,6 +94,7 @@ const DEL_LICEO: Apartado[] = [
     { id: 'notifications', nombre: 'Notificaciones', pista: 'Qué avisos se envían', otras: 'avisos notificaciones', icono: Bell },
     { id: 'security', nombre: 'Seguridad', pista: 'Sesión, contraseñas e intentos', otras: 'sesiones tiempo de espera', icono: Shield },
     { id: 'problemas', nombre: 'Problemas reportados', pista: 'Lo que reportan alumnos, profesores y representantes', otras: 'errores fallos reportes soporte', icono: MessageSquareWarning },
+    { id: 'mis-datos', nombre: 'Descargar todos los datos', pista: 'Una copia del liceo que se abre sin Gestiedu', otras: 'copia respaldo exportar excel descargar backup', icono: HardDriveDownload },
     { id: 'papelera', nombre: 'Papelera', pista: 'Lo borrado: restaurarlo o borrarlo para siempre', otras: 'borrado eliminado recuperar restaurar deshacer', icono: Trash2 },
 ];
 
@@ -107,6 +110,7 @@ const CONTENIDO: Record<string, React.ComponentType> = {
     security: SecuritySettings,
     problemas: ProblemasReportados,
     papelera: Papelera,
+    'mis-datos': MisDatos,
     reportar: ReportarUnProblema,
 };
 

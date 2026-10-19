@@ -2969,3 +2969,23 @@ model ReporteDeProblema {
   @@index([estado, creadoEn(sort: Desc)])
   @@map("reportes_de_problemas")
 }
+
+/// «Descargar todos mis datos» (19-oct-2026): el ZIP con contraseña que arma
+/// `services/mis-datos.service.ts` de fondo. Se usa con SQL a mano.
+model Exportacion {
+  id        String    @id
+  pedidoPor String
+  estado    String    @default("ARMANDO")
+  progreso  Int       @default(0)
+  paso      String?
+  archivo   String?
+  bytes     BigInt?
+  error     String?
+  creadaEn  DateTime  @default(now())
+  latidoEn  DateTime  @default(now())
+  listaEn   DateTime?
+  caducaEn  DateTime?
+
+  @@index([creadaEn])
+  @@map("exportaciones")
+}

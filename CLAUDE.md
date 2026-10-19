@@ -209,6 +209,21 @@ caducadas y los `cambios_recibidos` viejos (MANT-*); nada del liceo.
 Borrar un liceo entero hace `DROP DATABASE`, que la papelera no alcanza: se
 respalda antes, y sin respaldo no se borra.
 
+## Los datos son del liceo: «Descargar todos los datos» (19-oct-2026)
+
+La garantía de Cristian: aunque Gestiedu deje de funcionar para siempre, el
+liceo se queda con todo lo suyo **sin pedírselo a nadie**. Configuración →
+«Descargar todos los datos» (solo el admin): el director elige una contraseña
+(no se guarda en ningún sitio), el servidor arma **de fondo** un ZIP con AES-256
+(`@zip.js/zip.js`; se abre con 7-Zip) con Excel por ciclo (estudiantes, notas
+de actividades y del plan, resumen final, asistencia, observaciones, finanzas),
+las personas, las fotos, las facturas y un LEEME, y se baja hasta 24 h
+después (`services/mis-datos.service.ts`, MISDATOS-01…03, MISDATOS-UI-01). Con
+varios procesos, `MIS_DATOS_DIR` va en un volumen compartido. **No es un
+respaldo para restaurar** (eso son los de abajo) ni la papelera (deshacer).
+Pendiente: la copia automática en el Drive del liceo y el aviso por correo
+(`docs/RESPALDOS-Y-PAPELERA.md`).
+
 ## Respaldos
 
 Cada noche (servicio `respaldos`), **la plataforma primero** (`_plataforma__…dump`:

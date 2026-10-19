@@ -121,12 +121,23 @@ const NOMBRE_DE_TABLA: Record<string, string> = {
     personal: 'Personal',
 };
 
-export function queEs(tabla: string, c: Record<string, any>): string {
+/**
+ * `nombreDe`: el nombre de una persona por su cédula (las que siguen en el
+ * liceo). Así «Representante de un alumno» dice de cuál, y una nota, de quién.
+ */
+export function queEs(tabla: string, c: Record<string, any>, nombreDe: (id: unknown) => string | null = () => null): string {
     const nombre = [c.firstName, c.lastName].filter(Boolean).join(' ');
     if (tabla === 'user') return `${ROL[c.role] ?? 'Usuario'} ${nombre}`.trim();
+    if (tabla === 'studentTutor') {
+        const alumno = nombreDe(c.studentId);
+        const rep = nombreDe(c.tutorId);
+        return rep && alumno ? `${rep}, representante de ${alumno}` : alumno ? `Representante de ${alumno}` : 'Representante de un alumno';
+    }
     const titulo = c.name ?? c.title ?? c.nombre ?? c.concepto ?? c.topic ?? null;
     const base = NOMBRE_DE_TABLA[tabla] ?? tabla.replace(/([A-Z])/g, ' $1').toLowerCase().replace(/^./, (x) => x.toUpperCase());
-    return titulo ? `${base} «${String(titulo).slice(0, 80)}»` : base;
+    const deQuien = nombreDe(c.studentId);
+    if (titulo) return `${base} «${String(titulo).slice(0, 80)}»${deQuien ? ` de ${deQuien}` : ''}`;
+    return deQuien ? `${base} de ${deQuien}` : base;
 }
 
 // ── El plazo del liceo ─────────────────────────────────────────────────────
@@ -174,7 +185,12 @@ export async function laPapelera(prisma: Prisma_, instituteId: string, pagina = 
           )
         : [];
     const deCada = new Map(filas.map((f) => [f.k, f]));
-    const nombres = await nombresDe(prisma, grupos.map((g) => g.borradoPor));
+    // Quién borró y de quién era, en UNA consulta para las 20.
+    const nombres = await nombresDe(prisma, [
+        ...grupos.map((g) => g.borradoPor),
+        ...filas.flatMap((f) => [f.contenido?.studentId, f.contenido?.tutorId]),
+    ]);
+    const nombreDe = (id: unknown) => (typeof id === 'string' ? nombres.get(id) ?? null : null);
     return {
         dias,
         total: Number(total?.n ?? 0),
@@ -185,7 +201,7 @@ export async function laPapelera(prisma: Prisma_, instituteId: string, pagina = 
             const cuando = new Date(g.cuando);
             return {
                 operacion: g.clave as string,
-                que: f ? queEs(f.tabla, f.contenido ?? {}) : 'Algo borrado',
+                que: f ? queEs(f.tabla, f.contenido ?? {}, nombreDe) : 'Algo borrado',
                 tipo: f?.tabla ?? null,
                 // Lo que arrastró (sus notas, su asistencia…), además de lo que se nombró.
                 masCosas: Math.max(0, Number(g.filas) - 1),
