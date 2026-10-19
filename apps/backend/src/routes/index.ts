@@ -30,6 +30,7 @@ import { superAdminInstitutesRoutes } from './superadmin-institutes.routes';
 import { instituteInfoRoutes } from '../controllers/institute-info.controller';
 import { cacheMetricsRoutes } from '../controllers/cache-metrics.controller';
 import { monitoringRoutes } from './monitoring.routes';
+import { saludRoutes } from './salud.routes';
 import { schoolEventsRoutes } from './school-events.routes';
 import { schoolTimeRoutes } from './school-time.routes';
 import { appMovilRoutes } from './app-movil.routes';
@@ -139,6 +140,10 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
 
   // Rutas de monitoreo: métricas de queries y alertas (SuperAdmin)
   await fastify.register(monitoringRoutes, { prefix: '/api/superadmin/monitoring' });
+
+  // La salud de cada botón y de cada liceo, los errores agrupados, el
+  // pronóstico y el robot (superadmin), y POST /api/errores (la pantalla).
+  await fastify.register(saludRoutes);
 
   // Eventos del liceo (calendario del director): /api/events
   await fastify.register(schoolEventsRoutes, { prefix: '/api' });

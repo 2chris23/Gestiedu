@@ -22,6 +22,7 @@ import { setupAcademicYearCronJob } from './jobs/academic-year-sync.job';
 import { setupRecordatorioDeCuotasJob } from './jobs/recordatorio-de-cuotas.job';
 import { setupCuadroDeHonorJob } from './jobs/cuadro-de-honor.job';
 import { setupMantenimientoJob } from './jobs/mantenimiento.job';
+import { setupRobotDeSalud } from './jobs/robot-de-salud.job';
 import { identifyTenant } from './middleware/tenant.middleware';
 import { conLiceo } from './config/ambito-del-liceo';
 import { smartCacheMiddleware, cacheOnSendHook } from './middleware/smart-cache.middleware';
@@ -33,6 +34,7 @@ import { leerArchivoDelLiceo } from './services/archivos-del-liceo.service';
 import { createHash } from 'crypto';
 import { deQuienNosFiamos, comoSeExplicaLaConfianza } from './config/de-quien-nos-fiamos';
 import avisarCambios from './plugins/avisar-cambios';
+import medidorDeRutas from './plugins/medidor-de-rutas';
 import { apuntarFallo } from './utils/fallos-del-servidor';
 import { avisarSiFalla } from './utils/sin-callar';
 import { taparEnTexto } from './utils/datos-en-registros';
@@ -316,6 +318,10 @@ export async function buildServer(): Promise<FastifyInstance> {
   // Middleware global para manejo de errores
   server.setErrorHandler(errorHandler);
 
+  // Cada petición medida (tiempo, errores, por ruta y por liceo) para el
+  // panel de salud del superadmin. Ver `plugins/medidor-de-rutas.ts`.
+  await server.register(medidorDeRutas);
+
   // Todo 500, venga de donde venga (del manejador central o de un controlador
   // que responde el suyo), se apunta para el panel del superadmin: ver
   // `utils/fallos-del-servidor.ts`.
@@ -392,6 +398,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await setupRecordatorioDeCuotasJob(server);
   await setupCuadroDeHonorJob(server);
   await setupMantenimientoJob(server);
+  await setupRobotDeSalud(server);
 
   // Caché de comprobación profunda de salud para evitar agotar el pool de conexiones (dos-health-check-db-pool-exhaustion)
   let estadoSaludCache: { db: boolean; redis: boolean; timestamp: number } | null = null;

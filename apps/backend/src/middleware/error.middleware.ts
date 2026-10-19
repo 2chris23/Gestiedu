@@ -6,6 +6,7 @@ import { config } from '../config/environment';
 
 import { logger } from '../utils/logger';
 import { esUnAhoraNoDeLaBase, responderAhoraNo } from '../utils/error-handler';
+import { apuntarErrorDelServidor } from '../plugins/medidor-de-rutas';
 
 // Tipos para errores personalizados
 interface CustomError extends Error {
@@ -50,6 +51,9 @@ export function errorHandler(
   request: FastifyRequest,
   reply: FastifyReply
 ) {
+  // El error de verdad, para agruparlo si la respuesta acaba en 500 (salud).
+  apuntarErrorDelServidor(request, error);
+
   // Determinar nivel de log
   const logLevel = (error as CustomError).logLevel || 'error';
 

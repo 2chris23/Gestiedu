@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { guardarEstasPaginas, mirarLaVersionDeLaApp } from '@/lib/paginas-guardadas';
+import { escucharLosFallos } from '@/lib/reportar-fallo';
 
 /**
  * REGISTRAR EL AYUDANTE (SERVICE WORKER)
@@ -20,6 +21,9 @@ import { guardarEstasPaginas, mirarLaVersionDeLaApp } from '@/lib/paginas-guarda
  */
 export function AyudanteDeLaApp() {
     const pathname = usePathname();
+
+    // Los fallos de la pantalla llegan al superadmin (`lib/reportar-fallo.ts`).
+    useEffect(() => escucharLosFallos(), []);
 
     useEffect(() => {
         if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;

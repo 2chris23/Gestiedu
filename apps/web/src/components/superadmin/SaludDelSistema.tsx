@@ -35,6 +35,7 @@ const NOMBRES: Record<string, string> = {
     'recordatorio-de-cuotas': 'Recordatorio de cuotas',
     'estado-de-los-anos': 'Estado de los años escolares',
     almacenamiento: 'Espacio de cada liceo',
+    'robot-de-salud': 'El robot del liceo de muestra',
 };
 
 const COLOR: Record<string, string> = {

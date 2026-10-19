@@ -1,5 +1,8 @@
 'use client';
 
+import { useEffect } from 'react';
+import { mandarFallo } from '@/lib/reportar-fallo';
+
 /**
  * SI ALGO TUMBA LA APP ENTERA
  *
@@ -11,6 +14,8 @@
  */
 export default function GlobalError({ error }: { error: Error & { digest?: string } }) {
     if (typeof console !== 'undefined') console.error('La app se cayó:', error?.message);
+    // Que llegue al superadmin: es justo lo que no ve nadie.
+    useEffect(() => mandarFallo(error, 'LaAppSeCayo'), [error]);
     return (
         <html lang="es">
             <body
