@@ -20,6 +20,7 @@ import {
     Shield,
     SwatchBook,
     Trash2,
+    Scale,
     HardDriveDownload,
     UtensilsCrossed,
     Wallet,
@@ -45,6 +46,7 @@ const PaeSettings = diferido(() => import('./components/PaeSettings').then((m) =
 const QrSettings = diferido(() => import('./components/QrSettings').then((m) => ({ default: m.QrSettings })), { alto: 480 });
 const ReportarUnProblema = diferido(() => import('@/components/configuracion/Problemas').then((m) => ({ default: m.ReportarUnProblema })), { alto: 360 });
 const ProblemasReportados = diferido(() => import('@/components/configuracion/Problemas').then((m) => ({ default: m.ProblemasReportados })), { alto: 360 });
+const InformacionLegal = diferido(() => import('@/components/configuracion/InformacionLegal'), { alto: 480 });
 const MisDatos = diferido(() => import('@/components/configuracion/MisDatos'), { alto: 480 });
 const Papelera = diferido(() => import('@/components/configuracion/Papelera'), { alto: 480 });
 const ContrasenaYAcceso = diferido(() => import('@/components/configuracion/ContrasenaYAcceso').then((m) => ({ default: m.ContrasenaYAcceso })), { alto: 360 });
@@ -81,6 +83,7 @@ const DE_LA_PERSONA: Apartado[] = [
     { id: 'acceso', nombre: 'Contraseña y acceso', pista: 'Tu contraseña, la huella y tus sesiones', otras: 'seguridad clave pin sesiones biometria', icono: KeyRound },
     { id: 'color', nombre: 'Color y modo', pista: 'El color de la app, claro u oscuro', otras: 'apariencia tema oscuro claro', icono: SwatchBook },
     { id: 'reportar', nombre: 'Reportar un problema', pista: 'Algo no funciona: avisa al liceo', otras: 'error fallo ayuda soporte problema', icono: LifeBuoy },
+    { id: 'legal', nombre: 'Información legal', pista: 'Términos, privacidad y tus datos', otras: 'terminos condiciones privacidad datos legal cookies derechos', icono: Scale },
 ];
 
 const DEL_LICEO: Apartado[] = [
@@ -110,6 +113,7 @@ const CONTENIDO: Record<string, React.ComponentType> = {
     security: SecuritySettings,
     problemas: ProblemasReportados,
     papelera: Papelera,
+    legal: InformacionLegal,
     'mis-datos': MisDatos,
     reportar: ReportarUnProblema,
 };

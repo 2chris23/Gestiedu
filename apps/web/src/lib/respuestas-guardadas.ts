@@ -19,7 +19,8 @@ import { CAJON_RESPUESTAS, abrirLaBase, conElCajon } from './base-del-telefono';
 import { MAXIMO_DE_DIAS } from './lo-guardado-en-el-telefono';
 
 /** Lo que no se guarda: la hora (sin conexión se cuenta aparte), sesiones y salud. */
-const NO_SE_GUARDA = [/^\/?auth\/(refresh|logout|sessions)/, /^\/?health/, /^\/?time\b/, /^\/?avisos\/telefonos/];
+// `legal`: si aceptó lo dice el servidor (y este teléfono, aparte): sin conexión no se pregunta.
+const NO_SE_GUARDA = [/^\/?auth\/(refresh|logout|sessions)/, /^\/?health/, /^\/?time\b/, /^\/?avisos\/telefonos/, /^\/?legal\//];
 
 /**
  * Una respuesta guardada que fue un «no» del servidor (403, 404…): la precarga

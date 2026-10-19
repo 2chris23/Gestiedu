@@ -27,6 +27,11 @@ const PANTALLAS: Pantalla[] = [
     // —responde "no existe"— y se estaría midiendo el 404, no el formulario.
     { nombre: 'entrar', ruta: '/login?slug=instituto-testing', conSesion: false },
     { nombre: 'guía de diseño', ruta: '/diseno', conSesion: false },
+    { nombre: 'información legal', ruta: '/legal', conSesion: false },
+    { nombre: 'privacidad', ruta: '/legal/privacidad', conSesion: false },
+    { nombre: 'configuración: información legal', ruta: '/dashboard/configuracion?seccion=legal', conSesion: true },
+    { nombre: 'configuración: papelera', ruta: '/dashboard/configuracion?seccion=papelera', conSesion: true },
+    { nombre: 'configuración: descargar los datos', ruta: '/dashboard/configuracion?seccion=mis-datos', conSesion: true },
     { nombre: 'panel', ruta: '/dashboard', conSesion: true },
     { nombre: 'usuarios', ruta: '/dashboard/usuarios', conSesion: true },
     { nombre: 'académico', ruta: '/dashboard/academico', conSesion: true },

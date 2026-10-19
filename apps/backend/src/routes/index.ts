@@ -56,6 +56,7 @@ import { profesoresRoutes } from './profesores.routes';
 import { reportesDeProblemasRoutes } from './reportes-de-problemas.routes';
 import { papeleraRoutes } from './papelera.routes';
 import { misDatosRoutes } from './mis-datos.routes';
+import { legalRoutes } from './legal.routes';
 import { paeRoutes } from './pae.routes';
 import { boletaRoutes } from './boleta.routes';
 
@@ -107,6 +108,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(reportesDeProblemasRoutes, { prefix: '/api' });
   await fastify.register(papeleraRoutes, { prefix: '/api' });
   await fastify.register(misDatosRoutes, { prefix: '/api' });
+  await fastify.register(legalRoutes, { prefix: '/api' });
   await fastify.register(paeRoutes, { prefix: '/api/pae' });
   await fastify.register(schedulesRoutes, { prefix: '/api/schedules' });
   await fastify.register(scheduleBlocksRoutes, { prefix: '/api' });

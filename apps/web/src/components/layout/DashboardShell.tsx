@@ -8,6 +8,7 @@ import AvisoSinConexion from '@/components/common/AvisoSinConexion';
 import AvisoDePantallaSinGuardar from '@/components/common/AvisoDePantallaSinGuardar';
 import DescargaEnSegundoPlano from '@/providers/DescargaEnSegundoPlano';
 import PrecargaAlEntrar from '@/components/arranque/PrecargaAlEntrar';
+import AceptarLoLegal from '@/components/legal/AceptarLoLegal';
 import RecordarElPerfil from '@/components/arranque/RecordarElPerfil';
 import EnviarLoPendiente from '@/providers/EnviarLoPendiente';
 import CambiosSinEnviar from '@/components/common/CambiosSinEnviar';
@@ -155,6 +156,8 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
                     <DescargaEnSegundoPlano />
                     {/* Y la primera vez, TODO, con el libro (`lib/precarga.ts`). */}
                     <PrecargaAlEntrar />
+                    {/* Antes que nada, la primera vez: aceptar los términos y la privacidad. */}
+                    <AceptarLoLegal />
                     {/* Quién usa el teléfono, para la pantalla de bloqueo. */}
                     <RecordarElPerfil />
                     {/* Lo hecho sin conexión: sube solo al volver, y aquí se ve (⏱). */}

@@ -1,5 +1,6 @@
 'use client';
 
+import { EnlacesLegales } from '@/components/legal/EnlacesLegales';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -608,6 +609,7 @@ export default function LoginPage() {
                 <p className="mt-6 text-center text-xs text-gray-500">
                     Powered by <span className="font-medium text-primary-600">GestiEdu</span>
                 </p>
+                <EnlacesLegales />
             </div>
         </div>
     );

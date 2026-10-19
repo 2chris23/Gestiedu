@@ -2989,3 +2989,17 @@ model Exportacion {
   @@index([creadaEn])
   @@map("exportaciones")
 }
+
+/// Quién aceptó los términos y la privacidad, qué versión y cuándo (19-oct-2026;
+/// `services/legal.service.ts`). Se usa con SQL a mano.
+model AceptacionLegal {
+  id         String   @id
+  usuarioId  String
+  version    String
+  aceptadaEn DateTime
+  direccion  String?
+  aparato    String?
+
+  @@unique([usuarioId, version])
+  @@map("aceptaciones_legales")
+}

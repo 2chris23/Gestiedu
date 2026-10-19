@@ -6,7 +6,8 @@ import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
  * `/diseno` es el muestrario del lenguaje visual: no enseña ni un dato del
  * liceo, solo tarjetas de ejemplo. Va aquí para poder abrirlo sin entrar.
  */
-const PUBLIC_ROUTES = ['/login', '/register', '/forgot-password', '/diseno'];
+// `/legal`: los términos, la privacidad… se leen antes de tener cuenta (19-oct-2026).
+const PUBLIC_ROUTES = ['/login', '/register', '/forgot-password', '/diseno', '/legal'];
 
 /**
  * EL PORTAL DE CADA LICEO SE ABRE SIN HABER ENTRADO

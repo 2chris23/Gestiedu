@@ -1,5 +1,6 @@
 'use client';
 
+import { EnlacesLegales } from '@/components/legal/EnlacesLegales';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
@@ -313,6 +314,7 @@ export default function InstituteLoginPage() {
                 <p className="text-center text-gray-400 text-xs mt-5">
                     Sistema de Gestión Escolar · {institute?.name ?? slug}
                 </p>
+                <EnlacesLegales />
             </div>
         </div>
     );

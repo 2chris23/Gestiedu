@@ -78,7 +78,9 @@ function recursoDeLaUrl(url: string): string | null {
     // `precarga`: sus POST solo LEEN (el plan y los bloques). Contarlos como
     // cambio haría un bucle: el aviso pondría al día a los teléfonos, que
     // pedirían otro bloque, que avisaría otra vez…
-    if (recurso === 'superadmin' || recurso === 'auth' || recurso === 'time' || recurso === 'precarga') return null;
+    // `legal`, `mis-datos` y `errores` tampoco cambian nada que otro vea: aceptar los
+    // términos el primer día (miles a la vez) avisaba al liceo entero cada vez.
+    if (['superadmin', 'auth', 'time', 'precarga', 'legal', 'mis-datos', 'errores'].includes(recurso)) return null;
 
     return recurso;
 }

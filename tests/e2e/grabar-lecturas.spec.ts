@@ -28,7 +28,7 @@ import { API_BASE, TENANT_SLUG, loginApi, loginViaUI, queryTenantDb, representan
 const ARCHIVO = path.join(process.cwd(), 'apps', 'backend', 'src', 'precarga', 'lecturas-por-pantalla.json');
 
 /** Lo que no se guarda nunca en el teléfono (`respuestas-guardadas.ts`) ni va en el paquete. */
-const NO_VA = /^\/(auth|superadmin|precarga|health|time)\b|^\/avisos\/telefonos/;
+const NO_VA = /^\/(auth|superadmin|precarga|health|time|legal)\b|^\/avisos\/telefonos/;
 
 /** ¿Un trozo que parece de una persona o un día concretos? */
 const PARECE_DATO = /^(?=.*\d)[A-Za-z0-9_.%-]{6,}$/;

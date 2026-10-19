@@ -209,6 +209,32 @@ caducadas y los `cambios_recibidos` viejos (MANT-*); nada del liceo.
 Borrar un liceo entero hace `DROP DATABASE`, que la papelera no alcanza: se
 respalda antes, y sin respaldo no se borra.
 
+## Lo legal (19-oct-2026)
+
+Pedido por Cristian. **Doce documentos, cada uno con su página pública**
+(`/legal` y `/legal/<id>`, estáticas; textos en `apps/web/src/lib/legal/documentos.ts`):
+términos, privacidad, datos de menores, condiciones para liceos, acuerdo de
+tratamiento de datos, uso aceptable, cookies, seguridad, conservación y
+borrado, derechos (habeas data), proveedores y aviso legal. Venezuela **no tiene
+ley general de datos**: el marco es la Constitución (arts. 28 y 60), la
+sentencia 1318/2011 del TSJ, la LOPNNA y las leyes de delitos informáticos,
+mensajes de datos e Infogobierno. **No son consejo legal: que los revise un
+abogado antes de los clientes.** El titular (nombre, RIF, correo, domicilio)
+lo ponen `NEXT_PUBLIC_LEGAL_*` al compilar (`lib/legal/titular.ts`); sin ellos
+dicen «el titular de Gestiedu».
+
+**En la app, la primera vez se aceptan** los términos y la privacidad (y, el
+estudiante y el representante, lo de los menores), leyéndolos dentro
+(`components/legal/AceptarLoLegal.tsx`, por encima de la descarga). La prueba
+queda en `aceptaciones_legales` (quién, versión, cuándo, dirección, aparato;
+`routes/legal.routes.ts`). **Al cambiar algo de fondo de lo que se acepta, sube
+`VERSION_LEGAL` en los dos lados** (LEGAL-01 lo vigila): todos aceptan otra vez.
+Sin conexión no bloquea; las pruebas de navegador no la ven salvo con
+`gestiedu:pedir-lo-legal`. Configuración → Información legal (todos los roles) y
+«Términos · Privacidad» al pie de las pantallas de entrar. Aceptar no es un
+cambio que avise al liceo (`avisar-cambios`: tampoco `mis-datos` ni `errores`).
+LEGAL-01…03, LEGAL-UI-01…03.
+
 ## Los datos son del liceo: «Descargar todos los datos» (19-oct-2026)
 
 La garantía de Cristian: aunque Gestiedu deje de funcionar para siempre, el
