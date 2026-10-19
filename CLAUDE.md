@@ -169,7 +169,23 @@ antes de que nadie haya preguntado quién llama, y responden 401 hasta al admin.
 
 ## Borrar
 
-**Nada se borra de verdad.** Todo borrado de información del liceo pasa por
+**Lo que el admin borra se borra de verdad, con un plazo para deshacer**
+(Cristian, 19-oct-2026). Borrar no puede dejar la información guardada para
+siempre en la base, pero un borrado sin querer (un alumno, una clase…) se
+tiene que poder devolver. Por eso:
+
+- lo borrado va primero a la **papelera** (`registros_borrados`), con su
+  cascada, y desde ahí el admin lo **restaura** dentro del plazo;
+- pasado el plazo (30 días propuestos, configurable por liceo con un tope),
+  la tarea diaria lo **borra de la base para siempre** (`PAPELERA_DIAS`, hoy 90);
+- «Borrar para siempre» en la papelera lo quita al instante;
+- en los respaldos sigue hasta que caduca el último que lo contenía: eso se le
+  dice al admin, con la fecha.
+
+Estudio y plan: `docs/RESPALDOS-Y-PAPELERA.md`. Hasta que la papelera tenga
+pantalla para restaurar, lo de abajo sigue igual.
+
+Todo borrado de información del liceo pasa por
 `borrarGuardandoCopia()` (`src/utils/papelera.ts`), que guarda una copia completa
 de la fila en `registros_borrados` antes de tocarla. Si la copia no se puede
 guardar, el borrado no ocurre.
