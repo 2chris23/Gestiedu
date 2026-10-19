@@ -14,7 +14,11 @@ const start = async () => {
   const server = await buildServer();
   try {
     const PORT = Number(process.env.PORT) || 3001;
-    await server.listen({ port: PORT, host: '::' });
+    // La cola de conexiones por aceptar: Node la deja en 511 y, al llenarse,
+    // el sistema RECHAZA (ECONNREFUSED). Medido: 300 alumnos entrando a la
+    // vez (900 conexiones) daban 63 rechazos. El sistema operativo la recorta
+    // a su propio tope (somaxconn en Linux), así que pedir más no rompe nada.
+    await server.listen({ port: PORT, host: '::', backlog: Number(process.env.COLA_DE_CONEXIONES) || 8192 });
     console.log(`Server listening on port ${PORT}`);
 
     // 📡 Comunicar al frontend en qué puerto estamos

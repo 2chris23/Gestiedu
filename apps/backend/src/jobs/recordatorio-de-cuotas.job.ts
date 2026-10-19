@@ -4,6 +4,7 @@ import { platformPrisma, getTenantPrisma } from '../config/database';
 import { conLiceo } from '../config/ambito-del-liceo';
 import { recordarCuotas } from '../services/recordatorio-de-cuotas.service';
 import { latido } from '../utils/latido-de-tareas';
+import { unaVezCada } from '../utils/turno-de-la-tarea';
 import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
@@ -35,6 +36,6 @@ export async function setupRecordatorioDeCuotasJob(server: FastifyInstance) {
         await latido('recordatorio-de-cuotas', 6 * 60 * 60 * 1000, fallo);
     };
     // Sin esperar: que un liceo lento no retrase el arranque.
-    setTimeout(() => void correr().catch(avisarSiFalla('recordatorio-de-cuotas.job')), 60_000).unref?.();
-    setInterval(() => void correr().catch(avisarSiFalla('recordatorio-de-cuotas.job')), 6 * 60 * 60 * 1000).unref?.();
+    setTimeout(() => void unaVezCada('recordatorio-de-cuotas', 6 * 60 * 60 * 1000, correr).catch(avisarSiFalla('recordatorio-de-cuotas.job')), 60_000).unref?.();
+    setInterval(() => void unaVezCada('recordatorio-de-cuotas', 6 * 60 * 60 * 1000, correr).catch(avisarSiFalla('recordatorio-de-cuotas.job')), 6 * 60 * 60 * 1000).unref?.();
 }

@@ -23,6 +23,7 @@ import { setupRecordatorioDeCuotasJob } from './jobs/recordatorio-de-cuotas.job'
 import { setupCuadroDeHonorJob } from './jobs/cuadro-de-honor.job';
 import { setupMantenimientoJob } from './jobs/mantenimiento.job';
 import { setupRobotDeSalud } from './jobs/robot-de-salud.job';
+import { empezarLosTrabajadores, pararLosTrabajadores } from './services/cubos-de-precarga.service';
 import { identifyTenant } from './middleware/tenant.middleware';
 import { conLiceo } from './config/ambito-del-liceo';
 import { smartCacheMiddleware, cacheOnSendHook } from './middleware/smart-cache.middleware';
@@ -399,6 +400,9 @@ export async function buildServer(): Promise<FastifyInstance> {
   await setupCuadroDeHonorJob(server);
   await setupMantenimientoJob(server);
   await setupRobotDeSalud(server);
+  // La descarga en cubos se arma de fondo, nunca al entrar alguien.
+  empezarLosTrabajadores(server);
+  server.addHook('onClose', async () => pararLosTrabajadores());
 
   // Caché de comprobación profunda de salud para evitar agotar el pool de conexiones (dos-health-check-db-pool-exhaustion)
   let estadoSaludCache: { db: boolean; redis: boolean; timestamp: number } | null = null;

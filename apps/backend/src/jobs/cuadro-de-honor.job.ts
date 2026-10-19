@@ -4,6 +4,7 @@ import { platformPrisma, getTenantPrisma } from '../config/database';
 import { conLiceo } from '../config/ambito-del-liceo';
 import { sacarLaFotoSiFalta } from '../services/cuadro-de-honor.service';
 import { latido } from '../utils/latido-de-tareas';
+import { unaVezCada } from '../utils/turno-de-la-tarea';
 import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
@@ -45,6 +46,6 @@ export async function setupCuadroDeHonorJob(_server: FastifyInstance) {
         }
     };
     // Sin esperar: que un liceo lento no retrase el arranque.
-    setTimeout(() => void correr().catch(avisarSiFalla('cuadro-de-honor.job')), 90_000).unref?.();
-    setInterval(() => void correr().catch(avisarSiFalla('cuadro-de-honor.job')), 6 * 60 * 60 * 1000).unref?.();
+    setTimeout(() => void unaVezCada('cuadro-de-honor', 6 * 60 * 60 * 1000, correr).catch(avisarSiFalla('cuadro-de-honor.job')), 90_000).unref?.();
+    setInterval(() => void unaVezCada('cuadro-de-honor', 6 * 60 * 60 * 1000, correr).catch(avisarSiFalla('cuadro-de-honor.job')), 6 * 60 * 60 * 1000).unref?.();
 }

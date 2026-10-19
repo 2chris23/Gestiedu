@@ -169,6 +169,8 @@ test.describe('Precarga: sin conexión, todo', () => {
         let cortado = true;
         await page.route('**/api/precarga/paquete', (ruta) => ruta.fulfill({ status: 404, contentType: 'application/json', body: '{}' }));
         await page.route('**/api/precarga/bloque', (ruta) => (cortado ? ruta.abort('internetdisconnected') : ruta.continue()));
+        // Con cubos (18-oct-2026): el índice llega y los cubos se cortan.
+        await page.route('**/api/precarga/cubo/**', (ruta) => (cortado ? ruta.abort('internetdisconnected') : ruta.continue()));
         await conPrecarga(page);
         await loginViaUI(page, 'est0575@testing.edu.ve');
         const pantalla = page.locator('[data-precarga]');
@@ -214,6 +216,8 @@ test.describe('Precarga: sin conexión, todo', () => {
     test('PRECARGA-08: con el paquete en 404, baja por el camino de reserva (plan y bloques) y termina en listo', async ({ page }) => {
         await conPrecarga(page);
         let intentoPaquete = false;
+        // Un servidor de antes de los cubos: sin índice.
+        await page.route('**/api/precarga/indice', (ruta) => ruta.fulfill({ status: 404, contentType: 'application/json', body: '{}' }));
         await page.route('**/api/precarga/paquete', (ruta) => {
             intentoPaquete = true;
             return ruta.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'No hay paquete' }) });
@@ -232,14 +236,14 @@ test.describe('Precarga: sin conexión, todo', () => {
         // salta diciéndolo.
         const html = await (await fetch(`${WEB_BASE}/login`)).text().catch(() => '');
         test.skip(html.includes('hmr-client') || html.includes('webpack-hmr'), 'Necesita la web COMPILADA: npm run build && npx next start (en el 3000 o con WEB_BASE)');
-        // 1. Que el paquete esté armado de antemano
+        // 1. Que su índice y sus cubos estén armados de antemano (como de noche)
         const s = await loginApi('admin@testing.edu.ve');
-        const h = { Authorization: `Bearer ${s.accessToken}`, 'X-Institute-Slug': TENANT_SLUG };
+        const h = { Authorization: `Bearer ${s.accessToken}`, 'X-Institute-Slug': TENANT_SLUG, 'Content-Type': 'application/json' };
         const t0 = Date.now();
         for (;;) {
-            const r = await fetch(`${API_BASE}/precarga/paquete`, { headers: h });
+            const r = await fetch(`${API_BASE}/precarga/indice`, { method: 'POST', headers: h, body: '{}' });
             if (r.status === 200) { break; }
-            if (Date.now() - t0 > 240_000) throw new Error('el paquete no se armó');
+            if (Date.now() - t0 > 240_000) throw new Error('el índice no se armó');
             await new Promise((x) => setTimeout(x, 2000));
         }
 

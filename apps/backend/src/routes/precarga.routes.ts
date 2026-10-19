@@ -24,6 +24,7 @@ import {
     estaArmandose,
     elMenuDe,
 } from '../services/paquete-de-precarga.service';
+import { elIndiceDe, elCubo } from '../services/cubos-de-precarga.service';
 
 /**
  * LA PRECARGA EN UN PAQUETE (ver `services/precarga.service.ts`)
@@ -253,6 +254,54 @@ export async function precargaRoutes(fastify: FastifyInstance) {
             return reply.send({ ...r, porBloque: LECTURAS_POR_BLOQUE });
         }
     );
+
+
+    /**
+     * LA DESCARGA EN CUBOS (`services/cubos-de-precarga.service.ts`)
+     *
+     *   POST /api/precarga/indice       sus cubos (clave, huella, bytes) y las páginas: una consulta, nunca un armado
+     *   GET  /api/precarga/cubo/:clave  un cubo ya comprimido (solo si es de su índice)
+     *
+     * Si aún no tiene índice (una cuenta de hace un minuto), 202 con cuántos
+     * van delante: se pide con prioridad, pero nadie lo arma en esta petición.
+     */
+    fastify.post('/precarga/indice', { preHandler: [authenticate] }, async (request: FastifyRequest, reply: FastifyReply) => {
+        const r = await elIndiceDe(request.tenantPrisma, suLiceo(request), yo(request));
+        if ('preparando' in r) return reply.status(202).send({ preparando: true, delante: r.preparando.delante });
+        return reply.send(r.listo);
+    });
+
+    fastify.get('/precarga/cubo/:clave', { preHandler: [authenticate], compress: false } as any, async (request: FastifyRequest, reply: FastifyReply) => {
+        const { clave } = request.params as { clave: string };
+        const c = await elCubo(request.tenantPrisma, yo(request), clave);
+        if (c === 'ajeno') return reply.status(403).send({ error: 'Ese cubo no es tuyo', code: 'CUBO_AJENO' });
+        if (!c) return reply.status(404).send({ error: 'Ese cubo aún no está armado', code: 'CUBO_SIN_ARMAR' });
+        const etiqueta = `"${c.huella}"`;
+        reply.header('ETag', etiqueta);
+        reply.header('X-Cubo-Huella', c.huella);
+        reply.header('Cache-Control', 'private, no-cache');
+        reply.header('Accept-Ranges', 'bytes');
+        reply.header('Content-Type', 'application/octet-stream');
+        const permitido = reply.getHeader('access-control-allow-origin');
+        if (permitido) reply.header('timing-allow-origin', String(permitido));
+        if (request.headers['if-none-match'] === etiqueta) return reply.status(304).send();
+        const total = c.contenido.length;
+        const rango = /^bytes=(\d+)-(\d+)?$/.exec(String(request.headers.range ?? ''));
+        // Reanudar: solo si el trozo es del MISMO cubo (If-Range con su huella).
+        if (rango && (!request.headers['if-range'] || request.headers['if-range'] === etiqueta)) {
+            const desde = Number(rango[1]);
+            const hasta = rango[2] ? Math.min(Number(rango[2]), total - 1) : total - 1;
+            if (desde >= total || hasta < desde) {
+                reply.header('Content-Range', `bytes */${total}`);
+                return reply.status(416).send();
+            }
+            reply.header('Content-Range', `bytes ${desde}-${hasta}/${total}`);
+            reply.header('Content-Length', hasta - desde + 1);
+            return reply.status(206).send(c.contenido.subarray(desde, hasta + 1));
+        }
+        reply.header('Content-Length', total);
+        return reply.send(c.contenido);
+    });
 
     fastify.post(
         '/precarga/bloque',

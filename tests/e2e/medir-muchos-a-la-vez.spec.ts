@@ -4,20 +4,85 @@ import * as path from 'path';
 import { API_BASE, TENANT_SLUG, loginApi, queryTenantDb } from './helpers';
 
 /**
- * MUCHOS ALUMNOS ENTRAN POR PRIMERA VEZ A LA VEZ (fase 0 de la precarga)
+ * MUCHOS ALUMNOS ENTRAN POR PRIMERA VEZ A LA VEZ (la regla: nunca por culpa del sistema)
  *
- * Mide, sin navegador, lo que el teléfono hace con el paquete: pide
- * `/precarga/paquete` y, mientras responde 202 («se está armando») o 404,
- * vuelve a preguntar cada 1,5 s, como `lib/precarga.ts`. Apunta cuánto tarda
- * cada uno en recibir su paquete. No se pone en rojo: mide.
+ * Hace sin navegador lo que hace el teléfono, con N alumnos a la vez, y apunta
+ * cuánto tarda cada uno en tener TODO lo suyo:
  *
- *   MEDIR=1 N=40 npx playwright test medir-muchos-a-la-vez
+ *   - con cubos (`/precarga/indice` + `/precarga/cubo/:clave`), lo de ahora;
+ *   - VIEJO=1: con el paquete por persona (`/precarga/paquete`, 202/404 cada 1,5 s), lo de antes.
+ *
+ *   FRIO=1  borra antes el índice de esos alumnos (como una cuenta creada hace un
+ *           minuto, que el servidor aún no preparó); sin él, es el caso de
+ *           siempre: cuentas creadas antes, preparadas de noche.
+ *
+ *   MEDIR=1 N=300 npx playwright test medir-muchos-a-la-vez
  */
 
 test.skip(!process.env.MEDIR, 'Solo mide con MEDIR=1');
 test.setTimeout(30 * 60_000);
 
-test('MEDIR: N alumnos en frío a la vez', async () => {
+const esperar = (ms: number) => new Promise((h) => setTimeout(h, ms));
+
+/** Como el teléfono: si la conexión falla, espera un poco y reintenta. Se cuentan. */
+let fallosDeRed = 0;
+const codigos: Record<string, number> = {};
+async function pedir(url: string, init?: RequestInit): Promise<Response> {
+    for (let i = 0; ; i++) {
+        try {
+            return await fetch(url, init);
+        } catch (e) {
+            fallosDeRed++;
+            const causa = (e as any)?.cause; codigos[causa?.code ?? causa?.errors?.[0]?.code ?? String(causa?.message ?? e).slice(0, 40)] = (codigos[causa?.code ?? causa?.errors?.[0]?.code ?? String(causa?.message ?? e).slice(0, 40)] ?? 0) + 1;
+            if (i >= 8) throw e;
+            await esperar(200 + Math.random() * 800);
+        }
+    }
+}
+
+async function conCubos(token: string, t0: number) {
+    const cab = { Authorization: `Bearer ${token}`, 'X-Institute-Slug': TENANT_SLUG };
+    let preguntas = 0;
+    let en202 = 0;
+    for (;;) {
+        preguntas++;
+        const r = await pedir(`${API_BASE}/precarga/indice`, { method: 'POST', headers: { ...cab, 'Content-Type': 'application/json' }, body: '{}' });
+        if (r.status === 200) {
+            const i = (await r.json()) as { cubos: Array<{ clave: string; bytes: number }> };
+            let bytes = 0;
+            let k = 0;
+            const trabajador = async () => {
+                while (k < i.cubos.length) {
+                    const c = i.cubos[k++];
+                    const b = await pedir(`${API_BASE}/precarga/cubo/${encodeURIComponent(c.clave)}`, { headers: cab });
+                    bytes += (await b.arrayBuffer()).byteLength;
+                }
+            };
+            await Promise.all([trabajador(), trabajador(), trabajador()]);
+            return { ms: Date.now() - t0, preguntas, en202, bytes, cubos: i.cubos.length };
+        }
+        en202++;
+        await r.arrayBuffer().catch(() => undefined);
+        if (Date.now() - t0 > 25 * 60_000) return { ms: -1, preguntas, en202, bytes: 0, cubos: 0 };
+        await esperar(1500);
+    }
+}
+
+async function conPaquete(token: string, t0: number) {
+    let preguntas = 0;
+    let en202 = 0;
+    for (;;) {
+        preguntas++;
+        const r = await pedir(`${API_BASE}/precarga/paquete`, { headers: { Authorization: `Bearer ${token}`, 'X-Institute-Slug': TENANT_SLUG } });
+        if (r.status === 200) return { ms: Date.now() - t0, preguntas, en202, bytes: (await r.arrayBuffer()).byteLength, cubos: 1 };
+        en202++;
+        await r.arrayBuffer().catch(() => undefined);
+        if (Date.now() - t0 > 25 * 60_000) return { ms: -1, preguntas, en202, bytes: 0, cubos: 0 };
+        await esperar(1500);
+    }
+}
+
+test('MEDIR: N alumnos entrando a la vez', async () => {
     const n = Number(process.env.N || 40);
     const alumnos = await queryTenantDb<{ id: string; email: string }>(
         `SELECT DISTINCT u.id, u.email FROM users u
@@ -28,44 +93,33 @@ test('MEDIR: N alumnos en frío a la vez', async () => {
         [n]
     );
     const sesiones = [];
-    for (const a of alumnos) sesiones.push({ a, s: await loginApi(a.email) });
-    await queryTenantDb(`DELETE FROM paquetes_de_precarga WHERE "usuarioId" = ANY($1)`, [alumnos.map((a) => a.id)]);
+    for (const a of alumnos) sesiones.push(await loginApi(a.email));
+    const ids = alumnos.map((a) => a.id);
+    if (process.env.FRIO) {
+        if (process.env.VIEJO) await queryTenantDb(`DELETE FROM paquetes_de_precarga WHERE "usuarioId" = ANY($1)`, [ids]);
+        else await queryTenantDb(`DELETE FROM indices_de_precarga WHERE "usuarioId" = ANY($1)`, [ids]);
+    }
 
     const t0 = Date.now();
-    const tiempos = await Promise.all(
-        sesiones.map(async ({ s }) => {
-            let preguntas = 0;
-            let vio404 = 0;
-            for (;;) {
-                preguntas++;
-                const r = await fetch(`${API_BASE}/precarga/paquete`, {
-                    headers: { Authorization: `Bearer ${s.accessToken}`, 'X-Institute-Slug': TENANT_SLUG },
-                });
-                if (r.status === 200) {
-                    const bytes = (await r.arrayBuffer()).byteLength;
-                    return { ms: Date.now() - t0, preguntas, vio404, bytes };
-                }
-                if (r.status === 404) vio404++;
-                await r.arrayBuffer().catch(() => undefined);
-                if (Date.now() - t0 > 25 * 60_000) return { ms: -1, preguntas, vio404, bytes: 0 };
-                await new Promise((h) => setTimeout(h, 1500));
-            }
-        })
-    );
+    const tiempos = await Promise.all(sesiones.map((s) => (process.env.VIEJO ? conPaquete(s.accessToken, t0) : conCubos(s.accessToken, t0))));
     const ok = tiempos.filter((t) => t.ms >= 0).map((t) => t.ms).sort((a, b) => a - b);
     const p = (q: number) => ok[Math.min(ok.length - 1, Math.floor(q * ok.length))] / 1000;
     const resumen = {
+        camino: process.env.VIEJO ? 'paquete' : 'cubos',
+        frio: !!process.env.FRIO,
         n: alumnos.length,
         listos: ok.length,
         p50: p(0.5),
         p95: p(0.95),
         ultimo: ok[ok.length - 1] / 1000,
-        con404: tiempos.filter((t) => t.vio404 > 0).length,
+        esperaron: tiempos.filter((t) => t.en202 > 0).length,
         preguntasTotales: tiempos.reduce((x, t) => x + t.preguntas, 0),
+        fallosDeRed,
+        codigos,
         kbMedio: Math.round(tiempos.reduce((x, t) => x + t.bytes, 0) / Math.max(1, ok.length) / 1024),
     };
     console.log('MEDIR', JSON.stringify(resumen));
     const salida = path.resolve(__dirname, '../../docs/mediciones');
     fs.mkdirSync(salida, { recursive: true });
-    fs.writeFileSync(path.join(salida, `muchos-a-la-vez-${alumnos.length}.json`), JSON.stringify({ resumen, tiempos }, null, 1));
+    fs.writeFileSync(path.join(salida, `muchos-a-la-vez-${resumen.camino}${resumen.frio ? '-frio' : ''}-${alumnos.length}.json`), JSON.stringify({ resumen, tiempos }, null, 1));
 });

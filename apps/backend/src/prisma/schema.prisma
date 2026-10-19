@@ -2899,3 +2899,67 @@ model AsistenciaDeGrupo {
   @@unique([grupoId, studentId, fecha])
   @@map("asistencia_de_grupo")
 }
+
+/// LA DESCARGA EN CUBOS (18-oct-2026, `services/cubos-de-precarga.service.ts`).
+/// Se leen y escriben con SQL a mano (la cola usa FOR UPDATE SKIP LOCKED).
+model CuboDePrecarga {
+  clave      String    @id
+  lecturas   String[]  @default([])
+  firma      String    @default("")
+  ids        String[]  @default([])
+  sinIds     Boolean   @default(false)
+  dueno      String?
+  armadoComo String?
+  contenido  Bytes?
+  huella     String?
+  bytes      Int       @default(0)
+  marca      BigInt    @default(0)
+  sucio      Boolean   @default(true)
+  prioridad  Int       @default(0)
+  armadoEn   DateTime? @db.Timestamptz(6)
+
+  @@index([dueno])
+  @@map("cubos_de_precarga")
+}
+
+model IndiceDePrecarga {
+  usuarioId         String    @id
+  claves            String[]  @default([])
+  paginas           String[]  @default([])
+  version           String    @default("")
+  huellaDeLaPersona String    @default("")
+  dia               String    @default("")
+  pendiente         Boolean   @default(true)
+  prioridad         Int       @default(0)
+  pedidoEn          DateTime  @default(now()) @db.Timestamptz(6)
+  armadoEn          DateTime? @db.Timestamptz(6)
+
+  @@map("indices_de_precarga")
+}
+
+model CursorDeLosCubos {
+  id    String @id @default("liceo")
+  hasta BigInt @default(0)
+
+  @@map("cursor_de_los_cubos")
+}
+
+/// «Reportar un problema» (18-oct-2026, `routes/reportes-de-problemas.routes.ts`).
+model ReporteDeProblema {
+  id            String   @id
+  autorId       String
+  texto         String
+  pantalla      String?
+  version       String?
+  aparato       String?
+  huellas       String[] @default([])
+  estado        String   @default("abierto")
+  respuesta     String?
+  respondidoPor String?
+  creadoEn      DateTime @default(now()) @db.Timestamptz(6)
+  actualizadoEn DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([autorId])
+  @@index([estado, creadoEn(sort: Desc)])
+  @@map("reportes_de_problemas")
+}

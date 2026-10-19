@@ -11,6 +11,8 @@ import {
     FileText,
     GraduationCap,
     KeyRound,
+    LifeBuoy,
+    MessageSquareWarning,
     LogOut,
     Palette,
     QrCode,
@@ -39,6 +41,8 @@ const PaymentSettings = diferido(() => import('./components/PaymentSettings').th
 const DocumentSettings = diferido(() => import('./components/DocumentSettings').then((m) => ({ default: m.DocumentSettings })), { alto: 480 });
 const PaeSettings = diferido(() => import('./components/PaeSettings').then((m) => ({ default: m.PaeSettings })), { alto: 360 });
 const QrSettings = diferido(() => import('./components/QrSettings').then((m) => ({ default: m.QrSettings })), { alto: 480 });
+const ReportarUnProblema = diferido(() => import('@/components/configuracion/Problemas').then((m) => ({ default: m.ReportarUnProblema })), { alto: 360 });
+const ProblemasReportados = diferido(() => import('@/components/configuracion/Problemas').then((m) => ({ default: m.ProblemasReportados })), { alto: 360 });
 const ContrasenaYAcceso = diferido(() => import('@/components/configuracion/ContrasenaYAcceso').then((m) => ({ default: m.ContrasenaYAcceso })), { alto: 360 });
 
 /**
@@ -72,6 +76,7 @@ interface Apartado {
 const DE_LA_PERSONA: Apartado[] = [
     { id: 'acceso', nombre: 'Contraseña y acceso', pista: 'Tu contraseña, la huella y tus sesiones', otras: 'seguridad clave pin sesiones biometria', icono: KeyRound },
     { id: 'color', nombre: 'Color y modo', pista: 'El color de la app, claro u oscuro', otras: 'apariencia tema oscuro claro', icono: SwatchBook },
+    { id: 'reportar', nombre: 'Reportar un problema', pista: 'Algo no funciona: avisa al liceo', otras: 'error fallo ayuda soporte problema', icono: LifeBuoy },
 ];
 
 const DEL_LICEO: Apartado[] = [
@@ -84,6 +89,7 @@ const DEL_LICEO: Apartado[] = [
     { id: 'qr', nombre: 'Asistencia por QR', pista: 'Escanear para pasar lista', otras: 'qr asistencia faro', icono: QrCode },
     { id: 'notifications', nombre: 'Notificaciones', pista: 'Qué avisos se envían', otras: 'avisos notificaciones', icono: Bell },
     { id: 'security', nombre: 'Seguridad', pista: 'Sesión, contraseñas e intentos', otras: 'sesiones tiempo de espera', icono: Shield },
+    { id: 'problemas', nombre: 'Problemas reportados', pista: 'Lo que reportan alumnos, profesores y representantes', otras: 'errores fallos reportes soporte', icono: MessageSquareWarning },
 ];
 
 const CONTENIDO: Record<string, React.ComponentType> = {
@@ -96,6 +102,8 @@ const CONTENIDO: Record<string, React.ComponentType> = {
     qr: QrSettings,
     notifications: NotificationSettings,
     security: SecuritySettings,
+    problemas: ProblemasReportados,
+    reportar: ReportarUnProblema,
 };
 
 /** «Contraseña» encuentra «contrasena»: sin tildes ni mayúsculas. */

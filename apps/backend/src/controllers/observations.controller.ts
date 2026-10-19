@@ -279,32 +279,38 @@ export async function getStudentObservations(
     const esPersonal = rolQueMira === 'ADMIN' || rolQueMira === 'TEACHER';
 
     // Enriquecer cada observación con otros involucrados si pertenece a un groupId
+    // Los compañeros de TODAS las observaciones de grupo, en UNA consulta (antes,
+    // una por observación: con un alumno con muchas, decenas a la vez sobre el
+    // mismo pozo de conexiones; regla «nunca por culpa del sistema»).
+    const grupos = esPersonal ? [...new Set(observations.map((o: any) => o.groupId).filter(Boolean))] : [];
+    const companerosDe = new Map<string, any[]>();
+    if (grupos.length) {
+      const todos = await prisma.observation.findMany({
+        where: { groupId: { in: grupos as string[] }, studentId: { not: studentId } },
+        include: {
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              studentCode: true,
+              avatar: true,
+              studentClassrooms: { where: { isActive: true }, take: 1, include: { classroom: { select: { name: true } } } },
+            },
+          },
+        },
+      });
+      for (const p of todos as any[]) {
+        if (!companerosDe.has(p.groupId)) companerosDe.set(p.groupId, []);
+        companerosDe.get(p.groupId)!.push(p);
+      }
+    }
+
     const enriched = await Promise.all(
       observations.map(async (obs: any) => {
         let otherInvolved: any[] = [];
         if (obs.groupId && esPersonal) {
-          const peers = await prisma.observation.findMany({
-            where: {
-              groupId: obs.groupId,
-              studentId: { not: studentId },
-            },
-            include: {
-              student: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                  studentCode: true,
-                  avatar: true,
-                  studentClassrooms: {
-                    where: { isActive: true },
-                    take: 1,
-                    include: { classroom: { select: { name: true } } },
-                  },
-                },
-              },
-            },
-          });
+          const peers = companerosDe.get(obs.groupId) ?? [];
           otherInvolved = peers.map((p: any) => ({
             id: p.student.id,
             name: `${p.student.firstName} ${p.student.lastName}`,

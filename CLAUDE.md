@@ -1245,6 +1245,59 @@ primeras (MAPA §8c-bis y §8d).
 - PEND-09…20, LABOR-08…10, PEND-UI-01, LABOR-UI-01. **El menú está copiado en
   el servidor** (`elMenuDelRol`, MENU-PARIDAD): quitar una entrada es en los dos.
 
+## La descarga en cubos (18-oct-2026): nunca se arma al entrar
+
+**Manda sobre lo de la sección de abajo donde choquen.** Medido antes: el
+servidor armaba la descarga de cada persona AL ENTRAR, de uno en uno por
+proceso; 300 alumnos en frío esperaban hasta 83 s (con 15.000, horas) para
+bajar 27 KB, y el admin 122 s, de los que 117 eran esperar al servidor (REA
+leyó la captura de red: 3,5 MB bajaron en 0,3 s). Ahora
+(`services/cubos-de-precarga.service.ts`, `lib/cubos.ts`), con la lógica de
+PowerSync, ElectricSQL y Linear sobre el árbol del liceo que pensó Cristian:
+
+- **Cubos** ya comprimidos: `liceo:ROL` y `seccion:ROL:<id>` (compartidos,
+  SOLO lo comprobado idéntico: `DEL_LICEO`, `DE_LA_SECCION`, CUBO-02) y
+  `persona:<id>:<n>` (lo suyo, en trozos para rehacer solo lo que cambia).
+  Ver no es lo mismo para todos: ante la duda, personal.
+- **Todo se arma antes**: de noche para todo el liceo (también quien nunca
+  entró, `laNocheDeLosCubos`), al crear una cuenta (`encargarElPaquete` ya solo
+  pone en la cola) y, por cada cambio, solo los cubos que toca
+  (`ensuciarPorLosCambios`: por ids y destinatarios, como `loQueCambioDesde`).
+- **La cola vive en la base** (`FOR UPDATE SKIP LOCKED`): varios procesos sin
+  Redis, nadie arma dos veces lo mismo (CUBO-06), y cede si el proceso va
+  retrasado. `PRECARGA_TRABAJADORES` (2 por proceso).
+- **Al entrar**: `POST /precarga/indice` (una consulta; sin índice, 202 con
+  cuántos van delante y se pide con prioridad) y `GET /precarga/cubo/:clave`
+  (solo si es de su índice, 403 si no; ETag y `Range`). La barra: bytes frente
+  al total exacto, nunca baja. Ponerse al día = otro índice y bajar solo los
+  cubos con otra huella.
+- **En el teléfono, cada cubo guarda SUS bloques** (`guardarRespuestasCrudas`
+  con grupo): el de antes reemplazaba el índice entero y con varios cubos solo
+  quedaba el último.
+- Medido después: 300 alumnos a la vez, el último con todo en 2,2 s, ninguno en
+  cola; 100 cuentas sin índice, 3,7 s; el admin, 6,5 s; profesor, 2 s.
+- El paquete por persona (`/precarga/paquete`, plan y bloques) queda para la
+  web de antes. Mediciones: `medir-muchos-a-la-vez`, `medir-primera-entrada`,
+  `medir-armado` (`tests/e2e`, con `MEDIR=1`).
+
+## La salud del sistema (18-oct-2026, superadmin → Salud)
+
+Cristian: «saber sin siquiera entrar a un instituto que algo esté fallando».
+`/superadmin/salud`: cada botón (ruta molde con su nombre humano,
+`utils/nombres-de-las-rutas.ts`) con veces, p50/p95/p99, errores, rechazos y
+sus códigos; cada liceo con semáforo; el login aparte; los **errores agrupados
+por huella** como Sentry (servidor y pantalla, `lib/reportar-fallo.ts`; sin
+datos personales; un resuelto que vuelve sale «Volvió»); el **pronóstico con
+miles de usuarios** (Erlang C con lo medido, dice dónde se dobla y dónde se
+cae, y cuánto se equivoca contra lo ya pasado) y **el robot** que cada 5 min
+recorre un liceo de muestra como cada rol (`SALUD_LICEO_DE_MUESTRA`; nunca uno
+de clientes). Medir cuesta < 0,05 ms por petición; se vuelca cada minuto a la
+base de la plataforma, sumando entre procesos. SALUD-01…08.
+
+**Reportar un problema** (Configuración, todos los roles): le llega al admin
+de su liceo (aviso y «Problemas reportados») con las huellas de los fallos de
+esa pantalla; la respuesta del admin le llega al autor. REPORTE-01…04.
+
 ## La precarga: sin conexión, todo (octubre 2026)
 
 La primera vez que alguien entra en un teléfono se baja **todo lo suyo**, como

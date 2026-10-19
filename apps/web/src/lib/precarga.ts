@@ -5,6 +5,7 @@ import { ESTADO_GUARDADO, guardarRespuestas, guardarRespuestasCrudas } from '@/l
 import { guardarEstasPaginasYEsperar, mirarLaVersionDeLaAppYEsperar } from '@/lib/paginas-guardadas';
 import { API_URL } from '@/config/env';
 import { conseguirCredencial } from '@/lib/credencial-en-memoria';
+import { pedirElIndice, bajarLosCubos, tieneCubos, olvidarLosCubos } from '@/lib/cubos';
 
 const API_BASE_URL = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
 
@@ -132,6 +133,7 @@ function apuntarLaMarca(dueno: string, desde: number) {
 
 /** Al cerrar sesión. */
 export function olvidarLaPrecarga(): void {
+    olvidarLosCubos();
     try {
         localStorage.removeItem(LLAVE);
         localStorage.removeItem(LLAVE_MARCA);
@@ -584,6 +586,68 @@ async function bajarPaquetePreparado(
     return 'listo';
 }
 
+/**
+ * EL CAMINO DE AHORA: LOS CUBOS (`lib/cubos.ts`, 18-oct-2026)
+ *
+ * Todo está armado de antemano en el servidor: se pide el índice (una
+ * consulta) y se bajan los cubos. 'no-hay' = un servidor de antes: se sigue
+ * por el paquete y el plan de siempre.
+ */
+async function bajarConCubos(o: Opciones, hecho: Hecho, avisar: (a: Avance) => void, laCascara: Promise<void>): Promise<'listo' | 'cancelada' | 'no-hay'> {
+    const base: Avance = { fase: 'empezando', bytes: 0, bytesTotales: null, bloquesHechos: 0, bloques: 1, lecturasHechas: 0, lecturasTotales: 0, bytesPorLaRed: 0, velocidad: null };
+    let espera = 0;
+    for (;;) {
+        if (o.cancelada()) return 'cancelada';
+        if (!o.hayConexion()) {
+            avisar({ ...base, fase: 'esperando' });
+            await esperar(1000);
+            continue;
+        }
+        const r = await pedirElIndice();
+        if (r === 'no-hay') return 'no-hay';
+        if (r === 'sin-conexion') {
+            avisar({ ...base, fase: 'esperando' });
+            espera = Math.min(espera + 1, 5);
+            await esperar(conAzar(Math.min(15_000, 1000 * 2 ** espera)));
+            continue;
+        }
+        if ('preparando' in r) {
+            // Una cuenta de hace un momento: el servidor la tiene en la cola.
+            avisar({ ...base, fase: 'preparando' });
+            await esperar(conAzar(1500));
+            continue;
+        }
+        const indice = r.listo;
+        const lasPaginas = guardarEstasPaginasYEsperar(indice.paginas.length ? indice.paginas : o.menu);
+        const fin = await bajarLosCubos(o.dueno, indice, {
+            cancelada: o.cancelada,
+            hayConexion: o.hayConexion,
+            alAvanzar: (a) =>
+                avisar({
+                    ...base,
+                    fase: a.esperando ? 'esperando' : 'bajando',
+                    bytes: a.recibidos,
+                    bytesTotales: a.total,
+                    lecturasHechas: a.porcentaje,
+                    lecturasTotales: 100,
+                    porcentaje: a.porcentaje,
+                    velocidad: a.velocidad,
+                }),
+        });
+        if (fin === 'cancelada') return 'cancelada';
+        await Promise.all([lasPaginas, laCascara]);
+        hecho.version = 'cubos';
+        hecho.hechos = [0];
+        hecho.bytes = fin.guardado;
+        hecho.completa = true;
+        hecho.cuando = Date.now();
+        escribirHecho(hecho);
+        apuntarLaMarca(o.dueno, indice.marca);
+        avisar({ ...base, fase: 'listo', bytes: indice.bytes, bytesTotales: indice.bytes, porcentaje: 100, lecturasHechas: 100, lecturasTotales: 100 });
+        return 'listo';
+    }
+}
+
 async function bajarTodoMidiendo(o: Opciones, red: { bytes: () => number }): Promise<'listo' | 'cancelada'> {
     const avisar = (a: Avance) => o.alAvanzar?.(a);
     const hecho = leerHecho(o.dueno);
@@ -624,6 +688,9 @@ async function bajarTodoMidiendo(o: Opciones, red: { bytes: () => number }): Pro
     // Se pide ya y se espera al final: sin ella entera, sin conexión algunas
     // partes de la app no abrirían.
     const laCascara = mirarLaVersionDeLaAppYEsperar();
+
+    const conCubos = await bajarConCubos(o, hecho, avisar, laCascara);
+    if (conCubos !== 'no-hay') return conCubos;
 
     // ── Intentar descargar el paquete preparado de antemano ─────────────────
     let intentarPaquete = true;
@@ -836,6 +903,17 @@ async function bajarTodoMidiendo(o: Opciones, red: { bytes: () => number }): Pro
  * ya tiró esos cambios) o no hay, toca la pasada entera (`todo`), de fondo.
  */
 export async function ponerseAlDia(dueno: string, menu: string[], hayConexion: () => boolean): Promise<'al-dia' | 'todo' | 'sin-conexion'> {
+    // Con cubos: el índice dice cuáles cambiaron; se bajan solo esos, ya armados.
+    if (tieneCubos(dueno)) {
+        const r = await pedirElIndice();
+        if (r === 'sin-conexion') return 'sin-conexion';
+        if (r !== 'no-hay') {
+            if ('preparando' in r) return 'al-dia';
+            const fin = await bajarLosCubos(dueno, r.listo, { cancelada: () => false, hayConexion });
+            if (fin !== 'cancelada') apuntarLaMarca(dueno, r.listo.marca);
+            return 'al-dia';
+        }
+    }
     const desde = laMarca(dueno);
     if (desde === null) return 'todo';
     try {

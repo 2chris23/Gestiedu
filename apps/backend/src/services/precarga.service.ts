@@ -627,7 +627,7 @@ const PARECE_UN_ID = /^(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{6,64}$/;
 const PARECE_FECHA = /^\d{4}-\d{2}(-\d{2})?$/;
 
 /** Los ids de una lectura (sin fechas ni lo que es de todos: el ciclo, los lapsos). */
-function losIdsDe(lectura: string, deTodos: Set<string>): string[] {
+export function losIdsDe(lectura: string, deTodos: Set<string>): string[] {
     const [camino, query = ''] = lectura.split('?');
     const trozos = [...camino.split('/'), ...new URLSearchParams(query).values()];
     return trozos.filter((t) => PARECE_UN_ID.test(t) && !PARECE_FECHA.test(t) && !deTodos.has(t));

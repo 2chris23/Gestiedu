@@ -456,8 +456,21 @@ export async function armarElPaquete(
 export async function encargarElPaquete(
     liceo: string,
     usuarioId: string,
-    fastifyInst?: FastifyInstance
+    _fastifyInst?: FastifyInstance
 ): Promise<void> {
+    /**
+     * DESDE EL 18-OCT-2026, LA DESCARGA VA EN CUBOS
+     * (`services/cubos-de-precarga.service.ts`). Encargar ya no arma un
+     * paquete aquí —eso hacía esperar a todos al entrar, de uno en uno—: pone
+     * a esa persona en la cola de fondo, que comparten todos los procesos. El
+     * paquete viejo solo lo sirve `/precarga/paquete` a quien aún lo tenga.
+     */
+    const { pedirQueSePrepare, PRIORIDAD } = await import('./cubos-de-precarga.service');
+    await pedirQueSePrepare(liceo, [usuarioId], PRIORIDAD.CUENTA_NUEVA);
+}
+
+/** El armado viejo, con su cola y su candado (lo usan las pruebas PAQUETE-*). */
+export async function encargarElPaqueteViejo(liceo: string, usuarioId: string, fastifyInst?: FastifyInstance): Promise<void> {
     const f = fastifyInst ?? servidorFastifyGlobal;
     if (!f) {
         logger.warn('paquete-de-precarga: no hay instancia de Fastify para encargar el paquete');

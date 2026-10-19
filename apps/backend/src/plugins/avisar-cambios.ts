@@ -7,6 +7,7 @@ import { conLiceo } from '../config/ambito-del-liceo';
 import { AQuienAfecta, resolverDestinatarios } from '../services/a-quien-afecta.service';
 import { avisarSiFalla } from '../utils/sin-callar';
 import { tocarLosTelefonosDeFondo } from '../services/avisos.service';
+import { hayTrabajoEn } from '../services/cubos-de-precarga.service';
 
 /**
  * EL ESCÁNER DE LA PUERTA
@@ -133,6 +134,10 @@ async function apuntarElCambio(
             todos: !destinatarios,
         },
     });
+    // Los cubos de la descarga que este cambio toca se rehacen en segundo
+    // plano (`services/cubos-de-precarga.service.ts`).
+    const liceo = (request as any).institute?.id ?? (request.user as any)?.instituteId;
+    if (liceo) hayTrabajoEn(liceo);
 }
 
 async function avisarCambiosPlugin(server: FastifyInstance) {

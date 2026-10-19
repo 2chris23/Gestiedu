@@ -245,3 +245,12 @@ model PasoDelRobot {
   @@index([en])
   @@map("pasos_del_robot")
 }
+
+/// Cada tarea programada, una sola dueña entre todos los procesos (`utils/turno-de-la-tarea.ts`).
+model TurnoDeTarea {
+  nombre String   @id
+  quien  String
+  hasta  DateTime
+
+  @@map("turnos_de_tareas")
+}

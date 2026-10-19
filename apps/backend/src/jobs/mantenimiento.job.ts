@@ -3,8 +3,9 @@ import { logger } from '../utils/logger';
 import { platformPrisma, getTenantPrisma } from '../config/database';
 import { conLiceo } from '../config/ambito-del-liceo';
 import { tirarLoQueNoSirve } from '../services/mantenimiento.service';
-import { actualizarPaquetesDeNoche } from '../services/paquete-de-precarga.service';
+import { laNocheDeLosCubos } from '../services/cubos-de-precarga.service';
 import { latido } from '../utils/latido-de-tareas';
+import { unaVezCada } from '../utils/turno-de-la-tarea';
 import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
@@ -28,7 +29,9 @@ export async function setupMantenimientoJob(_server: FastifyInstance) {
                     const prisma = await getTenantPrisma(liceo.id);
                     const r = await conLiceo(liceo.id, () => tirarLoQueNoSirve(prisma));
                     if (r.papelera + r.avisos + r.sesiones + r.cambios + r.paquetes > 0) logger.info('Mantenimiento: tirado lo viejo', { instituteId: liceo.id, ...r });
-                    await conLiceo(liceo.id, () => actualizarPaquetesDeNoche(_server, liceo.id, prisma)).catch(avisarSiFalla('actualizar-paquetes-noche'));
+                    // Todo el liceo al día para mañana, también quien nunca ha entrado
+                    // (la cola de los cubos lo arma de fondo).
+                    await conLiceo(liceo.id, () => laNocheDeLosCubos(liceo.id)).catch(avisarSiFalla('noche-de-los-cubos'));
                 } catch (error) {
                     fallo = error;
                     logger.warn('Mantenimiento: no se pudo con un liceo', {
@@ -44,6 +47,6 @@ export async function setupMantenimientoJob(_server: FastifyInstance) {
             await latido('mantenimiento', CADA, fallo ?? undefined);
         }
     };
-    setTimeout(() => void correr().catch(avisarSiFalla('mantenimiento.job')), 10 * 60_000).unref?.();
-    setInterval(() => void correr().catch(avisarSiFalla('mantenimiento.job')), CADA).unref?.();
+    setTimeout(() => void unaVezCada('mantenimiento', CADA, correr).catch(avisarSiFalla('mantenimiento.job')), 10 * 60_000).unref?.();
+    setInterval(() => void unaVezCada('mantenimiento', CADA, correr).catch(avisarSiFalla('mantenimiento.job')), CADA).unref?.();
 }

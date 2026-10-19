@@ -125,11 +125,12 @@ export async function guardarRespuestas(
 
 interface InfoIndice {
     cuando: number;
-    mapa: Record<string, number>;
+    /** La lectura → su bloque (un número en el paquete de antes; «grupo:n» con cubos). */
+    mapa: Record<string, number | string>;
 }
 
 const indiceEnMemoria = new Map<string, InfoIndice>();
-const bloquesEnMemoria = new Map<string, Map<number, Record<string, string>>>();
+const bloquesEnMemoria = new Map<string, Map<number | string, Record<string, string>>>();
 
 /**
  * GUARDAR RESPUESTAS CRUDAS COMO TEXTO (Fase B, Punto 3)
@@ -141,9 +142,12 @@ const bloquesEnMemoria = new Map<string, Map<number, Record<string, string>>>();
  */
 export async function guardarRespuestasCrudas(
     dueno: string | null,
-    filas: Array<{ clave: string; texto: string; bytes: number }>
+    filas: Array<{ clave: string; texto: string; bytes: number }>,
+    /** Con cubos (`lib/cubos.ts`): el cubo. Sus bloques se suman al índice; sin él, lo reemplazan. */
+    grupo?: string
 ): Promise<number> {
     if (!dueno || filas.length === 0) return 0;
+    if (grupo) return guardarUnGrupo(dueno, filas, grupo);
     let bytes = 0;
     const validas: Array<{ clave: string; texto: string; bytes: number }> = [];
 
@@ -201,6 +205,66 @@ export async function guardarRespuestasCrudas(
         }
     }
 
+    escrituras += validas.length;
+    return bytes;
+}
+
+/**
+ * UN CUBO, SIN BORRAR LOS DEMÁS (18-oct-2026)
+ *
+ * Con un solo paquete, cada guardado reemplazaba el índice entero: con cubos
+ * (varios guardados, tres a la vez) solo sobrevivía el último y sin conexión
+ * faltaban pantallas. Cada cubo tiene SUS bloques (`__bloque_<cubo>:<n>__`)
+ * y su parte del índice; el índice se mezcla de uno en uno (`enFila`).
+ */
+let enFila: Promise<unknown> = Promise.resolve();
+const POR_BLOQUE = 400;
+
+async function guardarUnGrupo(dueno: string, filas: Array<{ clave: string; texto: string; bytes: number }>, grupo: string): Promise<number> {
+    let bytes = 0;
+    const validas = filas.filter((f) => {
+        const c0 = f.clave.charCodeAt(0) === 47 ? f.clave.slice(1) : f.clave;
+        if (c0.startsWith('auth/') || c0.startsWith('health') || c0.startsWith('time') || c0.startsWith('avisos/telefonos')) return false;
+        if (f.bytes > TAMANO_MAXIMO) return false;
+        bytes += f.bytes;
+        return true;
+    });
+    const bloques = new Map<string, Record<string, string>>();
+    validas.forEach((f, i) => {
+        const id = `${grupo}:${Math.floor(i / POR_BLOQUE)}`;
+        if (!bloques.has(id)) bloques.set(id, {});
+        bloques.get(id)![f.clave] = f.texto;
+    });
+    const tarea = enFila.then(async () => {
+        let indice = indiceEnMemoria.get(dueno);
+        if (!indice) {
+            const crudo = await conElCajon<any>(CAJON_RESPUESTAS, 'readonly', (c) => c.get(`${dueno}|__indice__`));
+            const parseado = crudo ? (typeof crudo === 'string' ? JSON.parse(crudo) : crudo) : null;
+            indice = parseado?.mapa ? (parseado as InfoIndice) : { cuando: Date.now(), mapa: {} };
+        }
+        const mapa = { ...indice.mapa };
+        const viejos = new Set<string>();
+        for (const [k, v] of Object.entries(mapa)) {
+            if (typeof v === 'string' && v.startsWith(`${grupo}:`)) {
+                viejos.add(v);
+                delete mapa[k];
+            }
+        }
+        for (const [id, b] of bloques) for (const k of Object.keys(b)) mapa[k] = id;
+        const nuevo: InfoIndice = { cuando: Date.now(), mapa };
+        await conElCajon(CAJON_RESPUESTAS, 'readwrite', (c) => {
+            for (const [id, b] of bloques) c.put(JSON.stringify(b), `${dueno}|__bloque_${id}__`);
+            for (const v of viejos) if (!bloques.has(v)) c.delete(`${dueno}|__bloque_${v}__`);
+            c.put(JSON.stringify(nuevo), `${dueno}|__indice__`);
+        });
+        indiceEnMemoria.set(dueno, nuevo);
+        let m = bloquesEnMemoria.get(dueno);
+        if (!m) bloquesEnMemoria.set(dueno, (m = new Map()));
+        for (const v of viejos) m.delete(v);
+        for (const [id, b] of bloques) m.set(id, b);
+    });
+    enFila = tarea.catch(() => undefined);
+    await tarea;
     escrituras += validas.length;
     return bytes;
 }
