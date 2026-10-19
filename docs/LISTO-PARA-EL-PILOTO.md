@@ -9,7 +9,7 @@ con su evidencia, y se actualiza al cerrar cada tanda de trabajo.
 
 | Puerta | Qué exige | Estado |
 |---|---|---|
-| 1. Cero errores | jest y navegador enteros en verde; Salud sin errores abiertos; barrido de privacidad limpio | 🟡 jest entero en verde (1.446). Navegador: de la descarga sin conexión, 6 de 9; falta la tanda entera (316) |
+| 1. Cero errores | jest y navegador enteros en verde; Salud sin errores abiertos; barrido de privacidad limpio | 🟡 jest entero en verde (1.446). Navegador: la descarga sin conexión, 8 de 9 (falta la velocidad del admin); falta la tanda entera (316) |
 | 2. No se pierde nada | lo hecho sin conexión sube; los respaldos vuelven; nada se borra sin copia; nada se pisa callado | 🟡 Probado por partes; hoy se cerraron dos huecos. Falta la prueba de caos y la copia fuera del servidor |
 | 3. Rápido con 100.000 | medido con carga, sin doblarse | 🔴 Medido solo en este PC. Hace falta el servidor de verdad |
 | 4. Cada opción funciona | cada botón de cada rol, con su prueba | 🟡 Servidor: 455 de 456 opciones vistas funcionando. Falta lo mismo en las pantallas |
@@ -27,10 +27,10 @@ y `/superadmin/salud` → Errores, sin ninguno abierto.
 
 **Medido hoy:**
 - **jest entero: 191 de 191 archivos, 1.446 pruebas en verde, 0 fallos** (5 saltadas: piden un Redis de pruebas, `REDIS_PRUEBAS_URL`).
-- **La descarga sin conexión en el navegador (PRECARGA-01…09): 6 de 9.**
-  - **Profesor:** su horario no estaba en la descarga. Arreglado en el servidor; falta grabar sus lecturas (`GRABAR=1 grabar-lecturas`).
-  - **Admin:** la pestaña de labor social de 5.º no se veía sin conexión. El mapa de lecturas era de antes de esa pestaña; se regraba.
-  - **Velocidad del admin:** 15,2 s (meta ≤ 10 s). Se midió con la tanda de jest corriendo a la vez en la misma máquina: no vale. Se repite sola.
+- **La descarga sin conexión en el navegador (PRECARGA-01…09): 8 de 9.** Cada rol entra, baja lo suyo y, sin conexión, abre cada pantalla de su plan entera: profesor (3 s, 1,5 MB), alumno, representante y admin (3 s, 12,7 MB; todo lo que no es ficha y 25 fichas).
+  - Arreglado hoy para llegar ahí: el horario propio del profesor y la labor social de 5.º no estaban en la descarga, y la grabadora del mapa no veía nada con la web compilada (escribía un mapa vacío dando verde; ya no puede).
+  - **En rojo, la velocidad del admin (PRECARGA-09): 14,2 s con 38 Mbps y el procesador ×4 más lento, meta ≤ 10 s.** Medido sin nada más corriendo. Va con la puerta 3.
+- **Trampa encontrada:** con `npm run tunel`, el servidor de datos deja de recargarse al editar. Antes de una prueba de navegador se mira que el proceso sea nuevo.
 
 **Falta:**
 - La tanda entera de navegador (316 pruebas).
