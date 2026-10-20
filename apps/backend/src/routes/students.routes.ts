@@ -1,12 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
-import {
-  getStudents,
-  getStudent,
-  createStudent,
-  updateStudent,
-  getDashboardStats,
-  getAvailableStudents,
-} from '../controllers/students.controller';
+import { getStudents, getAvailableStudents } from '../controllers/alumnos/lista-de-alumnos.controller';
+import { getStudent, createStudent, updateStudent } from '../controllers/students.controller';
+import { getDashboardStats } from '../controllers/alumnos/ficha-del-alumno.controller';
 import { getStudentDashboard } from '../controllers/dashboard.controller';
 import { actividadesDelAlumno } from '../controllers/actividades-del-alumno.controller';
 import { miClase, misMaterias } from '../controllers/mi-clase.controller';

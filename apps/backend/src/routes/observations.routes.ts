@@ -1,12 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { authenticate, requireTeacher } from '../middleware/auth.middleware';
-import {
-  createObservation,
-  getStudentObservations,
-  getClassroomObservations,
-  getSubjectObservations,
-  deleteObservation,
-} from '../controllers/observations.controller';
+import { createObservation, deleteObservation } from '../controllers/observations.controller';
+import { getStudentObservations, getClassroomObservations, getSubjectObservations } from '../controllers/observaciones/ver-observaciones.controller';
 
 export async function observationsRoutes(fastify: FastifyInstance) {
   fastify.register(async (authenticatedRoutes) => {
