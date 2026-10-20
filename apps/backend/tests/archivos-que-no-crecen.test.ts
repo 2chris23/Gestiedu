@@ -18,8 +18,6 @@ const RAIZ = path.resolve(__dirname, '../../..');
 const GRANDES: Record<string, number> = {
     'apps/web/src/app/(dashboard)/dashboard/clase-en-vivo/[classroomId]/[subjectId]/page.tsx': 1457,
     'apps/web/src/components/evaluation/EvaluationPlanSection.tsx': 1408,
-    'apps/backend/src/controllers/pagos.controller.ts': 1264,
-    'apps/backend/src/controllers/finanzas.controller.ts': 1241,
     'apps/web/src/app/(dashboard)/dashboard/academico/[cycleId]/promocion/page.tsx': 1205,
     'apps/backend/src/services/promotion/close-cycle.service.ts': 1199,
     'apps/backend/src/services/dashboard.service.ts': 1193,

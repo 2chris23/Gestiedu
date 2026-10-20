@@ -1,34 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
-import {
-    anularFondo,
-    anularGasto,
-    anularPagoAlPersonal,
-    aplicarATodos,
-    crearFondo,
-    crearGasto,
-    crearPersona,
-    editarPersona,
-    getComprobante,
-    getFondos,
-    getGastos,
-    getMes,
-    getReporteDelMes,
-    getMisPagos,
-    getPersona,
-    getPersonal,
-    getReciboDelPersonal,
-    getResumen,
-    guardarAcuerdo,
-    getRecurrentes,
-    getTasa,
-    guardarAreas,
-    guardarRecurrentes,
-    guardarCategorias,
-    guardarNomina,
-    pagarAlPersonal,
-    subirComprobante,
-} from '../controllers/finanzas.controller';
+import { anularFondo, anularGasto, crearFondo, crearGasto, getComprobante, getFondos, getGastos, guardarCategorias, subirComprobante } from '../controllers/finanzas/fondos-y-gastos.controller';
+import { anularPagoAlPersonal, aplicarATodos, crearPersona, editarPersona, getMisPagos, getPersona, getPersonal, getReciboDelPersonal, guardarAcuerdo, guardarAreas, guardarNomina, pagarAlPersonal } from '../controllers/finanzas/personal.controller';
+import { getMes, getReporteDelMes, getResumen } from '../controllers/finanzas/resumen-y-mes.controller';
+import { getRecurrentes, getTasa, guardarRecurrentes } from '../controllers/finanzas/recurrentes.controller';
 
 /**
  * LAS FINANZAS DEL LICEO (2026-10-01). Todo del admin, salvo `mis-pagos` (cada

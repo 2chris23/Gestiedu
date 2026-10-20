@@ -1,24 +1,10 @@
 import { FastifyInstance } from 'fastify';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
-import {
-    annulPayment,
-    getMyChildrenPayments,
-    getPaymentCycles,
-    subirCaptura,
-    getCaptura,
-    reportarPago,
-    getReportes,
-    confirmarReporte,
-    rechazarReporte,
-    getPaymentsMonth,
-    getPaymentReceipt,
-    getPaymentSettings,
-    getPaymentsOverview,
-    getStudentPayments,
-    registerPayment,
-    updatePaymentSettings,
-    updateStudentPlan,
-} from '../controllers/pagos.controller';
+import { annulPayment, getPaymentReceipt, registerPayment, updateStudentPlan } from '../controllers/pagos/cobros.controller';
+import { getMyChildrenPayments, getStudentPayments } from '../controllers/pagos/ficha-de-pagos.controller';
+import { getPaymentCycles, getPaymentsMonth, getPaymentsOverview } from '../controllers/pagos/resumen-de-pagos.controller';
+import { subirCaptura, getCaptura, reportarPago, getReportes, confirmarReporte, rechazarReporte } from '../controllers/pagos/reportes-del-representante.controller';
+import { getPaymentSettings, updatePaymentSettings } from '../controllers/pagos.controller';
 
 /**
  * Pagos. Los permisos finos (el representante solo ve a los suyos; con el
