@@ -11,6 +11,7 @@
 import cron from 'node-cron';
 import { Client } from 'pg';
 import { platformPrisma } from '../config/database';
+import { unaVezCada } from '../utils/turno-de-la-tarea';
 import { logger } from '../utils/logger';
 import { checkPlanAlerts } from '../services/plan-alerts.service';
 import { latido } from '../utils/latido-de-tareas';
@@ -159,17 +160,17 @@ export async function runStorageMonitor(): Promise<void> {
  */
 export function startStorageMonitor(): void {
     // Primera ejecución inmediata al arrancar (solo en producción para no demorar el inicio en dev)
+    // Una sola vez por hora entre TODOS los procesos (`unaVezCada`): con varios,
+    // cada uno abría al arrancar una conexión a cada liceo a la vez y la base se
+    // quedaba sin clientes (medido con 4 procesos y 60 liceos: nadie podía entrar).
+    const correr = () => unaVezCada('monitor-de-almacenamiento', 60 * 60 * 1000, runStorageMonitor);
     if (process.env.NODE_ENV === 'production') {
-        runStorageMonitor().catch(e =>
-            logger.error('[monitor-storage] Error en ejecución inicial:', e)
-        );
+        setTimeout(() => void correr().catch((e) => logger.error('[monitor-storage] Error en ejecución inicial:', e)), 2 * 60_000).unref?.();
     }
 
     // Cada hora
     cron.schedule('0 * * * *', async () => {
-        await runStorageMonitor().catch(e =>
-            logger.error('[monitor-storage] Error en cron:', e)
-        );
+        await correr().catch((e) => logger.error('[monitor-storage] Error en cron:', e));
     });
 
     logger.info('✅ Storage monitor job programado (cada hora)');

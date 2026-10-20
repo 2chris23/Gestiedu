@@ -4,6 +4,7 @@ import { medidor, moldeDeLaRuta } from '../utils/medidor-de-rutas';
 import { agrupador } from '../utils/errores-agrupados';
 import { CABECERA_INTERNA, MARCA_INTERNA } from '../services/precarga.service';
 import { empezarAVolcar, pararDeVolcar } from '../services/salud-de-rutas.service';
+import { entraUnaPeticion, saleUnaPeticion } from '../utils/la-gente-esperando';
 
 /**
  * CADA PETICIÓN, MEDIDA (salud, 18-oct-2026). Ver `utils/medidor-de-rutas.ts`.
@@ -33,7 +34,23 @@ export function apuntarErrorDelServidor(request: FastifyRequest, error: { name?:
     (request as any)[ERROR_REAL] = error;
 }
 
+const CONTADA = Symbol('contada-como-gente');
+
 async function medidorPlugin(server: FastifyInstance) {
+    // Cuánta gente espera ahora: el trabajo de fondo se aparta (`utils/la-gente-esperando.ts`).
+    server.addHook('onRequest', async (request) => {
+        if (esInterna(request) || request.method === 'OPTIONS') return;
+        (request as any)[CONTADA] = true;
+        entraUnaPeticion();
+    });
+    const soltar = async (request: FastifyRequest) => {
+        if ((request as any)[CONTADA]) {
+            (request as any)[CONTADA] = false;
+            saleUnaPeticion();
+        }
+    };
+    server.addHook('onRequestAbort', soltar);
+
     // El código propio de un error (`CLASE_CON_TRABAJO`, `TENANT_MISMATCH`…)
     // sale del cuerpo de la respuesta: solo se mira si es un error y es corto.
     server.addHook('onSend', async (request, reply, payload) => {
@@ -58,6 +75,7 @@ async function medidorPlugin(server: FastifyInstance) {
     });
 
     server.addHook('onResponse', async (request, reply) => {
+        await soltar(request);
         if (esInterna(request) || request.method === 'OPTIONS') return;
         const user = (request as any).user;
         medidor.apuntar({

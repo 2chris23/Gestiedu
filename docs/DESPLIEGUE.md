@@ -206,6 +206,18 @@ Lo de arriba se escribió para 50 liceos. Para 200, lo que cambió (septiembre
   Redis (`CUPO-01…04`, `DOBLE-01…04`), y los logos a la base de la plataforma
   (`LOGO-01…05`). nginx manda la API al proceso menos ocupado y el tiempo real
   siempre al mismo proceso por dirección (ver `docker/nginx/nginx.conf`).
+- **Los cubos de la descarga, en un proceso aparte** (19-oct-2026). En los
+  procesos que atienden a la gente, `PRECARGA_TRABAJADORES=0`; uno más, sin
+  tráfico, con `PRECARGA_TRABAJADORES=2`. Medido en el mismo proceso: el
+  armado de los cubos de 50 liceos nuevos llevó el p95 de todo a 6 s con 200
+  personas. Aunque ahora se aparta de la gente (`utils/la-gente-esperando.ts`),
+  sigue gastando las conexiones del liceo.
+- **Cuántos procesos** (medido por escalones el 19-oct-2026, `LISTO-PARA-EL-PILOTO.md`
+  puerta 3): uno aguanta unas 400–500 personas a la vez con p99 ≤ 100 ms; para
+  10.000, unos 10–12. Solo con PgBouncer: sin él, 4 procesos × 50 liceos no caben
+  en las 100 conexiones de PostgreSQL. Las tareas que recorren todos los liceos
+  (estado de los años, almacenamiento, cuadro de honor, mantenimiento) corren
+  una vez entre todos (`utils/turno-de-la-tarea.ts`).
 
 ### El puerto, cuando lo asigna el hospedaje
 

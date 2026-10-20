@@ -181,12 +181,30 @@ async function cargarDelCiclo(prisma: PrismaClient, secciones: string[], student
             select: { id: true, name: true, startDate: true, endDate: true },
             orderBy: { startDate: 'asc' },
         }),
-        prisma.evaluationPlanRow.findMany({
-            where: { classroom: delMismoCiclo, subjectId: { in: subjectIds }, rowType: 'EVALUATION' },
-            select: { id: true, puntos: true, activityId: true, subjectId: true, lapso: true, classroomId: true },
-        }),
+        // Las filas del plan de ESTAS secciones y de las otras del ciclo donde
+        // estos alumnos tienen notas (no las del ciclo entero: para un alumno
+        // eran las 2.400 filas del año, 74 ms medidos en la pantalla que más
+        // se abre).
+        prisma.$queryRaw<Array<{ id: string; puntos: number | null; activityId: string | null; subjectId: string; lapso: string; classroomId: string }>>`
+            SELECT r.id, r.puntos, r."activityId", r."subjectId", r.lapso, r."classroomId"
+              FROM evaluation_plan_rows r
+              JOIN classrooms c ON c.id = r."classroomId"
+              JOIN classrooms mia ON mia.id = ${secciones[0]}
+             WHERE r."rowType" = 'EVALUATION'
+               AND r."subjectId" = ANY(${subjectIds}::text[])
+               AND c."academicYearId" = mia."academicYearId"
+               AND (r."classroomId" = ANY(${secciones}::text[])
+                    OR r."classroomId" IN (
+                        SELECT r2."classroomId" FROM evaluation_plan_rows r2
+                          JOIN grades g ON g."activityId" = r2."activityId"
+                         WHERE g."studentId" = ANY(${studentIds}::text[]) AND g.score IS NOT NULL)
+                    OR r."classroomId" IN (
+                        SELECT ca."classroomId" FROM class_activities ca
+                         WHERE jsonb_typeof(ca.scores) = 'object' AND ca.scores ?| ${studentIds}::text[]))`,
+        // Solo las notas de este ciclo: las de los años anteriores no entran en
+        // ninguna cuenta de aquí y un alumno de 5.º arrastraba sus cinco años.
         prisma.grade.findMany({
-            where: { studentId: { in: studentIds }, subjectId: { in: subjectIds } },
+            where: { studentId: { in: studentIds }, subjectId: { in: subjectIds }, period: delMismoCiclo },
             select: { studentId: true, subjectId: true, score: true, periodId: true, activityId: true },
         }),
         prisma.$queryRaw<ActividadDelCiclo[]>`

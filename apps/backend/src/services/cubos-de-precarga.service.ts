@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'crypto';
 import * as zlib from 'zlib';
 import { promisify } from 'util';
 import { monitorEventLoopDelay } from 'perf_hooks';
+import { peticionesEnCurso } from '../utils/la-gente-esperando';
 import { getTenantPrisma, platformPrisma } from '../config/database';
 import { generateTokenPair } from '../config/jwt';
 import { conLiceo } from '../config/ambito-del-liceo';
@@ -353,14 +354,34 @@ export function hayTrabajoEn(liceo: string): void {
 
 const retraso = monitorEventLoopDelay({ resolution: 20 });
 retraso.enable();
-/** Si el proceso va retrasado atendiendo a la gente, el trabajo de fondo espera. */
-async function cederAnteLaGente(): Promise<void> {
-    for (let i = 0; i < 20; i++) {
+/**
+ * El trabajo de fondo se aparta de la gente (`utils/la-gente-esperando.ts`).
+ *
+ * Antes solo miraba el retraso del bucle (p99 < 150 ms) y, a los 10 s, seguía
+ * igual: con 200 personas en 50 liceos recién creados el p95 de TODO subió a
+ * 6,7 s. Ahora espera a que el proceso esté tranquilo (pocas peticiones en
+ * curso y el bucle al día). Si alguien espera ESE trabajo (su índice, con
+ * prioridad), espera poco; si es la pasada general, espera hasta 5 s por
+ * trabajo: así, con gente todo el día, sigue avanzando de a poco sin frenarla.
+ */
+async function cederAnteLaGente(alguienLoEspera = false): Promise<void> {
+    const tope = alguienLoEspera ? 4 : 50; // × 100 ms
+    for (let i = 0; i < tope; i++) {
         const p99 = retraso.percentile(99) / 1e6;
         retraso.reset();
-        if (p99 < 150) return;
-        await new Promise((r) => setTimeout(r, 500));
+        const tranquilo = p99 < 40 && peticionesEnCurso() <= (alguienLoEspera ? 8 : 2);
+        if (tranquilo) return;
+        await new Promise((r) => setTimeout(r, 100));
     }
+}
+
+/** ¿Hay en la cola el índice de alguien que lo pidió al entrar (con prioridad)? */
+async function hayAlguienEsperando(liceo: string): Promise<boolean> {
+    const prisma = await getTenantPrisma(liceo);
+    const [r]: Array<{ hay: boolean }> = await prisma.$queryRawUnsafe(
+        `SELECT EXISTS (SELECT 1 FROM "indices_de_precarga" WHERE "pendiente" AND "prioridad" >= ${PRIORIDAD.ENTRANDO}) AS hay`
+    );
+    return Boolean(r?.hay);
 }
 
 /** Un trabajo de la cola del liceo, o null si no hay. */
@@ -392,7 +413,7 @@ export async function hacerElTrabajoDe(fastify: FastifyInstance, liceo: string, 
         else await elDiaNuevo(liceo);
         await ensuciarPorLosCambios(liceo);
         while (hechos < tope) {
-            await cederAnteLaGente();
+            await cederAnteLaGente(await hayAlguienEsperando(liceo));
             const t = await tomarUnTrabajo(liceo);
             if (!t) break;
             try {
@@ -426,7 +447,10 @@ const ultimoAviso = new Map<string, number>();
 
 export function empezarLosTrabajadores(fastify: FastifyInstance): void {
     if (process.env.NODE_ENV === 'test') return;
-    const n = Math.max(1, Number(process.env.PRECARGA_TRABAJADORES) || 2);
+    // 0 = este proceso no arma cubos (los arma un proceso aparte, DESPLIEGUE.md).
+    const pedidos = process.env.PRECARGA_TRABAJADORES;
+    const n = pedidos !== undefined && pedidos !== '' && Number(pedidos) === 0 ? 0 : Math.max(1, Number(pedidos) || 2);
+    if (n === 0) return;
     let ultimaRonda = 0;
     const enCurso = new Set<string>();
     const trabajador = async () => {

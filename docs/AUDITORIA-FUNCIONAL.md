@@ -972,7 +972,7 @@ en abrirse todas. El servidor se queda en unos 2 GB de memoria.
 
 Eso no lo medía ninguna prueba anterior: k6 cuenta peticiones, y el riesgo de un
 liceo grande a las 8 de la mañana es otro — miles de teléfonos conectados **sin
-pedir nada**, solo esperando. La prueba está en `load-tests/sockets-15k.ts`.
+pedir nada**, solo esperando. La prueba está en `apps/backend/src/scripts/medir-tiempo-real.ts` (`npm run medir:tiempo-real`).
 
 ### Lo que importaba de verdad: a cuánta gente llega un cambio
 

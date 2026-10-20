@@ -16,7 +16,7 @@ hasta cerrar las cinco etapas. Drive, el abogado y el titular de lo legal espera
 | 2. Corrección de diseño | 🟡 Continua, con Cristian mirando |
 | 3. Revisar de pie a cabeza | 🔴 Empieza ahora: arquitectura, archivos de más de 800 líneas (17 pasan de 1.000), lo obsoleto |
 | 4. Que todo funcione | 🟡 Ver puertas 1 y 4 |
-| 5. Estrés: 10.000 a la vez, ≤ 100 ms | 🔴 Medido hasta 500; falta subir los escalones y proyectar |
+| 5. Estrés: 10.000 a la vez, ≤ 100 ms | 🟡 Medido por escalones y proyectado: un proceso, ~400–500 a ≤ 100 ms; harían falta ~10–12 procesos para 10.000 (falta probarlo en un servidor) |
 
 | Puerta | Qué exige | Estado |
 |---|---|---|
@@ -63,25 +63,61 @@ y `/superadmin/salud` → Errores, sin ninguno abierto.
 - Prueba de caos: tumbar la base 30 s en medio de una tanda de escrituras y comprobar que nada se perdió.
 - Respaldos fuera del servidor, en marcha de verdad (R2), con una recuperación probada desde allí.
 
-## Puerta 3 — Rápido con 100.000 personas a la vez
+## Puerta 3 — Rápido con 100.000 personas (más de 10.000 a la vez, p99 ≤ 100 ms)
 
-**Medido (en este PC, todo en la misma máquina):**
-- 300 alumnos entrando a la vez por primera vez: el último tiene todo en 2,2 s.
-- 500 personas en 50 liceos: p95 de 124 ms, 0 fallos.
+**Medido el 19-oct-2026 por escalones** (`npm run medir:estres`, este PC: el generador, PostgreSQL, Redis y el servidor en la misma máquina de 12 hilos; 50 liceos sembrados con `seed:muchos-liceos`; una conexión por liceo).
 
-**El pronóstico (Erlang C calibrado, `/superadmin/salud`):**
+**Primero se encontró y arregló lo que lo rompía:**
+- **Con 200 personas, todo a 6 s** (hasta `GET /time`). Había tres causas:
+  - el Inicio del admin recalculaba el promedio del liceo materia por materia: 31 s cada vez;
+  - el armado de cubos de fondo no se apartaba de la gente;
+  - quedaban servidores viejos encendidos.
+- **Ahora:**
+  - el Inicio del admin calcula una sola vez las cifras del año;
+  - el trabajo de fondo espera a que no haya gente pidiendo (`utils/la-gente-esperando.ts`);
+  - el Inicio del alumno ya no hace la cuenta dos veces;
+  - las notas se leen solo del ciclo y de sus secciones.
+- **Con varios procesos, nadie podía entrar.** Cada proceso, al arrancar, abría una conexión a cada liceo (para sincronizar el estado de los años y revisar el disco) y la base se quedaba sin clientes. Ahora esas tareas corren una vez entre todos los procesos.
 
-| Montaje | Se dobla con | Se cae con |
-|---|---|---|
-| 1 proceso × 10 conexiones | ~9.800 personas | ~10.600 personas |
-| 4 procesos × 20 conexiones | — | más de 80.000 personas |
+**Un proceso, 10 liceos:**
 
-Para 100.000 hacen falta unos 6 procesos y PgBouncer. Es una cuenta, no una medición.
+| Gente a la vez | Pet/s | p50 | p95 | p99 |
+|---|---|---|---|---|
+| 100 | 50 | 4 ms | 39 ms | 75 ms |
+| 200 | 98 | 12 ms | 52 ms | 109 ms |
+| 400 | 197 | 14 ms | 59 ms | **82 ms** |
+| 800 | 377 | 22 ms | 463 ms | 1.081 ms |
+| 1.200 | 433 | 380 ms | 2.296 ms | 3.339 ms |
 
-**Falta (no se puede hacer en este PC):**
-- Un servidor de verdad y la prueba de `DESPLIEGUE.md` §10-bis, con el generador de carga en OTRA máquina.
-- Rehacer de noche a todo un liceo grande. Hoy van unas 1,25 personas por segundo con 2 trabajadores; con 15.000 en un servidor son unas 3 h. Cabe en la noche, pero hay que medirlo allí.
-- `statement_timeout` en el rol de la base (paso de despliegue).
+**Cuatro procesos, 10 liceos:**
+
+| Gente a la vez | Pet/s | p95 | p99 |
+|---|---|---|---|
+| 400 | 197 | 46 ms | 77 ms |
+| 800 | 388 | 217 ms | 425 ms |
+| 1.200 | 507 | 1.118 ms | 2.376 ms (el generador ya se ahoga: 74 ms) |
+
+**Qué se lee de las tablas:**
+- **Un proceso:** aguanta unas **400–500 personas a la vez con p99 ≤ 100 ms**.
+- **Cuatro procesos en el mismo PC:** no dan cuatro veces más. Comparten la base, Redis, el generador y los 12 hilos; el techo aquí es la máquina.
+
+**La proyección (las dos cuentas, `proyectar` en `medir-estres-incremental.ts`):**
+- **La de Cristian (el % por cada doble):** cerca del techo, el p99 crece +130 % a +560 % por doble. Proyectada así, con un solo proceso daría minutos a 10.000 personas. No es real: es justo la zona donde el tiempo se dispara.
+- **Colas (Erlang C ajustado a lo medido):** el tiempo de servicio es de 11–13 ms por petición, y cada persona hace ~0,48 peticiones/s.
+  - Para **10.000 a la vez con p99 ≤ 100 ms** hacen falta unos **10–12 procesos** como este, con PgBouncer y una base que los aguante.
+  - Para 100.000, unos 90–117.
+  - El modelo se equivoca un 45–58 % frente a lo medido en este PC. Es un orden de magnitud, no una promesa.
+
+**Veredicto:** con este código, **10.000 a la vez a ≤ 100 ms es alcanzable repartiendo en ~10–12 procesos**, porque el p99 sin cola es de ~60 ms. **No está demostrado:** eso solo se mide en un servidor de pruebas, con el generador en otra máquina (`DESPLIEGUE.md` §10-bis).
+
+**Falta para cerrar la puerta:**
+- **PgBouncer obligatorio con varios procesos:** sin él no caben las conexiones.
+- **Los cubos, en un proceso aparte** (`PRECARGA_TRABAJADORES=0` en los de la API).
+- **Bajar más el trabajo de las pantallas más pesadas**, en este orden:
+  1. el Inicio del alumno;
+  2. la lista de alumnos;
+  3. guardar la clase.
+- **La prueba en un servidor de verdad**, y `statement_timeout`.
 
 ## Puerta 4 — Cada opción funciona
 

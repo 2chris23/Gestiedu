@@ -9,7 +9,7 @@ import { NOTAS_QUE_CUENTAN } from './apreciaciones.service';
 import { instituteTimezone, todayInTimezone } from '../utils/school-time';
 import { platformPrisma } from '../config/database';
 import { boletaDelAlumno, BoletaDelAlumno } from './boleta.service';
-import { cifrasOficialesDeLaSeccion, cifrasOficialesDelAno, estaEnRiesgo, notaOficial } from './cifras-oficiales.service';
+import { cifrasOficialesDeLaSeccion, cifrasOficialesDelAno, estaEnRiesgo, mediaOficial, notaOficial } from './cifras-oficiales.service';
 
 /**
  * QUÉ PERIODO SE MIRA: EL LAPSO EN CURSO, Y APARTE EL CICLO
@@ -219,6 +219,12 @@ export class DashboardService {
             where: { status: 'ACTIVE' },
             select: { id: true, name: true, startDate: true, endDate: true }
         });
+        // Las cifras oficiales del año, UNA vez: de aquí salen el riesgo y el
+        // promedio del liceo (antes el promedio venía de las estadísticas del
+        // ciclo, que lo recalculaban materia por materia: 31 s medidos con 200
+        // personas en 50 liceos y una conexión por liceo).
+        const cifrasDelAno = activeYear ? cifrasOficialesDelAno(db, instituteId, activeYear.id) : Promise.resolve([]);
+        cifrasDelAno.catch(() => undefined);
 
         // TODAS las queries en paralelo (incluyendo activity y alerts, que antes eran secuenciales)
         const [
@@ -261,7 +267,7 @@ export class DashboardService {
                 // Con la cifra oficial (la de la boleta) y la misma regla de riesgo
                 // que la sección y el año (`estaEnRiesgo`). Antes: la media a pelo
                 // de la tabla de notas, y el Inicio decía 257 donde los años sumaban 149.
-                const delAno = await cifrasOficialesDelAno(db, instituteId, activeYear.id);
+                const delAno = await cifrasDelAno;
                 const uniqueStudents = new Set<string>();
                 const failedMap = new Map<string, number>();
                 for (const { oficiales } of delAno) {
@@ -543,17 +549,19 @@ export class DashboardService {
             })
         ]);
 
-        // El promedio del liceo, el mismo de las estadísticas del ciclo (en
-        // bloque y guardado en la memoria rápida: no recalcula en cada visita).
+        // El promedio del liceo: la media de sus años, cada año la de sus
+        // secciones, cada sección la de sus alumnos (MAPA §0, `cycleAverage`).
         let promedioGeneral: number | null = null;
-        if (activeYear) {
-            try {
-                const { cycleStatisticsService } = await import('./cycle-statistics.service');
-                const ciclo = await cycleStatisticsService.getCycleGlobalAverage(db, activeYear.id, instituteId);
-                promedioGeneral = ciclo.globalAverage > 0 ? ciclo.globalAverage : null;
-            } catch {
-                promedioGeneral = null;
+        try {
+            const porGrado = new Map<number, number[]>();
+            for (const { grade, oficiales } of await cifrasDelAno) {
+                const xs = [...oficiales.values()].map((c) => c.definitivo).filter((n): n is number => n !== null);
+                if (xs.length) porGrado.set(grade, [...(porGrado.get(grade) ?? []), mediaOficial(xs)!]);
             }
+            const anos = [...porGrado.values()].map((secs) => mediaOficial(secs)!);
+            promedioGeneral = anos.length ? mediaOficial(anos) : null;
+        } catch {
+            promedioGeneral = null;
         }
 
         return {
@@ -926,7 +934,23 @@ export class DashboardService {
         const ventana = await ventanaDelLapsoYCiclo(db, anioActivoId);
 
         const [gradesStats, attendanceStats, observationsCount, periodData] = await Promise.all([
-            materiasDelAlumnoConPromedio(db, userId, activeClassroomId, ventana.lapsosDelCiclo),
+            // Con sección, sus materias salen de la cuenta oficial de abajo (las
+            // que tienen nota): calcular aparte su promedio era hacer dos veces
+            // el mismo trabajo en la pantalla que más se abre.
+            activeClassroomId
+                ? db.classroomSubject.findMany({
+                      where: { classroomId: activeClassroomId },
+                      select: { subject: { select: { id: true, name: true, color: true, evaluacion: true } } },
+                  }).then((xs: any[]) => xs.map((x) => ({
+                      subjectId: x.subject.id,
+                      subjectName: x.subject.name,
+                      subjectColor: x.subject.color,
+                      average: 0,
+                      conNotas: false,
+                      cualitativa: x.subject.evaluacion === 'CUALITATIVA',
+                      deLaSeccion: true,
+                  })))
+                : materiasDelAlumnoConPromedio(db, userId, activeClassroomId, ventana.lapsosDelCiclo),
 
             (async () => {
                 const [lapso, ciclo] = await Promise.all([
@@ -966,7 +990,11 @@ export class DashboardService {
         }));
 
         const subjects = (gradesStats && Array.isArray(gradesStats) && gradesStats.length > 0)
-            ? gradesStats.map(s => {
+            ? gradesStats
+                // Las de la sección, solo las que tienen nota (como antes: el
+                // Inicio enseña las materias donde ya hay algo).
+                .filter((s: any) => !s.deLaSeccion || (!s.cualitativa && notaOficial(oficiales, s.subjectId) !== null))
+                .map(s => {
                 const cualitativa = (s as any).cualitativa ?? false;
                 const oficial = cualitativa ? null : notaOficial(oficiales, s.subjectId);
                 return {

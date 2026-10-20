@@ -71,7 +71,13 @@ export async function cifrasOficialesDeLaSeccion(
 export async function cifrasOficialesDeVariasSecciones(
     prisma: PrismaClient,
     instituteId: string | undefined,
-    pedidas: Array<{ classroomId: string; studentIds: string[] }>
+    pedidas: Array<{ classroomId: string; studentIds: string[] }>,
+    /**
+     * Solo estas materias (lo que pide la pantalla de UNA materia): mucho menos
+     * trabajo. Ojo: entonces `definitivo` y `porLapso` son de esas materias, no
+     * el promedio del alumno; quien lo use, que mire solo las notas.
+     */
+    soloMaterias?: string[]
 ): Promise<Map<string, Map<string, CifrasOficiales>>> {
     const salida = new Map<string, Map<string, CifrasOficiales>>();
     for (const p of pedidas) salida.set(p.classroomId, new Map());
@@ -113,7 +119,13 @@ export async function cifrasOficialesDeVariasSecciones(
         const delAnio = secciones.filter((s) => s.academicYearId === anio);
         const lapsos = lapsosDeTodos.filter((l) => l.academicYearId === anio);
         const cuantitativasDe = new Map(
-            delAnio.map((s) => [s.id, s.subjects.map((x) => x.subject).filter((m) => m.evaluacion !== 'CUALITATIVA').map((m) => m.id)])
+            delAnio.map((s) => [
+                s.id,
+                s.subjects
+                    .map((x) => x.subject)
+                    .filter((m) => m.evaluacion !== 'CUALITATIVA' && (!soloMaterias || soloMaterias.includes(m.id)))
+                    .map((m) => m.id),
+            ])
         );
         const notasDe = lapsos.length > 0
             ? await bulkNotasPorLapsoDeVariasSecciones(

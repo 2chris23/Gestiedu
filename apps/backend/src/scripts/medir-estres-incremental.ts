@@ -49,6 +49,7 @@ import { Client } from 'pg';
 import { platformPrisma } from '../config/database';
 import { guardarMedicion } from './guardar-medicion';
 import { unDiaLibre } from './dia-libre-para-medir';
+import { prever, Entradas } from '../utils/pronostico-de-carga';
 
 const PUERTO = Number(process.env.PUERTO_MEDIDA || 3008);
 /**
@@ -58,8 +59,16 @@ const PUERTO = Number(process.env.PUERTO_MEDIDA || 3008);
  * que ser la de ese servidor: de ahí salen los liceos y la gente.
  */
 const API_REMOTA = process.env.API_REMOTA?.replace(/\/+$/, '');
-const API = API_REMOTA ? `${API_REMOTA}/api` : `http://localhost:${PUERTO}/api`;
-const SALUD = API_REMOTA ? `${API_REMOTA}/health` : `http://localhost:${PUERTO}/health`;
+/**
+ * Con PROCESOS=N se levantan N servidores (puertos PUERTO, PUERTO+1…) y la gente
+ * se reparte entre ellos, como haría nginx con `--scale backend=N`: es la forma
+ * de ver en este PC cuánto gana el sistema con más procesos (la base es la misma).
+ */
+const PROCESOS = Math.max(1, Number(process.env.PROCESOS || 1));
+const PUERTOS = Array.from({ length: API_REMOTA ? 1 : PROCESOS }, (_, i) => PUERTO + i);
+const APIS = API_REMOTA ? [`${API_REMOTA}/api`] : PUERTOS.map((p) => `http://localhost:${p}/api`);
+const API = APIS[0];
+const SALUDES = API_REMOTA ? [`${API_REMOTA}/health`] : PUERTOS.map((p) => `http://localhost:${p}/health`);
 const SLUG = process.env.LICEO || 'instituto-testing';
 /** Varios liceos: `a,b,c` o `prefijo-*`. Sin esto, solo `LICEO`. */
 const LICEOS = (process.env.LICEOS || '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -114,6 +123,8 @@ interface Persona {
     llaves?: Llaves;
     /** Profesor: una clase suya para abrir y guardar. */
     clase?: { classroomId: string; subjectId: string; alumnos: string[] };
+    /** A qué servidor va (con PROCESOS=N, repartidos). */
+    api?: string;
 }
 
 interface Medida {
@@ -126,15 +137,20 @@ interface Medida {
 /** Con TRAZA_GC=archivo, el servidor anota cada pausa del recolector de basura ahí. */
 const TRAZA_GC = process.env.TRAZA_GC;
 
-function arrancarElServidor(): ChildProcess {
+function arrancarElServidor(puerto: number): ChildProcess {
     // Node directo, sin `npx` en medio: así el proceso que se mata es el que
     // escucha, y las opciones del motor (--trace-gc) llegan a quien toca.
     const hijo = spawn(
         process.execPath,
         [...(TRAZA_GC ? ['--trace-gc'] : []), '--import', 'tsx', path.join(__dirname, '..', 'index.ts')],
         {
-            env: { ...process.env, PUERTO_DEL_HOST: String(PUERTO), NODE_ENV: 'production', LOG_LEVEL: 'error' },
-            stdio: TRAZA_GC ? ['ignore', 'pipe', 'ignore'] : 'ignore',
+            env: { ...process.env, PUERTO_DEL_HOST: String(puerto), NODE_ENV: 'production', LOG_LEVEL: 'error' },
+            // Con LOG_DEL_SERVIDOR=archivo, sus errores van ahí (para saber qué fue un 500).
+            stdio: TRAZA_GC
+                ? ['ignore', 'pipe', 'ignore']
+                : process.env.LOG_DEL_SERVIDOR
+                  ? ['ignore', fs.openSync(`${process.env.LOG_DEL_SERVIDOR}${puerto === PUERTO ? '' : '.' + puerto}`, 'w'), fs.openSync(`${process.env.LOG_DEL_SERVIDOR}${puerto === PUERTO ? '' : '.' + puerto}.err`, 'w')]
+                  : 'ignore',
         }
     );
     if (TRAZA_GC && hijo.stdout) {
@@ -150,7 +166,8 @@ function arrancarElServidor(): ChildProcess {
 async function esperarAlServidor(hastaCuando: number) {
     while (Date.now() < hastaCuando) {
         try {
-            if ((await fetch(SALUD)).ok) return true;
+            const todos = await Promise.all(SALUDES.map((u) => fetch(u).then((r) => r.ok).catch(() => false)));
+            if (todos.every(Boolean)) return true;
         } catch {
             /* todavía no */
         }
@@ -212,11 +229,11 @@ async function memoriaDelServidor(): Promise<number> {
     });
 }
 
-async function entrar(email: string, slug: string): Promise<Llaves | null> {
+async function entrar(email: string, slug: string, api = API): Promise<Llaves | null> {
     const hastaCuando = Date.now() + 120_000;
     for (;;) {
         try {
-            const res = await fetch(`${API}/auth/login`, {
+            const res = await fetch(`${api}/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Institute-Slug': slug },
                 body: JSON.stringify({ email, password: CLAVE }),
@@ -232,10 +249,10 @@ async function entrar(email: string, slug: string): Promise<Llaves | null> {
 
 let renovacionesEnLaTanda = 0;
 
-async function renovar(llaves: Llaves, slug: string): Promise<boolean> {
+async function renovar(llaves: Llaves, slug: string, api = API): Promise<boolean> {
     renovacionesEnLaTanda++;
     try {
-        const res = await fetch(`${API}/auth/refresh-token`, {
+        const res = await fetch(`${api}/auth/refresh-token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Institute-Slug': slug },
             body: JSON.stringify({ refreshToken: llaves.refreshToken }),
@@ -257,7 +274,7 @@ async function pedir(p: Persona, metodo: 'GET' | 'POST', ruta: string, cuerpo?: 
     const nombre = ruta.split('?')[0].replace(/\/[a-z0-9]{20,}/gi, '/:id');
     const t = performance.now();
     const hacer = () =>
-        fetch(`${API}${ruta}`, {
+        fetch(`${p.api ?? API}${ruta}`, {
             method: metodo,
             headers: {
                 Authorization: `Bearer ${p.llaves!.accessToken}`,
@@ -269,7 +286,7 @@ async function pedir(p: Persona, metodo: 'GET' | 'POST', ruta: string, cuerpo?: 
     try {
         let res = await hacer();
         await res.arrayBuffer();
-        if (res.status === 401 && (await renovar(p.llaves!, p.slug))) {
+        if (res.status === 401 && (await renovar(p.llaves!, p.slug, p.api))) {
             res = await hacer();
             await res.arrayBuffer();
         }
@@ -423,11 +440,12 @@ async function main() {
         console.log(`  Aviso: el liceo tiene ${disponibles} cuentas usables; se mide hasta ${escalones[escalones.length - 1]}.`);
     }
 
-    if (!API_REMOTA && (await quienEscuchaEn(PUERTO))) {
+    for (const [i, p] of personas.entries()) p.api = APIS[i % APIS.length];
+    if (!API_REMOTA && (await Promise.all(PUERTOS.map(quienEscuchaEn))).some(Boolean)) {
         console.error(`  El puerto ${PUERTO} ya está ocupado por otro proceso: se mediría a ese y no a este código. Ciérralo o usa PUERTO_MEDIDA.`);
         process.exit(1);
     }
-    const servidor = API_REMOTA ? null : arrancarElServidor();
+    const servidores = API_REMOTA ? [] : PUERTOS.map(arrancarElServidor);
     const retraso = monitorEventLoopDelay({ resolution: 10 });
     retraso.enable();
     const resultados: any[] = [];
@@ -466,7 +484,7 @@ async function main() {
             for (let i = 0; i < nuevos.length; i += 8) {
                 await Promise.all(
                     nuevos.slice(i, i + 8).map(async (p) => {
-                        p.llaves = (await entrar(p.email, p.slug)) ?? undefined;
+                        p.llaves = (await entrar(p.email, p.slug, p.api)) ?? undefined;
                     })
                 );
             }
@@ -501,6 +519,7 @@ async function main() {
                 gente: conLlave.length + (resultados.at(-1)?.gente ?? 0),
                 peticiones: tanda.length,
                 porSegundo: Math.round(tanda.length / duracion),
+                media: buenos.length ? Math.round((buenos.reduce((a, b) => a + b, 0) / buenos.length) * 10) / 10 : 0,
                 p50: Math.round(percentil(buenos, 50)),
                 p95: Math.round(percentil(buenos, 95)),
                 p99: Math.round(percentil(buenos, 99)),
@@ -543,16 +562,16 @@ async function main() {
         await Promise.race([Promise.all(trabajando), esperar(15_000)]);
     } finally {
         retraso.disable();
-        if (servidor) {
-            servidor.kill();
-            await matarLoQueEscuchaEn(PUERTO);
-        }
+        for (const servidor of servidores) servidor.kill();
+        for (const p of PUERTOS) if (!API_REMOTA) await matarLoQueEscuchaEn(p);
         for (const l of liceos) await limpiar(l.conexion, l.base, l.esquema);
     }
 
     // ── Lectura ──────────────────────────────────────────────────────────────
     const lectura = leer(resultados);
     console.log('\n  ' + lectura.join('\n  ') + '\n');
+    const proyeccion = proyectar(resultados);
+    console.log('  ' + proyeccion.texto.join('\n  ') + '\n');
 
     guardarMedicion(liceos.length > 1 ? `estres-${liceos.length}-liceos` : 'estres-incremental', {
         liceo: liceos.length === 1 ? liceos[0].slug : undefined,
@@ -565,6 +584,7 @@ async function main() {
         },
         resultados,
         lectura,
+        proyeccion: proyeccion.datos,
     });
     process.exit(0);
 }
@@ -660,6 +680,120 @@ function leer(r: any[]): string[] {
         );
     }
     return frases;
+}
+
+/**
+ * DE LO MEDIDO A 10.000 Y 100.000 (Cristian, 19-oct-2026; CLAUDE.md 0-ter)
+ *
+ * Este PC no llega a 10.000 personas de verdad. Se mide hasta donde aguanta y
+ * se proyecta con DOS cuentas, diciendo cuál vale más:
+ *
+ *   1. La de Cristian: cuánto creció cada percentil al doblar la gente (en %),
+ *      y ese mismo % por cada doble hasta N. Sirve mientras sobra máquina (el
+ *      crecimiento es casi plano); cerca del techo el tiempo se dispara y no
+ *      crece en línea recta, así que se queda corta.
+ *   2. Colas (Erlang C, `utils/pronostico-de-carga.ts`, la del panel de Salud):
+ *      S = el tiempo con poca gente, R = peticiones por persona y segundo, y c
+ *      (cuántas a la vez atiende ESTE servidor) ajustado a lo medido. Dice dónde
+ *      se dobla y dónde se cae, y cuántos procesos harían falta.
+ *
+ * Solo cuentan los escalones donde el generador no estaba ahogado: si no, se
+ * proyecta el ahogo de la máquina, no el sistema.
+ */
+function proyectar(r: any[]): { texto: string[]; datos: any } {
+    const texto: string[] = [];
+    const sanos = r.filter((x) => x.retrasoDelGeneradorP99ms <= 75 && x.peticiones > 0 && x.porcentajeDeFallos <= FALLOS_MAXIMOS);
+    if (sanos.length < 2) return { texto: ['Proyección: hacen falta al menos dos escalones sanos.'], datos: null };
+
+    // 1. Por cada doble de la gente.
+    texto.push('Crecimiento al doblar la gente (cuenta de Cristian):');
+    texto.push('    de → a        p50        p95        p99');
+    const porDoble: Record<'p50' | 'p95' | 'p99', number[]> = { p50: [], p95: [], p99: [] };
+    for (let i = 1; i < sanos.length; i++) {
+        const a = sanos[i - 1];
+        const b = sanos[i];
+        const dobles = Math.log2(b.gente / a.gente);
+        const celdas = (['p50', 'p95', 'p99'] as const).map((k) => {
+            const g = Math.pow(Math.max(1, b[k]) / Math.max(1, a[k]), 1 / dobles) - 1;
+            porDoble[k].push(g);
+            return `${g >= 0 ? '+' : ''}${(g * 100).toFixed(0)} %`.padStart(11);
+        });
+        texto.push(`    ${String(a.gente).padStart(5)} → ${String(b.gente).padEnd(6)}${celdas.join('')}`);
+    }
+    const ultimo = sanos[sanos.length - 1];
+    const gDe = (k: 'p50' | 'p95' | 'p99') => {
+        // Los últimos dos tramos pesan más: es donde empieza a costar.
+        const xs = porDoble[k].slice(-2);
+        return xs.reduce((a, b) => a + b, 0) / xs.length;
+    };
+    // Un solo ritmo para los tres (el mayor): si no, la cola sale menor que el centro.
+    const ritmo = Math.max(0, gDe('p50'), gDe('p95'), gDe('p99'));
+    const g = (_k: 'p50' | 'p95' | 'p99') => ritmo;
+    const objetivos = [1000, 10000, 100000];
+    const sencilla = objetivos.map((n) => {
+        const dobles = Math.log2(n / ultimo.gente);
+        return {
+            personas: n,
+            p50: Math.round(ultimo.p50 * Math.pow(1 + Math.max(0, g('p50')), Math.max(0, dobles))),
+            p95: Math.round(ultimo.p95 * Math.pow(1 + Math.max(0, g('p95')), Math.max(0, dobles))),
+            p99: Math.round(ultimo.p99 * Math.pow(1 + Math.max(0, g('p99')), Math.max(0, dobles))),
+        };
+    });
+    texto.push(`  Con ese ritmo (+${(g('p99') * 100).toFixed(0)} % de p99 por cada doble), desde ${ultimo.gente} personas:`);
+    for (const x of sencilla) texto.push(`    ${String(x.personas).padStart(6)} personas: p50 ${x.p50} ms · p95 ${x.p95} ms · p99 ${x.p99} ms`);
+
+    // 2. Colas, ajustadas a lo medido.
+    const base = sanos[0];
+    const S = Math.max(1, base.media || base.p50);
+    const R = sanos.reduce((a, x) => a + x.porSegundo / x.gente, 0) / sanos.length;
+    let mejor = { c: 1, error: Infinity };
+    for (let c = 1; c <= 256; c++) {
+        let err = 0;
+        for (const x of sanos) {
+            const p = prever({ servicioMs: S, porPersonaPorSegundo: x.porSegundo / x.gente, aLaVez: c }, x.gente);
+            err += p.respuestaMs === null ? 10 : Math.abs(p.respuestaMs - x.media) / Math.max(1, x.media);
+        }
+        if (err < mejor.error) mejor = { c, error: err };
+    }
+    const e: Entradas = { servicioMs: S, porPersonaPorSegundo: R, aLaVez: mejor.c };
+    const colaP99 = base.p99 / Math.max(1, base.media || base.p50);
+    const errorMedio = mejor.error / sanos.length;
+    const seCae = Math.floor(e.aLaVez / (R * (S / 1000)));
+    texto.push('');
+    texto.push(`Colas (Erlang C): S = ${S} ms, ${R.toFixed(2)} pet/s por persona, este servidor atiende ~${mejor.c} a la vez (ajustado a lo medido; se equivoca un ${(errorMedio * 100).toFixed(0)} % de media).`);
+    texto.push(`  Un proceso como este se cae hacia las ${seCae} personas a la vez.`);
+    // Lo mejor que da ESTE código aunque sobren procesos: sin cola, el p99 es el
+    // tiempo de servicio por la forma de su cola (lo medido con poca gente).
+    const p99SinCola = Math.round(S * colaP99);
+    if (p99SinCola > 100) {
+        texto.push(`  Ojo: aun sin nadie esperando, el p99 de este código es ~${p99SinCola} ms (con ${base.gente} personas: p99 ${base.p99} ms).`);
+        texto.push('  Con más procesos no baja de ahí: para llegar a 100 ms hay que hacer más ligeras las pantallas más pesadas (ver p99 por ruta).');
+    }
+    const procesosPara = (n: number) => {
+        if (p99SinCola > 100) return null;
+        for (let k = 1; k <= 1000; k++) {
+            const p = prever({ ...e, aLaVez: e.aLaVez * k }, n);
+            if (p.respuestaMs !== null && p.respuestaMs * colaP99 <= 100) return k;
+        }
+        return null;
+    };
+    const colas = objetivos.map((n) => {
+        const uno = prever(e, n);
+        const k = procesosPara(n);
+        return { personas: n, mediaConUnProceso: uno.respuestaMs, procesosParaP99De100ms: k };
+    });
+    for (const x of colas) {
+        texto.push(
+            `    ${String(x.personas).padStart(6)} personas: con un proceso ${x.mediaConUnProceso === null ? 'NO da abasto (se cae)' : `media ${x.mediaConUnProceso} ms`}` +
+                (x.procesosParaP99De100ms === null
+                    ? ' · a p99 ≤ 100 ms no se llega solo con procesos (ver arriba)'
+                    : ` · para p99 ≤ 100 ms harían falta ~${x.procesosParaP99De100ms} procesos como este (y la base que los aguante)`)
+        );
+    }
+    texto.push('');
+    texto.push('Cuál vale más: mientras el p99 crece poco por cada doble, las dos dicen lo mismo; cuando una ocupación pasa del 70 %, manda la de colas (el tiempo se dispara, no sube en línea recta).');
+    texto.push('Lo que NO mide: otra máquina (la base, Redis y el generador comparten este PC), la red del liceo ni PgBouncer. La medida de verdad: un servidor de pruebas (DESPLIEGUE.md §10-bis).');
+    return { texto, datos: { porDoble, sencilla, colas: { S, R, aLaVez: mejor.c, errorMedio, seCae, objetivos: colas } } };
 }
 
 main().catch((e) => {

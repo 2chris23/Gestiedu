@@ -17,12 +17,12 @@ import { cifrasOficialesDeVariasSecciones, CifrasOficiales, notaOficial, promedi
  */
 export type PromediosDeLaSeccion = Map<string, Map<string, number>>;
 
-async function oficialesDeLaSeccion(prisma: PrismaClient, classroomId: string): Promise<Map<string, CifrasOficiales>> {
-    return (await oficialesDeVariasSecciones(prisma, [classroomId])).get(classroomId) ?? new Map();
+async function oficialesDeLaSeccion(prisma: PrismaClient, classroomId: string, soloMaterias?: string[]): Promise<Map<string, CifrasOficiales>> {
+    return (await oficialesDeVariasSecciones(prisma, [classroomId], soloMaterias)).get(classroomId) ?? new Map();
 }
 
 /** Las de varias secciones con las mismas consultas (`cifrasOficialesDeVariasSecciones`). */
-async function oficialesDeVariasSecciones(prisma: PrismaClient, classroomIds: string[]): Promise<Map<string, Map<string, CifrasOficiales>>> {
+async function oficialesDeVariasSecciones(prisma: PrismaClient, classroomIds: string[], soloMaterias?: string[]): Promise<Map<string, Map<string, CifrasOficiales>>> {
     if (classroomIds.length === 0) return new Map();
     const enrollments = await prisma.studentClassroom.findMany({
         where: { classroomId: { in: classroomIds }, isActive: true },
@@ -30,7 +30,7 @@ async function oficialesDeVariasSecciones(prisma: PrismaClient, classroomIds: st
     });
     const alumnosDe = new Map<string, string[]>(classroomIds.map((id) => [id, []]));
     for (const e of enrollments) alumnosDe.get(e.classroomId)?.push(e.studentId);
-    return cifrasOficialesDeVariasSecciones(prisma, undefined, classroomIds.map((id) => ({ classroomId: id, studentIds: alumnosDe.get(id)! })));
+    return cifrasOficialesDeVariasSecciones(prisma, undefined, classroomIds.map((id) => ({ classroomId: id, studentIds: alumnosDe.get(id)! })), soloMaterias);
 }
 
 function aPromedios(oficiales: Map<string, CifrasOficiales>, periodId?: string, soloMaterias?: string[]): PromediosDeLaSeccion {
@@ -53,7 +53,7 @@ export async function promediosDeLaSeccion(
     periodId?: string,
     soloMaterias?: string[]
 ): Promise<PromediosDeLaSeccion> {
-    return aPromedios(await oficialesDeLaSeccion(prisma, classroomId), periodId, soloMaterias);
+    return aPromedios(await oficialesDeLaSeccion(prisma, classroomId, soloMaterias), periodId, soloMaterias);
 }
 
 /** `promediosDeLaSeccion` de varias secciones a la vez: classroomId → sus promedios. */
@@ -63,7 +63,7 @@ export async function promediosDeVariasSecciones(
     periodId?: string,
     soloMaterias?: string[]
 ): Promise<Map<string, PromediosDeLaSeccion>> {
-    const todas = await oficialesDeVariasSecciones(prisma, classroomIds);
+    const todas = await oficialesDeVariasSecciones(prisma, classroomIds, soloMaterias);
     return new Map(classroomIds.map((id) => [id, aPromedios(todas.get(id) ?? new Map(), periodId, soloMaterias)]));
 }
 

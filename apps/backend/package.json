@@ -9,7 +9,6 @@
     "start": "node dist/index.js",
     "start:prod": "cross-env NODE_ENV=production node dist/index.js",
     "db:generate": "prisma generate",
-    "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "migrate:plataforma": "tsx src/scripts/migrar-plataforma.ts",
@@ -27,7 +26,6 @@
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:load": "tsx src/scripts/load-test.ts",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
@@ -37,7 +35,6 @@
     "docker:prod": "docker-compose -f ../../docker-compose.prod.yml up -d",
     "docker:down": "docker-compose -f ../../docker-compose.yml down",
     "docker:logs": "docker-compose -f ../../docker-compose.yml logs -f",
-    "setup": "node setup.js",
     "papelera:limpiar": "tsx src/scripts/limpiar-papelera.ts",
     "backup:tenants": "tsx src/scripts/respaldar-liceos.ts",
     "restore:tenant": "tsx src/scripts/restaurar-liceo.ts",
@@ -52,6 +49,7 @@
     "medir:aguante": "tsx src/scripts/medir-aguante.ts",
     "medir:estres": "tsx src/scripts/medir-estres-incremental.ts",
     "medir:vuelve-la-luz": "tsx src/scripts/medir-vuelve-la-luz.ts",
+    "medir:tiempo-real": "tsx src/scripts/medir-tiempo-real.ts",
     "seed:muchos-liceos": "tsx src/scripts/seed-muchos-liceos.ts"
   },
   "dependencies": {

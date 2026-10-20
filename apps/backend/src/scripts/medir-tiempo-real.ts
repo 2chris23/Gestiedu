@@ -18,8 +18,8 @@
  * poder hacer la segunda.
  *
  * USO:
- *   npx tsx load-tests/sockets-15k.ts            ← 15.000
- *   npx tsx load-tests/sockets-15k.ts 5000       ← la cantidad que se diga
+ *   npm run medir:tiempo-real               ← 15.000 (en apps/backend)
+ *   npm run medir:tiempo-real -- 5000       ← la cantidad que se diga
  *
  * Si el proceso cliente se queda sin memoria, no es el servidor: son 15.000
  * clientes dentro de un solo Node. Se levanta con
@@ -45,7 +45,7 @@ import { createId } from '@paralleldrive/cuid2';
  * decir por qué. Y si la máquina tiene un JWT_SECRET suelto en sus variables de
  * entorno, sin `override` ese le gana a los dos.
  */
-const RAIZ_BACKEND = path.join(__dirname, '..', 'apps', 'backend');
+const RAIZ_BACKEND = path.join(__dirname, '..', '..');
 const ENTORNO = process.env.NODE_ENV || 'development';
 for (const archivo of ['.env', '.env.local', `.env.${ENTORNO}`, `.env.${ENTORNO}.local`]) {
     dotenv.config({ path: path.join(RAIZ_BACKEND, archivo), override: true });
