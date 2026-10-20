@@ -565,11 +565,6 @@ export class RedisSession {
     await RedisCache.set(`${this.sessionPrefix}${sessionId}`, sessionData, ttlSeconds);
   }
 
-  // Obtener sesión
-  static async getSession<T>(sessionId: string): Promise<T | null> {
-    return await RedisCache.get<T>(`${this.sessionPrefix}${sessionId}`);
-  }
-
   // Eliminar sesión
   static async deleteSession(sessionId: string): Promise<void> {
     await RedisCache.del(`${this.sessionPrefix}${sessionId}`);

@@ -3,7 +3,6 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { platformPrisma as prisma, getTenantPrisma } from '../config/database';
 import { generateSlug } from '../utils/slug';
 import { TenantProvisioningService } from '../services/tenant-provisioning.service';
-import { PortManagerService } from '../services/port-manager.service';
 import { getAllPlans, getPlanConfig, PlanName } from '../config/plans';
 import { RedisCache } from '../config/redis';
 import { UpdateInstituteInput } from '../schemas/superadmin-institutes.schema';
@@ -58,7 +57,6 @@ export class SuperAdminInstitutesController {
         const skip = (page - 1) * limit;
         const search = request.query.search;
         const status = request.query.status;
-        const plan = request.query.plan;
 
         const where: any = {};
 
@@ -510,31 +508,6 @@ export class SuperAdminInstitutesController {
         });
     }
 
-    /**
-     * GET /api/superadmin/ports/check
-     * Verifica si un puerto está disponible
-     */
-    async checkPort(
-        request: FastifyRequest<{ Querystring: { port: string } }>,
-        reply: FastifyReply
-    ) {
-        const port = parseInt(request.query.port);
-
-        if (isNaN(port)) {
-            return reply.status(400).send({ error: 'Puerto inválido' });
-        }
-
-        // DEPRECATED: La arquitectura de subdominios no usa puertos individuales
-        const isInRange = port >= 3100 && port <= 3200;
-        const isAvailable = isInRange ? await PortManagerService.isPortAvailable(port) : false;
-
-        return reply.send({
-            available: isAvailable && isInRange,
-            reason: !isInRange ? `El puerto debe estar entre 3100 y 3200` :
-                !isAvailable ? 'El puerto está en uso' : undefined,
-        });
-    }
-
 
     /**
      * DELETE /api/superadmin/institutes/:id
@@ -734,23 +707,6 @@ export class SuperAdminInstitutesController {
             console.error(`❌ Error eliminando instituto ${id}:`, error);
             throw error;
         }
-    }
-
-
-    /**
-     * GET /api/superadmin/ports/available
-     * Obtiene un puerto disponible
-     */
-    async getAvailablePort(request: FastifyRequest, reply: FastifyReply) {
-        // DEPRECATED: La arquitectura de subdominios no usa puertos individuales
-        // Se retorna un valor dummy para backward compatibility
-        const port = 3100;
-
-        return reply.send({
-            port,
-            available: await PortManagerService.isPortAvailable(port),
-            message: 'DEPRECATED: Use subdomain-based routing instead',
-        });
     }
 
     /**

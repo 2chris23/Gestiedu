@@ -30,6 +30,8 @@ Ahora todo sale de `services/cifras-oficiales.service.ts`, la cuenta de la bolet
 | Profesor | Media de las notas oficiales de sus alumnos en sus clases: su Inicio = su fila en Profesores |
 | Asistencia de la ventana | (presentes + tardanzas) / registros, en una consulta para muchos (`asistenciaEnBloque`); la ficha usa ya el ciclo, como la lista y el Inicio |
 
+**Lo que se quitó (19-oct-2026):** `cycle-statistics.service`, `reports.service`, `/api/statistics/*`, `/api/reports/*` y los servicios viejos de asistencia, actividades y horario no los usaba ninguna pantalla y se borraron. Las filas de abajo que todavía los citan cuentan la historia de una regla; dónde se calcula hoy lo dice esta tabla.
+
 **Consecuencia del redondeo:** un 9,5 del lapso sale **10, aprobado**, en todas partes, también en el riesgo, como en la boleta. Las materias con apreciación siguen fuera.
 
 Lo vigilan:

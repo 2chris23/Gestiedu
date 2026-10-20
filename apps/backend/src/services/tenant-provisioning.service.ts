@@ -423,25 +423,4 @@ export class TenantProvisioningService {
             };
         }
     }
-
-    /**
-     * Verifica la conexión a una base de datos
-     */
-    static async testConnection(databaseUrl: string): Promise<boolean> {
-        const testPrisma = new PrismaClient({
-            datasources: {
-                db: {
-                    url: databaseUrl,
-                },
-            },
-        });
-
-        try {
-            await testPrisma.$connect();
-            await testPrisma.$disconnect();
-            return true;
-        } catch (error) {
-            return false;
-        }
-    }
 }

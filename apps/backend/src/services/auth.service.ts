@@ -606,57 +606,6 @@ class AuthService {
   }
 
   /**
-   * Verificar si un usuario está en línea
-   */
-  async isUserOnline(userId: string): Promise<boolean> {
-    const sessions = await RedisSession.getUserSessions(userId);
-    return sessions.length > 0;
-  }
-
-  /**
-   * Obtener sesiones activas de un usuario
-   */
-  async getUserActiveSessions(userId: string): Promise<Array<any>> {
-    const sessions = await RedisSession.getUserSessions(userId);
-
-    return sessions.map(session => ({
-      sessionId: session.sessionId,
-      createdAt: session.createdAt,
-      keepSession: session.keepSession,
-      device: session.userAgent
-    }));
-  }
-
-  /**
-   * Limpiar tokens expirados
-   * SEGURIDAD: tenantDb es requerido.
-   */
-  async cleanupExpiredTokens(tenantDb: PrismaClient): Promise<void> {
-    const expiredTokens = await tenantDb.refreshToken.findMany({
-      where: {
-        expiresAt: {
-          lt: new Date()
-        }
-      },
-      select: { id: true }
-    });
-
-    // Eliminar de BD
-    await tenantDb.refreshToken.deleteMany({
-      where: {
-        expiresAt: {
-          lt: new Date()
-        }
-      }
-    });
-
-    // Eliminar de Redis
-    for (const token of expiredTokens) {
-      await RedisSession.deleteSession(token.id);
-    }
-  }
-
-  /**
    * Limpiar un token específico
    */
   private async cleanupExpiredToken(tokenId: string, tenantDb: PrismaClient): Promise<void> {
@@ -665,37 +614,6 @@ class AuthService {
     }).catch(() => { }); // Ignorar si ya no existe
 
     await RedisSession.deleteSession(tokenId);
-  }
-
-  /**
-   * Validar formato de email
-   */
-  private isValidEmail(email: string): boolean {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  }
-
-  /**
-   * Resetear contraseña (para futuras implementaciones)
-   * SEGURIDAD: tenantDb es requerido.
-   */
-  async requestPasswordReset(email: string, tenantDb: PrismaClient): Promise<void> {
-    const user = await tenantDb.user.findUnique({
-      where: { email: email.toLowerCase() },
-      select: { id: true, email: true, firstName: true, isActive: true }
-    });
-
-    if (!user || !user.isActive) {
-      // No revelar si el usuario existe o no por seguridad
-      return;
-    }
-
-    // TODO: Implementar lógica de reset de contraseña
-    // 1. Generar token de reset
-    // 2. Guardar en BD con expiración
-    // 3. Enviar email
-    // El id, no el correo: los registros no llevan datos personales (robustez, 2026-10-04).
-    logger.info('Password reset requested', { userId: user.id });
   }
 }
 

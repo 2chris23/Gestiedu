@@ -86,15 +86,6 @@ class CacheMetricsCollector {
         this.invalidations = 0;
         this.startTime = Date.now();
     }
-
-    /**
-     * Obtiene métricas y resetea (útil para reportes periódicos)
-     */
-    getAndReset(): CacheMetrics {
-        const metrics = this.getMetrics();
-        this.reset();
-        return metrics;
-    }
 }
 
 // Singleton instance

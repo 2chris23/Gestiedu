@@ -83,6 +83,10 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
    parte por responsabilidad, no por número); lo obsoleto se borra con
    evidencia de que nadie lo usa; las pruebas que vigilan algo que hoy
    funciona se quedan siempre (son las que avisan si se rompe otra vez).
+   `TAMAÑO-01/02` vigila los archivos (los grandes no crecen; uno nuevo no
+   pasa de 1.000) y `scripts/barrido-de-cifras.ts --exigir`, las cifras.
+   **Una ruta sin pantalla que la use no se añade**: se quitaron 50 el
+   19-oct-2026 (`docs/ARQUITECTURA.md`).
 0-quater. **En silencio hasta terminar** (Cristian, 19-oct-2026): mientras se
    trabaja, ningún mensaje en el chat; solo el informe final, en español.
 1. **Evidencia antes de corregir.** Nada es un fallo ni "ya funciona" sin código, diff o
@@ -1210,6 +1214,7 @@ de navegador no ven la oferta (la tapa `navigator.webdriver`) salvo que pongan
 - `docs/antigravity/` — lo que dejó Antigravity (oct. 2026): el mapa de la arquitectura,
   su plan de optimización y su traspaso. **Revisado, no es ley**: su informe decía
   «100 % en verde» y fallaban 10 pruebas; ver auditoría §64.
+- `docs/ARQUITECTURA.md` — cómo está hecho, qué se limpió (19-oct-2026) y qué falta ordenar.
 - `docs/AUDITORIA-FUNCIONAL.md` — auditoría funcional y el porcentaje de avance.
 - `docs/MAPA_DE_CALCULOS.md` — toda regla de cálculo.
 - `docs/DESPLIEGUE.md` — despliegue y operación.
