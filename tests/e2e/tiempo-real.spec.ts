@@ -223,17 +223,10 @@ test.describe('Tiempo real', () => {
             await page.goto(`${WEB_BASE}/dashboard`);
             await page.locator('main').first().waitFor({ state: 'visible', timeout: 30000 });
 
-            const contarNotas = async () => {
-                const r = await axios.get(`${API_BASE}/students/my-grades`, {
-                    headers: {
-                        Authorization: `Bearer ${sesionAlumno.accessToken}`,
-                        'X-Institute-Slug': TENANT_SLUG,
-                    },
-                });
-                const d: any = r.data;
-                const lista = Array.isArray(d) ? d : d?.data ?? d?.grades ?? [];
-                return Array.isArray(lista) ? lista.length : 0;
-            };
+            // Sus notas (antes por `/students/my-grades`, que ninguna pantalla
+            // usaba y se quitó el 19-oct-2026): las de la base.
+            const contarNotas = async () =>
+                Number((await queryTenantDb<{ n: string }>(`SELECT count(*)::text AS n FROM grades WHERE "studentId" = $1`, [alumno.id]))[0].n);
             const antes = await contarNotas();
 
             // Cuántas peticiones lleva hechas la pantalla del estudiante

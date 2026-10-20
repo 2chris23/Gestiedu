@@ -28,7 +28,7 @@ export function SchoolAccessModal({ isOpen, onClose }: SchoolAccessModalProps) {
         // En desarrollo redirigir con parámetro slug o subdominio
         const isLocalhost = typeof window !== 'undefined' && window.location.hostname.includes('localhost');
         if (isLocalhost) {
-            window.location.href = `http://${cleanSlug}.localhost:3000/login`;
+            window.location.href = `http://${cleanSlug}.localhost:${window.location.port || 3000}/login`;
         } else {
             window.location.href = `/login?slug=${cleanSlug}`;
         }
@@ -37,7 +37,7 @@ export function SchoolAccessModal({ isOpen, onClose }: SchoolAccessModalProps) {
     const handleQuickAccess = (schoolSlug: string) => {
         const isLocalhost = typeof window !== 'undefined' && window.location.hostname.includes('localhost');
         if (isLocalhost) {
-            window.location.href = `http://${schoolSlug}.localhost:3000/login`;
+            window.location.href = `http://${schoolSlug}.localhost:${window.location.port || 3000}/login`;
         } else {
             window.location.href = `/login?slug=${schoolSlug}`;
         }

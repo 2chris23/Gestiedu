@@ -36,16 +36,22 @@ test.describe.serial('Selector de lapso en pantallas académicas', () => {
             );
             await selector.click();
             await page.getByRole('option', { name: 'Primer Lapso' }).click();
-            await resLapso1;
+            const delLapso1 = await (await resLapso1).json();
             await page.waitForTimeout(500);
 
-            // Resumen de cifras superiores (Primer Lapso)
+            // Resumen de cifras superiores (Primer Lapso). Los en riesgo, los que
+            // dice el servidor (la cifra oficial, MAPA §0): antes eran 257 contados
+            // con la media a pelo de la tabla de notas.
+            const enRiesgo = (Array.isArray(delLapso1) ? delLapso1 : []).reduce((a: number, g: any) => a + (g.stats?.riskCount ?? 0), 0);
+            expect(enRiesgo).toBeGreaterThan(0);
             const resumen = page.getByRole('region', { name: 'Resumen' });
             await expect(resumen).toBeVisible();
             await expect(resumen.getByText('En riesgo')).toBeVisible();
-            await expect(resumen.getByText('257')).toBeVisible(); // 257 alumnos en riesgo
+            await expect(resumen.getByText(String(enRiesgo), { exact: true })).toBeVisible();
             await expect(resumen.getByText('93%')).toBeVisible(); // 93% asistencia
-            await expect(resumen.getByText('193')).toBeVisible(); // 193 observaciones
+            // Las observaciones, las que dice el servidor (otras pruebas añaden: un número fijo no sirve).
+            const observaciones = (Array.isArray(delLapso1) ? delLapso1 : []).reduce((a: number, g: any) => a + (g.stats?.observations ?? 0), 0);
+            await expect(resumen.getByText(String(observaciones), { exact: true })).toBeVisible();
 
             // Cambiar a Segundo Lapso (sin notas ni asistencia aún)
             const resLapso2 = page.waitForResponse(
@@ -62,7 +68,9 @@ test.describe.serial('Selector de lapso en pantallas académicas', () => {
             await expect(resumen.getByText('Sin registrar')).toHaveCount(4);
             await expect(resumen.getByText('0%')).toHaveCount(0);
             await expect(resumen.getByText('0', { exact: true })).toHaveCount(0);
-            await expect(resumen.getByText('599/700')).toBeVisible();
+            const ocupados = (Array.isArray(delLapso1) ? delLapso1 : []).reduce((a: number, g: any) => a + Number(String(g.stats?.occupancy ?? '0/0').split('/')[0]), 0);
+            const puestos = (Array.isArray(delLapso1) ? delLapso1 : []).reduce((a: number, g: any) => a + Number(String(g.stats?.occupancy ?? '0/0').split('/')[1]), 0);
+            await expect(resumen.getByText(`${ocupados}/${puestos}`)).toBeVisible();
         } catch (e) {
             await captureEvidence(testInfo, page, 'LAPSO-ANO', 'Fallo en selector de lapso en año', e);
             throw e;
@@ -83,15 +91,17 @@ test.describe.serial('Selector de lapso en pantallas académicas', () => {
             );
             await selector.click();
             await page.getByRole('option', { name: 'Primer Lapso' }).click();
-            await resLapso1;
+            const seccion = await (await resLapso1).json();
             await page.waitForTimeout(500);
 
+            // Lo que dice el servidor (la cifra oficial, MAPA §0), no números fijos:
+            // otras pruebas añaden datos y la cuenta oficial cambió el 19-oct-2026.
             const resumen = page.getByRole('region', { name: 'Resumen' });
             await expect(resumen).toBeVisible();
-            await expect(resumen.getByText('13.1')).toBeVisible(); // Promedio 1er Año A
-            await expect(resumen.getByText('14', { exact: true })).toBeVisible();   // 14 en riesgo
-            await expect(resumen.getByText('91%')).toBeVisible();  // 91% asistencia
-            await expect(resumen.getByText('83')).toBeVisible();   // 83 observaciones
+            await expect(resumen.getByText(String(seccion.average), { exact: true }).first()).toBeVisible();
+            await expect(resumen.getByText(String(seccion.riskCount), { exact: true }).first()).toBeVisible();
+            await expect(resumen.getByText(seccion.attendance)).toBeVisible();
+            await expect(resumen.getByText(String(seccion.observations), { exact: true }).first()).toBeVisible();
 
             // Cambiar a Segundo Lapso
             const resLapso2 = page.waitForResponse(
@@ -129,12 +139,16 @@ test.describe.serial('Selector de lapso en pantallas académicas', () => {
             );
             await selector.click();
             await page.getByRole('option', { name: 'Primer Lapso' }).click();
-            await resLapso1;
+            const materia = await (await resLapso1).json();
             await page.waitForTimeout(500);
 
             const resumen = page.getByRole('region', { name: 'Resumen' });
             await expect(resumen).toBeVisible();
-            await expect(resumen.getByText('14.1')).toBeVisible(); // Promedio Matemática 1er Año A
+            const deLaSeccion = (materia.subjects ?? materia.data?.subjects ?? []) as any[];
+            const esta = deLaSeccion.find((m) => m.slug === subjectSlug || m.subject?.slug === subjectSlug) ?? {};
+            const prom = esta.stats?.average ?? esta.average;
+            expect(prom, 'la materia trae su promedio').not.toBeUndefined();
+            await expect(resumen.getByText(String(prom), { exact: true }).first()).toBeVisible();
 
             // Cambiar a Segundo Lapso
             const resLapso2 = page.waitForResponse(

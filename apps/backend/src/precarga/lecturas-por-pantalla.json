@@ -144,6 +144,7 @@
       "/institutes/current/recaudos",
       "/institutes/subject-palette",
       "/materias-pendientes/cronograma",
+      "/mis-datos",
       "/pae/config",
       "/payments/settings",
       "/reportes-de-problemas"
@@ -527,6 +528,7 @@
       "/classrooms/mis-secciones-guia",
       "/institutes/current/config",
       "/payments/settings",
+      "/schedules/teacher/{profe}/blocks",
       "/schedules/teacher/{profe}/subjects"
     ],
     "TEACHER:/dashboard/horarios/seccion/{seccion}": [

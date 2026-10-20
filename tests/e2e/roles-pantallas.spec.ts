@@ -84,8 +84,8 @@ test.describe('Pantallas permitidas por rol', () => {
     test('ROL-03: los datos personales no los cambia ni el estudiante ni el profesor', async ({}, testInfo) => {
         try {
             const casos = [
-                { quien: 'estudiante', email: 'est0575@testing.edu.ve', ruta: '/students/profile/me' },
-                { quien: 'profesor', email: 'profesor.ciencias@tuapp.com', ruta: '/teachers/profile/me' },
+                { quien: 'estudiante', email: 'est0575@testing.edu.ve', ruta: '/users/profile/me' },
+                { quien: 'profesor', email: 'profesor.ciencias@tuapp.com', ruta: '/users/profile/me' },
             ];
 
             for (const caso of casos) {

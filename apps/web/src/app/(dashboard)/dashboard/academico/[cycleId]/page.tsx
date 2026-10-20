@@ -195,8 +195,10 @@ export default function AcademicYearDashboard() {
             totalStudents += current;
             totalCapacity += capacity;
             if (avg !== null && current > 0) {
-                weightedSumAverage += avg * current;
-                totalStudentsWithGrades += current;
+                // El liceo es la media de sus años (MAPA §0), como el Inicio
+                // del admin: antes se pesaba por alumnos y salía otra cifra.
+                weightedSumAverage += avg;
+                totalStudentsWithGrades += 1;
             }
             totalRisk += s.riskCount;
             if (hasAttendance) {
@@ -216,13 +218,13 @@ export default function AcademicYearDashboard() {
             }
         });
 
-        const finalAvg = totalStudentsWithGrades > 0 ? Number((weightedSumAverage / totalStudentsWithGrades).toFixed(1)) : null;
+        const finalAvg = totalStudentsWithGrades > 0 ? Math.round((weightedSumAverage / totalStudentsWithGrades) * 100) / 100 : null;
         const finalAttendance = studentsWithAttendance > 0 ? Math.round(weightedSumAttendance / studentsWithAttendance) : null;
 
         return {
             average: finalAvg,
-            minAverage: totalStudentsWithGrades > 0 && globalMin <= 20 ? Number(globalMin.toFixed(1)) : undefined,
-            maxAverage: totalStudentsWithGrades > 0 && globalMax > 0 ? Number(globalMax.toFixed(1)) : undefined,
+            minAverage: totalStudentsWithGrades > 0 && globalMin <= 20 ? globalMin : undefined,
+            maxAverage: totalStudentsWithGrades > 0 && globalMax > 0 ? globalMax : undefined,
             riskCount: totalRisk,
             occupancy: `${totalStudents}/${totalCapacity}`,
             attendance: finalAttendance !== null ? `${finalAttendance}%` : null,
