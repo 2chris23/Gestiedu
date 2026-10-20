@@ -527,9 +527,10 @@ export default function StudentCycleAccordion({
                                                 <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
                                                     {subjects.map((sub, idx) => {
                                                         const score = sub.average || 0;
-                                                        const hasNote = score > 0;
+                                                        // Un 0 es una nota (CERO-*); aprobar lo dice el liceo (el servidor).
+                                                        const hasNote = sub.hasGrades ?? score > 0;
                                                         const ratio = Math.min(Math.max(score, 0), 20) / 20;
-                                                        const isPassing = score >= 10;
+                                                        const isPassing = sub.status ? sub.status === 'Aprobado' : score >= 10;
 
                                                         const barColor = hasNote
                                                             ? (score >= 14 ? 'bg-emerald-500' : isPassing ? 'bg-amber-500' : 'bg-rose-500')

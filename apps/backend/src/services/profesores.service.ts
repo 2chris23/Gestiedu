@@ -1,5 +1,5 @@
 import { AppErrors } from '../middleware/error.middleware';
-import { promediosDeLaSeccion } from './aggregation.service';
+import { promediosDeVariasSecciones } from './aggregation.service';
 import { cargaDeLosProfesores, estadoDeLaCarga, horasDeCargoDe, reglasDeCargaHoraria, type ClaseDeLaCarga } from './personal.service';
 
 /**
@@ -27,19 +27,20 @@ async function notasDeLasClases(prisma: any, clases: Array<{ classroomId: string
     const porSeccion = new Map<string, Set<string>>();
     for (const c of clases) porSeccion.set(c.classroomId, (porSeccion.get(c.classroomId) ?? new Set()).add(c.subjectId));
     const notas = new Map<string, number[]>();
-    await Promise.all(
-        [...porSeccion.entries()].map(async ([classroomId, materias]) => {
-            const promedios = await promediosDeLaSeccion(prisma, classroomId, undefined, [...materias]);
-            for (const subjectId of materias) {
-                const xs: number[] = [];
-                for (const porMateria of promedios.values()) {
-                    const p = porMateria.get(subjectId) ?? 0;
-                    if (p > 0) xs.push(p);
-                }
-                notas.set(clave(classroomId, subjectId), xs);
+    // Todas las secciones con las mismas consultas.
+    const deCadaSeccion = await promediosDeVariasSecciones(prisma, [...porSeccion.keys()]);
+    for (const [classroomId, materias] of porSeccion) {
+        const promedios = deCadaSeccion.get(classroomId) ?? new Map();
+        for (const subjectId of materias) {
+            const xs: number[] = [];
+            for (const porMateria of promedios.values()) {
+                // Las cifras oficiales; un 0 es una nota (CERO-*).
+                const p = porMateria.get(subjectId);
+                if (typeof p === 'number') xs.push(p);
             }
-        })
-    );
+            notas.set(clave(classroomId, subjectId), xs);
+        }
+    }
     return notas;
 }
 

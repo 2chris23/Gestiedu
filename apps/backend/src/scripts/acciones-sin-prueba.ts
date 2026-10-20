@@ -136,6 +136,14 @@ async function main() {
         sinPantalla: filas.filter((f) => f.sinPantalla).length,
     };
     console.log(JSON.stringify(resumen, null, 2));
+    // Con --sin-pantalla: TODA ruta que ninguna pantalla nombra (candidatas a quitar).
+    if (process.argv.includes('--sin-pantalla')) {
+        console.log('\nNinguna pantalla las nombra:');
+        for (const f of filas.filter((x) => !x.enPantalla).sort((a, b) => a.url.localeCompare(b.url))) {
+            console.log(`${f.sinPantalla ? '·' : ' '} ${f.metodo.padEnd(6)} ${f.url}`);
+        }
+        return;
+    }
     console.log('\nSin ninguna prueba (las que usa una pantalla, primero):');
     for (const f of sin.sort((a, b) => Number(b.enPantalla) - Number(a.enPantalla) || a.url.localeCompare(b.url))) {
         console.log(`${f.enPantalla ? '★' : ' '} ${f.metodo.padEnd(6)} ${f.url}`);

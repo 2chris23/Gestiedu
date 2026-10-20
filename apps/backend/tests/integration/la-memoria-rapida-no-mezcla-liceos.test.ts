@@ -338,6 +338,8 @@ describe('La memoria rápida no mezcla liceos', () => {
                 'los envíos al teléfono que aún van en camino (promesas), para esperarlos en las pruebas: no guarda datos de nadie',
             'src/utils/lo-que-se-vio.ts|PROHIBIDOS':
                 'son tres nombres de propiedad (__proto__, prototype, constructor) que no se recorren, no datos de nadie',
+            'src/services/bulk-averages.service.ts|indicesDe':
+                'la clave es el objeto de UNA carga (las notas que esa petición acaba de leer de su liceo); WeakMap: se va con la carga, nadie más la ve',
             'src/scripts/medir-concurrencia.ts|credenciales':
                 'guion de medición, no corre en el servidor',
             'src/config/esquema-del-liceo.ts|RAW':

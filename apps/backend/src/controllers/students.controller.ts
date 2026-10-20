@@ -6,11 +6,9 @@ import { CreateUserInput, UpdateUserInput, UserFiltersInput, PaginationInput } f
 import { logger } from '../utils/logger';
 import { teacherClassroomIds } from '../services/authorization.service';
 import { createAuditLogger } from '../services/audit.service'; // ✅ SECURITY: Audit logging
-import { gradesService } from '../services/grades.service'; // promedio ponderado unificado (Fase 2.5)
-import { studentsWithNoteInSubject } from '../services/aggregation.service'; // filtro por lapso (Fase 3.5)
 import { getAcademicConfig } from '../services/promotion/close-cycle.service';
 import { studentsService } from '../services/students.service';
-import { bulkSubjectAveragesConDatos, BulkAverageDetail } from '../services/bulk-averages.service';
+import { cifrasOficialesDeLaSeccion, cifrasOficialesDeVariasSecciones, notaOficial, promedioOficial, asistenciaEnBloque } from '../services/cifras-oficiales.service';
 import { incrementStudentCount, decrementStudentCount } from '../middleware/plan-limits.middleware';
 import { avisarSiFalla } from '../utils/sin-callar';
 
@@ -375,100 +373,40 @@ export async function getStudents(
       });
     }
 
-    // PROMEDIO — si se especifica subjectId, calcular promedio ponderado del estudiante en esa materia;
-    // de lo contrario, calcular promedio general sobre todas sus materias.
+    // PROMEDIO — la cifra OFICIAL (la cuenta de la boleta, `cifras-oficiales.service`),
+    // en bloque por sección: la de la materia pedida o la general, del lapso
+    // pedido o la definitiva. La misma que la ficha y el Inicio del alumno.
     const averages = new Map<string, number>();
     // Quién tiene alguna nota: un 0 es una nota y no es lo mismo que «sin
-    // calificar» (CERO-06). La pantalla lo necesita para no pintar un 0 como
-    // si no hubiera nada.
+    // calificar» (CERO-06).
     const conNotas = new Set<string>();
-
     const studentFailedSubjectsMap = new Map<string, Array<{ subjectId: string; average: number }>>();
-
-    if (targetSubjectId) {
-      // En bloque, una vez por sección: 4 consultas por sección en vez de ~20
-      // por estudiante.
-      const bulk: BulkAverageDetail = new Map();
-      const porSeccion = await Promise.all(
-        [...alumnosPorSeccion].map(([aula, deEsta]) =>
-          bulkSubjectAveragesConDatos(request.tenantPrisma, {
-            classroomId: aula,
-            studentIds: deEsta,
-            subjectIds: [targetSubjectId!],
-            periodId: request.query?.periodId,
-          })
-        )
-      );
-      for (const r of porSeccion) r.forEach((v, k) => bulk.set(k, v));
-
-      await Promise.all(
-        studentIds.map(async (sid) => {
-          try {
-            // Solo quien no tiene sección se calcula aparte.
-            const detalle = bulk.has(sid)
-              ? bulk.get(sid)?.get(targetSubjectId!) ?? { promedio: 0, conNotas: false }
-              : await gradesService.promedioDeLaMateria(
-                  request.tenantPrisma,
-                  sid,
-                  targetSubjectId!,
-                  request.query?.periodId
-                );
-            const roundedAvg = detalle.conNotas ? Math.round(detalle.promedio * 10) / 10 : 0;
-            averages.set(sid, roundedAvg);
-            if (detalle.conNotas) conNotas.add(sid);
-            if (detalle.conNotas && roundedAvg < minPassing) {
-              studentFailedSubjectsMap.set(sid, [{ subjectId: targetSubjectId!, average: roundedAvg }]);
-            }
-          } catch {
-            averages.set(sid, 0);
+    const instDeLaLista = (request.user as any)?.instituteId ?? (request as any).institute?.id;
+    const periodoPedido = request.query?.periodId;
+    if (instDeLaLista) {
+      // Todas las secciones de la página con las mismas consultas.
+      const porSeccion = (await cifrasOficialesDeVariasSecciones(
+        request.tenantPrisma as any,
+        instDeLaLista,
+        [...alumnosPorSeccion].map(([aula, deEsta]) => ({ classroomId: aula, studentIds: deEsta }))
+      )).values();
+      for (const mapa of porSeccion) {
+        for (const [sid, c] of mapa) {
+          const valor = targetSubjectId ? notaOficial(c, targetSubjectId, periodoPedido) : promedioOficial(c, periodoPedido);
+          if (valor !== null) {
+            averages.set(sid, valor);
+            conNotas.add(sid);
           }
-        })
-      );
-    } else {
-      // Promedio general = promedio de sus materias, con las MISMAS reglas que
-      // la vista por materia. Antes esta rama miraba solo la tabla `grades`, así
-      // que una nota puesta en Clase en Vivo no contaba y salía "Sin calificar".
-      const todasLasMaterias = Array.from(
-        new Set(Array.from(subjectIdsByStudent.values()).flatMap(set => Array.from(set)))
-      );
-
-      const bulk: BulkAverageDetail = new Map();
-      if (todasLasMaterias.length > 0) {
-        const porSeccion = await Promise.all(
-          [...alumnosPorSeccion].map(([aula, deEsta]) =>
-            bulkSubjectAveragesConDatos(request.tenantPrisma, {
-              classroomId: aula,
-              studentIds: deEsta,
-              subjectIds: todasLasMaterias,
-              periodId: request.query?.periodId,
-            })
-          )
-        );
-        for (const r of porSeccion) r.forEach((v, k) => bulk.set(k, v));
-      }
-
-      studentIds.forEach(sid => {
-        const materias = Array.from(subjectIdsByStudent.get(sid) ?? []);
-        const notas: number[] = [];
-
-        materias.forEach(subjectId => {
-          const detalle = bulk?.get(sid)?.get(subjectId);
-          if (detalle?.conNotas) {
-            const nota = detalle.promedio;
-            notas.push(nota);
-            if (nota < minPassing) {
+          for (const [subjectId, m] of c.materias) {
+            if (targetSubjectId && subjectId !== targetSubjectId) continue;
+            const nota = periodoPedido ? m.notas[periodoPedido] : m.queCuenta;
+            if (nota !== null && nota !== undefined && nota < minPassing) {
               if (!studentFailedSubjectsMap.has(sid)) studentFailedSubjectsMap.set(sid, []);
-              studentFailedSubjectsMap.get(sid)!.push({ subjectId, average: Math.round(nota * 10) / 10 });
+              studentFailedSubjectsMap.get(sid)!.push({ subjectId, average: nota });
             }
           }
-        });
-
-        averages.set(
-          sid,
-          notas.length > 0 ? Math.round((notas.reduce((a, b) => a + b, 0) / notas.length) * 10) / 10 : 0
-        );
-        if (notas.length > 0) conNotas.add(sid);
-      });
+        }
+      }
     }
 
     const attendanceMap = new Map(
@@ -755,14 +693,6 @@ export async function getDashboardStats(
           },
           orderBy: { createdAt: 'desc' }
         },
-        // Fetch all grades for the student to calculate averages on the fly
-        grades: {
-          include: {
-            subject: {
-              select: { id: true, name: true, color: true }
-            }
-          }
-        }
       }
     });
 
@@ -781,46 +711,13 @@ export async function getDashboardStats(
 
     const activeClassroom = selectedEnrollment?.classroom || null;
 
-    // --- KPIs: Promedio Global y Materias (JERARQUÍA — Nivel 2 por materia) ---
-    const classroomSubjects = activeClassroom?.id
-        ? await prisma.classroomSubject.findMany({
-            where: { classroomId: activeClassroom.id },
-            include: { subject: { select: { id: true, name: true, color: true } } },
-        })
-        : [];
-    const assignedMap = new Map<string, { id: string; name: string; color: string }>(
-        classroomSubjects.map((cs: any) => [cs.subjectId, cs.subject])
-    );
-
-        const subjectIdsWithNote = new Set<string>();
-        (student.grades || []).forEach((g: any) => {
-            if (typeof g.score === 'number' && !Number.isNaN(g.score)) subjectIdsWithNote.add(g.subjectId);
-        });
-        if (activeClassroom?.id) {
-            const classActs = await prisma.classActivity.findMany({
-                where: { classroomId: activeClassroom.id, scores: { not: undefined } },
-                select: { subjectId: true, scores: true },
-            });
-            classActs.forEach((ca: any) => {
-                let parsed: Record<string, number | null> = {};
-                try {
-                    parsed = typeof ca.scores === 'string' ? JSON.parse(ca.scores) : (ca.scores || {});
-                } catch { /* ignorar */ }
-                if (parsed[id] !== null && parsed[id] !== undefined) subjectIdsWithNote.add(ca.subjectId);
-            });
-        }
-
-        // Filtro por lapso/momento (opcional): las materias sin nota en ESE
-        // lapso muestran "Sin calificar" (no un 0 engañoso) — la hasNote se
-        // evalúa contra el lapso con el helper del módulo de agregación.
-        const periodId = (request.query as any)?.periodId || undefined;
-
-    const subjectAverages: { [subjectId: string]: { id: string; average: number; name: string; color: string; } } = {};
-    const subjectGrades: { [subjectId: string]: number[] } = {};
-    let totalAverageSum = 0;
+    // --- KPIs: las cifras OFICIALES (la cuenta de la boleta), las mismas del
+    // Inicio del alumno, la lista y el resumen de la sección
+    // (`cifras-oficiales.service`, `scripts/barrido-de-cifras.ts`).
+    const periodId = (request.query as any)?.periodId || undefined;
+    const instId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
     let minPassing = 10;
     try {
-      const instId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
       if (instId) {
         const config = await getAcademicConfig(instId);
         minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
@@ -828,84 +725,40 @@ export async function getDashboardStats(
     } catch {
       minPassing = 10;
     }
+    const classroomSubjects = activeClassroom?.id
+        ? await prisma.classroomSubject.findMany({
+            where: { classroomId: activeClassroom.id },
+            include: { subject: { select: { id: true, name: true, color: true, evaluacion: true } } },
+        })
+        : [];
+    const oficiales = activeClassroom?.id && instId
+        ? (await cifrasOficialesDeLaSeccion(prisma as any, instId, activeClassroom.id, [id])).get(id)
+        : undefined;
 
+    const subjectAverages: { [subjectId: string]: { id: string; average: number; hasGrades: boolean; name: string; color: string; } } = {};
     let failedSubjects = 0;
-    let activeSubjectsWithGrades = 0;
-
-    const allSubjectIds = [...new Set([...assignedMap.keys(), ...subjectIdsWithNote])];
-    // Los lapsos del alumno, una vez y no una por materia (la misma consulta
-    // que haría `promedioDeLaMateria` en cada una): en la descarga del admin,
-    // 599 alumnos × 15 materias.
-    const lapsosDelAlumno = periodId ? undefined : await gradesService.lapsosDelAlumno(prisma as any, id);
-    for (const subjectId of allSubjectIds) {
-        const s = assignedMap.get(subjectId);
-        const name = s?.name || 'N/A';
-        const color = s?.color || '#666';
-        const hasNote = periodId
-            ? (activeClassroom ? (await studentsWithNoteInSubject(prisma as any, activeClassroom.id, subjectId, periodId)).has(id) : false)
-            : subjectIdsWithNote.has(subjectId);
-        const average = hasNote
-            ? parseFloat((await gradesService.calculateWeightedSubjectAverage(prisma as any, id, subjectId, periodId, lapsosDelAlumno)).toFixed(1))
-            : 0;
-        subjectAverages[subjectId] = { id: subjectId, average, name, color };
-
-        if (hasNote) {
-            subjectGrades[subjectId] = [average];
-            totalAverageSum += average;
-            activeSubjectsWithGrades++;
-            if (average < minPassing) { // Nota mínima aprobatoria configurable
-                failedSubjects++;
-            }
-        }
+    for (const cs of classroomSubjects as any[]) {
+        if (cs.subject.evaluacion === 'CUALITATIVA') continue;
+        const nota = notaOficial(oficiales, cs.subjectId, periodId);
+        subjectAverages[cs.subjectId] = { id: cs.subjectId, average: nota ?? 0, hasGrades: nota !== null, name: cs.subject.name, color: cs.subject.color || '#666' };
+        if (nota !== null && nota < minPassing) failedSubjects++;
     }
-
-    let globalAverage = 0;
-    if (activeSubjectsWithGrades > 0) {
-        globalAverage = parseFloat((totalAverageSum / activeSubjectsWithGrades).toFixed(1));
-    }
+    const globalAverage = promedioOficial(oficiales, periodId) ?? 0;
 
     // Identificar el año académico y fechas del ciclo seleccionado
     const targetAcademicYearId = selectedEnrollment?.academicYearId || activeClassroom?.academicYearId || requestedYearId;
     const academicYearStartDate = selectedEnrollment?.academicYear?.startDate || activeClassroom?.academicYear?.startDate;
     const academicYearEndDate = selectedEnrollment?.academicYear?.endDate || activeClassroom?.academicYear?.endDate;
 
-    // --- KPIs: Asistencia (filtrada por aula / ciclo escolar y lapso) ---
-    const attendanceFilter: any = { studentId: id };
-    if (activeClassroom?.id) {
-      attendanceFilter.classroomId = activeClassroom.id;
-    } else if (academicYearStartDate && academicYearEndDate) {
-      attendanceFilter.date = {
-        gte: academicYearStartDate,
-        lte: academicYearEndDate
-      };
-    }
-
+    // --- KPIs: Asistencia del ciclo (o del lapso pedido), la misma cuenta de
+    // la lista y del Inicio del alumno (`asistenciaEnBloque`).
+    let ventanaAsistencia: { desde?: Date | null; hasta?: Date | null } = { desde: academicYearStartDate, hasta: academicYearEndDate };
     if (periodId) {
-      const period = await prisma.period.findUnique({
-        where: { id: periodId },
-        select: { startDate: true, endDate: true }
-      });
-      if (period?.startDate && period?.endDate) {
-        attendanceFilter.date = {
-          gte: period.startDate,
-          lte: period.endDate
-        };
-      }
+      const period = await prisma.period.findUnique({ where: { id: periodId }, select: { startDate: true, endDate: true } });
+      if (period?.startDate && period?.endDate) ventanaAsistencia = { desde: period.startDate, hasta: period.endDate };
     }
-
-    const cycleAttendance = await prisma.dailyAttendance.findMany({
-      where: attendanceFilter,
-      select: { status: true }
-    });
-
-    let attendancePercentage = 0;
-    const totalDays = cycleAttendance.length;
-    if (totalDays > 0) {
-      const positiveAttendance = cycleAttendance.filter(
-        (a: any) => a.status === 'PRESENT' || a.status === 'LATE'
-      ).length;
-      attendancePercentage = Math.round((positiveAttendance / totalDays) * 100);
-    }
+    const asistencia = (await asistenciaEnBloque(prisma as any, [id], ventanaAsistencia)).get(id);
+    const attendancePercentage = Math.round(asistencia?.porcentaje ?? 0);
 
     // --- Observaciones Filtradas Estrictamente por Ciclo Escolar y Lapso ---
     const obsFilter: any = {
@@ -990,6 +843,14 @@ export async function getDashboardStats(
       prisma.observation.count({ where: obsFilter })
     ]);
 
+    const historial = new Map<string, number | null>();
+    await Promise.all(enrollments.map(async (sc: any) => {
+      if (!instId || !sc.classroomId) return;
+      historial.set(sc.classroomId, sc.classroomId === activeClassroom?.id
+        ? (oficiales?.definitivo ?? null)
+        : ((await cifrasOficialesDeLaSeccion(prisma as any, instId, sc.classroomId, [id])).get(id)?.definitivo ?? null));
+    }));
+
     // --- Construir Respuesta JSON conforme al requerimiento ---
     const response = {
       student: {
@@ -1042,19 +903,27 @@ export async function getDashboardStats(
         isCurrent: sc.id === selectedEnrollment?.id
       })),
       // Historial Académico por Ciclo Escolar
+      // El de cada ciclo, con la cuenta oficial (la de su boleta): antes salía
+      // el número guardado al cerrar, que no era el de la boleta.
+      // Si hay expediente (el cierre o el traslado lo dejan), ese; si no, las
+      // inscripciones. La nota: la oficial de ese ciclo si tiene notas aquí; si
+      // no (venía de otro plantel), la del expediente.
       academicHistory: ((student as any).academicHistory && (student as any).academicHistory.length > 0)
-        ? (student as any).academicHistory.map((record: any) => ({
-            academicYearId: record.academicYearId,
-            yearName: record.academicYear?.name || 'Ciclo Escolar',
-            section: record.sectionSnapshot,
-            finalGrade: record.finalAverage,
-            status: record.status
-          }))
+        ? (student as any).academicHistory.map((record: any) => {
+            const sc = enrollments.find((e: any) => e.academicYearId === record.academicYearId);
+            return {
+              academicYearId: record.academicYearId,
+              yearName: record.academicYear?.name || 'Ciclo Escolar',
+              section: record.sectionSnapshot,
+              finalGrade: (sc ? historial.get(sc.classroomId) : null) ?? record.finalAverage,
+              status: record.status
+            };
+          })
         : enrollments.map((sc: any) => ({
             academicYearId: sc.academicYearId,
             yearName: sc.academicYear?.name || sc.classroom?.academicYear?.name || 'Ciclo Escolar',
             section: sc.classroom?.name || `${sc.classroom?.grade}° ${sc.classroom?.section}`,
-            finalGrade: 0,
+            finalGrade: historial.get(sc.classroomId) ?? 0,
             status: sc.academicYear?.status || 'COMPLETED',
             isCurrent: sc.id === selectedEnrollment?.id
           })),
@@ -1063,8 +932,10 @@ export async function getDashboardStats(
         id: s.id, // Assuming subjectAverages stores subject ID
         name: s.name,
         average: s.average,
+        // Un 0 es una nota; «sin notas» no (CERO-*).
+        hasGrades: s.hasGrades,
         color: s.color,
-        status: s.average >= 10 ? "Aprobado" : "Reprobado"
+        status: s.average >= minPassing ? "Aprobado" : "Reprobado"
       })),
       recentObservations: cycleObservations.map((o: any) => ({
         id: o.id,

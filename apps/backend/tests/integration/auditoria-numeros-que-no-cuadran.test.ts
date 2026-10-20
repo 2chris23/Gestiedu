@@ -170,9 +170,9 @@ describe('Números que tienen que cuadrar', () => {
     // LA NOTA MÍNIMA PARA APROBAR ES LA DEL LICEO
     // ─────────────────────────────────────────────────────────────────────────
 
-    it('CAL-01: con la nota mínima por defecto (10), un 9,7 está reprobado', async () => {
+    it('CAL-01: con la nota mínima por defecto (10), un 9,4 está reprobado (9,5 sube a 10 con el redondeo del MPPE)', async () => {
         await configurarNotaMinima(10);
-        await ponerNota(9.7);
+        await ponerNota(9.4);
 
         const res = await request(server.server)
             .get(`/api/statistics/subject/${seccion.id}/${materia.id}`)
@@ -209,7 +209,7 @@ describe('Números que tienen que cuadrar', () => {
 
     it('CAL-04: la sección usa la misma nota mínima que la materia', async () => {
         await configurarNotaMinima(10);
-        await ponerNota(9.7);
+        await ponerNota(9.4);
 
         const res = await request(server.server)
             .get(`/api/statistics/section/${seccion.id}`)

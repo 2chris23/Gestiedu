@@ -28,6 +28,8 @@ export interface StudentDashboardStats {
         average: number;
         color: string;
         status?: string; // "Aprobado" | "Reprobado"
+        /** Un 0 es una nota; sin notas, false (CERO-*). */
+        hasGrades?: boolean;
     }[];
     recentObservations: {
         id: string;

@@ -1,6 +1,6 @@
 import { createError } from '../middleware/error.middleware';
 import { CreateSubjectInput, UpdateSubjectInput } from '../utils/validators';
-import { subjectSectionAverage, studentsWithNoteInSubject, promediosDeLaSeccion } from './aggregation.service';
+import { promediosDeVariasSecciones } from './aggregation.service';
 import * as closeCycleService from './promotion/close-cycle.service';
 import { findTeacherAssignmentConflicts, ScheduleConflictError } from './schedule-conflicts.service';
 import { borrarGuardandoCopia, QuienBorra } from '../utils/papelera';
@@ -300,6 +300,13 @@ export class SubjectsService {
         let totalSubjectCapacity = 0;
 
         // Transform data for frontend with real calculated averages and risk
+        // Todas las secciones de la materia con las mismas consultas.
+        const promediosDe = await promediosDeVariasSecciones(
+            prisma,
+            subject.classroomSubjects.map((cs: any) => cs.classroom.id),
+            periodId,
+            [subject.id]
+        );
         const sections = await Promise.all(
             subject.classroomSubjects.map(async (cs: any) => {
                 const classroomId = cs.classroom.id;
@@ -344,13 +351,12 @@ export class SubjectsService {
                     // secciones, ~600 cálculos de unas 30 consultas cada uno. Las
                     // mismas reglas, un puñado de consultas por sección
                     // (`bulk-averages-parity.test.ts` vigila que dé lo mismo).
-                    const [withData, promedios] = await Promise.all([
-                        studentsWithNoteInSubject(prisma, classroomId, subject.id, periodId),
-                        promediosDeLaSeccion(prisma, classroomId, periodId, [subject.id]),
-                    ]);
-                    for (const studentId of withData) {
-                        const stuAvg = promedios.get(studentId)?.get(subject.id) ?? 0;
-                        if (stuAvg > 0) {
+                    // Las cifras oficiales (las de la boleta): solo trae a quien tiene nota,
+                    // y un 0 es una nota (CERO-*).
+                    const promedios = promediosDe.get(classroomId) ?? new Map();
+                    for (const porMateria of promedios.values()) {
+                        const stuAvg = porMateria.get(subject.id);
+                        if (typeof stuAvg === 'number') {
                             secScores.push(stuAvg);
                             allSubjectScores.push(stuAvg);
                             if (gradeStatsAccum[gradeNum]) {

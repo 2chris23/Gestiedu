@@ -1,10 +1,10 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
+import { cifrasOficialesDeLaSeccion, estaEnRiesgo, promedioOficial } from '../services/cifras-oficiales.service';
 import { z } from 'zod';
 import { generateSlug } from '../utils/slug';
 import * as closeCycleService from '../services/promotion/close-cycle.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 import { canSeeClassroom } from '../services/authorization.service';
-import { NOTAS_QUE_CUENTAN } from '../services/apreciaciones.service';
 import { materiasDeSuAno } from '../services/secciones-de-la-materia.service';
 
 /**
@@ -1073,60 +1073,29 @@ export const getClassroomStats = async (request: FastifyRequest, reply: FastifyR
         minPassing = 10;
       }
 
-      // Agrupar calificaciones por estudiante y materia para el lapso o ciclo completo
-      const gradesWhere: any = {
-          studentId: { in: studentIds },
-          score: { not: null },
-          ...NOTAS_QUE_CUENTAN,
-          ...(periodId ? { periodId } : { period: { academicYearId: classroom.academicYearId } })
-      };
-      const studentSubjectGrades = await prisma.grade.groupBy({
-        by: ['studentId', 'subjectId'],
-        where: gradesWhere,
-        _avg: { score: true }
-      });
-
-      const studentOverallAverages = new Map<string, { sum: number; count: number }>();
-      const studentFailedSubjects = new Map<string, number>();
-
-      studentSubjectGrades.forEach(ssg => {
-        const studentId = ssg.studentId;
-        const subjAvg = ssg._avg?.score || 0;
-
-        if (!studentOverallAverages.has(studentId)) {
-          studentOverallAverages.set(studentId, { sum: 0, count: 0 });
-        }
-        const current = studentOverallAverages.get(studentId)!;
-        current.sum += subjAvg;
-        current.count += 1;
-
-        if (subjAvg < minPassing) {
-          studentFailedSubjects.set(studentId, (studentFailedSubjects.get(studentId) || 0) + 1);
-        }
-      });
+      // La cifra OFICIAL de cada alumno (la de su boleta, `cifras-oficiales.service`):
+      // antes se hacía la media a pelo de la tabla de notas, sin Clase en Vivo
+      // ni el plan, y el máximo salía 13,7 con un alumno en 17,47.
+      const instId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
+      const oficiales = instId ? await cifrasOficialesDeLaSeccion(prisma as any, instId, classroomId, studentIds) : new Map();
 
       let sumStudentAverages = 0;
       let currentMin = 20;
       let currentMax = 0;
 
       studentIds.forEach(sid => {
-        const data = studentOverallAverages.get(sid);
-        const failedCount = studentFailedSubjects.get(sid) || 0;
-        if (data && data.count > 0) {
-          const avg = Math.round((data.sum / data.count) * 10) / 10;
-          sumStudentAverages += avg;
-          studentsWithGrades += 1;
-          if (avg < currentMin) currentMin = avg;
-          if (avg > currentMax) currentMax = avg;
-
-          if (failedCount > 0 || avg < minPassing) {
-            riskCount += 1;
-          }
-        }
+        const c = oficiales.get(sid);
+        const avg = promedioOficial(c, periodId);
+        if (avg === null) return;
+        sumStudentAverages += avg;
+        studentsWithGrades += 1;
+        if (avg < currentMin) currentMin = avg;
+        if (avg > currentMax) currentMax = avg;
+        if (estaEnRiesgo(c, minPassing, periodId).enRiesgo) riskCount += 1;
       });
 
       if (studentsWithGrades > 0) {
-        average = Math.round((sumStudentAverages / studentsWithGrades) * 10) / 10;
+        average = Math.round((sumStudentAverages / studentsWithGrades) * 100) / 100;
         minAverage = currentMin;
         maxAverage = currentMax;
       }

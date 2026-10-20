@@ -4,6 +4,38 @@ Este documento es la **única fuente de verdad documental** sobre todas las fór
 
 ---
 
+## 0. La cifra oficial: una sola cuenta en todas las pantallas (2026-10-19)
+
+**Manda sobre lo de abajo donde choque.** Cristian: «nada de que un usuario
+tenga un promedio y en otra parte otro». El barrido sobre el liceo de pruebas
+(`apps/backend/src/scripts/barrido-de-cifras.ts`) encontró, con 40 alumnos,
+**246 diferencias**:
+- en las materias, la boleta decía 14 y la ficha y el Inicio 14,2;
+- el promedio general, 13,33 en la boleta, 13,3 en la ficha y 13,4 en la lista;
+- el resumen de la sección daba de máximo 13,7 con un alumno en 17,47 (era la media a pelo de la tabla `grades`, sin Clase en Vivo ni el plan);
+- el Inicio del admin contaba 257 alumnos en riesgo donde los años sumaban 149.
+
+Ahora todo sale de `services/cifras-oficiales.service.ts`, la cuenta de la boleta, calculada **en bloque por sección** y con una sola pasada para todos los lapsos (`bulkNotasPorLapso`):
+
+| Qué | Cuenta |
+| :--- | :--- |
+| Nota del lapso de una materia | El nivel 2 del lapso con el redondeo del liceo (`redondeoDeDefinitivas`; MPPE: 0,50 sube) |
+| Definitiva de la materia | Media de los lapsos con nota, redondeada otra vez; si reprobó y presentó revisión, cuenta la revisión (`queCuenta`) |
+| Promedio del lapso del alumno | Media de las notas del lapso de sus materias, a 2 decimales |
+| Promedio general del alumno | Media de lo que cuenta de cada materia, a 2 decimales (= `promedios.definitivo` de la boleta) |
+| Materia en la sección (N3) | Media de las notas oficiales de sus alumnos con nota |
+| Sección (N4) | **Media del promedio oficial de sus alumnos** (antes: media de sus N3); mínimo y máximo, de esos mismos |
+| Año (N5) y liceo (N6) | Media de sus secciones, y de sus años |
+| En riesgo | Alguna materia o el promedio por debajo de la mínima, con la cifra oficial (`estaEnRiesgo`): la sección, el año y el Inicio del admin cuentan igual |
+| Profesor | Media de las notas oficiales de sus alumnos en sus clases: su Inicio = su fila en Profesores |
+| Asistencia de la ventana | (presentes + tardanzas) / registros, en una consulta para muchos (`asistenciaEnBloque`); la ficha usa ya el ciclo, como la lista y el Inicio |
+
+**Consecuencia del redondeo:** un 9,5 del lapso sale **10, aprobado**, en todas partes, también en el riesgo, como en la boleta. Las materias con apreciación siguen fuera.
+
+Lo vigilan:
+- `la-misma-cifra-en-todas-partes.test.ts` (CIFRAS-01…03): boleta = ficha = Inicio del alumno = Inicio del representante = lista; la sección y el año cuadran con las boletas; el profesor cuadra con Profesores;
+- el barrido sobre datos reales: con 62 alumnos y 19 secciones, **0 diferencias** (`npx tsx src/scripts/barrido-de-cifras.ts --exigir`).
+
 ## 1. Jerarquía de Agregación de Calificaciones (Niveles 0 → 6)
 
 Principio arquitectural: **Todo promedio superior es una agregación recursiva del nivel inmediatamente inferior**. Ningún nivel recalcula fórmulas desde cero; todos consumen la función del nivel precedente con exclusión estricta de entidades sin calificaciones registradas (no cuentan como 0).

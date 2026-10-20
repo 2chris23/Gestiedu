@@ -1,4 +1,5 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
+import { cifrasOficialesDelAno, estaEnRiesgo, promedioOficial } from '../services/cifras-oficiales.service';
 import { z } from 'zod';
 import * as aggregationService from '../services/aggregation.service';
 import * as closeCycleService from '../services/promotion/close-cycle.service';
@@ -603,87 +604,36 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
       }
     });
 
-    // Calcular promedios por estudiante y por materia para detectar estudiantes en riesgo real (<10 pts)
-    const studentSubjectGrades = await prisma.grade.groupBy({
-      by: ['studentId', 'subjectId'],
-      where: {
-        ...(periodId ? { periodId } : { period: { academicYearId: id } }),
-        score: { not: null },
-        ...NOTAS_QUE_CUENTAN,
-      },
-      _avg: { score: true }
-    });
-
+    // Las cifras OFICIALES de cada alumno (las de su boleta, `cifras-oficiales.service`),
+    // sección por sección y a la vez. El año: la media de sus secciones (MAPA §6,
+    // la misma que `yearGradeAverage`); el mínimo, el máximo y el riesgo, de sus
+    // alumnos. Antes era la media a pelo de la tabla de notas.
+    let minPassing = 10;
+    try {
+      const config = await closeCycleService.getAcademicConfig(getRequestInstituteId(request));
+      minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
+    } catch {
+      minPassing = 10;
+    }
+    const instDelAno = (request.user as any)?.instituteId ?? (request as any).institute?.id;
+    const seccionesDelAno = await cifrasOficialesDelAno(prisma as any, instDelAno, id);
     const gradeEvaluatedStudents = new Map<number, number>();
-
-    if (studentSubjectGrades.length > 0) {
-      const studentIds = Array.from(new Set(studentSubjectGrades.map(sg => sg.studentId)));
-      const studentClassrooms = await prisma.studentClassroom.findMany({
-        where: {
-          studentId: { in: studentIds },
-          academicYearId: id,
-          isActive: true
-        },
-        select: {
-          studentId: true,
-          classroom: { select: { grade: true } }
-        }
-      });
-
-      const studentGradeMap = new Map(studentClassrooms.map(sc => [sc.studentId, sc.classroom.grade]));
-
-      // 0. Obtener nota mínima aprobatoria configurable del instituto
-      let minPassing = 10;
-      try {
-        const instId = getRequestInstituteId(request);
-        const config = await closeCycleService.getAcademicConfig(instId);
-        minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
-      } catch {
-        minPassing = 10;
+    const mediasDeSecciones = new Map<number, number[]>();
+    for (const { grade, oficiales } of seccionesDelAno) {
+      if (!yearStats[grade]) continue;
+      const deLaSeccion: number[] = [];
+      for (const c of oficiales.values()) {
+        const avg = promedioOficial(c, periodId);
+        if (avg === null) continue;
+        deLaSeccion.push(avg);
+        gradeEvaluatedStudents.set(grade, (gradeEvaluatedStudents.get(grade) || 0) + 1);
+        if (yearStats[grade].minAverage === 0 || avg < yearStats[grade].minAverage) yearStats[grade].minAverage = avg;
+        if (avg > yearStats[grade].maxAverage) yearStats[grade].maxAverage = avg;
+        if (estaEnRiesgo(c, minPassing, periodId).enRiesgo) yearStats[grade].riskCount += 1;
       }
-
-      // 1. Acumular promedios generales por estudiante
-      const studentOverallAverages = new Map<string, { sum: number; count: number }>();
-      const studentFailedSubjects = new Map<string, number>();
-
-      studentSubjectGrades.forEach(ssg => {
-        const studentId = ssg.studentId;
-        const subjAvg = ssg._avg.score || 0;
-
-        if (!studentOverallAverages.has(studentId)) {
-          studentOverallAverages.set(studentId, { sum: 0, count: 0 });
-        }
-        const current = studentOverallAverages.get(studentId)!;
-        current.sum += subjAvg;
-        current.count += 1;
-
-        if (subjAvg < minPassing) {
-          studentFailedSubjects.set(studentId, (studentFailedSubjects.get(studentId) || 0) + 1);
-        }
-      });
-
-      // 2. Acumular estadísticas del grado (Año)
-      studentOverallAverages.forEach((data, studentId) => {
-        const grade = studentGradeMap.get(studentId);
-        if (grade && yearStats[grade]) {
-          const avg = data.count > 0 ? (data.sum / data.count) : 0;
-          yearStats[grade].sumAverages += avg;
-          gradeEvaluatedStudents.set(grade, (gradeEvaluatedStudents.get(grade) || 0) + 1);
-
-          if (yearStats[grade].minAverage === 0 || avg < yearStats[grade].minAverage) {
-            yearStats[grade].minAverage = avg;
-          }
-          if (avg > yearStats[grade].maxAverage) {
-            yearStats[grade].maxAverage = avg;
-          }
-
-          // Un estudiante está en riesgo académico si tiene materias reprobadas (< minPassing) o su promedio es < minPassing
-          const failedCount = studentFailedSubjects.get(studentId) || 0;
-          if (failedCount > 0 || avg < minPassing) {
-            yearStats[grade].riskCount += 1;
-          }
-        }
-      });
+      if (deLaSeccion.length > 0) {
+        mediasDeSecciones.set(grade, [...(mediasDeSecciones.get(grade) ?? []), Math.round((deLaSeccion.reduce((x, y) => x + y, 0) / deLaSeccion.length) * 100) / 100]);
+      }
     }
 
     // 3. Calcular asistencia por sección y agregarla por año/grado (Nivel Jerárquico)
@@ -733,7 +683,8 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
     const result: any[] = [];
     for (const stat of Object.values(yearStats)) {
       const evaluatedCount = gradeEvaluatedStudents.get(stat.grade) || 0;
-      const avg = evaluatedCount > 0 ? (stat.sumAverages / evaluatedCount) : null;
+      const secs = mediasDeSecciones.get(stat.grade) ?? [];
+      const avg = secs.length > 0 ? secs.reduce((x, y) => x + y, 0) / secs.length : null;
       const minAvg = evaluatedCount > 0 ? stat.minAverage : null;
       const maxAvg = evaluatedCount > 0 ? stat.maxAverage : null;
       const attendance = (stat.sumAttendance !== null && stat.sumAttendance !== undefined)
@@ -743,9 +694,9 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
       result.push({
         grade: stat.grade,
         stats: {
-          average: avg !== null ? Number(avg.toFixed(1)) : null,
-          minAverage: minAvg !== null ? Number(minAvg.toFixed(1)) : null,
-          maxAverage: maxAvg !== null ? Number(maxAvg.toFixed(1)) : null,
+          average: avg !== null ? Math.round(avg * 100) / 100 : null,
+          minAverage: minAvg,
+          maxAverage: maxAvg,
           riskCount: stat.riskCount,
           occupancy: `${stat.totalStudents}/${stat.totalCapacity}`,
           attendance,

@@ -4,10 +4,12 @@ import { gradesService } from './grades.service';
 import { AdminDashboardDto, TeacherDashboardDto, StudentDashboardDto, TutorDashboardDto } from '../dto/dashboard-response.dto';
 import { getAcademicConfig, DEFAULT_ACADEMIC_CONFIG } from './promotion/close-cycle.service';
 import { bulkSubjectAveragesConDatos } from './bulk-averages.service';
+import { promediosDeLaSeccion } from './aggregation.service';
 import { NOTAS_QUE_CUENTAN } from './apreciaciones.service';
 import { instituteTimezone, todayInTimezone } from '../utils/school-time';
 import { platformPrisma } from '../config/database';
-import { boletaDelAlumno, BoletaDelAlumno, calcularPromedioBoletaDesdeLapsos } from './boleta.service';
+import { boletaDelAlumno, BoletaDelAlumno } from './boleta.service';
+import { cifrasOficialesDeLaSeccion, cifrasOficialesDelAno, estaEnRiesgo, notaOficial } from './cifras-oficiales.service';
 
 /**
  * QUÉ PERIODO SE MIRA: EL LAPSO EN CURSO, Y APARTE EL CICLO
@@ -199,17 +201,6 @@ async function materiasDelAlumnoConPromedio(
     }));
 }
 
-/** Promedio general: la media de las materias CON notas (un 0 es una nota), a un decimal. */
-function promedioGeneral(materias: Array<{ average: number; conNotas: boolean }>): { promedio: number; conNotas: boolean } {
-    const conNotas = materias.filter((m) => m.conNotas);
-    if (conNotas.length === 0) return { promedio: 0, conNotas: false };
-    const redondeadas = conNotas.map((m) => parseFloat(Number(m.average || 0).toFixed(1)));
-    return {
-        promedio: Math.round((redondeadas.reduce((a, b) => a + b, 0) / redondeadas.length) * 10) / 10,
-        conNotas: true,
-    };
-}
-
 export class DashboardService {
     /**
      * Dashboard para Administradores (IMPLEMENTADO)
@@ -267,24 +258,19 @@ export class DashboardService {
             // Estudiantes en riesgo y radar de casos críticos (materias aplazadas < minPassing en el ciclo activo)
             (async () => {
                 if (!activeYear) return { count: 0, top: [] as Array<{ id: string; name: string; classroomName: string; failedCount: number }> };
-                const studentSubjectAverages = await db.grade.groupBy({
-                    by: ['studentId', 'subjectId'],
-                    where: {
-                        period: { academicYearId: activeYear.id },
-                        score: { not: null },
-                        ...NOTAS_QUE_CUENTAN,
-                    },
-                    _avg: { score: true },
-                    having: {
-                        score: { _avg: { lt: minPassing } }
-                    }
-                });
-                const uniqueStudents = new Set(studentSubjectAverages.map(s => s.studentId));
-
-                // Agrupamos materias aplazadas por estudiante
+                // Con la cifra oficial (la de la boleta) y la misma regla de riesgo
+                // que la sección y el año (`estaEnRiesgo`). Antes: la media a pelo
+                // de la tabla de notas, y el Inicio decía 257 donde los años sumaban 149.
+                const delAno = await cifrasOficialesDelAno(db, instituteId, activeYear.id);
+                const uniqueStudents = new Set<string>();
                 const failedMap = new Map<string, number>();
-                for (const item of studentSubjectAverages) {
-                    failedMap.set(item.studentId, (failedMap.get(item.studentId) || 0) + 1);
+                for (const { oficiales } of delAno) {
+                    for (const [sid, c] of oficiales) {
+                        const r = estaEnRiesgo(c, minPassing);
+                        if (!r.enRiesgo) continue;
+                        uniqueStudents.add(sid);
+                        failedMap.set(sid, r.reprobadas);
+                    }
                 }
                 const sorted = Array.from(failedMap.entries())
                     .sort((a, b) => b[1] - a[1])
@@ -794,11 +780,12 @@ export class DashboardService {
             const promediosAlumnoMateriaConNotas: number[] = [];
             const alumnosEnRiesgoIds = new Set<string>();
 
+            // Con las cifras oficiales (las de la boleta): el mismo número que
+            // su fila en Profesores (`profesores.service`).
             const resultadosSecciones = await Promise.all(
                 Array.from(materiasPorSeccion.entries()).map(async ([classroomId, subjectIds]) => {
-                    const studentIds = alumnosPorSeccion.get(classroomId) || [];
-                    if (studentIds.length === 0 || subjectIds.length === 0) return null;
-                    return bulkSubjectAveragesConDatos(db, { classroomId, studentIds, subjectIds });
+                    if ((alumnosPorSeccion.get(classroomId) || []).length === 0 || subjectIds.length === 0) return null;
+                    return promediosDeLaSeccion(db, classroomId, undefined, subjectIds);
                 })
             );
 
@@ -806,17 +793,11 @@ export class DashboardService {
                 if (!res) continue;
                 for (const [studentId, materiasMap] of res.entries()) {
                     let tieneEnRiesgo = false;
-                    for (const [, info] of materiasMap.entries()) {
-                        if (info.conNotas) {
-                            promediosAlumnoMateriaConNotas.push(info.promedio);
-                            if (info.promedio < minPassing) {
-                                tieneEnRiesgo = true;
-                            }
-                        }
+                    for (const nota of materiasMap.values()) {
+                        promediosAlumnoMateriaConNotas.push(nota);
+                        if (nota < minPassing) tieneEnRiesgo = true;
                     }
-                    if (tieneEnRiesgo) {
-                        alumnosEnRiesgoIds.add(studentId);
-                    }
+                    if (tieneEnRiesgo) alumnosEnRiesgoIds.add(studentId);
                 }
             }
 
@@ -966,140 +947,42 @@ export class DashboardService {
             (async () => {
                 const periods = await db.period.findMany({
                     where: { academicYear: { status: 'ACTIVE' } },
-                    orderBy: { startDate: 'asc' }
+                    orderBy: { startDate: 'asc' },
+                    select: { id: true, name: true },
                 });
-
-                /**
-                 * EL PROMEDIO DEL LAPSO SE HACE POR MATERIA, NO POR NOTA
-                 *
-                 * Aquí se recorrían **las filas de notas**: por cada nota del
-                 * alumno se pedía el promedio de esa materia en ese lapso y se
-                 * metía en la lista. O sea, una materia con cinco notas metía
-                 * cinco veces el MISMO número, y una con dos, dos veces. Al
-                 * hacer la media de esa lista, las materias con más
-                 * evaluaciones pesaban más que las demás.
-                 *
-                 * El promedio del lapso que ve el alumno salía mal, sin más. La
-                 * regla está escrita en `docs/MAPA_DE_CALCULOS.md`: cada nivel
-                 * es la media de las **entidades** del nivel de abajo —una
-                 * materia, una vez—, no de sus filas.
-                 *
-                 * De paso: se pedían las notas de TODOS los años del alumno y
-                 * se calculaba una por una, para tirar después las que no eran
-                 * de este año. Ahora se piden solo las del año activo y se
-                 * calcula una vez por materia y lapso, en paralelo.
-                 */
-                const idsDeLapsos = periods.map(p => p.id);
-                const gradesByPeriod = idsDeLapsos.length === 0 ? [] : await db.grade.findMany({
-                    where: { studentId: userId, periodId: { in: idsDeLapsos } },
-                    select: { periodId: true, subjectId: true }
-                });
-
-                const pares = new Map<string, { periodId: string; subjectId: string }>();
-                for (const g of gradesByPeriod) {
-                    pares.set(`${g.periodId}|${g.subjectId}`, { periodId: g.periodId, subjectId: g.subjectId });
-                }
-
-                const avgByPeriod = new Map<string, number[]>();
-                let calculados: Array<{ periodId: string; subjectId: string; promedio: number; conNotas: boolean }>;
-                if (activeClassroomId) {
-                    // Una pasada en bloque por lapso (tres, no una por materia y lapso).
-                    const materiasPorLapso = new Map<string, string[]>();
-                    for (const par of pares.values()) {
-                        if (!materiasPorLapso.has(par.periodId)) materiasPorLapso.set(par.periodId, []);
-                        materiasPorLapso.get(par.periodId)!.push(par.subjectId);
-                    }
-                    const porLapso = await Promise.all(
-                        [...materiasPorLapso.entries()].map(async ([periodId, subjectIds]) => {
-                            const r = await bulkSubjectAveragesConDatos(db, {
-                                classroomId: activeClassroomId,
-                                studentIds: [userId],
-                                subjectIds,
-                                periodId,
-                            });
-                            const suyos = r.get(userId);
-                            return subjectIds.map((id) => ({
-                                periodId,
-                                subjectId: id,
-                                promedio: suyos?.get(id)?.promedio ?? 0,
-                                conNotas: suyos?.get(id)?.conNotas ?? false,
-                            }));
-                        })
-                    );
-                    calculados = porLapso.flat();
-                } else {
-                    calculados = await Promise.all(
-                        [...pares.values()].map(async (par) => {
-                            const d = await gradesService.promedioDeLaMateria(
-                                db as PrismaClient, userId, par.subjectId, par.periodId
-                            );
-                            return { periodId: par.periodId, subjectId: par.subjectId, promedio: d.promedio, conNotas: d.conNotas };
-                        })
-                    );
-                }
-                for (const c of calculados) {
-                    // Un 0 es una nota: cuenta en el lapso (antes `promedio > 0`).
-                    if (c.conNotas) {
-                        if (!avgByPeriod.has(c.periodId)) avgByPeriod.set(c.periodId, []);
-                        avgByPeriod.get(c.periodId)!.push(c.promedio);
-                    }
-                }
-
-                const periodAverages = periods.map(p => {
-                    const grades = avgByPeriod.get(p.id) || [];
-                    const average = grades.length > 0
-                        ? grades.reduce((a, b) => a + b, 0) / grades.length
-                        : 0;
-                    return { periodId: p.id, periodName: p.name, average: Math.round(average * 10) / 10 };
-                });
-
-                const lapsosPorMateria = new Map<string, number[]>();
-                for (const c of calculados) {
-                    if (c.conNotas) {
-                        if (!lapsosPorMateria.has(c.subjectId)) lapsosPorMateria.set(c.subjectId, []);
-                        lapsosPorMateria.get(c.subjectId)!.push(c.promedio);
-                    }
-                }
-
-                return { periodAverages, lapsosPorMateria };
+                // La cuenta oficial (la de la boleta), la misma de la ficha y la lista.
+                const oficiales = activeClassroomId && resolvedInstituteId
+                    ? (await cifrasOficialesDeLaSeccion(db, resolvedInstituteId, activeClassroomId, [userId])).get(userId)
+                    : undefined;
+                return { periods, oficiales };
             })()
         ]);
 
-        const { periodAverages, lapsosPorMateria } = periodData;
+        const { periods, oficiales } = periodData;
+        const periodAverages = periods.map((p: any) => ({
+            periodId: p.id,
+            periodName: p.name,
+            average: oficiales?.porLapso[p.id] ?? 0,
+        }));
 
         const subjects = (gradesStats && Array.isArray(gradesStats) && gradesStats.length > 0)
-            ? gradesStats.map(s => ({
-                id: s.subjectId,
-                name: s.subjectName,
-                average: parseFloat(Number(s.average || 0).toFixed(1)),
-                color: s.subjectColor || '#666',
-                status: (s.average || 0) >= minPassing ? 'Aprobado' : 'Reprobado',
-                hasGrades: (s as any).conNotas !== false,
-                cualitativa: (s as any).cualitativa ?? false,
-            }))
+            ? gradesStats.map(s => {
+                const cualitativa = (s as any).cualitativa ?? false;
+                const oficial = cualitativa ? null : notaOficial(oficiales, s.subjectId);
+                return {
+                    id: s.subjectId,
+                    name: s.subjectName,
+                    average: oficial ?? 0,
+                    color: s.subjectColor || '#666',
+                    status: (oficial ?? 0) >= minPassing ? 'Aprobado' : 'Reprobado',
+                    hasGrades: oficial !== null,
+                    cualitativa,
+                };
+            })
             : [];
 
-        // REVISION-FASE-E (punto 3): el promedio del estudiante en Inicio es
-        // exactamente el mismo de la boleta (`calcularPromedioBoletaDesdeLapsos`), la misma cuenta oficial.
-        const materiasParaBoleta = [...lapsosPorMateria.entries()].map(([subjectId, lapsos]) => {
-            const s = subjects.find((subj: any) => subj.id === subjectId);
-            return {
-                lapsos,
-                cualitativa: s?.cualitativa ?? false,
-            };
-        });
-
-        const promedioBoleta = calcularPromedioBoletaDesdeLapsos(
-            materiasParaBoleta,
-            configRedondeo,
-            minPassing
-        );
-
-        const globalAverage = promedioBoleta !== null
-            ? promedioBoleta
-            : promedioGeneral(
-                subjects.map((s: any) => ({ average: s.average, conNotas: s.hasGrades }))
-            ).promedio;
+        // El promedio del Inicio es el de la boleta, la misma cuenta oficial.
+        const globalAverage = oficiales?.definitivo ?? 0;
 
         const failedSubjects = subjects.filter(s => !s.cualitativa && s.hasGrades && s.average < minPassing).length;
 

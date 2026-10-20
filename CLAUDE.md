@@ -83,6 +83,8 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
    parte por responsabilidad, no por número); lo obsoleto se borra con
    evidencia de que nadie lo usa; las pruebas que vigilan algo que hoy
    funciona se quedan siempre (son las que avisan si se rompe otra vez).
+0-quater. **En silencio hasta terminar** (Cristian, 19-oct-2026): mientras se
+   trabaja, ningún mensaje en el chat; solo el informe final, en español.
 1. **Evidencia antes de corregir.** Nada es un fallo ni "ya funciona" sin código, diff o
    prueba en vivo que lo demuestre. Medir, no deducir.
 2. **Las reglas de negocio son configurables por instituto**, nunca fijas en el código.

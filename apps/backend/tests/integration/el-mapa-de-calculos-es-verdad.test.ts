@@ -203,7 +203,8 @@ describe('El mapa de cálculos tiene que ser verdad', () => {
     it('MAPA-01: en riesgo son exactamente los que están por debajo de la nota mínima', async () => {
         // Tres por debajo de 10, cinco por encima. Ninguno justo en 10, que es
         // otra prueba (abajo).
-        const notas = [4, 7, 9.5, 11, 13, 15, 18, 20];
+        // 9,4 y no 9,5: con el redondeo del MPPE (el de la boleta), 9,5 sube a 10.
+        const notas = [4, 7, 9.4, 11, 13, 15, 18, 20];
         for (let i = 0; i < alumnos.length; i++) {
             await ponerNota(alumnos[i].id, notas[i]);
         }
@@ -224,7 +225,8 @@ describe('El mapa de cálculos tiene que ser verdad', () => {
     }, 120000);
 
     it('MAPA-03: si el liceo cambia la nota mínima, el riesgo cambia con ella', async () => {
-        const notas = [4, 7, 9.5, 11, 13, 15, 18, 20];
+        // 9,4 y no 9,5: con el redondeo del MPPE (el de la boleta), 9,5 sube a 10.
+        const notas = [4, 7, 9.4, 11, 13, 15, 18, 20];
         for (let i = 0; i < alumnos.length; i++) await ponerNota(alumnos[i].id, notas[i]);
 
         await configurar({ notaMinimaAprobatoria: 14, asistenciaMinima: 80 });
