@@ -14,13 +14,13 @@ hasta cerrar las cinco etapas. Drive, el abogado y el titular de lo legal espera
 |---|---|
 | 1. Implementación | 🟡 Grupos estables, fases 3–5 por hacer |
 | 2. Corrección de diseño | 🟡 Continua, con Cristian mirando |
-| 3. Revisar de pie a cabeza | 🔴 Empieza ahora: arquitectura, archivos de más de 800 líneas (17 pasan de 1.000), lo obsoleto |
+| 3. Revisar de pie a cabeza | 🟡 Hecho lo obsoleto (−19.000 líneas, 50 rutas sin pantalla) y la cifra única; `grades.service` partido; quedan 26 archivos de más de 800 líneas (ya no crecen: TAMAÑO-01/02). `docs/ARQUITECTURA.md` |
 | 4. Que todo funcione | 🟡 Ver puertas 1 y 4 |
 | 5. Estrés: 10.000 a la vez, ≤ 100 ms | 🟡 Medido por escalones y proyectado: un proceso, ~400–500 a ≤ 100 ms; harían falta ~10–12 procesos para 10.000 (falta probarlo en un servidor) |
 
 | Puerta | Qué exige | Estado |
 |---|---|---|
-| 1. Cero errores | jest y navegador enteros en verde; Salud sin errores abiertos; barrido de privacidad limpio; la misma cifra en todas partes | 🟡 jest entero en verde (1.446). Navegador: la descarga sin conexión, 8 de 9 (falta la velocidad del admin); falta la tanda entera (316) |
+| 1. Cero errores | jest y navegador enteros en verde; Salud sin errores abiertos; barrido de privacidad limpio; la misma cifra en todas partes | 🟡 jest entero en verde (1.386, tras quitar las pruebas de rutas borradas). La misma cifra: 0 diferencias en 62 alumnos. Navegador, tanda entera (423): 395 en verde; de los 20 rojos, 14 son del montaje (puertos 3000/3107 fijos, la IP del túnel), 4 arreglados y 2 por mirar (TR-02, INSTR-UI-02) |
 | 2. No se pierde nada | lo hecho sin conexión sube; los respaldos vuelven; nada se borra sin copia; nada se pisa callado | 🟡 Probado por partes; hoy se cerraron dos huecos. Falta la prueba de caos y la copia fuera del servidor |
 | 3. Rápido con 100.000 | más de 10.000 a la vez a ≤ 100 ms (p99), sin romperse; medido por escalones en este PC y proyectado | 🔴 Medido solo en este PC. Hace falta el servidor de verdad |
 | 4. Cada opción funciona | cada botón de cada rol, con su prueba | 🟡 Servidor: 455 de 456 opciones vistas funcionando. Falta lo mismo en las pantallas |
@@ -36,7 +36,15 @@ npm run test:e2e
 
 y `/superadmin/salud` → Errores, sin ninguno abierto.
 
-**Medido hoy:**
+**Medido el 20-oct-2026:**
+- **jest entero: 194 de 194 archivos, 1.386 pruebas en verde, 0 fallos.** Son menos que antes porque se quitaron las que solo probaban rutas borradas; las reglas que vivían en ellas se prueban ahora sobre las pantallas de verdad.
+- **La misma cifra en todas partes:** CIFRAS-01…03 y `barrido-de-cifras --exigir` con 62 alumnos y 19 secciones dan **0 diferencias** (antes había 246 con 40 alumnos).
+- **La tanda entera del navegador (423 pruebas, 1,4 h):** 395 en verde y 20 en rojo.
+  - **14 son del montaje:** las pruebas sin servidor y de descarga apuntan a los puertos 3000 y 3107, y APP-01 a la IP del túnel.
+  - **Arreglados:** ROL-03, TR-04, el mapa de la descarga y las cifras fijas de la pantalla del año.
+  - **Por mirar:** TR-02 (el aviso por el túnel) e INSTR-UI-02 (corrió a la 1 de la madrugada; la clase en vivo depende de la hora).
+
+**Medido el 19-oct-2026:**
 - **jest entero: 191 de 191 archivos, 1.446 pruebas en verde, 0 fallos** (5 saltadas: piden un Redis de pruebas, `REDIS_PRUEBAS_URL`).
 - **La descarga sin conexión en el navegador (PRECARGA-01…09): 8 de 9.** Cada rol entra, baja lo suyo y, sin conexión, abre cada pantalla de su plan entera: profesor (3 s, 1,5 MB), alumno, representante y admin (3 s, 12,7 MB; todo lo que no es ficha y 25 fichas).
   - Arreglado hoy para llegar ahí: el horario propio del profesor y la labor social de 5.º no estaban en la descarga, y la grabadora del mapa no veía nada con la web compilada (escribía un mapa vacío dando verde; ya no puede).
