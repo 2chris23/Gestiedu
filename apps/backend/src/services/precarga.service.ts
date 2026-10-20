@@ -6,7 +6,7 @@ import moldesGrabados from '../precarga/lecturas-por-pantalla.json';
 import { instituteTimezone, todayInTimezone } from '../utils/school-time';
 import { RedisCache } from '../config/redis';
 import { liceoActual } from '../config/ambito-del-liceo';
-import { getAcademicConfig } from './promotion/close-cycle.service';
+import { getAcademicConfig } from './promotion/configuracion-academica';
 
 /**
  * LA PRECARGA EN UN PAQUETE (octubre 2026, pedido por Cristian)

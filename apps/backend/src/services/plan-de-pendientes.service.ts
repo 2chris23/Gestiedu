@@ -3,7 +3,7 @@ import { createError } from '../middleware/error.middleware';
 import { instituteTimezone, todayInTimezone } from '../utils/school-time';
 import { borrarGuardandoCopia } from '../utils/papelera';
 import { InstrumentoInvalido, maximoDelInstrumento, notaDelInstrumento, validarInstrumento, type Instrumento, type Marcas } from '../utils/instrumentos';
-import { getAcademicConfig, type AcademicConfig } from './promotion/close-cycle.service';
+import { getAcademicConfig, type AcademicConfig } from './promotion/configuracion-academica';
 import { laPendiente, puedeEvaluar, recalcular, notaDelLiceo, revisarNota, validarLaOpcion, losAfectados, type QuienPide } from './materias-pendientes.service';
 
 /**

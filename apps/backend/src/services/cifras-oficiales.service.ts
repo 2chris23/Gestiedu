@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { redondearComoElMPPE } from './grades.service';
-import { getAcademicConfig, DEFAULT_ACADEMIC_CONFIG } from './promotion/close-cycle.service';
+import { getAcademicConfig, DEFAULT_ACADEMIC_CONFIG } from './promotion/configuracion-academica';
 import { liceoActual } from '../config/ambito-del-liceo';
 import { bulkNotasPorLapsoDeVariasSecciones } from './bulk-averages.service';
 

@@ -19,7 +19,9 @@ export {
 import { JWTPayload, generateAccessToken } from '../config/jwt';
 
 // Legacy exports for backwards compatibility
-export const generateToken = generateAccessToken;export type VerifyPayloadType = JWTPayload;
+export const generateToken = generateAccessToken;
+
+export type VerifyPayloadType = JWTPayload;
 
 /**
  * Verificar si un usuario tiene un rol específico

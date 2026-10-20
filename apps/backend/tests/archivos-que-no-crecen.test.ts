@@ -19,7 +19,6 @@ const GRANDES: Record<string, number> = {
     'apps/web/src/app/(dashboard)/dashboard/clase-en-vivo/[classroomId]/[subjectId]/page.tsx': 1457,
     'apps/web/src/components/evaluation/EvaluationPlanSection.tsx': 1408,
     'apps/web/src/app/(dashboard)/dashboard/academico/[cycleId]/promocion/page.tsx': 1205,
-    'apps/backend/src/services/promotion/close-cycle.service.ts': 1199,
     'apps/backend/src/controllers/classrooms.controller.ts': 1122,
     'apps/backend/src/controllers/evaluation-plan.controller.ts': 1036,
     'apps/backend/src/controllers/students.controller.ts': 1031,

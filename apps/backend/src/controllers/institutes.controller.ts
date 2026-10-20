@@ -4,7 +4,7 @@ import { esReglasDeGrupos, limpiarReglasDeGrupos } from '../services/reglas-de-g
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { InstitutesService } from '../services/institutes.service';
 import { SUCCESS_MESSAGES } from '../utils/constants';
-import { getAcademicConfig, updateAcademicConfig, esAsistenciaMinimaValida, esRedondeoValido } from '../services/promotion/close-cycle.service';
+import { getAcademicConfig, updateAcademicConfig, esAsistenciaMinimaValida, esRedondeoValido } from '../services/promotion/configuracion-academica';
 import { RedisCache } from '../config/redis';
 import { conLiceo } from '../config/ambito-del-liceo';
 import { platformPrisma } from '../config/database';

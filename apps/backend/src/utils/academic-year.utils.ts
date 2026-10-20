@@ -21,7 +21,9 @@ export interface AcademicYearInfo {
     isCurrent: boolean;      // Si está activo según fechas
     isCompleted: boolean;    // Si ya terminó
     isUpcoming: boolean;     // Si aún no ha comenzado
-}/**
+}
+
+/**
  * Actualiza automáticamente los campos status de TODOS los años académicos
  * basándose en las fechas actuales
  * 

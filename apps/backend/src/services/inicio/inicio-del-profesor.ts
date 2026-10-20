@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { TeacherDashboardDto } from '../../dto/dashboard-response.dto';
-import { getAcademicConfig } from '../promotion/close-cycle.service';
+import { getAcademicConfig } from '../promotion/configuracion-academica';
 import { promediosDeLaSeccion } from '../aggregation.service';
 import { instituteTimezone, todayInTimezone } from '../../utils/school-time';
 

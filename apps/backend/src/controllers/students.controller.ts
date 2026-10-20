@@ -6,7 +6,7 @@ import { CreateUserInput, UpdateUserInput, UserFiltersInput, PaginationInput } f
 import { logger } from '../utils/logger';
 import { teacherClassroomIds } from '../services/authorization.service';
 import { createAuditLogger } from '../services/audit.service'; // ✅ SECURITY: Audit logging
-import { getAcademicConfig } from '../services/promotion/close-cycle.service';
+import { getAcademicConfig } from '../services/promotion/configuracion-academica';
 import { studentsService } from '../services/students.service';
 import { cifrasOficialesDeLaSeccion, cifrasOficialesDeVariasSecciones, notaOficial, promedioOficial, asistenciaEnBloque } from '../services/cifras-oficiales.service';
 import { incrementStudentCount, decrementStudentCount } from '../middleware/plan-limits.middleware';

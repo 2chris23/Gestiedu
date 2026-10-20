@@ -1,7 +1,7 @@
 import { getRequestInstituteId } from '../academic-years.controller';
+import { getAcademicConfig } from '../../services/promotion/configuracion-academica';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { cifrasOficialesDelAno, estaEnRiesgo, promedioOficial } from '../../services/cifras-oficiales.service';
-import * as closeCycleService from '../../services/promotion/close-cycle.service';
 
 export const getAcademicYearStats = async (request: FastifyRequest, reply: FastifyReply) => {
   try {
@@ -117,7 +117,7 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
     // alumnos. Antes era la media a pelo de la tabla de notas.
     let minPassing = 10;
     try {
-      const config = await closeCycleService.getAcademicConfig(getRequestInstituteId(request));
+      const config = await getAcademicConfig(getRequestInstituteId(request));
       minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
     } catch {
       minPassing = 10;

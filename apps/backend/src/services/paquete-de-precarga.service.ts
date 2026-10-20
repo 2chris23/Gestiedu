@@ -286,7 +286,9 @@ class ColaDePaquetesPorProceso {
             void this.procesar();
         }
     }
-}// ── Armar el paquete ────────────────────────────────────────────────────────
+}
+
+// ── Armar el paquete ────────────────────────────────────────────────────────
 
 const MAX_A_LA_VEZ = 6;
 

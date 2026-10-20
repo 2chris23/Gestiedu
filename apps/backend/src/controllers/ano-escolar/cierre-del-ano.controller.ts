@@ -1,4 +1,6 @@
 import { invalidateDashboardCache, getRequestInstituteId } from '../academic-years.controller';
+import { confirmClose } from '../../services/promotion/confirmar-el-cierre';
+import { getPromotionContext as contextoDePromocion, previewStrategyAssignment } from '../../services/promotion/estrategias-de-promocion';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import * as closeCycleService from '../../services/promotion/close-cycle.service';
 import { quienBorra } from '../../utils/papelera';
@@ -23,7 +25,7 @@ export const confirmAcademicYearClose = async (request: FastifyRequest, reply: F
     const body = request.body as any;
     const prisma = request.tenantPrisma;
 
-    const result = await closeCycleService.confirmClose(
+    const result = await confirmClose(
       prisma,
       {
         academicYearId: id,
@@ -60,7 +62,7 @@ export const getCloseStrategies = async (_request: FastifyRequest, reply: Fastif
 export const getPromotionContext = async (request: FastifyRequest, reply: FastifyReply) => {
   try {
     const { id } = request.params as { id: string };
-    const context = await closeCycleService.getPromotionContext(
+    const context = await contextoDePromocion(
       request.tenantPrisma,
       id,
       getRequestInstituteId(request)
@@ -80,7 +82,7 @@ export const previewPromotionStrategy = async (request: FastifyRequest, reply: F
   try {
     const { id } = request.params as { id: string };
     const body = request.body as any;
-    const result = await closeCycleService.previewStrategyAssignment(
+    const result = await previewStrategyAssignment(
       request.tenantPrisma,
       id,
       getRequestInstituteId(request),

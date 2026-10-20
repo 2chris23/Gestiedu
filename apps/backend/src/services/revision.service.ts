@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { gradesService, redondearComoElMPPE } from './grades.service';
-import { getAcademicConfig } from './promotion/close-cycle.service';
+import { getAcademicConfig } from './promotion/configuracion-academica';
 import { createError } from '../middleware/error.middleware';
 
 /**

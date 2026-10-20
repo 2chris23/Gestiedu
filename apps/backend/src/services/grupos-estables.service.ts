@@ -3,7 +3,7 @@ import { borrarGuardandoCopia } from '../utils/papelera';
 import { lapsoDeLaFecha } from '../utils/lapso-de-la-actividad';
 import { instituteTimezone, todayInTimezone } from '../utils/school-time';
 import { avisar } from './avisos.service';
-import { getAcademicConfig } from './promotion/close-cycle.service';
+import { getAcademicConfig } from './promotion/configuracion-academica';
 import { REGLAS_DE_GRUPOS_POR_DEFECTO, esReglasDeGrupos, type ReglasDeGrupos } from './reglas-de-grupos';
 
 /**

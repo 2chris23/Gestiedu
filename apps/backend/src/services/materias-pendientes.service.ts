@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { createError } from '../middleware/error.middleware';
 import { borrarGuardandoCopia } from '../utils/papelera';
-import { getAcademicConfig, type AcademicConfig } from './promotion/close-cycle.service';
+import { getAcademicConfig, type AcademicConfig } from './promotion/configuracion-academica';
 import { redondearComoElMPPE } from './grades.service';
 import type { ReglasDePendientes } from './promotion/reglas-del-fin-de-ano';
 import { asignarLasClases } from './promotion/clase-de-la-pendiente';

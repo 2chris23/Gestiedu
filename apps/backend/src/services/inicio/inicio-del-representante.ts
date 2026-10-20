@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { TutorDashboardDto } from '../../dto/dashboard-response.dto';
-import { getAcademicConfig, DEFAULT_ACADEMIC_CONFIG } from '../promotion/close-cycle.service';
+import { getAcademicConfig, DEFAULT_ACADEMIC_CONFIG } from '../promotion/configuracion-academica';
 import { instituteTimezone, todayInTimezone } from '../../utils/school-time';
 import { platformPrisma } from '../../config/database';
 import { boletaDelAlumno } from '../boleta.service';

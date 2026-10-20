@@ -18,7 +18,7 @@
  *   · la sección: su mínimo y su máximo frente a los de sus alumnos;
  *   · cada materia en su sección: el catálogo · la lista · la tarjeta de la sección;
  *   · el cuadro general del guía: el promedio y cada materia de cada alumno;
- *   · el resumen final del MPPE: la definitiva de cada materia.
+ *   · el resumen final del MPPE y el cierre del año: la definitiva de cada materia.
  *   · asistencia del ciclo: la ficha · la lista · el Inicio del alumno (ciclo).
  *
  * Qué NO mide: que la cifra de la boleta sea la correcta (eso lo dicen las
@@ -172,6 +172,25 @@ async function main() {
         anotar(`sección ${classroomId}`, 'mínimo de la sección', { boletas: Math.min(...con), resumenDeLaSeccion: st?.minAverage });
         anotar(`sección ${classroomId}`, 'máximo de la sección', { boletas: Math.max(...con), resumenDeLaSeccion: st?.maxAverage });
         anotar(`sección ${classroomId}`, 'promedio de la sección', { mediaDeLasBoletas: con.reduce((a, x) => a + x, 0) / con.length, resumenDeLaSeccion: st?.average });
+    }
+
+    // El cierre del año: la definitiva con la que se promueve, frente a la boleta.
+    const cierre = await server.inject({
+        method: 'POST',
+        url: `/api/academic-years/${anio.id}/close/prepare`,
+        headers: { authorization: `Bearer ${llave(admin)}`, 'x-institute-slug': SLUG },
+    });
+    const sugerencias = cierre.statusCode < 400 ? (cierre.json()?.suggestions ?? cierre.json()?.data?.suggestions ?? []) : [];
+    for (const ins of muestra) {
+        const sg = sugerencias.find((x: any) => x.studentId === ins.studentId);
+        if (!sg) continue;
+        const b = (await pedir(admin, `/students/${ins.studentId}/boleta`))?.data;
+        for (const m of b?.materias ?? []) {
+            if (m.cualitativa) continue;
+            const enCierre = sg.subjectGrades?.find((g: any) => g.subjectId === m.id);
+            if (enCierre?.conNotas === false) continue;
+            anotar(`${ins.student.firstName} ${ins.student.lastName} (cierre)`, `materia ${m.nombre}`, { boleta: m.revision ?? m.definitiva, cierreDelAno: enCierre?.average });
+        }
     }
 
     // ─── Lo de arriba: el año, el liceo y cada materia ───────────────────────

@@ -1,6 +1,6 @@
 import { createError } from '../middleware/error.middleware';
 import { borrarGuardandoCopia } from '../utils/papelera';
-import { getAcademicConfig } from './promotion/close-cycle.service';
+import { getAcademicConfig } from './promotion/configuracion-academica';
 import { avanceDe, type ReglasDeLaborSocial, type AvanceDeLaborSocial } from './promotion/reglas-del-fin-de-ano';
 
 export { avanceDe, type AvanceDeLaborSocial };

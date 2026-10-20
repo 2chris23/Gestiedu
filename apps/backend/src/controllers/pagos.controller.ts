@@ -70,7 +70,9 @@ export async function configuracionDelCiclo(prisma: any, cicloId: string, liceo?
     const delLiceo = liceo ?? (await leerConfiguracion(prisma));
     const fila = await prisma.ajustesDePagosDelCiclo.findUnique({ where: { academicYearId: cicloId } });
     return fila ? { ...configuracionDe(fila), enabled: delLiceo.enabled } : delLiceo;
-}/** Un ciclo cerrado se ve, no se toca: lo cobrado y lo anulado quedan como estaban. */
+}
+
+/** Un ciclo cerrado se ve, no se toca: lo cobrado y lo anulado quedan como estaban. */
 export const estaCerrado = (ciclo: any) => ciclo?.status === 'COMPLETED';
 export const CICLO_CERRADO = { error: 'Ese ciclo escolar ya está cerrado: sus pagos se pueden ver, no cambiar', code: 'CICLO_CERRADO' };
 

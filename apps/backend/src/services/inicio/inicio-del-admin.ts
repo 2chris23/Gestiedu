@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { UserRole } from '../../utils/prisma-enums';
 import { AdminDashboardDto } from '../../dto/dashboard-response.dto';
-import { getAcademicConfig } from '../promotion/close-cycle.service';
+import { getAcademicConfig } from '../promotion/configuracion-academica';
 import { cifrasOficialesDelAno, estaEnRiesgo, mediaOficial } from '../cifras-oficiales.service';
 
 /**

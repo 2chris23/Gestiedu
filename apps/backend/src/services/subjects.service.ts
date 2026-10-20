@@ -1,7 +1,7 @@
 import { createError } from '../middleware/error.middleware';
 import { CreateSubjectInput, UpdateSubjectInput } from '../utils/validators';
 import { promediosDeVariasSecciones } from './aggregation.service';
-import * as closeCycleService from './promotion/close-cycle.service';
+import { getAcademicConfig } from './promotion/configuracion-academica';
 import { findTeacherAssignmentConflicts, ScheduleConflictError } from './schedule-conflicts.service';
 import { borrarGuardandoCopia, QuienBorra } from '../utils/papelera';
 import { NotFoundError } from '../utils/errors';
@@ -146,7 +146,7 @@ export class SubjectsService {
         let minPassing = 10;
         if (instituteId) {
             try {
-                const config = await closeCycleService.getAcademicConfig(instituteId);
+                const config = await getAcademicConfig(instituteId);
                 minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
             } catch {
                 minPassing = 10;

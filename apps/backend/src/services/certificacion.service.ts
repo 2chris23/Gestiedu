@@ -1,6 +1,6 @@
 import { createError } from '../middleware/error.middleware';
 import { borrarGuardandoCopia } from '../utils/papelera';
-import { getAcademicConfig } from './promotion/close-cycle.service';
+import { getAcademicConfig } from './promotion/configuracion-academica';
 import { membreteDelLiceo } from './datos-del-plantel.service';
 import { platformPrisma } from '../config/database';
 import { limpiarDatosDeDocumentos } from './constancias.service';

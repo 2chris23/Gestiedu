@@ -9,12 +9,8 @@ import {
     cleanTestDatabase,
     createTestUserWithPassword,
 } from '../helpers';
-import {
-    getPromotionContext,
-    previewStrategyAssignment,
-    missingAssignmentIds,
-    confirmClose,
-} from '../../src/services/promotion/close-cycle.service';
+import { getPromotionContext, previewStrategyAssignment, missingAssignmentIds } from '../../src/services/promotion/estrategias-de-promocion';
+import { confirmClose } from '../../src/services/promotion/confirmar-el-cierre';
 
 function gId(): string {
     // Siempre la 'c' delante: ver la nota de `tests/helpers.ts`.

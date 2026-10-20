@@ -202,7 +202,9 @@ export async function cuentasDeLaNomina(prisma: any, ciclo: any, hoy: string, pe
         return { persona: p, acuerdo: fila, cuentas };
     });
     return { nomina, ajustes, filas };
-}export async function anular(request: FastifyRequest<{ Params: { id: string }; Body: { motivo?: string } }>, reply: FastifyReply, modelo: 'fondoDelLiceo' | 'gasto', entidad: string) {
+}
+
+export async function anular(request: FastifyRequest<{ Params: { id: string }; Body: { motivo?: string } }>, reply: FastifyReply, modelo: 'fondoDelLiceo' | 'gasto', entidad: string) {
     if (!(await moduloActivo(request, reply))) return reply;
     const motivo = limpio(request.body?.motivo, 200);
     if (!motivo || motivo.length < 3) return reply.status(400).send({ error: 'Indica el motivo de la anulación', code: 'MOTIVO_REQUERIDO' });

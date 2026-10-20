@@ -10,12 +10,9 @@ import {
     createTestUserWithPassword,
     createTestClassroom,
 } from '../helpers';
-import {
-    prepareClose,
-    confirmClose,
-    getAcademicConfig,
-    updateAcademicConfig,
-} from '../../src/services/promotion/close-cycle.service';
+import { prepareClose } from '../../src/services/promotion/close-cycle.service';
+import { confirmClose } from '../../src/services/promotion/confirmar-el-cierre';
+import { getAcademicConfig, updateAcademicConfig } from '../../src/services/promotion/configuracion-academica';
 import { getStrategy } from '../../src/services/promotion/strategies';
 
 function gId(): string {

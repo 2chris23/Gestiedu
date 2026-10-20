@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { boletaDelAlumno } from './boleta.service';
-import { getAcademicConfig } from './promotion/close-cycle.service';
+import { getAcademicConfig } from './promotion/configuracion-academica';
 import { instituteTimezone, todayInTimezone } from '../utils/school-time';
 import { DatosDelAlumno, TIPOS_QUE_NO_RESTAN, ordenarElCuadro, sabadoDeLaFoto } from './reglas-del-cuadro';
 import { logger } from '../utils/logger';

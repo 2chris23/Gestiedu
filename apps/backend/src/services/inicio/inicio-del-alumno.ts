@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { UserRole } from '../../utils/prisma-enums';
 import { StudentDashboardDto } from '../../dto/dashboard-response.dto';
-import { getAcademicConfig } from '../promotion/close-cycle.service';
+import { getAcademicConfig } from '../promotion/configuracion-academica';
 import { platformPrisma } from '../../config/database';
 import { comoFecha, ventanaDelLapsoYCiclo, porcentajeDeAsistencia, materiasDelAlumnoConPromedio } from './comun';
 import { cifrasOficialesDeLaSeccion, notaOficial } from '../cifras-oficiales.service';

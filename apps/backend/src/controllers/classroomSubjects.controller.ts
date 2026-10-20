@@ -2,7 +2,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { logger } from '../utils/logger';
 import { promediosDeLaSeccion } from '../services/aggregation.service';
-import { getAcademicConfig } from '../services/promotion/close-cycle.service';
+import { getAcademicConfig } from '../services/promotion/configuracion-academica';
 import { findTeacherAssignmentConflicts } from '../services/schedule-conflicts.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 import { horasDeLosBloques } from '../services/personal.service';

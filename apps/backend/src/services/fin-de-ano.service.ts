@@ -4,17 +4,8 @@ import { borrarGuardandoCopia } from '../utils/papelera';
 import { calendarioComoElMPPE } from '../utils/calendario-mppe';
 import { nombreDeLaSeccion, slugDeLaSeccion } from '../utils/nombre-de-la-seccion';
 import { bulkSubjectAveragesConDatos } from './bulk-averages.service';
-import {
-    prepareClose,
-    getAcademicConfig,
-    esCondicion,
-    gradoDeDestino,
-    anoSiguiente,
-    profesorParaLaPendiente,
-    SuggestionStatus,
-    StudentSuggestion,
-    egresoDe,
-} from './promotion/close-cycle.service';
+import { prepareClose, esCondicion, gradoDeDestino, anoSiguiente, profesorParaLaPendiente, SuggestionStatus, StudentSuggestion, egresoDe } from './promotion/close-cycle.service';
+import { getAcademicConfig } from './promotion/configuracion-academica';
 import { avanceDe } from './promotion/reglas-del-fin-de-ano';
 import { asignarLasClases } from './promotion/clase-de-la-pendiente';
 

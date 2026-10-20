@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { platformPrisma } from '../config/database';
-import { getAcademicConfig } from './promotion/close-cycle.service';
+import { getAcademicConfig } from './promotion/configuracion-academica';
 import { AppErrors } from '../middleware/error.middleware';
 import { apreciacionesDelAlumno, MOMENTO_FINAL } from './apreciaciones.service';
 import { cifrasOficialesDeLaSeccion } from './cifras-oficiales.service';

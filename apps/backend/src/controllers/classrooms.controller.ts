@@ -2,7 +2,7 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { cifrasOficialesDeLaSeccion, estaEnRiesgo, promedioOficial } from '../services/cifras-oficiales.service';
 import { z } from 'zod';
 import { generateSlug } from '../utils/slug';
-import * as closeCycleService from '../services/promotion/close-cycle.service';
+import { getAcademicConfig } from '../services/promotion/configuracion-academica';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 import { canSeeClassroom } from '../services/authorization.service';
 import { materiasDeSuAno } from '../services/secciones-de-la-materia.service';
@@ -1066,7 +1066,7 @@ export const getClassroomStats = async (request: FastifyRequest, reply: FastifyR
       try {
         const instId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
         if (instId) {
-          const config = await closeCycleService.getAcademicConfig(instId);
+          const config = await getAcademicConfig(instId);
           minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
         }
       } catch {
