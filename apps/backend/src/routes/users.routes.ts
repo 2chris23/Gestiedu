@@ -1,16 +1,9 @@
 import { FastifyPluginAsync } from 'fastify';
-import {
-  getUsers,
-  getUser,
-  createUser,
-  updateUser,
-  deleteUser,
-  archiveUser,
-  unarchiveUser,
-  getUserProfile,
-  updateUserProfile,
-  cambiarCedula
-} from '../controllers/users.controller';
+import { getUsers, getUser } from '../controllers/usuarios/ver-usuarios.controller';
+import { createUser } from '../controllers/usuarios/crear-usuario.controller';
+import { updateUser, cambiarCedula } from '../controllers/usuarios/editar-usuario.controller';
+import { deleteUser, archiveUser, unarchiveUser } from '../controllers/usuarios/archivar-y-borrar.controller';
+import { getUserProfile, updateUserProfile } from '../controllers/usuarios/perfil.controller';
 import { listStudentTutors, assignStudentTutor, removeStudentTutor } from '../controllers/student-tutors.controller';
 import { getUserPhoto, putUserPhoto, deleteUserPhoto } from '../controllers/foto-de-perfil.controller';
 import { authenticate, requireAdmin, requireSelfOrAdmin } from '../middleware/auth.middleware';
