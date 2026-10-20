@@ -102,7 +102,7 @@ el liceo en `academicConfig.apreciaciones`).
 | Dónde | Regla | Función / Archivo |
 | :--- | :--- | :--- |
 | **Nivel 2** (promedio del alumno en la materia) | Una materia cualitativa sale **«sin notas»** (`conNotas: false`), tenga o no notas de antes. Como todo lo de encima (niveles 3-6, riesgo, cierre, boleta, resumen) ya deja fuera lo que no tiene notas, **el filtro está en un solo sitio**. | `gradesService.promedioDelLapso`, `bulkSubjectAveragesConDatos`, `aggregation.studentsWithNoteInSubject` → `apreciaciones.service.esCualitativa` |
-| Consultas que promedian notas de varias materias a la vez (`grade.groupBy`, `grade.aggregate`) | Solo notas de materias `NUMERICA`: `...NOTAS_QUE_CUENTAN` en el `where`. | `cycle-statistics.service`, `dashboard.service`, `students.service`, `reports.service`, `academic-years.controller`, `classrooms.controller`, `users.controller` |
+| Consultas que promedian notas de varias materias a la vez (`grade.groupBy`, `grade.aggregate`) | Solo notas de materias `NUMERICA`: `...NOTAS_QUE_CUENTAN` en el `where`. | `cycle-statistics.service`, `dashboard.service`, `students.service`, `reports.service`, `academic-years.controller`, `classrooms.controller`, `usuarios/ver-usuarios.controller` |
 | Cierre del ciclo | La materia cualitativa no es reprobada ni pendiente y no entra en `finalAverage`; el expediente la guarda como `{ cualitativa: true, apreciacion }` (la **final**). | `prepareClose` (`close-cycle.service.ts`) |
 | Boleta y resumen final | Sale su apreciación (por lapso y final en la boleta; la final en el resumen), aparte y sin contar en los promedios ni en aprobados/reprobados. | `boleta.service.ts`, `resumen-final.service.ts` |
 

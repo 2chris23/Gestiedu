@@ -31,7 +31,7 @@ Recuperar un alumno desde una copia en Drive obligaría a volver el liceo entero
 - Todo borrado pasa por `borrarGuardandoCopia()`: la fila entera y lo que arrastra en cascada van a `registros_borrados`.
 - La tarea diaria tira esa papelera a los **90 días** (`PAPELERA_DIAS`).
 - **No hay ninguna pantalla para restaurar.** La copia existe, pero solo un programador la puede devolver.
-- **Borrar un alumno** borra, con copia, sus notas, su asistencia, sus inscripciones, sus representantes, sus observaciones y su expediente (`users.controller.ts`).
+- **Borrar un alumno** borra, con copia, sus notas, su asistencia, sus inscripciones, sus representantes, sus observaciones y su expediente (`controllers/usuarios/archivar-y-borrar.controller.ts`).
 
 **Los respaldos:**
 
