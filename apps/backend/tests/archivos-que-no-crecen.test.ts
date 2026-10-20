@@ -8,26 +8,17 @@ import * as path from 'path';
  * cosas, se lee mal y cada cambio arriesga lo de al lado. La meta es ~800
  * líneas por archivo, partido por responsabilidad (no por número).
  *
- * TAMAÑO-01: un archivo nuevo, o uno que hoy no pasa de 800, no pasa de 1.000.
+ * TAMAÑO-01: ninguno pasa de 800 (desde el 20-oct-2026, cuando el último bajó de ahí).
  * TAMAÑO-02: los que ya pasan de 800 están en esta lista con su tope de hoy;
  *            pueden bajar (y entonces se baja el tope), nunca subir.
  *
  * Solo el código de la app: no las pruebas, los guiones de medir ni las semillas.
  */
 const RAIZ = path.resolve(__dirname, '../../..');
-const GRANDES: Record<string, number> = {
-    'apps/web/src/app/(dashboard)/dashboard/clase-en-vivo/[classroomId]/[subjectId]/page.tsx': 1457,
-    'apps/web/src/components/evaluation/EvaluationPlanSection.tsx': 1408,
-    'apps/web/src/app/(dashboard)/dashboard/academico/[cycleId]/promocion/page.tsx': 1205,
-    'apps/web/src/components/landing/escaparate/Pantallas.tsx': 986,
-    'apps/web/src/components/finanzas/NuevoMovimiento.tsx': 969,
-    'apps/web/src/components/schedule/StudentScheduleSection.tsx': 946,
-    'apps/web/src/lib/precarga.ts': 941,
-    'apps/web/src/components/schedule/TeacherScheduleEditor.tsx': 916,
-    'apps/web/src/app/(dashboard)/dashboard/academico/[cycleId]/[sectionId]/page.tsx': 910,
-    'apps/web/src/app/(dashboard)/dashboard/usuarios/[cedula]/page.tsx': 851,
-};
-const TOPE_NUEVO = 1000;
+// Vacía desde el 20-oct-2026: ya no queda ningún archivo de más de 800 líneas.
+// Uno que pase de ahí entra aquí con su tope y una razón, nunca para crecer.
+const GRANDES: Record<string, number> = {};
+const TOPE_NUEVO = 800;
 
 function archivos(dir: string): string[] {
     if (!fs.existsSync(dir)) return [];

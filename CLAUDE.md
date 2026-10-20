@@ -83,10 +83,13 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
    parte por responsabilidad, no por número); lo obsoleto se borra con
    evidencia de que nadie lo usa; las pruebas que vigilan algo que hoy
    funciona se quedan siempre (son las que avisan si se rompe otra vez).
-   `TAMAÑO-01/02` vigila los archivos (los grandes no crecen; uno nuevo no
-   pasa de 1.000) y `scripts/barrido-de-cifras.ts --exigir`, las cifras.
+   `TAMAÑO-01` vigila que **ninguno pase de 800** (desde el 20-oct-2026 no
+   queda ninguno) y `scripts/barrido-de-cifras.ts --exigir`, las cifras.
+   Una pantalla grande se parte en un gancho (lo que sabe y hace) y partes
+   que reciben `c`, lo que devuelve; un controlador, por tema en su carpeta.
    **Una ruta sin pantalla que la use no se añade**: se quitaron 50 el
-   19-oct-2026 (`docs/ARQUITECTURA.md`).
+   19-oct-2026 y las de notas, asistencia y actividades viejas el 20
+   (`docs/ARQUITECTURA.md`).
 0-quater. **En silencio hasta terminar** (Cristian, 19-oct-2026): mientras se
    trabaja, ningún mensaje en el chat; solo el informe final, en español.
 1. **Evidencia antes de corregir.** Nada es un fallo ni "ya funciona" sin código, diff o
@@ -101,7 +104,7 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
 ```bash
 cd apps/backend && npm run dev      # API en :3001
 cd apps/web && npm run dev          # web en :3000
-cd apps/backend && npx jest         # 1284 pruebas en 170 archivos (integración + cálculo)
+cd apps/backend && npx jest         # 1332 pruebas en 192 archivos (integración + cálculo)
 npm run test:e2e                    # 316 pruebas de navegador (Playwright), con los dos servidores arriba
 cd apps/backend && npm run typecheck
 cd apps/backend && npm run migrate:plataforma        # la base de la plataforma

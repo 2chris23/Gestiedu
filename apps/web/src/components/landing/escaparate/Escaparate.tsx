@@ -6,7 +6,8 @@ import { Pause, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dedo } from './Dedo';
 import { MEDIDAS, Portatil, Tableta, Telefono } from './Marcos';
-import { PortCifras, PortHorario, TabNotas, TabQr, TelAsistencia, TelEscaner, TelHorario, TelInicio } from './Pantallas';
+import { PortCifras, PortHorario, TabNotas, TabQr } from './Pantallas';
+import { TelAsistencia, TelEscaner, TelHorario, TelInicio } from './PantallasDelTelefono';
 import { ESCENAS, INICIO_DE, PASO_MS, PASOS_DEL_CICLO, PASO_QUIETO, type Aparato, type IdDeEscena, momentoDe } from './guion';
 import { useALaVista, useMenosMovimiento, usePestanaVisible, useReloj } from './useReloj';
 

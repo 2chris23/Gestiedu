@@ -15,7 +15,7 @@ import * as path from 'path';
  * o se usa la hora del liceo, o se añade aquí diciendo por qué no hace falta.
  */
 const PERMITIDOS: Record<string, string> = {
-    'app/(dashboard)/dashboard/clase-en-vivo/[classroomId]/[subjectId]/page.tsx': '«Guardado 07:45»: la hora a la que este teléfono guardó',
+    'components/live-class/useClaseEnVivo.tsx': '«Guardado 07:45»: la hora a la que este teléfono guardó',
     'components/live-class/CalificarConInstrumento.tsx': '«Guardado a las…»: la hora a la que este teléfono guardó',
     'components/academic/AcademicYearModal.tsx': 'el año que se propone para un ciclo nuevo (se puede cambiar)',
     'components/common/CambiosSinEnviar.tsx': '«hoy/ayer» de lo hecho en ESTE teléfono, con su propio reloj',

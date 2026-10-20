@@ -77,13 +77,15 @@ Se buscó con evidencia, no a ojo: en cada caso, ninguna importación, ninguna p
 - **Se reescribieron para mirar las pantallas de verdad:** las reglas de riesgo, nota mínima, asistencia, alumno retirado y notas en cero vivían en `/api/statistics`, y ahora se comprueban sobre el resumen de la sección, el del año y la materia.
 - **Se quitaron con su ruta:** las que solo probaban que una ruta quitada respondía.
 
-## Lo que queda por ordenar (en este orden)
+## Lo que se ordenó el 20-oct-2026
 
-1. **Archivos de más de 800 líneas.** Ya no crecen: lo vigila `TAMAÑO-01/02` (`apps/backend/tests/archivos-que-no-crecen.test.ts`), y la lista solo puede bajar.
-   - `grades.service.ts` ya se partió: las notas en un archivo y los promedios en `promedios-del-alumno.ts`.
-   - Los siguientes son los controladores grandes (`scheduleBlocks`, `classSessions`, `users`, `pagos`, `finanzas`): llevan dentro lógica que va a servicios por tema.
-   - En la web, la clase en vivo, `EvaluationPlanSection` y la promoción.
-2. **Las rutas viejas que todavía usan las pruebas como atajo:**
-   - **Cuáles:** `POST /api/attendance` y `/api/grades`, `/api/activities` (CRUD). Ninguna pantalla las llama: la clase en vivo escribe por `/sessions/*`.
-   - **Qué falta:** pasar esas pruebas a las rutas de la pantalla (`live-save`, las actividades de la sesión) y luego quitar las rutas. Son unas 17 pruebas.
-3. **Módulos por tema en el servidor.** La meta es `modules/<tema>/` con su ruta, controlador y servicio. Se hará tema por tema, con `git mv` y las pruebas en verde en cada paso, después del punto 1: mover archivos de 1.700 líneas solo cambia el problema de sitio.
+**Ningún archivo de código pasa ya de 800 líneas** (había 26; el mayor, 2.186). `TAMAÑO-01` lo exige ahora a todos: la lista de excepciones quedó vacía.
+
+- **El servidor:** los controladores grandes se partieron por tema en carpetas: `controllers/horario/`, `clase-en-vivo/`, `usuarios/`, `pagos/`, `finanzas/`, `ano-escolar/`, `secciones/`, `plan/`, `alumnos/`, `observaciones/`, `superadmin/`. Los servicios: `services/inicio/` (el Inicio de cada rol), `services/promotion/` (configuración académica, confirmar el cierre, estrategias) y `services/pendientes/`.
+- **Las pantallas grandes** siguen una misma forma: un gancho con lo que la pantalla sabe y hace (`useClaseEnVivo`, `usePromocion`, `useLaSeccion`, `useFichaDelUsuario`, `useHorarioDelAlumno`, `usePlanDeEvaluacion`) y sus partes como componentes que reciben `c` (lo que devuelve el gancho), con sus tipos.
+- **Fuera las rutas viejas** `/api/grades`, `/api/attendance` y `/api/activities` (sin pantalla). Las pruebas que las usaban de atajo pasan por la clase en vivo. Al pasarlas salieron dos fallos de verdad (nota a un alumno de otra sección; estado de asistencia inventado → 500) y, al revisar las cuentas, otros tres (el cuadro general del guía, las tarjetas de la sección y la ficha del profesor daban otra cifra que la boleta; borrar un año con notas de la clase en vivo).
+
+## Lo que queda por ordenar
+
+1. **Módulos por tema en el servidor** (`modules/<tema>/` con ruta, controlador y servicio juntos). Las carpetas por tema de hoy son el primer paso; mover las rutas y los servicios a su lado es lo siguiente, tema por tema y con las pruebas en verde en cada paso.
+2. **La tabla vieja `grades`** solo la escriben las semillas (ninguna pantalla); las notas de verdad viven en la clase en vivo (`class_activities.scores`). Las cuentas leen las dos. Decidir si se migra y se quita.

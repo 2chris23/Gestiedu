@@ -182,52 +182,37 @@ test.describe('Tiempo real', () => {
         // Todo de una vez: sección + materia + profesor + actividad + un alumno que
         // TODAVÍA no tenga nota en esa actividad. Buscarlo por partes falla cuando
         // la actividad que sale primero ya está calificada entera.
-        const [clase] = await queryTenantDb<{
-            classroom_id: string;
-            subject_id: string;
-            teacher_email: string;
-            activity_id: string;
-            period_id: string;
-            max_grade: string;
-            student_id: string;
-            student_email: string;
-        }>(`
+        // Una clase con profesor y un alumno; la actividad, nueva (se borra al final).
+        // La nota se pone como en la pantalla: en la clase en vivo.
+        const [clase] = await queryTenantDb<{ classroom_id: string; subject_id: string; teacher_email: string; student_id: string; student_email: string }>(`
             SELECT cl.id AS classroom_id, s.id AS subject_id, u.email AS teacher_email,
-                   a.id AS activity_id, a."periodId" AS period_id, a."maxGrade" AS max_grade,
                    al.id AS student_id, al.email AS student_email
             FROM classrooms cl
+            JOIN academic_years ay ON ay.id = cl."academicYearId" AND ay.status = 'ACTIVE'
             JOIN classroom_subjects cs ON cs."classroomId" = cl.id
-            JOIN subjects s ON s.id = cs."subjectId"
+            JOIN subjects s ON s.id = cs."subjectId" AND s.evaluacion <> 'CUALITATIVA'
             JOIN users u ON u.id = cs."teacherId"
-            JOIN activities a ON a."classroomId" = cl.id AND a."subjectId" = s.id
             JOIN student_classrooms sc ON sc."classroomId" = cl.id AND sc."isActive" = true
             JOIN users al ON al.id = sc."studentId"
-            WHERE a.id LIKE 'c%'
-              AND a."periodId" IS NOT NULL
-              AND NOT EXISTS (
-                    SELECT 1 FROM grades g
-                     WHERE g."studentId" = al.id AND g."activityId" = a.id
-              )
             LIMIT 1`);
-        expect(clase, 'hace falta una actividad con algún alumno sin calificar').toBeTruthy();
+        expect(clase, 'hace falta una clase con profesor y algún alumno').toBeTruthy();
+        const actividadId = `ctr04${Date.now().toString(36)}`;
+        await queryTenantDb(
+            `INSERT INTO class_activities (id, title, type, target, "maxScore", scores, "classroomId", "subjectId", "createdAt", "updatedAt")
+             VALUES ($1, 'TR-04 nota en tiempo real', 'TAREA', 'CURRENT', 20, '{}'::jsonb, $2, $3, now(), now())`,
+            [actividadId, clase.classroom_id, clase.subject_id]
+        );
 
         const alumno = { id: clase.student_id, email: clase.student_email };
         const contexto = await browser.newContext();
         const page = await contexto.newPage();
-        let notaId: string | null = null;
 
         try {
-            // El estudiante, con SU pantalla de notas abierta
+            // El estudiante, con SU pantalla abierta
             const sesionAlumno = await loginApi(alumno.email, '123456');
             await injectSessionCookies(page, sesionAlumno);
             await page.goto(`${WEB_BASE}/dashboard`);
             await page.locator('main').first().waitFor({ state: 'visible', timeout: 30000 });
-
-            // Sus notas (antes por `/students/my-grades`, que ninguna pantalla
-            // usaba y se quitó el 19-oct-2026): las de la base.
-            const contarNotas = async () =>
-                Number((await queryTenantDb<{ n: string }>(`SELECT count(*)::text AS n FROM grades WHERE "studentId" = $1`, [alumno.id]))[0].n);
-            const antes = await contarNotas();
 
             // Cuántas peticiones lleva hechas la pantalla del estudiante
             const llamadasHechas = () =>
@@ -240,23 +225,11 @@ test.describe('Tiempo real', () => {
 
             // El PROFESOR pone la nota, desde otro sitio
             const profe = await loginApi(clase.teacher_email, '123456');
-            const nota = await axios.post(
-                `${API_BASE}/grades`,
-                {
-                    score: Math.min(Number(clase.max_grade) || 20, 18),
-                    studentId: alumno.id,
-                    activityId: clase.activity_id,
-                    periodId: clase.period_id,
-                    subjectId: clase.subject_id,
-                },
-                {
-                    headers: {
-                        Authorization: `Bearer ${profe.accessToken}`,
-                        'X-Institute-Slug': TENANT_SLUG,
-                    },
-                }
+            await axios.post(
+                `${API_BASE}/sessions/activities/${actividadId}/grades`,
+                { scores: { [alumno.id]: 18 }, maxScore: 20 },
+                { headers: { Authorization: `Bearer ${profe.accessToken}`, 'X-Institute-Slug': TENANT_SLUG } }
             );
-            notaId = nota.data?.grade?.id ?? nota.data?.data?.id ?? nota.data?.id ?? null;
 
             // La pantalla del estudiante vuelve a pedir sus datos SOLA
             await expect
@@ -264,22 +237,13 @@ test.describe('Tiempo real', () => {
                 .toBeGreaterThan(llamadasAntes);
 
             // Y la nota nueva está en lo suyo
-            expect(await contarNotas()).toBeGreaterThan(antes);
+            const [guardada] = await queryTenantDb<{ nota: string }>(`SELECT scores ->> $2 AS nota FROM class_activities WHERE id = $1`, [actividadId, alumno.id]);
+            expect(Number(guardada.nota)).toBe(18);
         } catch (error) {
             await captureEvidence(testInfo, page, 'TR-04', 'El estudiante ve la nota sin recargar', error);
             throw error;
         } finally {
-            if (notaId) {
-                const admin = await loginApi('admin@testing.edu.ve', '123456');
-                await axios
-                    .delete(`${API_BASE}/grades/${notaId}`, {
-                        headers: {
-                            Authorization: `Bearer ${admin.accessToken}`,
-                            'X-Institute-Slug': TENANT_SLUG,
-                        },
-                    })
-                    .catch(() => undefined);
-            }
+            await queryTenantDb(`DELETE FROM class_activities WHERE id = $1`, [actividadId]).catch(() => undefined);
             await contexto.close();
         }
     });

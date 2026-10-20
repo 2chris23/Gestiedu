@@ -449,80 +449,42 @@ test.describe('Ciclos de Vida, Recreación de Entidades y Estados de Usuario', (
     const { classroomId, periodId, subjectId, studentId, teacherId } = contextRes[0];
     const activityTitle = `Tarea Ensayo REC-${Date.now()}`;
 
-    let activityId = null;
+    let activityId: string | null = null;
+    // Las actividades se crean, se califican y se borran en la clase en vivo
+    // (las rutas viejas `/api/activities` se quitaron el 20-oct-2026).
+    const cab = { headers: { 'Authorization': `Bearer ${adminToken}`, 'X-Institute-Slug': TENANT_SLUG } };
+    const crear = () => axios.post(
+      `${API_BASE}/sessions/activities`,
+      { title: activityTitle, description: 'Descripción completa para la tarea de recreación', type: 'TAREA', target: 'CURRENT', maxScore: 20, subjectId, classroomId },
+      cab
+    );
+    const idDe = (r: any) => r.data.activity?.id || r.data.data?.id || r.data.id;
     try {
       // 1. Crear actividad
-      const createRes = await axios.post(
-        `${API_BASE}/activities`,
-        {
-          title: activityTitle,
-          description: 'Descripción completa para la tarea de recreación',
-          type: 'TAREA',
-          scope: 'CLASSROOM',
-          startDate: new Date().toISOString(),
-          dueDate: new Date(Date.now() + 86400000 * 7).toISOString(),
-          maxScore: 20,
-          subjectId,
-          classroomId,
-          periodId,
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${adminToken}`,
-            'X-Institute-Slug': TENANT_SLUG,
-          },
-        }
-      );
+      const createRes = await crear();
       expect(createRes.status).toBe(201);
-      activityId = createRes.data.activity?.id || createRes.data.data?.id || createRes.data.id;
+      activityId = idDe(createRes);
 
-      // 2. Insertar nota asociada para verificar que no bloquea la eliminación
-      await queryTenantDb(
-        `INSERT INTO grades (id, score, "studentId", "activityId", "periodId", "subjectId", "teacherId", "createdAt", "updatedAt")
-         VALUES ($1, 16.0, $2, $3, $4, $5, $6, NOW(), NOW())`,
-        [`gr_act_${Date.now()}`, studentId, activityId, periodId, subjectId, teacherId]
-      );
+      // 2. Calificarla, para ver que la nota no bloquea el borrado
+      const nota = await axios.post(`${API_BASE}/sessions/activities/${activityId}/grades`, { scores: { [studentId]: 16 }, maxScore: 20 }, cab);
+      expect(nota.status).toBe(200);
 
-      // 3. Eliminar actividad
-      const deleteRes = await axios.delete(`${API_BASE}/activities/${activityId}`, {
-        headers: {
-          'Authorization': `Bearer ${adminToken}`,
-          'X-Institute-Slug': TENANT_SLUG,
-        },
-      });
+      // 3. Eliminar actividad (con notas: se dice que sí)
+      const deleteRes = await axios.delete(`${API_BASE}/sessions/activities/${activityId}?decision=borrar`, cab);
       expect([200, 204]).toContain(deleteRes.status);
+      const queda = await queryTenantDb(`SELECT id FROM class_activities WHERE id = $1`, [activityId]);
+      expect(queda.length).toBe(0);
 
       // 4. Recrear actividad exactamente igual
-      const recreateRes = await axios.post(
-        `${API_BASE}/activities`,
-        {
-          title: activityTitle,
-          description: 'Descripción completa para la tarea de recreación',
-          type: 'TAREA',
-          scope: 'CLASSROOM',
-          startDate: new Date().toISOString(),
-          dueDate: new Date(Date.now() + 86400000 * 7).toISOString(),
-          maxScore: 20,
-          subjectId,
-          classroomId,
-          periodId,
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${adminToken}`,
-            'X-Institute-Slug': TENANT_SLUG,
-          },
-        }
-      );
+      const recreateRes = await crear();
       expect(recreateRes.status).toBe(201);
-      activityId = recreateRes.data.activity?.id || recreateRes.data.data?.id || recreateRes.data.id;
+      activityId = idDe(recreateRes);
     } catch (error) {
       await captureEvidence(testInfo, null, 'REC-05', 'Actividad recreación', error);
       throw error;
     } finally {
       if (activityId) {
-        await queryTenantDb(`DELETE FROM grades WHERE "activityId" = $1`, [activityId]);
-        await queryTenantDb(`DELETE FROM activities WHERE id = $1`, [activityId]);
+        await queryTenantDb(`DELETE FROM class_activities WHERE id = $1`, [activityId]);
       }
     }
   });
