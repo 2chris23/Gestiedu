@@ -32,6 +32,12 @@ Ahora todo sale de `services/cifras-oficiales.service.ts`, la cuenta de la bolet
 
 **Lo que se quitó (19-oct-2026):** `cycle-statistics.service`, `reports.service`, `/api/statistics/*`, `/api/reports/*` y los servicios viejos de asistencia, actividades y horario no los usaba ninguna pantalla y se borraron. Las filas de abajo que todavía los citan cuentan la historia de una regla; dónde se calcula hoy lo dice esta tabla.
 
+**Lo que se sumó el 20-oct-2026:**
+- **el cuadro general del guía** (`cuadro-general.service.ts`) hacía su propia cuenta —sin el redondeo por lapso, a una décima y el promedio como media de sus materias—: con los mismos 62 alumnos daba **2.641 diferencias** con la boleta (Biología 15,8 donde la boleta dice 16). Ahora usa `cifrasOficialesDeLaSeccion`;
+- **las tarjetas de la pestaña Materias de la sección** (`?stats=true`) calculaban materia por materia y, para el riesgo, alumno por alumno con la cuenta vieja: ahora una carga para todas, el riesgo es una nota oficial de esa materia por debajo de la mínima y la asistencia es la del resumen de la sección;
+- **la ficha del profesor** daba por materia la media cruda de la tabla vieja de notas (sin las de la clase en vivo): ahora el promedio de cada clase es el de Profesores;
+- el barrido compara también el cuadro general, el resumen final del MPPE y las tarjetas de la sección.
+
 **Consecuencia del redondeo:** un 9,5 del lapso sale **10, aprobado**, en todas partes, también en el riesgo, como en la boleta. Las materias con apreciación siguen fuera.
 
 Lo vigilan:

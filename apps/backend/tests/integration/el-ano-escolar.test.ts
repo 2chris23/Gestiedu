@@ -13,6 +13,8 @@ import { createTestServer, createTestPrismaClient, createTestUser, createTestUse
  *
  *   ANO-01 activar uno deja al anterior como completado (uno solo activo); solo el admin
  *   ANO-02 borrar pide la contraseña; con notas, 409 y se archiva; sin notas, se va con copia
+ *   ANO-03 las notas de la clase en vivo y la asistencia también son «actividad»: 409
+ *          (solo miraba la tabla vieja de notas, y las de verdad viven en la clase)
  */
 
 const SLUG = 'test-institute';
@@ -88,5 +90,30 @@ describe('El año escolar: activar y borrar', () => {
         expect(await prisma.academicYear.findUnique({ where: { id: vacio.id } })).toBeNull();
         expect(await prisma.registroBorrado.count({ where: { tabla: 'academicYear', registroId: vacio.id } })).toBe(1);
         expect(await prisma.registroBorrado.count({ where: { tabla: 'studentClassroom' } })).toBeGreaterThanOrEqual(1);
+    }, 60000);
+
+    it('ANO-03: con notas de la clase en vivo o con asistencia tampoco se borra', async () => {
+        const borrar = (id: string) => api(tk.admin)(request(server.server).delete(`/api/academic-years/${id}`)).send({ password: CLAVE });
+        const alumno = (await createTestUser(prisma, UserRole.STUDENT)).user;
+        const materia = await createTestSubject(prisma, 'institute');
+
+        const conClase = await nuevoAno(`ConClase-${gId().slice(0, 5)}`);
+        const s1 = await createTestClassroom(prisma, conClase.id, 'institute');
+        await prisma.classActivity.create({ data: { classroomId: s1.id, subjectId: materia.id, title: 'Quiz', target: 'CURRENT', scores: { [alumno.id]: 17 } } });
+        const r1 = await borrar(conClase.id);
+        expect([r1.status, r1.body.code]).toEqual([409, 'HAS_ACADEMIC_ACTIVITY_MUST_ARCHIVE']);
+        expect(await prisma.academicYear.findUnique({ where: { id: conClase.id } })).toBeTruthy();
+
+        const conLista = await nuevoAno(`ConLista-${gId().slice(0, 5)}`);
+        const s2 = await createTestClassroom(prisma, conLista.id, 'institute');
+        await prisma.dailyAttendance.create({ data: { date: new Date('2027-10-01'), status: 'PRESENT', studentId: alumno.id, classroomId: s2.id, teacherId: profe.id } as any });
+        const r2 = await borrar(conLista.id);
+        expect([r2.status, r2.body.code]).toEqual([409, 'HAS_ACADEMIC_ACTIVITY_MUST_ARCHIVE']);
+
+        // Una actividad sin ninguna nota no es actividad académica: se borra.
+        const soloTarea = await nuevoAno(`SoloTarea-${gId().slice(0, 5)}`);
+        const s3 = await createTestClassroom(prisma, soloTarea.id, 'institute');
+        await prisma.classActivity.create({ data: { classroomId: s3.id, subjectId: materia.id, title: 'Sin notas', target: 'CURRENT', scores: {} } });
+        expect((await borrar(soloTarea.id)).status).toBe(204);
     }, 60000);
 });

@@ -180,8 +180,8 @@ describe('La memoria rápida no mezcla liceos', () => {
         tokenA = generateTestToken(admin.id, UserRole.ADMIN, ID_A);
         tokenB = generateTestToken(adminDeB.id, UserRole.ADMIN, ID_B);
 
-        // Una sección con una materia en cada liceo: al pedir el resumen de sus
-        // materias, el promedio pregunta cuáles son con apreciación.
+        // Una sección con una materia en cada liceo: al pedir su cuadro general,
+        // la cuenta pregunta cuáles materias son con apreciación.
         const unaSeccion = async (db: PrismaClient, liceo: string) => {
             const ano = await createTestAcademicYear(db, liceo);
             const seccion = await createTestClassroom(db, ano.id, liceo);
@@ -214,9 +214,9 @@ describe('La memoria rápida no mezcla liceos', () => {
 
     it('MEZCLA-01: lo que un liceo deja guardado NO se le sirve al siguiente', async () => {
         const resumen = (token: string, slug: string, seccion: string) =>
-            request(server.server).get(`/api/classrooms/${seccion}/subjects`).query({ stats: 'true' }).set(auth(token, slug));
+            request(server.server).get(`/api/classrooms/${seccion}/cuadro-general`).set(auth(token, slug));
 
-        // 1. El liceo A pide el resumen de sus materias. Queda guardada la
+        // 1. El liceo A pide el cuadro general de una sección. Queda guardada la
         //    lista de sus materias con apreciación.
         expect((await resumen(tokenA, SLUG_A, seccionA)).status).toBe(200);
 
@@ -415,7 +415,7 @@ describe('La memoria rápida no mezcla liceos', () => {
         // primer intento: el liceo se apuntaba al empezar la petición y **no
         // llegaba** al servicio, que guardaba en el apartado «sin liceo».
         // `materiasCualitativas` no dice el liceo: lo pone el ambiente.
-        await request(server.server).get(`/api/classrooms/${seccionA}/subjects`).query({ stats: 'true' }).set(auth(tokenA, SLUG_A));
+        await request(server.server).get(`/api/classrooms/${seccionA}/cuadro-general`).set(auth(tokenA, SLUG_A));
 
         const claves: string[] = Array.from((RedisCache as never as { memoryStore: Map<string, unknown> }).memoryStore.keys());
         const laComun = claves.find((k) => k.endsWith(CLAVE_COMUN));

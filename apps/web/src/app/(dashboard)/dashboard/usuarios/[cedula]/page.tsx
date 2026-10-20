@@ -171,7 +171,7 @@ export default function UserProfilePage({ params }: PageProps) {
                 // Sin inventar: sin horas, las de sus bloques (45 min); sin bloques, 0 («sin horas»).
                 weeklyBlocks: st.weeklyBlocks || 0,
                 hoursPerWeek: st.hoursPerWeek || ((st.weeklyBlocks || 0) * 45) / 60,
-                average: typeof teacherAverages[st.subject?.id] === 'number' ? teacherAverages[st.subject?.id] : undefined,
+                average: typeof teacherAverages[`${st.classroom?.id}|${st.subject?.id}`] === 'number' ? teacherAverages[`${st.classroom?.id}|${st.subject?.id}`] : undefined,
             })) || [];
 
         const academicYearsMap = new Map<string, string>();

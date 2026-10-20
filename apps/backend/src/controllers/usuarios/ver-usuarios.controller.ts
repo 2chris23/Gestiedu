@@ -1,11 +1,11 @@
 /// <reference path="../../types/fastify.d.ts" />
 import { getInstituteId } from './comun';
+import { elProfesor } from '../../services/profesores.service';
 import { UserRole } from '../../utils/prisma-enums';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { UserFiltersInput, PaginationInput } from '../../utils/validators';
 import { logger } from '../../utils/logger';
 import { RequestUser } from '../../types/fastify';
-import { NOTAS_QUE_CUENTAN } from '../../services/apreciaciones.service';
 import { cargaDeLosProfesores, estadoDeLaCarga, horasDeCargoDe, reglasDeCargaHoraria } from '../../services/personal.service';
 
 interface GetUserRequest {
@@ -471,18 +471,14 @@ export async function getUser(
     let totalWeeklyHours = 0;
 
     if (user.role === 'TEACHER') {
-      const gradesAgg = await request.tenantPrisma.grade.groupBy({
-        by: ['subjectId'],
-        where: {
-          teacherId: user.id,
-          score: { not: null },
-          ...NOTAS_QUE_CUENTAN,
-        },
-        _avg: { score: true }
-      });
-      gradesAgg.forEach((g: any) => {
-        teacherAverages[g.subjectId] = g._avg.score ? Math.round(g._avg.score * 10) / 10 : 0;
-      });
+      // El promedio de cada clase, el MISMO de Profesores (la cifra oficial
+      // de sus alumnos, `profesores.service`). Antes era la media cruda de la
+      // tabla vieja de notas, por materia y mezclando secciones: no contaba
+      // las notas de la clase en vivo y salía otro número que en Profesores.
+      const { clases } = await elProfesor(request.tenantPrisma, getInstituteId(request) ?? '', user.id);
+      for (const c of clases) {
+        if (typeof c.promedio === 'number') teacherAverages[`${c.classroomId}|${c.subjectId}`] = c.promedio;
+      }
 
       // La carga, con la cuenta de siempre (`personal.service`).
       const carga = (await cargaDeLosProfesores(request.tenantPrisma, getInstituteId(request) ?? '', [user.id])).get(user.id);

@@ -15,7 +15,10 @@
  *   · promedio general: boleta · ficha del admin · Inicio del alumno ·
  *     Inicio del representante · lista de alumnos · cuadro de honor (ciclo);
  *   · cada materia: la definitiva de la boleta · la ficha · el Inicio del alumno;
- *   · la sección: su mínimo y su máximo frente a los de sus alumnos.
+ *   · la sección: su mínimo y su máximo frente a los de sus alumnos;
+ *   · cada materia en su sección: el catálogo · la lista · la tarjeta de la sección;
+ *   · el cuadro general del guía: el promedio y cada materia de cada alumno;
+ *   · el resumen final del MPPE: la definitiva de cada materia.
  *   · asistencia del ciclo: la ficha · la lista · el Inicio del alumno (ciclo).
  *
  * Qué NO mide: que la cifra de la boleta sea la correcta (eso lo dicen las
@@ -148,6 +151,24 @@ async function main() {
         const con = todos.filter((x): x is number => typeof x === 'number');
         if (con.length === 0) continue;
         const st = await pedir(admin, `/classrooms/${classroomId}/stats`);
+        // El cuadro general del guía: cada alumno, su promedio y cada materia, frente a su boleta.
+        const cuadro = await pedir(admin, `/classrooms/${classroomId}/cuadro-general`);
+        const filas = (cuadro?.data ?? cuadro)?.students ?? [];
+        // Y el resumen final del MPPE (el papel del fin de año).
+        const resumen = await pedir(admin, `/classrooms/${classroomId}/resumen-final?tipo=FINAL`);
+        const deResumen = (resumen?.data ?? resumen)?.alumnos ?? [];
+        for (const s of lista) {
+            const b = (await pedir(admin, `/students/${s.id}/boleta`))?.data;
+            const f = filas.find((x: any) => x.id === s.id);
+            if (!b || !f) continue;
+            anotar(`${s.firstName} ${s.lastName} (cuadro)`, 'promedio general', { boleta: b.promedios?.definitivo, cuadroGeneral: f.generalAverage });
+            for (const m of b.materias ?? []) {
+                if (m.cualitativa) continue;
+                anotar(`${s.firstName} ${s.lastName} (cuadro)`, `materia ${m.nombre}`, { boleta: m.revision ?? m.definitiva, cuadroGeneral: f.grades?.[m.id]?.promedio });
+                const r = deResumen.find((x: any) => x.cedula === s.id)?.notas?.[m.id];
+                if (r) anotar(`${s.firstName} ${s.lastName} (resumen final)`, `materia ${m.nombre}`, { boleta: m.definitiva, resumenFinal: r.definitiva });
+            }
+        }
         anotar(`sección ${classroomId}`, 'mínimo de la sección', { boletas: Math.min(...con), resumenDeLaSeccion: st?.minAverage });
         anotar(`sección ${classroomId}`, 'máximo de la sección', { boletas: Math.max(...con), resumenDeLaSeccion: st?.maxAverage });
         anotar(`sección ${classroomId}`, 'promedio de la sección', { mediaDeLasBoletas: con.reduce((a, x) => a + x, 0) / con.length, resumenDeLaSeccion: st?.average });
@@ -192,6 +213,7 @@ async function main() {
     }
 
     // Cada materia: su pantalla del catálogo frente a la lista de alumnos de esa materia.
+    const tarjetas = new Map<string, any[]>();
     const materias = await db.subject.findMany({ where: { evaluacion: { not: 'CUALITATIVA' } }, select: { id: true, slug: true, name: true }, take: 6 });
     for (const m of materias) {
         const r = await pedir(admin, `/subjects/${m.slug ?? m.id}`);
@@ -199,7 +221,14 @@ async function main() {
         for (const s of sec.slice(0, 6)) {
             const lista = await pedir(admin, `/students?classroomId=${s.id}&subjectId=${m.id}&page=1&limit=100`);
             const notas = (lista.students ?? []).filter((x: any) => x.hasGrades).map((x: any) => x.average);
-            anotar(`${m.name} en ${s.name}`, 'promedio de la materia en la sección', { pantallaDeLaMateria: s.average || null, mediaDeLaLista: media(notas) });
+            // Y la tarjeta de la materia en la pestaña Materias de la sección.
+            if (!tarjetas.has(s.id)) tarjetas.set(s.id, (await pedir(admin, `/classrooms/${s.id}/subjects?stats=true`))?.subjects ?? []);
+            const tarjeta = tarjetas.get(s.id)!.find((t: any) => t.id === m.id);
+            anotar(`${m.name} en ${s.name}`, 'promedio de la materia en la sección', {
+                pantallaDeLaMateria: s.average || null,
+                mediaDeLaLista: media(notas),
+                tarjetaEnLaSeccion: tarjeta?.stats?.average ?? null,
+            });
         }
     }
 

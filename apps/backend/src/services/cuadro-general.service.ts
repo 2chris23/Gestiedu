@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { assertCanSeeClassroom } from './authorization.service';
-import { bulkSubjectAveragesConDatos, BulkAverageDetail } from './bulk-averages.service';
+import { cifrasOficialesDeLaSeccion, notaOficial, promedioOficial, mediaOficial, type CifrasOficiales } from './cifras-oficiales.service';
 import { esCualitativa } from './apreciaciones.service';
 import { AppErrors } from '../middleware/error.middleware';
 
@@ -11,8 +11,9 @@ import { AppErrors } from '../middleware/error.middleware';
  * de todos sus alumnos en todas las materias de la sección, por lapso
  * o para todo el ciclo.
  *
- * Utiliza bulkSubjectAveragesConDatos para calcular los promedios en bloque
- * con paridad matemática total y sin problemas de consultas N+1.
+ * Las cifras son las de la boleta (`cifras-oficiales.service`), en bloque:
+ * la misma nota de cada materia y el mismo promedio que en cualquier otra
+ * pantalla (`barrido-de-cifras.ts` lo compara).
  */
 
 export interface CuadroGeneralOpciones {
@@ -96,66 +97,37 @@ export async function cuadroGeneralDeLaSeccion(
     const studentIds = students.map((s) => s.id);
     const subjectIds = classroom.subjects.map((cs) => cs.subjectId);
 
-    // 4. Calcular notas en bloque si hay estudiantes y materias
-    let bulk: BulkAverageDetail = new Map();
-    if (studentIds.length > 0 && subjectIds.length > 0) {
-        bulk = await bulkSubjectAveragesConDatos(prisma, {
-            classroomId,
-            studentIds,
-            subjectIds,
-            periodId,
-        });
-    }
+    // 4. Las cifras OFICIALES, en bloque: las de la boleta (MAPA §0). Antes el
+    //    cuadro hacía su propia cuenta —sin el redondeo del Ministerio por
+    //    lapso, a una décima, y el promedio del alumno como la media de sus
+    //    materias—, y el guía veía otro número que la boleta (20-oct-2026).
+    const oficiales = studentIds.length > 0
+        ? await cifrasOficialesDeLaSeccion(prisma, undefined, classroomId, studentIds)
+        : new Map<string, CifrasOficiales>();
 
-    // Identificar materias cualitativas (para no incluirlas en promedios numéricos)
-    const cualitativasSet = new Set<string>();
+    // Las materias con apreciación no llevan número (CUALI-*).
+    const cualitativasSet = new Set<string>(
+        classroom.subjects.filter((cs) => (cs.subject as any).evaluacion === 'CUALITATIVA').map((cs) => cs.subjectId)
+    );
     for (const cs of classroom.subjects) {
-        if (await esCualitativa(prisma, cs.subjectId)) {
-            cualitativasSet.add(cs.subjectId);
-        }
+        if (!cualitativasSet.has(cs.subjectId) && (await esCualitativa(prisma, cs.subjectId))) cualitativasSet.add(cs.subjectId);
     }
 
     // 5. Estructurar filas de estudiantes y acumuladores de materias
-    const subjectGradesSum = new Map<string, { sum: number; count: number }>();
-    subjectIds.forEach((sid) => subjectGradesSum.set(sid, { sum: 0, count: 0 }));
+    const notasDeLaMateria = new Map<string, number[]>();
+    subjectIds.forEach((sid) => notasDeLaMateria.set(sid, []));
 
     const estudiantesCuadro = students.map((student) => {
-        const studentGradesMap = bulk.get(student.id);
+        const c = oficiales.get(student.id);
         const grades: Record<string, { promedio: number | null; conNotas: boolean; cualitativa: boolean }> = {};
-        const numericAverages: number[] = [];
 
         classroom.subjects.forEach((cs) => {
             const sid = cs.subjectId;
             const esCuali = cualitativasSet.has(sid);
-            const detalle = studentGradesMap?.get(sid);
-
-            if (detalle && detalle.conNotas) {
-                const rounded = Math.round(detalle.promedio * 10) / 10;
-                grades[sid] = {
-                    promedio: rounded,
-                    conNotas: true,
-                    cualitativa: esCuali,
-                };
-
-                if (!esCuali) {
-                    numericAverages.push(rounded);
-                    const acc = subjectGradesSum.get(sid)!;
-                    acc.sum += rounded;
-                    acc.count += 1;
-                }
-            } else {
-                grades[sid] = {
-                    promedio: null,
-                    conNotas: false,
-                    cualitativa: esCuali,
-                };
-            }
+            const nota = esCuali ? null : notaOficial(c, sid, periodId);
+            grades[sid] = { promedio: nota, conNotas: nota !== null, cualitativa: esCuali };
+            if (nota !== null) notasDeLaMateria.get(sid)!.push(nota);
         });
-
-        const generalAverage =
-            numericAverages.length > 0
-                ? Math.round((numericAverages.reduce((a, b) => a + b, 0) / numericAverages.length) * 10) / 10
-                : null;
 
         return {
             id: student.id,
@@ -165,7 +137,7 @@ export async function cuadroGeneralDeLaSeccion(
             cedula: student.studentCode || student.id,
             avatar: student.avatar,
             grades,
-            generalAverage,
+            generalAverage: promedioOficial(c, periodId),
         };
     });
 
@@ -173,9 +145,9 @@ export async function cuadroGeneralDeLaSeccion(
     const materiasCuadro = classroom.subjects.map((cs) => {
         const sid = cs.subjectId;
         const esCuali = cualitativasSet.has(sid);
-        const acc = subjectGradesSum.get(sid);
-        const subjectAvg =
-            !esCuali && acc && acc.count > 0 ? Math.round((acc.sum / acc.count) * 10) / 10 : null;
+        // La materia en la sección: la media de las notas oficiales de sus
+        // alumnos, como el resumen de la sección y la tarjeta de la materia.
+        const subjectAvg = esCuali ? null : mediaOficial(notasDeLaMateria.get(sid) ?? []);
 
         return {
             id: cs.subject.id,

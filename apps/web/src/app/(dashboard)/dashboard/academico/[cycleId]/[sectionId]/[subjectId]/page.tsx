@@ -121,8 +121,10 @@ export default function SectionSubjectDashboard() {
         const minScore = validAverages.length > 0 ? Math.min(...validAverages) : 0;
         const maxScore = validAverages.length > 0 ? Math.max(...validAverages) : 0;
 
+        // Dos decimales y sin redondear los extremos: las mismas cifras que la
+        // lista de alumnos y el resumen de la sección (MAPA §0).
         const calculatedAvg = validAverages.length > 0
-            ? Math.round((validAverages.reduce((acc, curr) => acc + curr, 0) / validAverages.length) * 10) / 10
+            ? Math.round((validAverages.reduce((acc, curr) => acc + curr, 0) / validAverages.length) * 100) / 100
             : 0;
 
         const avg = currentSubjectStats?.stats?.average ?? calculatedAvg;
@@ -135,8 +137,8 @@ export default function SectionSubjectDashboard() {
 
         return {
             average: avg && avg > 0 ? avg : null,
-            minAverage: minScore > 0 ? Math.round(minScore * 10) / 10 : undefined,
-            maxAverage: maxScore > 0 ? Math.round(maxScore * 10) / 10 : undefined,
+            minAverage: minScore > 0 ? minScore : undefined,
+            maxAverage: maxScore > 0 ? maxScore : undefined,
             riskCount: atRisk,
             occupancy: `${count}/${capacity}`,
             attendance: `${attendance}%`,

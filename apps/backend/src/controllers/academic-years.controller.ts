@@ -1,7 +1,6 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { cifrasOficialesDelAno, estaEnRiesgo, promedioOficial } from '../services/cifras-oficiales.service';
 import { z } from 'zod';
-import * as aggregationService from '../services/aggregation.service';
 import * as closeCycleService from '../services/promotion/close-cycle.service';
 import { isValidCalendarDate } from '../utils/validators';
 
@@ -412,7 +411,6 @@ export const updateAcademicYear = async (request: FastifyRequest, reply: Fastify
 
 import { comparePassword } from '../utils/bcrypt';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
-import { NOTAS_QUE_CUENTAN } from '../services/apreciaciones.service';
 
 export const deleteAcademicYear = async (request: FastifyRequest, reply: FastifyReply) => {
   try {
@@ -465,15 +463,27 @@ export const deleteAcademicYear = async (request: FastifyRequest, reply: Fastify
       return reply.status(404).send({ error: 'Año escolar no encontrado' });
     }
 
-    // Chequeo de Actividad Académica (Notas registradas)
-    const hasAcademicActivity = yearData.periods.some(p => p.grades.length > 0);
-
-    // Chequeo de Estudiantes Inscritos
-    const hasStudents = yearData.classrooms.some(c => c.studentClassrooms.length > 0);
+    // Chequeo de Actividad Académica: notas o asistencia. Las notas de verdad
+    // viven en la clase en vivo (`class_activities.scores`), no solo en la
+    // tabla vieja: mirando solo esa, un año con notas de clase y con su
+    // asistencia se borraba entero (ANO-03, 20-oct-2026).
+    const secciones = yearData.classrooms.map((c) => c.id);
+    const [conNotasDeClase, conAsistencia] = secciones.length === 0
+      ? [[], 0]
+      : await Promise.all([
+          prisma.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM class_activities
+             WHERE "classroomId" = ANY(${secciones}::text[])
+               AND jsonb_typeof(scores) = 'object' AND scores <> '{}'::jsonb
+             LIMIT 1`,
+          prisma.dailyAttendance.count({ where: { classroomId: { in: secciones } }, take: 1 } as any),
+        ]);
+    const hasAcademicActivity =
+      yearData.periods.some(p => p.grades.length > 0) || conNotasDeClase.length > 0 || conAsistencia > 0;
 
     if (hasAcademicActivity) {
       return reply.status(409).send({
-        error: 'No se puede eliminar el ciclo escolar porque ya existe actividad académica registrada (calificaciones).',
+        error: 'No se puede eliminar el ciclo escolar porque ya existe actividad académica registrada (calificaciones o asistencia).',
         detail: 'Solo se puede archivar este ciclo.',
         code: 'HAS_ACADEMIC_ACTIVITY_MUST_ARCHIVE',
       });

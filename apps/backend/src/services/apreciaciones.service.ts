@@ -15,7 +15,7 @@ import { borrarGuardandoCopia } from '../utils/papelera';
  * - **No cuentan** en ningún promedio ni en la promoción. El filtro está en
  *   el origen: el promedio de una materia cualitativa sale «sin notas»
  *   (`gradesService.promedioDelLapso`, `bulkSubjectAveragesConDatos`,
- *   `studentsWithNoteInSubject`), y todo lo de encima —sección, año, ciclo,
+ *   la cifra oficial de `cifras-oficiales.service`), y todo lo de encima —sección, año, ciclo,
  *   riesgo, cierre— ya deja fuera lo que no tiene notas. Así no hay que
  *   acordarse en cada pantalla.
  * - La apreciación la pone el profesor que da esa materia en esa sección (o

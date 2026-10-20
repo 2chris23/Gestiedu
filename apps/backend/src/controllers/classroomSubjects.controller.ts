@@ -1,8 +1,7 @@
 /// <reference path="../types/fastify.d.ts" />
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { logger } from '../utils/logger';
-import { subjectSectionAverage, studentsWithNoteInSubject } from '../services/aggregation.service';
-import { gradesService } from '../services/grades.service';
+import { promediosDeLaSeccion } from '../services/aggregation.service';
 import { getAcademicConfig } from '../services/promotion/close-cycle.service';
 import { findTeacherAssignmentConflicts } from '../services/schedule-conflicts.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
@@ -916,72 +915,71 @@ export async function getClassroomSubjectsStats(
         // a estudiantes sin notas (no cuentan como 0) e incluyendo notas de
         // ClassActivity.scores. Antes: promedio simple de AVG sobre la tabla
         // grades (ignoraba criterios ponderados y clases en vivo).
-        const subjectsWithStats = await Promise.all(
-            classroomSubjects.map(async (cs) => {
-                const n3 = await subjectSectionAverage(request.tenantPrisma, classroomId, cs.subjectId, periodId);
-                const average = n3.hasData ? Math.round(n3.average * 10) / 10 : null;
+        /**
+         * TODO EN BLOQUE Y CON LA CIFRA OFICIAL (20-oct-2026)
+         *
+         * Antes, por cada materia: su promedio, la asistencia de la sección (la
+         * misma consulta una y otra vez), sus observaciones y, por cada alumno,
+         * su promedio con la cuenta vieja (sin redondear como la boleta) para
+         * saber si estaba en riesgo. Ahora la nota de cada alumno en cada
+         * materia sale de UNA carga (`promediosDeLaSeccion`, la de la boleta);
+         * en riesgo es quien tiene en esa materia una nota oficial por debajo
+         * de la mínima, y la asistencia es la del resumen de la sección.
+         */
+        const subjectIds = classroomSubjects.map((cs) => cs.subjectId);
+        const [notas, asistencia, observaciones] = await Promise.all([
+            promediosDeLaSeccion(request.tenantPrisma, classroomId, periodId, subjectIds),
+            studentIds.length > 0
+                ? request.tenantPrisma.dailyAttendance.groupBy({
+                      by: ['status'],
+                      where: { studentId: { in: studentIds }, ...(periodDateFilter.gte ? { date: periodDateFilter } : {}) },
+                      _count: { _all: true },
+                  })
+                : Promise.resolve([] as Array<{ status: string; _count: { _all: number } }>),
+            studentIds.length > 0 && subjectIds.length > 0
+                ? request.tenantPrisma.observation.groupBy({
+                      by: ['subjectId'],
+                      where: {
+                          studentId: { in: studentIds },
+                          subjectId: { in: subjectIds },
+                          ...(periodDateFilter.gte ? { date: periodDateFilter } : {}),
+                      },
+                      _count: { _all: true },
+                  })
+                : Promise.resolve([] as Array<{ subjectId: string | null; _count: { _all: number } }>),
+        ]);
+        const registros = asistencia.reduce((n, f) => n + f._count._all, 0);
+        const presentes = asistencia.filter((f) => f.status === 'PRESENT' || f.status === 'LATE').reduce((n, f) => n + f._count._all, 0);
+        const attendance = registros > 0 ? Math.round((presentes * 100) / registros) : null;
+        const obsDe = new Map(observaciones.map((o) => [o.subjectId, o._count._all]));
 
-                // Obtener asistencia
-                const attendanceRecords = await request.tenantPrisma.dailyAttendance.findMany({
-                    where: {
-                        studentId: { in: studentIds },
-                        classroomId,
-                        ...(periodDateFilter.gte ? { date: periodDateFilter } : {}),
-                    },
-                });
-
-                const presentCount = attendanceRecords.filter(a => a.status === 'PRESENT' || a.status === 'LATE').length;
-                const attendance = attendanceRecords.length > 0
-                    ? Math.round((presentCount / attendanceRecords.length) * 100)
-                    : null;
-
-                // Obtener observaciones filtradas por materia y lapso
-                const observations = await request.tenantPrisma.observation.count({
-                    where: {
-                        studentId: { in: studentIds },
-                        subjectId: cs.subjectId,
-                        ...(periodDateFilter.gte ? { date: periodDateFilter } : {}),
-                    },
-                });
-
-                // Estudiantes en riesgo (promedio ponderado en la materia < minPassing)
-                const withData = await studentsWithNoteInSubject(request.tenantPrisma, classroomId, cs.subjectId, periodId);
-                let atRiskStudents = 0;
-                for (const studentId of withData) {
-                    const stuAvg = await gradesService.calculateWeightedSubjectAverage(
-                        request.tenantPrisma,
-                        studentId,
-                        cs.subjectId,
-                        periodId
-                    );
-                    if (stuAvg > 0 && stuAvg < minPassing) {
-                        atRiskStudents++;
-                    }
-                }
-
-                return {
-                    id: cs.subject.id,
-                    name: cs.subject.name,
-                    color: cs.subject.color,
-                    code: cs.subject.code,
-                    slug: cs.subject.slug,
-                    teacher: cs.teacher ? {
-                        id: cs.teacher.id,
-                        firstName: cs.teacher.firstName,
-                        lastName: cs.teacher.lastName,
-                        avatar: cs.teacher.avatar,
-                    } : null,
-                    hoursPerWeek: cs.hoursPerWeek || 0,
-                    weeklyBlocks: cs.weeklyBlocks || 0,
-                    stats: {
-                        average,
-                        attendance,
-                        observations,
-                        atRiskStudents,
-                    },
-                };
-            })
-        );
+        const subjectsWithStats = classroomSubjects.map((cs) => {
+            const deLaMateria = [...notas.values()].map((m) => m.get(cs.subjectId)).filter((n): n is number => typeof n === 'number');
+            const average = deLaMateria.length > 0
+                ? Math.round((deLaMateria.reduce((a, b) => a + b, 0) / deLaMateria.length) * 100) / 100
+                : null;
+            return {
+                id: cs.subject.id,
+                name: cs.subject.name,
+                color: cs.subject.color,
+                code: cs.subject.code,
+                slug: cs.subject.slug,
+                teacher: cs.teacher ? {
+                    id: cs.teacher.id,
+                    firstName: cs.teacher.firstName,
+                    lastName: cs.teacher.lastName,
+                    avatar: cs.teacher.avatar,
+                } : null,
+                hoursPerWeek: cs.hoursPerWeek || 0,
+                weeklyBlocks: cs.weeklyBlocks || 0,
+                stats: {
+                    average,
+                    attendance,
+                    observations: obsDe.get(cs.subjectId) ?? 0,
+                    atRiskStudents: deLaMateria.filter((n) => n < minPassing).length,
+                },
+            };
+        });
 
         return reply.status(200).send({
             subjects: subjectsWithStats,
