@@ -54,23 +54,9 @@ const PANTALLAS = archivos(path.resolve(RAIZ, '../web/src'));
  * (`docs/LISTO-PARA-EL-PILOTO.md`): menos puertas, menos que vigilar.
  */
 const SIN_PANTALLA: Record<string, string> = {
-    'POST /api/subjects/grade/:grade/assign': 'la pantalla que la usaba (SubjectTagManager) ya no existe; la usa schedule-conflict-doors para vigilar los choques',
-    'DELETE /api/subjects/grade/:grade/:subjectId': 'igual; con trabajo responde 409 CLASE_CON_TRABAJO, como «Dónde se da»',
-    'DELETE /api/classrooms/:classroomId/subjects/:subjectId': 'se quita en Materias → «Dónde se da»; con trabajo, 409 CLASE_CON_TRABAJO',
-    'DELETE /api/schedules/:id': 'el horario viejo (Schedule): la web usa los bloques',
-    'DELETE /api/students/:id': 'los usuarios se gestionan en /users; pide un cuid y el id es la cédula: no puede funcionar',
-    'PUT /api/students/profile/me': 'nadie edita su propia ficha (solo el admin, en /users); la vigila auditoria-permisos',
-    'POST /api/teachers': 'los usuarios se crean en /users',
-    'PUT /api/teachers/:id': 'en /users; pide un cuid y el id es la cédula',
-    'DELETE /api/teachers/:id': 'en /users; pide un cuid y el id es la cédula',
-    'PUT /api/teachers/profile/me': 'nadie edita su propia ficha; la vigila auditoria-permisos',
-    'POST /api/notifications/system': 'los avisos van por /api/avisos',
-    'PUT /api/notifications/:id': 'los avisos van por /api/avisos',
-    'DELETE /api/notifications/:id': 'los avisos van por /api/avisos',
-    'PUT /api/institutes/:id/config': 'la configuración se guarda en /institutes/current/config',
-    'POST /api/superadmin/institutes/:id/reprovision': 'herramienta de operación, sin pantalla (DESPLIEGUE.md)',
-    'GET /api/superadmin/monitoring/alerts': 'herramienta de operación; el panel de Salud la sustituye',
-    'PATCH /api/superadmin/monitoring/alerts/:id/resolve': 'herramienta de operación; el panel de Salud la sustituye',
+    // El 19-oct-2026 se quitaron las rutas sin pantalla (estadísticas, informes,
+    // avisos viejos, profesores, el horario viejo, «mis notas»…). Queda esta:
+    'DELETE /api/classrooms/:classroomId/subjects/:subjectId': 'se quita en Materias → «Dónde se da»; con trabajo, 409 CLASE_CON_TRABAJO (VIEJA-01)',
 };
 
 const escapar =(s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

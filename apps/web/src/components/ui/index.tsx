@@ -7,7 +7,6 @@ export * from "./Pagination"
 export * from "./ColorPicker"
 export * from "./ColorCard"
 export * from "./ImageUpload"
-export * from "./tabla-virtual"
 export * from "./skeleton"
 
 const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { subjectsService, Subject, CreateSubjectData, UpdateSubjectData } from '@/services/subjects.service';
+import { subjectsService, CreateSubjectData, UpdateSubjectData } from '@/services/subjects.service';
 import { toast } from 'sonner';
 
 /**
@@ -85,15 +85,5 @@ export function useDeleteSubject() {
         onError: (error: Error) => {
             toast.error(error.message || 'Error al eliminar materia');
         },
-    });
-}
-
-/**
- * Hook para obtener estadísticas de materias
- */
-export function useSubjectStats() {
-    return useQuery({
-        queryKey: ['subject-stats'],
-        queryFn: () => subjectsService.getSubjectStats(),
     });
 }

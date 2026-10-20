@@ -98,8 +98,3 @@ export async function lasSeccionesDelProfesor(prisma: any, profesorId: string): 
     ]);
     return [...new Set([...guia.map((c: { id: string }) => c.id), ...imparte.map((c: { classroomId: string }) => c.classroomId)])];
 }
-
-/** Para las pruebas. */
-export function olvidarElPrecalentado(): void {
-    PRECALENTADO.clear();
-}

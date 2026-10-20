@@ -218,20 +218,6 @@ export async function subjectSectionAverage(
 export interface SectionAverageResult extends AggregateResult {
     subjectAverages: Array<{ subjectId: string; subjectName: string; average: number }>;
 }
-
-/**
- * El promedio OFICIAL de cada alumno de la sección (el de su boleta; del lapso
- * pedido, o el definitivo). Se usa para min/max/riesgo. Sin notas, fuera.
- */
-export async function sectionStudentAverages(
-    prisma: PrismaClient,
-    classroomId: string,
-    periodId?: string
-): Promise<number[]> {
-    const oficiales = await oficialesDeLaSeccion(prisma, classroomId);
-    return [...oficiales.values()].map((c) => promedioOficial(c, periodId)).filter((n): n is number => n !== null);
-}
-
 /**
  * Nivel 4 — Promedio de la SECCIÓN: la media del promedio oficial de sus
  * alumnos con notas (MAPA-08: cuadra con el de sus alumnos). Las materias, su
@@ -314,28 +300,4 @@ export async function cycleAverage(
         hasData: conDatos.length > 0,
         gradeAverages: grados.map(([gradeLevel, g]) => ({ gradeLevel, average: g.average })),
     };
-}
-
-export interface YearGradeStudentDetails {
-    /** Promedio (Nivel 2 por estudiante → media de materias con nota). */
-    studentAverages: number[];
-    /** Promedio del año (Nivel 5). */
-    average: number;
-}
-
-/**
- * Detalle por estudiante de un año/grade: cada estudiante con datos aporta su
- * promedio de materias (cada materia = Nivel 2). Se usa para min/max/riesgo
- * de los dashboards por año. Estudiantes sin ninguna nota se excluyen.
- */
-export async function yearGradeStudentDetails(
-    prisma: PrismaClient,
-    academicYearId: string,
-    gradeLevel: number,
-    periodId?: string
-): Promise<YearGradeStudentDetails> {
-    const sections = await prisma.classroom.findMany({ where: { academicYearId, grade: gradeLevel }, select: { id: true } });
-    const todas = await oficialesDeVariasSecciones(prisma, sections.map((s) => s.id));
-    const studentAverages = [...todas.values()].flatMap((m) => [...m.values()].map((c) => promedioOficial(c, periodId)).filter((n): n is number => n !== null));
-    return { studentAverages, average: media2(studentAverages) };
 }

@@ -47,15 +47,13 @@ describe('Las puertas viejas también cumplen las reglas', () => {
         await server?.close();
     });
 
-    it('VIEJA-01: con trabajo no se quita (ni por grado ni por sección); sin trabajo, sí, con copia', async () => {
+    it('VIEJA-01: con trabajo no se quita de la sección; sin trabajo, sí, con copia', async () => {
         const materia = await createTestSubject(prisma, 'institute');
         const [a, b] = [await seccion('A'), await seccion('B')];
         await prisma.classroomSubject.createMany({ data: [{ classroomId: a.id, subjectId: materia.id }, { classroomId: b.id, subjectId: materia.id }] });
         // En 4to A ya hay una actividad.
         await prisma.classActivity.create({ data: { classroomId: a.id, subjectId: materia.id, title: 'Exposición', target: 'CURRENT', scores: {} } as any });
 
-        const porGrado = await api(request(server.server).delete(`/api/subjects/grade/4/${materia.id}?academicYearId=${ano.id}`));
-        expect([porGrado.status, porGrado.body.code]).toEqual([409, 'CLASE_CON_TRABAJO']);
         const porSeccion = await api(request(server.server).delete(`/api/classrooms/${a.id}/subjects/${materia.id}`));
         expect([porSeccion.status, porSeccion.body.code]).toEqual([409, 'CLASE_CON_TRABAJO']);
         expect(await prisma.classroomSubject.count({ where: { subjectId: materia.id } })).toBe(2); // no se quitó NADA

@@ -7,17 +7,14 @@ import {
   deleteUser,
   archiveUser,
   unarchiveUser,
-  getUsersByRole,
   getUserProfile,
   updateUserProfile,
-  toggleUserStatus,
-  getUserStats,
   cambiarCedula
 } from '../controllers/users.controller';
 import { listStudentTutors, assignStudentTutor, removeStudentTutor } from '../controllers/student-tutors.controller';
 import { getUserPhoto, putUserPhoto, deleteUserPhoto } from '../controllers/foto-de-perfil.controller';
-import { authenticate, requireAdmin, requireTeacher, requireSelfOrAdmin } from '../middleware/auth.middleware';
-import { validateBody, validateParams, validateQuery, validateCUID } from '../middleware/validation.middleware';
+import { authenticate, requireAdmin, requireSelfOrAdmin } from '../middleware/auth.middleware';
+import { validateBody } from '../middleware/validation.middleware';
 import { createUserSchema as zCreateUserSchema, updateUserSchema as zUpdateUserSchema } from '../utils/validators';
 import { checkPlanLimits } from '../middleware/plan-limits.middleware';
 
@@ -114,23 +111,7 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [authenticate, requireAdmin]
   }, getUsers as any);
 
-  fastify.get('/stats', {
-    preHandler: [authenticate, requireAdmin]
-  }, getUserStats as any);
 
-  // Igual que el listado: la lista por rol es del administrador
-  fastify.get('/role/:role', {
-    schema: {
-      params: {
-        type: 'object',
-        required: ['role'],
-        properties: {
-          role: { type: 'string', enum: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] }
-        }
-      }
-    },
-    preHandler: [authenticate, requireAdmin]
-  }, getUsersByRole as any);
 
   fastify.get('/:id', {
     schema: {
@@ -227,25 +208,6 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [authenticate, requireAdmin]
   }, unarchiveUser as any);
 
-  fastify.patch('/:id/status', {
-    schema: {
-      params: {
-        type: 'object',
-        required: ['id'],
-        properties: {
-          id: { type: 'string' }
-        }
-      },
-      body: {
-        type: 'object',
-        required: ['isActive'],
-        properties: {
-          isActive: { type: 'boolean' }
-        }
-      }
-    },
-    preHandler: [authenticate, requireAdmin]
-  }, toggleUserStatus as any);
 
   // Representantes de un alumno. Solo el administrador: quien decide qué
   // representante ve a qué alumno decide quién ve sus notas.

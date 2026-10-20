@@ -307,9 +307,7 @@ export const useCrearGasto = () =>
             datos: d,
         })
     );
-export const useAnularGasto = () => useCambio(({ id, motivo }: { id: string; motivo: string }) => api.post(`/finanzas/gastos/${id}/anular`, { motivo }).then((r) => r.data));
-export const useGuardarCategorias = () => useCambio((categorias: string[]) => api.put('/finanzas/categorias', { categorias }).then((r) => r.data));
-/** La tasa del BCV de hoy (`GET /finanzas/tasa`): null si ninguna fuente contestó nunca. */
+export const useAnularGasto = () => useCambio(({ id, motivo }: { id: string; motivo: string }) => api.post(`/finanzas/gastos/${id}/anular`, { motivo }).then((r) => r.data));/** La tasa del BCV de hoy (`GET /finanzas/tasa`): null si ninguna fuente contestó nunca. */
 export interface TasaDelDia {
     usd: number;
     eur: number | null;

@@ -185,12 +185,23 @@ describe('El mapa de cálculos tiene que ser verdad', () => {
         });
     };
 
+    /**
+     * El resumen de la sección, la pantalla de verdad (`GET /classrooms/:id/stats`).
+     * Hasta el 19-oct-2026 se miraba `/api/statistics/section`, que ninguna
+     * pantalla usaba y se quitó; aquí se leen sus mismos números.
+     */
     const medidoresDeLaSeccion = async () => {
         const res = await request(server.server)
-            .get(`/api/statistics/section/${seccion.id}`)
+            .get(`/api/classrooms/${seccion.id}/stats`)
             .set(auth(tokenAdmin))
             .expect(200);
-        return res.body.data ?? res.body;
+        const r = res.body;
+        return {
+            totalStudents: Number(String(r.occupancy).split('/')[0]),
+            studentsAtRisk: r.riskCount,
+            attendanceRate: r.attendance === null ? null : parseFloat(r.attendance),
+            globalAverage: r.average,
+        };
     };
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -280,11 +291,11 @@ describe('El mapa de cálculos tiene que ser verdad', () => {
         expect(Math.round(datos.attendanceRate)).toBe(100);
     }, 120000);
 
-    it('MAPA-06: un alumno sin NINGÚN registro no cuenta como asistencia baja', async () => {
+    it('MAPA-06: sin NINGÚN registro, la sección no tiene porcentaje de asistencia (ni 0 % ni «baja»)', async () => {
         // Es lo que hacía que el primer día del curso la sección saliera con
         // "todos con asistencia baja". Está en el mapa y está corregido.
         const datos = await medidoresDeLaSeccion();
-        expect(datos.studentsWithLowAttendance).toBe(0);
+        expect(datos.attendanceRate).toBeNull();
     }, 120000);
 
     // ═════════════════════════════════════════════════════════════════════════

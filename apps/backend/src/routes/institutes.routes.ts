@@ -1,6 +1,5 @@
 import { FastifyPluginAsync } from 'fastify';
 import {
-  getInstituteConfig,
   updateInstituteConfig,
   uploadLogos,
   updateColors,
@@ -13,7 +12,6 @@ import {
   obtenerMembrete
 } from '../controllers/institutes.controller';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
-import { validateBody, validateParams, validateCUID } from '../middleware/validation.middleware';
 import { platformPrisma } from '../config/database';
 import { INSTITUTE_TENANT_SELECT } from '../utils/institute-fields';
 import { extractTokenFromHeader, verifyAccessToken } from '../config/jwt';
@@ -22,86 +20,7 @@ import { sendWithETag } from '../utils/etag';
 // Nota: no existen "instituteValidators" en utils/validators; usamos solo schemas JSON locales
 
 const institutesRoutes: FastifyPluginAsync = async (fastify) => {
-  // Esquemas para validación
-  const createInstituteSchema = {
-    body: {
-      type: 'object',
-      required: ['name', 'code', 'email', 'phone'],
-      properties: {
-        name: { type: 'string', minLength: 3, maxLength: 200 },
-        code: { type: 'string', minLength: 2, maxLength: 20 },
-        description: { type: 'string' },
-        email: { type: 'string', format: 'email' },
-        phone: { type: 'string' },
-        address: { type: 'string' },
-        website: { type: 'string', format: 'uri' },
-        subdomain: { type: 'string', pattern: '^[a-z0-9-]+$' },
-        logo: { type: 'string' },
-        colors: {
-          type: 'object',
-          properties: {
-            primary: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
-            secondary: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
-            accent: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' }
-          }
-        },
-        configuration: { type: 'object' },
-        isActive: { type: 'boolean', default: true }
-      }
-    },
-    response: {
-      201: {
-        type: 'object',
-        properties: {
-          success: { type: 'boolean' },
-          message: { type: 'string' },
-          data: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              name: { type: 'string' },
-              code: { type: 'string' },
-              subdomain: { type: 'string' },
-              email: { type: 'string' },
-              isActive: { type: 'boolean' },
-              createdAt: { type: 'string', format: 'date-time' }
-            }
-          }
-        }
-      }
-    }
-  };
 
-  const updateInstituteSchema = {
-    params: {
-      type: 'object',
-      required: ['id'],
-      properties: {
-        id: { type: 'string' }
-      }
-    },
-    body: {
-      type: 'object',
-      properties: {
-        name: { type: 'string', minLength: 3, maxLength: 200 },
-        description: { type: 'string' },
-        email: { type: 'string', format: 'email' },
-        phone: { type: 'string' },
-        address: { type: 'string' },
-        website: { type: 'string', format: 'uri' },
-        logo: { type: 'string' },
-        colors: {
-          type: 'object',
-          properties: {
-            primary: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
-            secondary: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
-            accent: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' }
-          }
-        },
-        isActive: { type: 'boolean' }
-      }
-    }
-  };
 
   const updateConfigSchema = {
     params: {
@@ -171,17 +90,6 @@ const institutesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   };
 
-  const getInstitutesQuerySchema = {
-    querystring: {
-      type: 'object',
-      properties: {
-        page: { type: 'integer', minimum: 1, default: 1 },
-        limit: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
-        search: { type: 'string' },
-        isActive: { type: 'boolean' }
-      }
-    }
-  };
 
   // ─── RUTA PÚBLICA: info básica del instituto por slug ───────────────────────
   // Usada por el frontend (login, layout) para obtener nombre y branding sin auth.
@@ -388,29 +296,7 @@ const institutesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Ruta para obtener el instituto actual del usuario (requiere autenticación)
-  fastify.get('/current/info', {
-    preHandler: [authenticate]
-  }, async (request, reply) => {
-    const instituteId = request.user?.instituteId;
-    if (!instituteId) {
-      return reply.status(404).send({ success: false, message: 'Instituto no encontrado' });
-    }
-    request.params = { id: instituteId } as any;
-    return getInstituteConfig(request, reply);
-  });
 
-  // Ruta autenticada para obtener configuración completa
-  fastify.get('/current/config/full', {
-    preHandler: [authenticate]
-  }, async (request, reply) => {
-    const instituteId = request.user?.instituteId;
-    if (!instituteId) {
-      return reply.status(404).send({ success: false, message: 'Instituto no encontrado' });
-    }
-    request.params = { id: instituteId };
-    return getInstituteConfig(request, reply);
-  });
 
   // El membrete de los documentos (datos oficiales del plantel). Lo usan todas
   // las hojas que se imprimen: boleta, constancia, resumen final, plan…
@@ -444,21 +330,7 @@ const institutesRoutes: FastifyPluginAsync = async (fastify) => {
   // RUTAS /:id/* — dinámicas, deben ir DESPUÉS de las estáticas
   // ========================================
 
-  fastify.get('/:id/config', {
-    schema: {
-      params: {
-        type: 'object',
-        required: ['id'],
-        properties: { id: { type: 'string' } }
-      }
-    },
-    preHandler: [authenticate, requireAdmin, validateCUID('id')]
-  }, getInstituteConfig);
 
-  fastify.put('/:id/config', {
-    schema: updateConfigSchema,
-    preHandler: [authenticate, requireAdmin, validateCUID('id')]
-  }, updateInstituteConfig);
 
   // Upload de logo (DEPRECATED - usar /logos en su lugar)
   // fastify.post('/:id/logo', {

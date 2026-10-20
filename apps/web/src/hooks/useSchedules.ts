@@ -315,23 +315,3 @@ export interface ClassSessionHistory {
         endTime: string;
     } | null;
 }
-
-/**
- * Hook para obtener el historial de clases por fecha
- */
-export function useClassroomHistory(classroomId: string, date: string, activo = true) {
-    return useQuery({
-        queryKey: ['classroomHistory', classroomId, date],
-        queryFn: async () => {
-            const response = await api.get<ClassSessionHistory[]>(`/schedules/classroom/${classroomId}/history`, {
-                params: { date }
-            });
-            return response.data;
-        },
-        // `activo` = "la ventana está abierta". El modal se monta siempre, así
-        // que sin esto se pedía el historial —que es de personal— nada más
-        // entrar: al alumno le respondía 403 en cada carga de su pantalla.
-        enabled: activo && !!classroomId && !!date,
-        retry: false,
-    });
-}

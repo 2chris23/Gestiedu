@@ -206,39 +206,8 @@ describe('Acciones de la API que no tenían ninguna prueba', () => {
         return sesion;
     }
 
-    it('OBS-01: el profesor de esa clase ve las observaciones de su sesión', async () => {
-        const sesion = await sesionConObservacion();
 
-        const res = await request(server.server)
-            .get(`/api/observations/session/${sesion.id}`)
-            .set(auth(tokenProfeA))
-            .expect(200);
 
-        const lista = res.body.observations ?? res.body.data ?? res.body;
-        expect(JSON.stringify(lista)).toContain('Llegó tarde y molestó en clase');
-    });
-
-    it('OBS-02: un alumno NO puede leer las observaciones de una sesión', async () => {
-        const sesion = await sesionConObservacion();
-
-        // Ni las suyas por esta puerta: la conducta la lee el profesor, no el
-        // alumno, y menos la de sus compañeros que vienen en la misma respuesta.
-        const res = await request(server.server)
-            .get(`/api/observations/session/${sesion.id}`)
-            .set(auth(tokenAlumnoA));
-
-        expect(res.status).toBe(403);
-    });
-
-    it('OBS-03: un profesor ajeno a esa clase NO ve sus observaciones', async () => {
-        const sesion = await sesionConObservacion();
-
-        const res = await request(server.server)
-            .get(`/api/observations/session/${sesion.id}`)
-            .set(auth(tokenProfeB));
-
-        expect(res.status).toBe(403);
-    });
 
     it('OBS-04: un alumno NO puede leer las observaciones de una materia de otra sección', async () => {
         await sesionConObservacion();
@@ -292,19 +261,6 @@ describe('Acciones de la API que no tenían ninguna prueba', () => {
         expect(copia).not.toBeNull();
     });
 
-    it('OBS-06: el administrador sí las ve', async () => {
-        const sesion = await sesionConObservacion();
-
-        await request(server.server)
-            .get(`/api/observations/session/${sesion.id}`)
-            .set(auth(tokenAdmin))
-            .expect(200);
-
-        await request(server.server)
-            .get(`/api/observations/subject/${seccionA.id}/${materia.id}`)
-            .set(auth(tokenAdmin))
-            .expect(200);
-    });
 
     // ─────────────────────────────────────────────────────────────────────────
     // ALUMNOS DISPONIBLES PARA INSCRIBIR
@@ -345,18 +301,6 @@ describe('Acciones de la API que no tenían ninguna prueba', () => {
         expect(res.status).toBe(403);
     });
 
-    it('ALU-03: el expediente completo lo ve el propio alumno, no otro', async () => {
-        await request(server.server)
-            .get(`/api/students/${alumnoA.id}/complete-history`)
-            .set(auth(tokenAlumnoA))
-            .expect(200);
-
-        const res = await request(server.server)
-            .get(`/api/students/${alumnoA.id}/complete-history`)
-            .set(auth(tokenAlumnoB));
-
-        expect(res.status).toBe(403);
-    });
 
     // ─────────────────────────────────────────────────────────────────────────
     // NOTAS POR MATERIA
@@ -655,46 +599,8 @@ describe('Acciones de la API que no tenían ninguna prueba', () => {
     // CONTADORES DEL PANEL DE USUARIOS
     // ─────────────────────────────────────────────────────────────────────────
 
-    it('USU-01: el conteo de usuarios por rol cuadra con lo que hay', async () => {
-        const res = await request(server.server)
-            .get('/api/users/stats')
-            .set(auth(tokenAdmin))
-            .expect(200);
 
-        const stats = res.body.stats;
-        const enBase = {
-            ADMIN: await prisma.user.count({ where: { role: UserRole.ADMIN } }),
-            TEACHER: await prisma.user.count({ where: { role: UserRole.TEACHER } }),
-            STUDENT: await prisma.user.count({ where: { role: UserRole.STUDENT } }),
-            TUTOR: await prisma.user.count({ where: { role: UserRole.TUTOR } }),
-        };
 
-        expect(stats.byRole).toEqual(enBase);
-        expect(stats.total).toBe(await prisma.user.count());
-        expect(stats.byRole.ADMIN + stats.byRole.TEACHER + stats.byRole.STUDENT + stats.byRole.TUTOR)
-            .toBe(stats.total);
-    });
-
-    it('USU-02: la lista por rol trae solo ese rol y nunca la contraseña', async () => {
-        const res = await request(server.server)
-            .get('/api/users/role/TEACHER')
-            .set(auth(tokenAdmin))
-            .expect(200);
-
-        expect(res.body.users.length).toBe(2);
-        for (const u of res.body.users) {
-            expect(u.role).toBe('TEACHER');
-            expect(u).not.toHaveProperty('password');
-        }
-    });
-
-    it('USU-03: un profesor no puede pedir el listado de usuarios por rol', async () => {
-        const res = await request(server.server)
-            .get('/api/users/role/STUDENT')
-            .set(auth(tokenProfeA));
-
-        expect(res.status).toBe(403);
-    });
 
     // ─────────────────────────────────────────────────────────────────────────
     // MATERIAS DISPONIBLES E HISTORIAL DE PROFESOR DE UNA SECCIÓN
@@ -727,56 +633,4 @@ describe('Acciones de la API que no tenían ninguna prueba', () => {
     // AVISOS
     // ─────────────────────────────────────────────────────────────────────────
 
-    it('AVI-01: el contador de avisos sin leer cuadra con los avisos que hay', async () => {
-        await prisma.notification.createMany({
-            data: [
-                {
-                    id: gId(),
-                    title: 'Aviso leído',
-                    message: 'x',
-                    type: 'INFO',
-                    priority: 'NORMAL',
-                    recipientId: alumnoA.id,
-                    readAt: new Date(),
-                },
-                {
-                    id: gId(),
-                    title: 'Aviso sin leer 1',
-                    message: 'x',
-                    type: 'INFO',
-                    priority: 'NORMAL',
-                    recipientId: alumnoA.id,
-                },
-                {
-                    id: gId(),
-                    title: 'Aviso sin leer 2',
-                    message: 'x',
-                    type: 'INFO',
-                    priority: 'NORMAL',
-                    recipientId: alumnoA.id,
-                },
-                {
-                    id: gId(),
-                    title: 'Aviso de otro',
-                    message: 'x',
-                    type: 'INFO',
-                    priority: 'NORMAL',
-                    recipientId: alumnoB.id,
-                },
-            ],
-        });
-
-        const res = await request(server.server)
-            .get('/api/notifications/my-notifications/stats')
-            .set(auth(tokenAlumnoA))
-            .expect(200);
-
-        const texto = JSON.stringify(res.body);
-        const stats = res.body.data ?? res.body.stats ?? res.body;
-
-        // El contador es del que pregunta: el aviso del compañero no cuenta.
-        expect(stats.unread ?? stats.unreadCount).toBe(2);
-        expect(stats.total).toBe(3);
-        expect(texto).not.toContain('Aviso de otro');
-    });
 });

@@ -41,18 +41,6 @@
 import { AsyncLocalStorage } from 'async_hooks';
 
 const almacen = new AsyncLocalStorage<string>();
-
-/**
- * Deja dicho de qué liceo es lo que viene a continuación.
- *
- * Se llama desde el guardián de peticiones en cuanto se sabe el liceo, y vale
- * para todo lo que cuelgue de ahí: los ganchos de Fastify, el controlador, los
- * servicios y lo que se lance en segundo plano dentro de la petición.
- */
-export function entrarEnElLiceo(instituteId: string): void {
-    almacen.enterWith(instituteId);
-}
-
 /** El liceo de lo que se está haciendo, o `undefined` si no es de ninguno. */
 export function liceoActual(): string | undefined {
     return almacen.getStore();

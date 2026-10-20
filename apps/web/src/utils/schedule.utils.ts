@@ -27,14 +27,6 @@ export interface Period {
     type: 'class' | 'break';
 }
 
-export function getOrdinal(n: number): string {
-    const ordinals = [
-        '0', '1ra', '2da', '3ra', '4ta', '5ta', '6ta', '7ma', '8va', '9na', '10ma',
-        '11ma', '12ma', '13ra', '14ta', '15ta'
-    ];
-    return ordinals[n] || `${n}ta`;
-}
-
 /** Las horas (y recreos) de un turno. INTEGRAL va con la mañana, como hasta ahora. */
 export function periodosDelTurno(horario: HorarioDelLiceo | null | undefined, shift: ShiftType = 'MANANA'): Period[] {
     return franjasDelTurno(horario, shift);

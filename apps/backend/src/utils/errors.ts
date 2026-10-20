@@ -1,4 +1,3 @@
-import { ERROR_MESSAGES } from './constants';
 
 /**
  * Clase base para errores personalizados del sistema escolar
@@ -355,42 +354,6 @@ export class ErrorFactory {
   };
 }
 
-/**
- * Utility para verificar si un error es operacional
- */
-export const isOperationalError = (error: Error): boolean => {
-  if (error instanceof BaseError) {
-    return error.isOperational;
-  }
-  return false;
-};
 
-/**
- * Utility para extraer información de error para logging
- */
-export const extractErrorInfo = (error: Error) => {
-  if (error instanceof BaseError) {
-    return {
-      name: error.name,
-      message: error.message,
-      statusCode: error.statusCode,
-      code: error.code,
-      isOperational: error.isOperational,
-      logLevel: error.logLevel,
-      details: error.details,
-      stack: error.stack,
-    };
-  }
-
-  return {
-    name: error.name,
-    message: error.message,
-    statusCode: 500,
-    code: 'UNKNOWN_ERROR',
-    isOperational: false,
-    logLevel: 'error' as const,
-    stack: error.stack,
-  };
-};
 
 export default ErrorFactory;

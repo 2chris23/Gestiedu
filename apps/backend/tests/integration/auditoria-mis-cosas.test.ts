@@ -244,26 +244,7 @@ describe('Auditoría — lo que ve cada quien de sí mismo', () => {
     };
 
     describe('el alumno', () => {
-        it('MIS-01: "mis notas" trae las suyas y ninguna de otro', async () => {
-            const res = await comoAlumno(request(server.server).get('/api/students/my-grades'));
 
-            expect(res.status).toBe(200);
-            const notas = cuerpoDe(res.body);
-            expect(notas.length).toBeGreaterThan(0);
-
-            const texto = JSON.stringify(res.body);
-            expect(texto).not.toContain(otroAlumno.id);
-            for (const n of notas) {
-                if (n.studentId) expect(n.studentId).toBe(alumno.id);
-            }
-        }, 60000);
-
-        it('MIS-02: "mi asistencia" trae la suya y ninguna de otro', async () => {
-            const res = await comoAlumno(request(server.server).get('/api/students/my-attendance'));
-
-            expect(res.status).toBe(200);
-            expect(JSON.stringify(res.body)).not.toContain(otroAlumno.id);
-        }, 60000);
 
         it('MIS-03: "mis actividades" trae las de su sección', async () => {
             const res = await comoAlumno(request(server.server).get('/api/activities/student/my-activities'));
@@ -273,40 +254,7 @@ describe('Auditoría — lo que ve cada quien de sí mismo', () => {
             expect(texto).not.toContain('Actividad de la otra sección');
         }, 60000);
 
-        it('MIS-04: sus notificaciones son suyas, y las cuenta bien', async () => {
-            const lista = await comoAlumno(request(server.server).get('/api/notifications/my-notifications'));
-            expect(lista.status).toBe(200);
 
-            const texto = JSON.stringify(lista.body);
-            expect(texto).toContain('Tienes una actividad nueva');
-            expect(texto).not.toContain('Del otro alumno');
-
-            const stats = await comoAlumno(request(server.server).get('/api/notifications/my-notifications/stats'));
-            expect(stats.status).toBe(200);
-            // Tiene una sin leer de las dos que se le crearon
-            expect(JSON.stringify(stats.body)).toMatch(/1/);
-        }, 60000);
-
-        it('MIS-05: marcar una notificación como leída, y luego todas', async () => {
-            const suya = await prisma.notification.findFirst({
-                where: { recipientId: alumno.id, readAt: null },
-            });
-            expect(suya).not.toBeNull();
-
-            const marcar = await comoAlumno(request(server.server).patch(`/api/notifications/${suya!.id}/read`)).send({});
-            expect([200, 204]).toContain(marcar.status);
-
-            const enBD = await prisma.notification.findUnique({ where: { id: suya!.id } });
-            expect(enBD!.readAt).not.toBeNull();
-
-            const todas = await comoAlumno(request(server.server).patch('/api/notifications/mark-all-read')).send({});
-            expect([200, 204]).toContain(todas.status);
-
-            const sinLeer = await prisma.notification.count({
-                where: { recipientId: alumno.id, readAt: null },
-            });
-            expect(sinLeer).toBe(0);
-        }, 60000);
 
         it('MIS-06: no puede leer la notificación de otro alumno', async () => {
             const ajena = await prisma.notification.findFirst({ where: { recipientId: otroAlumno.id } });
@@ -320,42 +268,9 @@ describe('Auditoría — lo que ve cada quien de sí mismo', () => {
     });
 
     describe('el profesor', () => {
-        it('MIS-07: "mis materias" son las que imparte', async () => {
-            const res = await comoProfesor(request(server.server).get('/api/teachers/my-subjects'));
 
-            expect(res.status).toBe(200);
-            const texto = JSON.stringify(res.body);
-            expect(texto).toContain(subject.id);
-            expect(texto).not.toContain(otraMateria.id);
-        }, 60000);
 
-        it('MIS-08: "mis secciones" son las suyas, no las del liceo entero', async () => {
-            const res = await comoProfesor(request(server.server).get('/api/teachers/my-classrooms'));
-            expect(res.status).toBe(200);
-            const texto = JSON.stringify(res.body);
-            expect(texto).toContain(classroom.id);
-            expect(texto).not.toContain(otraSeccion.id);
-        }, 60000);
 
-        it('MIS-09: su panel responde y no se cuela nada de otra sección', async () => {
-            const res = await comoProfesor(request(server.server).get('/api/teachers/my-dashboard'));
 
-            expect(res.status).toBe(200);
-            expect(JSON.stringify(res.body)).not.toContain('Actividad de la otra sección');
-        }, 60000);
-
-        it('MIS-10: un alumno no entra a las pantallas del profesor', async () => {
-            for (const ruta of ['/api/teachers/my-subjects', '/api/teachers/my-classrooms', '/api/teachers/my-dashboard']) {
-                const res = await comoAlumno(request(server.server).get(ruta));
-                expect([401, 403]).toContain(res.status);
-            }
-        }, 60000);
-
-        it('MIS-11: un profesor no entra a las pantallas del alumno', async () => {
-            for (const ruta of ['/api/students/my-grades', '/api/students/my-attendance', '/api/activities/student/my-activities']) {
-                const res = await comoProfesor(request(server.server).get(ruta));
-                expect([401, 403]).toContain(res.status);
-            }
-        }, 60000);
     });
 });

@@ -1,24 +1,4 @@
 import { comparePassword, hashPassword } from '../utils/bcrypt';
-
-/**
- * EL PIN DE LA APP (octubre 2026, decidido por Cristian)
- *
- * Si el teléfono no tiene huella, patrón, PIN ni contraseña, la pantalla de
- * bloqueo de la app pide un PIN de 4 números (`apps/web/src/lib/pin-de-la-app.ts`).
- *
- *   · Lo crea la persona **una sola vez** (si no tiene).
- *   · Después **solo un admin** lo cambia o lo resetea, desde el usuario de
- *     esa persona. Nadie cambia el suyo: si se le olvida, el admin lo resetea.
- *   · Se guarda su resumen (bcrypt). `pinVersion` sube con cada cambio del
- *     admin: el teléfono compara y tira su copia.
- *   · A los 10 fallos seguidos comprobándolo aquí, queda trabado (423) hasta
- *     que un admin lo resetee.
- *
- * Es la puerta de la casa, no la caja fuerte: con PIN o sin él, cada
- * petición pasa por los guardianes de siempre.
- */
-
-export const LARGO_DEL_PIN = 4;
 export const FALLOS_PARA_TRABAR = 10;
 
 export class PinError extends Error {

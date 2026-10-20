@@ -160,15 +160,14 @@ describe('La revisión (REV-01…07)', () => {
         expect(await (prisma as any).notaDeRevision.count()).toBe(0);
     }, 60000);
 
-    it('REV-06: con el ciclo cerrado no se toca; borrarla guarda copia', async () => {
+    it('REV-06: con el ciclo cerrado no se toca', async () => {
         const nota = (await revisar({ studentId: alumno.id, subjectId: mate.id, score: 12 }).expect(200)).body.data;
         const lista = (await request(server.server).get(`/api/academic-years/${year.id}/revisiones`).set(como(admin, UserRole.ADMIN)).expect(200)).body.data;
         expect(lista).toHaveLength(1);
         expect(lista[0].subject.name).toBe('Matemática');
 
-        await request(server.server).delete(`/api/academic-years/${year.id}/revisiones/${nota.id}`).set(como(admin, UserRole.ADMIN)).expect(200);
-        expect(await (prisma as any).registroBorrado.count({ where: { tabla: 'notaDeRevision', registroId: nota.id } })).toBe(1);
-        expect((await sugerencia()).suggestedStatus).toBe('PROMOVIDO_CON_PENDIENTES');
+        // Borrar una revisión ya no es una ruta (ninguna pantalla lo hacía; 19-oct-2026).
+        expect(nota.id).toBeTruthy();
 
         await prisma.academicYear.update({ where: { id: year.id }, data: { status: 'COMPLETED' as any } });
         expect((await revisar({ studentId: alumno.id, subjectId: mate.id, score: 12 }).expect(409)).body.code).toBe('CICLO_CERRADO');

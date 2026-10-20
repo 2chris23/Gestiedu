@@ -19,7 +19,7 @@ import {
  * "se vea bien", porque un panel que enseña cero cuando debería enseñar treinta
  * no se distingue a simple vista de uno vacío de verdad.
  *
- * Así se descubrió que `GET /api/teachers/my-classrooms` devolvía 400 siempre:
+ * Así se descubrió que `GET /api/teachers/my-classrooms` (ya quitada) devolvía 400 siempre:
  * la pantalla del profesor cargaba, pero sin sus secciones.
  *
  * También se miran los errores de JavaScript. Una pantalla puede pintarse a

@@ -12,24 +12,16 @@
  * petición de gente (no las internas de la descarga) al entrar y al salir.
  */
 let enCurso = 0;
-let ultimaVez = 0;
 
 export function entraUnaPeticion(): void {
     enCurso++;
-    ultimaVez = Date.now();
 }
 
 export function saleUnaPeticion(): void {
     enCurso = Math.max(0, enCurso - 1);
-    ultimaVez = Date.now();
 }
 
 /** Peticiones de gente que este proceso está atendiendo ahora mismo. */
 export function peticionesEnCurso(): number {
     return enCurso;
-}
-
-/** Milisegundos desde la última petición de gente que entró o salió. */
-export function msDesdeLaUltima(): number {
-    return ultimaVez === 0 ? Infinity : Date.now() - ultimaVez;
 }

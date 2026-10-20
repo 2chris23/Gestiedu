@@ -14,7 +14,7 @@ import {
     previewPromotionStrategy
 } from '../controllers/academic-years.controller';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
-import { listarRevisiones, guardarRevision, borrarRevision } from '../controllers/revision.controller';
+import { listarRevisiones, guardarRevision } from '../controllers/revision.controller';
 import {
     verEstado,
     verFaltantes,
@@ -26,7 +26,6 @@ import {
     verExpedientes,
 } from '../controllers/fin-de-ano.controller';
 
-const idCorto = { type: 'string', minLength: 1, maxLength: 64 } as const;
 const condicion = { type: 'string', enum: ['PROMOVIDO', 'PROMOVIDO_CON_PENDIENTES', 'NO_PROMOVIDO'] } as const;
 const fecha = { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' } as const;
 
@@ -59,7 +58,6 @@ const academicYearsRoutes: FastifyPluginAsync = async (fastify) => {
             // (services/revision.service.ts).
             adminRoutes.get('/:id/revisiones', listarRevisiones as any);
             adminRoutes.put('/:id/revisiones', guardarRevision as any);
-            adminRoutes.delete('/:id/revisiones/:revisionId', borrarRevision as any);
             // El fin del año por pasos (services/fin-de-ano.service.ts).
             adminRoutes.get('/:id/cierre', verEstado as any);
             adminRoutes.get('/:id/cierre/faltantes', verFaltantes as any);

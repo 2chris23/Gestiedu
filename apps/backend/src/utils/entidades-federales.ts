@@ -34,8 +34,5 @@ export const ENTIDADES_FEDERALES = [
 /** Donde puede haber nacido un alumno: una entidad o fuera del país. */
 export const ENTIDADES_DE_NACIMIENTO = [...ENTIDADES_FEDERALES, 'Exterior'] as const;
 
-export const esEntidadFederal = (v: unknown): boolean =>
-    typeof v === 'string' && (ENTIDADES_FEDERALES as readonly string[]).includes(v);
-
 export const esEntidadDeNacimiento = (v: unknown): boolean =>
     typeof v === 'string' && (ENTIDADES_DE_NACIMIENTO as readonly string[]).includes(v);

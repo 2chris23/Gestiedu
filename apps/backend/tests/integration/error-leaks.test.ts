@@ -203,19 +203,6 @@ describe('Fuga de errores internos hacia el cliente', () => {
         assertNoInternalLeak(res.body);
     }, 60000);
 
-    it('TEST 2 — monitoring: resolver una alerta con ID inexistente da error controlado, no 500 con error.message crudo', async () => {
-        const res = await request(server.server)
-            .patch('/api/superadmin/monitoring/alerts/id-que-no-existe/resolve')
-            .set('Authorization', `Bearer ${superAdminToken}`)
-            .send();
-
-        show('2 PATCH /api/superadmin/monitoring/alerts/:id/resolve (ID inválido)', res.status, res.body);
-
-        // P2025 (registro no encontrado) → 404 del handler central
-        expect(res.status).toBe(404);
-        expect(res.body.code).toBe('RECORD_NOT_FOUND');
-        assertNoInternalLeak(res.body);
-    }, 60000);
 
     it('TEST 3 — email opcional: guardar un instituto con email vacío da 200 y lo persiste como NULL', async () => {
         // Réplica exacta de lo que manda el formulario de SuperAdmin: los cuatro
@@ -276,14 +263,4 @@ describe('Fuga de errores internos hacia el cliente', () => {
         expect(saved?.phone).toBe('0212-5551234');
     }, 60000);
 
-    it('TEST 2b — monitoring exige SuperAdmin: sin token no se llega al controller', async () => {
-        const res = await request(server.server)
-            .patch('/api/superadmin/monitoring/alerts/id-que-no-existe/resolve')
-            .send();
-
-        show('2b PATCH /api/superadmin/monitoring/... (sin token)', res.status, res.body);
-
-        expect(res.status).toBe(401);
-        assertNoInternalLeak(res.body);
-    }, 60000);
 });

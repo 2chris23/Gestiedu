@@ -350,48 +350,7 @@ describe('Auditoría — lo que quedaba de la API', () => {
     });
 
     describe('notificaciones que manda el liceo', () => {
-        it('RES-API-16: el admin manda una notificación a varias personas', async () => {
-            const res = await como('admin')(request(server.server).post('/api/notifications/bulk')).send({
-                recipients: [alumno.id, profesor.id],
-                title: 'Reunión de representantes',
-                message: 'El viernes a las 8 de la mañana en el auditorio',
-                type: 'ANNOUNCEMENT',
-                priority: 'NORMAL',
-            });
 
-            expect([200, 201]).toContain(res.status);
 
-            const llegaron = await prisma.notification.count({ where: { title: 'Reunión de representantes' } });
-            expect(llegaron).toBe(2);
-        }, 60000);
-
-        it('RES-API-17: un alumno no manda notificaciones a nadie', async () => {
-            const masiva = await como('alumno')(request(server.server).post('/api/notifications/bulk')).send({
-                recipients: [profesor.id],
-                title: 'Broma',
-                message: 'No se suspenden las clases, es mentira',
-                type: 'ANNOUNCEMENT',
-                priority: 'HIGH',
-            });
-            expect([401, 403]).toContain(masiva.status);
-
-            // Nota: en /system la validación del cuerpo corre antes que la del rol, así
-            // que un no autorizado puede recibir un 400 en vez de un 403. No pasa nada
-            // grave (no ejecuta), pero por eso aquí basta con que NO lo consiga.
-            const delSistema = await como('alumno')(request(server.server).post('/api/notifications/system')).send({
-                title: 'Broma del sistema',
-                message: 'Mañana no hay clases, quédense en casa',
-                type: 'ANNOUNCEMENT',
-                priority: 'HIGH',
-            });
-            expect(delSistema.status).toBeGreaterThanOrEqual(400);
-
-            expect(await prisma.notification.count({ where: { title: { contains: 'Broma' } } })).toBe(0);
-        }, 60000);
-
-        it('RES-API-18: un alumno no lee la bandeja de otro por la puerta de atrás', async () => {
-            const res = await como('alumno')(request(server.server).get(`/api/notifications/user/${profesor.id}`));
-            expect([401, 403]).toContain(res.status);
-        }, 60000);
     });
 });

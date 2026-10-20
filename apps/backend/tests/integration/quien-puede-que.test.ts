@@ -230,8 +230,6 @@ describe('Quién puede qué (matriz ruta × rol)', () => {
         { que: 'GET lista de actividades', metodo: 'get', url: () => `/api/activities`, si: ['admin'], no: [...AJENOS, ...NO_PERSONAL], noDebeContener: () => [d.actividad.id], sinFugaPara: ['profeB'] },
         { que: 'GET sección A', metodo: 'get', url: () => `/api/classrooms/${A()}`, si: ['admin', 'profeA', 'guiaA'], no: [...AJENOS, 'alumnoB', 'repB'] },
         { que: 'GET estadísticas (promedios) de A', metodo: 'get', url: () => `/api/classrooms/${A()}/stats`, si: ['admin', 'guiaA'], no: [...AJENOS, ...NO_PERSONAL, 'profeB'] },
-        { que: 'GET estadística de la sección A', metodo: 'get', url: () => `/api/statistics/section/${A()}`, si: ['admin', 'guiaA'], no: [...AJENOS, ...NO_PERSONAL, 'profeB'] },
-        { que: 'GET estadística de la materia en A', metodo: 'get', url: () => `/api/statistics/subject/${A()}/${d.mate.id}`, si: ['admin', 'profeA'], no: [...AJENOS, ...NO_PERSONAL, 'profeB'] },
         { que: 'GET materias de la sección A', metodo: 'get', url: () => `/api/classrooms/${A()}/subjects`, si: ['admin', 'profeA', 'guiaA'], no: [...AJENOS, ...NO_PERSONAL] },
         { que: 'GET alumnos de la materia', metodo: 'get', url: () => `/api/subjects/${d.mate.id}/students`, si: ['admin'], no: [...AJENOS, ...NO_PERSONAL], noDebeContener: () => [alumnaA()], sinFugaPara: ['profeB'] },
         { que: 'GET lista de alumnos', metodo: 'get', url: () => `/api/students`, si: ['admin', 'profeA'], no: [...AJENOS, ...NO_PERSONAL], noDebeContener: () => [alumnaA()], sinFugaPara: ['profeB'] },

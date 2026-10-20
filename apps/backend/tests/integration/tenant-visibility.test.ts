@@ -125,28 +125,6 @@ describe('Phase 3 — registros sin instituteId son visibles en sus listados', (
         expect(JSON.stringify(list.body)).toContain(dbId);
     });
 
-    it('notification creada aparece en GET /api/notifications', async () => {
-        // La creación requiere recipientId (destinatario del aviso)
-        const admin = await createTestUser(prisma, UserRole.ADMIN, { email: `notif-${Date.now()}@test.com` });
-        await request(server.server)
-            .post('/api/notifications')
-            .set(auth())
-            .send({
-                title: 'Aviso de prueba',
-                message: 'Mensaje de prueba para verificar visibilidad',
-                type: 'INFO',
-                audience: 'entire_institute',
-                priority: 'NORMAL',
-                recipientId: admin.user.id,
-            })
-            .expect(201);
-
-        const list = await request(server.server)
-            .get('/api/notifications')
-            .set(auth())
-            .expect(200);
-        expect(JSON.stringify(list.body)).toContain('Aviso de prueba');
-    });
 
     it('subject creado aparece en GET /api/subjects', async () => {
         await request(server.server)

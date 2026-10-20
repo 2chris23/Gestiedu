@@ -29,9 +29,6 @@ export async function superAdminInstitutesRoutes(fastify: FastifyInstance) {
         superAdminInstitutesController.migrateAll.bind(superAdminInstitutesController)
     );
 
-    // Validación de puertos
-    fastify.get('/ports/check', superAdminInstitutesController.checkPort.bind(superAdminInstitutesController));
-    fastify.get('/ports/available', superAdminInstitutesController.getAvailablePort.bind(superAdminInstitutesController));
 
     // CRUD de institutos
     fastify.get('/', superAdminInstitutesController.list.bind(superAdminInstitutesController));
@@ -54,8 +51,6 @@ export async function superAdminInstitutesRoutes(fastify: FastifyInstance) {
         superAdminInstitutesController.changePlan.bind(superAdminInstitutesController)
     );
 
-    // Re-provisionar instituto (actualiza databaseUser/Password/Host/Port en platform DB)
-    fastify.post('/:id/reprovision', superAdminInstitutesController.reprovision.bind(superAdminInstitutesController));
 
     // Aplicar las migraciones pendientes a un liceo
     fastify.post<{ Params: { id: string } }>(

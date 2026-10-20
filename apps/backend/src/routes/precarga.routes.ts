@@ -17,7 +17,6 @@ import { lasSeccionesDelProfesor, precalentarLosPromedios } from '../services/pr
 import { avisarSiFalla } from '../utils/sin-callar';
 import { redis } from '../config/redis';
 import {
-    fijarServidorParaPaquetes,
     encargarElPaquete,
     laHuella,
     obtenerProgreso,
@@ -61,8 +60,6 @@ function lasDeQuienPide(request: FastifyRequest): Record<string, string> {
 const A_LA_VEZ = 6;
 
 export async function precargaRoutes(fastify: FastifyInstance) {
-    fijarServidorParaPaquetes(fastify);
-
     fastify.get(
         '/precarga/paquete',
         {

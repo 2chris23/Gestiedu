@@ -17,7 +17,7 @@ const ACCENT_BORDERS = [
 
 /**
  * Precarga de las tarjetas métricas del panel principal (Captura 1):
- * Mantiene idénticas dimensiones que CifraCompacta para un cambio suave sin brincos (CLS = 0).
+ * Mantiene las dimensiones de la cifra que sustituye para un cambio suave sin brincos (CLS = 0).
  */
 export function SkeletonKPI({
   count = 4,

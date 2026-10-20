@@ -73,18 +73,3 @@ export function markBackendStopped(): void {
         logger.error('Error al marcar backend como detenido:', error);
     }
 }
-
-/**
- * Lee la configuración actual del backend
- */
-export function readBackendConfig(): BackendConfig | null {
-    try {
-        if (fs.existsSync(CONFIG_PATH)) {
-            return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
-        }
-        return null;
-    } catch (error) {
-        logger.error('Error al leer configuración del backend:', error);
-        return null;
-    }
-}

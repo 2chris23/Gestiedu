@@ -21,7 +21,7 @@ const PERMITIDOS: Record<string, string> = {
     'components/common/CambiosSinEnviar.tsx': '«hoy/ayer» de lo hecho en ESTE teléfono, con su propio reloj',
     'components/fin-de-ano/PasoAnoSiguiente.tsx': 'respaldo si el nombre del ciclo no trae año',
     'components/landing/Secciones.tsx': 'el año del pie de la portada',
-    'components/modals/CreateActivityModal.tsx': 'marca de creación; el día de la actividad lo pone la clase (`date`)',
+    'components/configuracion/MisDatos.tsx': 'la fecha en el nombre del archivo que se baja: la del teléfono que lo guarda',
     'hooks/useConexion.ts': '«hace un rato»: cuánto hace que contestó el servidor',
     'lib/por-enviar.ts': '`hechoEn`: cuándo se hizo en el teléfono, para el orden de subida',
     'utils/date.utils.ts': '`toLocalYMD(d = new Date())`: quien la llama sin fecha pide el día del aparato a propósito',

@@ -588,66 +588,6 @@ export async function deleteStudent(
   }
 }
 
-/**
- * Controlador para reactivar un estudiante
- */
-export async function reactivateStudent(
-  request: FastifyRequest<DeleteStudentRequest>,
-  reply: FastifyReply
-) {
-  try {
-    const { id } = request.params;
-
-    // Verificar que el estudiante existe
-    const existingStudent = await request.tenantPrisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!existingStudent || existingStudent.role !== UserRole.STUDENT) {
-      return reply.status(404).send({
-        error: 'Estudiante no encontrado',
-        code: 'STUDENT_NOT_FOUND',
-      });
-    }
-
-    // Reactivar el estudiante
-    const student = await request.tenantPrisma.user.update({
-      where: { id },
-      data: { isActive: true },
-    });
-
-    // Registrar el evento de reactivación
-    await request.tenantPrisma.auditLog.create({
-      data: {
-        action: ActionType.REACTIVATE,
-        entity: 'STUDENT',
-        entityType: 'STUDENT',
-        entityId: student.id,
-        metadata: {
-          ip: request.ip,
-          userAgent: request.headers['user-agent'],
-        },
-        userId: (request.user as any)?.id,
-      },
-    });
-
-    logger.info('Estudiante reactivado', { studentId: student.id });
-
-    return reply.status(200).send({
-      message: 'Estudiante reactivado correctamente',
-      student: {
-        ...student,
-        password: undefined, // No devolver la contraseña
-      },
-    });
-  } catch (error) {
-    logger.error('Error al reactivar estudiante', { error, studentId: request.params.id });
-    return reply.status(500).send({
-      error: 'Error en el servidor',
-      code: 'INTERNAL_SERVER_ERROR',
-    });
-  }
-}
 
 /**
  * Controlador para obtener estadísticas del dashboard de estudiante

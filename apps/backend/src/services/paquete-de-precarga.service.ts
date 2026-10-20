@@ -286,23 +286,7 @@ class ColaDePaquetesPorProceso {
             void this.procesar();
         }
     }
-}
-
-const colaDelProceso = new ColaDePaquetesPorProceso();
-
-// ── Instancia global de Fastify para encargos asíncronos ────────────────────
-
-let servidorFastifyGlobal: FastifyInstance | null = null;
-
-export function fijarServidorParaPaquetes(f: FastifyInstance): void {
-    servidorFastifyGlobal = f;
-}
-
-export function obtenerServidorParaPaquetes(): FastifyInstance | null {
-    return servidorFastifyGlobal;
-}
-
-// ── Armar el paquete ────────────────────────────────────────────────────────
+}// ── Armar el paquete ────────────────────────────────────────────────────────
 
 const MAX_A_LA_VEZ = 6;
 
@@ -467,50 +451,6 @@ export async function encargarElPaquete(
      */
     const { pedirQueSePrepare, PRIORIDAD } = await import('./cubos-de-precarga.service');
     await pedirQueSePrepare(liceo, [usuarioId], PRIORIDAD.CUENTA_NUEVA);
-}
-
-/** El armado viejo, con su cola y su candado (lo usan las pruebas PAQUETE-*). */
-export async function encargarElPaqueteViejo(liceo: string, usuarioId: string, fastifyInst?: FastifyInstance): Promise<void> {
-    const f = fastifyInst ?? servidorFastifyGlobal;
-    if (!f) {
-        logger.warn('paquete-de-precarga: no hay instancia de Fastify para encargar el paquete');
-        return;
-    }
-
-    if (estaArmandose(liceo, usuarioId)) return;
-
-    try {
-        const prisma = await getTenantPrisma(liceo);
-        const paquete = await prisma.paqueteDePrecarga.findUnique({
-            where: { usuarioId },
-            select: { id: true, huella: true, armadoEn: true },
-        });
-
-        if (paquete) {
-            const hace30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-            if (paquete.armadoEn > hace30d) {
-                const huellaActual = await laHuella(prisma, { id: usuarioId });
-                if (paquete.huella === huellaActual) {
-                    // Vigente dentro de la ventana de cambios y con la misma huella: no hace falta armar de nuevo
-                    return;
-                }
-            }
-        }
-    } catch (err) {
-        logger.warn('paquete-de-precarga: error al comprobar paquete existente', { error: err });
-    }
-
-    colaDelProceso.encolar(async () => {
-        const ficha = randomUUID();
-        const candado = await adquirirCandado(liceo, usuarioId, ficha);
-        if (!candado) return;
-
-        try {
-            await armarElPaquete(f, liceo, usuarioId);
-        } finally {
-            await liberarCandado(liceo, usuarioId, ficha);
-        }
-    });
 }
 
 // ── Puesta al día nocturna ──────────────────────────────────────────────────

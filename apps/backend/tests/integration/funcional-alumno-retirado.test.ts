@@ -85,8 +85,9 @@ describe('El alumno retirado (RET-01…04)', () => {
     it('RET-01: archivado, no cuenta en el total de la sección ni ocupa cupo', async () => {
         await archivar();
 
-        const stats = await request(server.server).get(`/api/statistics/section/${seccion.id}`).set(auth()).expect(200);
-        expect((stats.body.data ?? stats.body).totalStudents).toBe(1);
+        // El resumen de la sección (antes `/api/statistics/section`, sin pantalla, quitada).
+        const stats = await request(server.server).get(`/api/classrooms/${seccion.id}/stats`).set(auth()).expect(200);
+        expect(Number(String(stats.body.occupancy).split('/')[0])).toBe(1);
 
         const lista = await request(server.server).get(`/api/classrooms?academicYearId=${year.id}`).set(auth()).expect(200);
         const suya = (lista.body.data ?? lista.body).find((c: any) => c.id === seccion.id);

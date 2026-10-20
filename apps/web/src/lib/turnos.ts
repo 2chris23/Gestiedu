@@ -56,10 +56,3 @@ export const elTurno = (turno?: string | null): DatosDelTurno => TURNOS[(turno a
 /** La hora de inicio de un bloque dice a qué turno pertenece. */
 export const turnoDeLaHora = (horaDeInicio?: string | null): Turno =>
     horaDeInicio && horaDeInicio >= '12:45' ? 'TARDE' : 'MANANA';
-
-/** Un horario con bloques antes y después del mediodía es de los dos turnos. */
-export function turnosDelHorario(bloques: Array<{ startTime: string }>): Turno[] {
-    const hay = new Set<Turno>();
-    for (const b of bloques) hay.add(turnoDeLaHora(b.startTime));
-    return Array.from(hay).sort();
-}

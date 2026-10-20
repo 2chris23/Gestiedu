@@ -43,14 +43,6 @@ export function marcarGuardia<T extends Function>(fn: T): T {
     (fn as any)[ES_GUARDIA] = true;
     return fn;
 }
-
-/** Marca como guardia todo lo que devuelva una fábrica de comprobaciones. */
-export function fabricaDeGuardias<A extends any[], T extends Function>(
-    fabrica: (...args: A) => T
-): (...args: A) => T {
-    return (...args: A) => marcarGuardia(fabrica(...args));
-}
-
 export function esGuardia(fn: unknown): boolean {
     return typeof fn === 'function' && (fn as any)[ES_GUARDIA] === true;
 }

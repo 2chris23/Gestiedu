@@ -53,22 +53,6 @@ export function getCacheTTL(route: string): number {
     // Retornar TTL por defecto
     return TTL_CONFIG.default;
 }
-
-/**
- * Obtiene el TTL en formato legible
- */
-export function getCacheTTLReadable(route: string): string {
-    const ttl = getCacheTTL(route);
-
-    if (ttl >= 3600) {
-        return `${Math.floor(ttl / 3600)}h`;
-    } else if (ttl >= 60) {
-        return `${Math.floor(ttl / 60)}m`;
-    } else {
-        return `${ttl}s`;
-    }
-}
-
 /**
  * Configuración de TTL exportada para referencia
  */

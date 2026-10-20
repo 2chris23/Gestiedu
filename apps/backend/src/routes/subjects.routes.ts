@@ -5,15 +5,12 @@ import {
   createSubject,
   updateSubject,
   deleteSubject,
-  getSubjectsByGrade,
   getSubjectTeachers,
-  assignSubjectToGrade,
-  removeSubjectFromGrade,
   getSubjectStudents,
   getSubjectStats
 } from '../controllers/subjects.controller';
 import { authenticate, requireAdmin, requireTeacher } from '../middleware/auth.middleware';
-import { validateBody, validateParams, validateQuery } from '../middleware/validation.middleware';
+import { validateBody } from '../middleware/validation.middleware';
 import validators from '../utils/validators';
 import { dondeSeDa, ponerEnSecciones } from '../services/secciones-de-la-materia.service';
 import { responderErrorClaro } from '../utils/error-claro';
@@ -83,24 +80,6 @@ const subjectsRoutes: FastifyPluginAsync = async (fastify) => {
     }
   };
 
-  const assignTeacherSchema = {
-    params: {
-      type: 'object',
-      required: ['id'],
-      properties: {
-        id: { type: 'string' }
-      }
-    },
-    body: {
-      type: 'object',
-      required: ['teacherId'],
-      properties: {
-        teacherId: { type: 'string' },
-        startDate: { type: 'string', format: 'date' },
-        endDate: { type: 'string', format: 'date' }
-      }
-    }
-  };
 
   // Rutas generales
   fastify.get('/', {
@@ -112,18 +91,6 @@ const subjectsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [authenticate, requireAdmin]
   }, getSubjectStats);
 
-  fastify.get('/grade/:grade', {
-    schema: {
-      params: {
-        type: 'object',
-        required: ['grade'],
-        properties: {
-          grade: { type: 'string' } // Changed from strict enum to string to allow numeric IDs
-        }
-      }
-    },
-    preHandler: [authenticate]
-  }, getSubjectsByGrade);
 
   fastify.get('/:id', {
     schema: {
@@ -239,42 +206,7 @@ const subjectsRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Nueva ruta: Asignar materia a un grado completo
-  fastify.post('/grade/:grade/assign', {
-    schema: {
-      params: {
-        type: 'object',
-        required: ['grade'],
-        properties: {
-          grade: { type: 'string' } // Changed to string to match previous schema usage, but controller parses Int
-        }
-      },
-      body: {
-        type: 'object',
-        required: ['subjectId', 'teacherId'],
-        properties: {
-          subjectId: { type: 'string' },
-          teacherId: { type: 'string' }
-        }
-      }
-    },
-    preHandler: [authenticate, requireAdmin]
-  }, assignSubjectToGrade);
 
-  // Nueva ruta: Remover materia de un grado
-  fastify.delete('/grade/:grade/:subjectId', {
-    schema: {
-      params: {
-        type: 'object',
-        required: ['grade', 'subjectId'],
-        properties: {
-          grade: { type: 'string' },
-          subjectId: { type: 'string' }
-        }
-      }
-    },
-    preHandler: [authenticate, requireAdmin]
-  }, removeSubjectFromGrade);
 };
 
 export default subjectsRoutes;

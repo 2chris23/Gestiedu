@@ -184,14 +184,6 @@ describe('Auditoría — paneles de cada rol', () => {
     });
 
     describe('estadísticas del liceo', () => {
-        it('el administrador ve las cifras del instituto', async () => {
-            const res = await auth(tokens.admin)(request(server.server).get('/api/dashboard/stats/institute'));
-            expect(res.status).toBe(200);
-        }, 60000);
 
-        it('un profesor no ve las cifras del instituto', async () => {
-            const res = await auth(tokens.profesor)(request(server.server).get('/api/dashboard/stats/institute'));
-            expect([401, 403]).toContain(res.status);
-        }, 60000);
     });
 });

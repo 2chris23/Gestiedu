@@ -5,7 +5,6 @@ import {
   getStudentObservations,
   getClassroomObservations,
   getSubjectObservations,
-  getSessionObservations,
   deleteObservation,
 } from '../controllers/observations.controller';
 
@@ -36,12 +35,6 @@ export async function observationsRoutes(fastify: FastifyInstance) {
     authenticatedRoutes.get(
       '/subject/:classroomId/:subjectId',
       getSubjectObservations as any
-    );
-
-    // Obtener observaciones de una sesión de clase
-    authenticatedRoutes.get(
-      '/session/:sessionId',
-      getSessionObservations as any
     );
 
     // Eliminar observación

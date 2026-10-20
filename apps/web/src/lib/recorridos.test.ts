@@ -21,6 +21,8 @@ function archivos(dir: string): string[] {
 
 const codigo = archivos(path.join(__dirname, '..')).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 const marcas = new Set(Array.from(codigo.matchAll(/data-recorrido="([a-z0-9-]+)"/g), (m) => m[1]));
+// Las acciones que se pintan en lista (`{ recorrido: 'plan-editar' }` y luego `data-recorrido={a.recorrido}`).
+for (const m of codigo.matchAll(/recorrido: '([a-z0-9-]+)'/g)) marcas.add(m[1]);
 // `data-recorrido={`finanzas-${v.id}`}`: vale cualquier nombre con ese principio.
 const prefijos = Array.from(codigo.matchAll(/data-recorrido=\{`([a-z0-9-]+)\$\{/g), (m) => m[1]);
 const existe = (donde: string) => marcas.has(donde) || prefijos.some((p) => donde.startsWith(p));

@@ -7,20 +7,20 @@ import { invalidateTenantCache } from '../../src/config/database';
 import { createTestServer, createTestPrismaClient, createTestUser, createTestSubject, generateTestToken } from '../helpers';
 
 /**
- * LA ASISTENCIA DEL AÑO Y DEL CICLO (ASIS-CICLO-01/02, 2026-10-05)
+ * LA ASISTENCIA DEL AÑO (ASIS-CICLO-01, 2026-10-05)
  *
  * `MAPA` §4: la del año es la media de SUS SECCIONES CON DATOS y la del ciclo,
  * la de sus años; los días sin toma de asistencia no penalizan. El código
- * dividía la del ciclo SIEMPRE entre 5 (un liceo con solo 1.º, todos
- * presentes, salía con 20 %) y la del año entre todas sus secciones, también
- * la que aún no pasó lista.
+ * dividía la del año entre todas sus secciones, también la que aún no pasó
+ * lista. (La del ciclo, ASIS-CICLO-02, vivía en `/api/statistics/cycle`, que
+ * ninguna pantalla enseñaba: se quitó con esa ruta el 19-oct-2026.)
  */
 
 const SLUG = 'test-institute';
 const LICEO = 'institute';
 const gId = () => `c${createId()}`;
 
-describe('La asistencia del año y del ciclo (ASIS-CICLO)', () => {
+describe('La asistencia del año (ASIS-CICLO)', () => {
     let server: FastifyInstance;
     let prisma: PrismaClient;
     let admin: any;
@@ -67,14 +67,10 @@ describe('La asistencia del año y del ciclo (ASIS-CICLO)', () => {
             .set('X-Institute-Slug', SLUG);
 
     it('ASIS-CICLO-01: el año es la media de sus secciones CON asistencia: 100 %, no 50 %', async () => {
-        const r = await pedir(`/api/statistics/grade/${year.id}/1`);
+        // La pantalla del año escolar (`GET /academic-years/:id/stats`). Antes
+        // se miraba en `/api/statistics`, que ninguna pantalla usaba y se quitó.
+        const r = await pedir(`/api/academic-years/${year.id}/stats`);
         expect(r.status).toBe(200);
-        expect(r.body.data.attendanceRate).toBe(100);
-    });
-
-    it('ASIS-CICLO-02: un ciclo con solo 1.º, todos presentes, tiene 100 %, no 20 %', async () => {
-        const r = await pedir(`/api/statistics/cycle/${year.id}`);
-        expect(r.status).toBe(200);
-        expect(r.body.data.attendanceRate).toBe(100);
+        expect(r.body.find((g: any) => g.grade === 1).stats.attendance).toBe('100%');
     });
 });

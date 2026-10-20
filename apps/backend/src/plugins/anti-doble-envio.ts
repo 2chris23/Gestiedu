@@ -246,10 +246,4 @@ async function antiDobleEnvioPlugin(server: FastifyInstance, opciones: { cliente
         }
     });
 }
-
-/** Para las pruebas: dejar la memoria limpia entre casos. */
-export function olvidarEnviosEnCurso() {
-    enCurso.clear();
-}
-
 export default fp(antiDobleEnvioPlugin, { name: 'anti-doble-envio' });

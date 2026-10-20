@@ -8,7 +8,7 @@ import { promediosDeLaSeccion } from './aggregation.service';
 import { NOTAS_QUE_CUENTAN } from './apreciaciones.service';
 import { instituteTimezone, todayInTimezone } from '../utils/school-time';
 import { platformPrisma } from '../config/database';
-import { boletaDelAlumno, BoletaDelAlumno } from './boleta.service';
+import { boletaDelAlumno } from './boleta.service';
 import { cifrasOficialesDeLaSeccion, cifrasOficialesDelAno, estaEnRiesgo, mediaOficial, notaOficial } from './cifras-oficiales.service';
 
 /**
@@ -103,7 +103,6 @@ async function porcentajeDeAsistencia(db: any, studentId: string, v: Ventana): P
     ]);
     return total > 0 ? (presentes * 100.0) / total : 0;
 }
-
 
 /**
  * Las materias del alumno en el ciclo, con su promedio (nivel 2) y si tiene
@@ -916,12 +915,10 @@ export class DashboardService {
         }
 
         let minPassing = 10;
-        let configRedondeo: 'MPPE' | 'NINGUNO' = 'MPPE';
         if (resolvedInstituteId) {
             try {
                 const config = await getAcademicConfig(resolvedInstituteId);
                 minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
-                configRedondeo = config.redondeoDeDefinitivas || 'MPPE';
             } catch {
                 minPassing = 10;
             }
@@ -1192,33 +1189,5 @@ export class DashboardService {
             representados: childrenWithStats,
             alerts
         };
-    }
-
-    async getSystemStats(db: PrismaClient) {
-        return db.auditLog.aggregate({ _count: { id: true } });
-    }
-
-    async getInstituteStats(db: PrismaClient) {
-        return db.activity.aggregate({ _count: { id: true } });
-    }
-
-    async getRecentActivity(userId: string, db: PrismaClient) {
-        return db.auditLog.findMany({
-            where: { userId },
-            orderBy: { createdAt: 'desc' },
-            take: 5
-        });
-    }
-
-    async getUpcomingEvents(userId: string, db: PrismaClient) {
-        return db.activity.findMany({
-            where: { dueDate: { gt: new Date() } },
-            orderBy: { dueDate: 'asc' },
-            take: 5
-        });
-    }
-
-    async getPerformanceMetrics(userId: string, db: PrismaClient) {
-        // Lógica para calcular métricas de rendimiento
     }
 }

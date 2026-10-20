@@ -42,14 +42,6 @@ export function sePuedeGirar(): boolean {
     const orientacion = window.screen?.orientation as (ScreenOrientation & { lock?: unknown }) | undefined;
     return typeof orientacion?.lock === 'function';
 }
-
-/** ¿Está el teléfono tumbado ahora mismo? */
-export function estaTumbado(): boolean {
-    if (typeof window === 'undefined') return false;
-    if (window.matchMedia) return window.matchMedia('(orientation: landscape)').matches;
-    return window.innerWidth > window.innerHeight;
-}
-
 /**
  * Pide poner la pantalla en horizontal.
  * @returns `true` si se ha podido; `false` si toca girar el teléfono a mano.

@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { instituteService, InstituteConfig, UpdateInstituteDto } from '@/services/institute.service';
+import { instituteService } from '@/services/institute.service';
 import { toast } from 'sonner';
-import { esPendiente } from '@/lib/por-enviar';
 import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
 
 function getActiveTenantSlug(): string | null {
@@ -49,32 +48,6 @@ export function useInstituteConfig(options?: { enabled?: boolean; slug?: string 
         enabled: options?.enabled !== false && Boolean(slug),
     });
 }
-
-/**
- * Hook para actualizar la configuración del instituto
- */
-export function useUpdateInstituteConfig() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (data: UpdateInstituteDto) => instituteService.updateConfig(data),
-        onSuccess: (r) => {
-            if (esPendiente(r)) {
-                toast('Sin conexión: el cambio quedó pendiente ⏱ y se guarda solo al volver.', { id: 'pendiente' });
-                return;
-            }
-            // `config()` a secas es la del liceo «none»: no coincidía con la de ningún
-            // liceo y, tras «Guardado», nada se volvía a pedir hasta recargar.
-            queryClient.invalidateQueries({ queryKey: instituteKeys.configs() });
-            queryClient.invalidateQueries({ queryKey: ['membrete'] });
-            toast.success('Configuración actualizada exitosamente');
-        },
-        onError: (error: Error) => {
-            toast.error(error.message || 'Error en la operación');
-        },
-    });
-}
-
 /**
  * Hook para subir logos (favicon y logo principal)
  */

@@ -68,7 +68,6 @@ describe('Auditoría — panel de superadmin y configuración del liceo', () => 
                 '/api/superadmin/institutes',
                 '/api/superadmin/institutes/plans',
                 '/api/superadmin/institutes/stats',
-                '/api/superadmin/institutes/ports/available',
                 '/api/superadmin/monitoring/health',
             ];
 
@@ -134,15 +133,6 @@ describe('Auditoría — panel de superadmin y configuración del liceo', () => 
             expect(stats.status).toBe(200);
         }, 60000);
 
-        it('SUP-06: pide un puerto libre y comprueba si uno está ocupado', async () => {
-            const libre = await comoSuper(request(server.server).get('/api/superadmin/institutes/ports/available'));
-            expect(libre.status).toBe(200);
-
-            const comprobar = await comoSuper(
-                request(server.server).get('/api/superadmin/institutes/ports/check').query({ port: 5599 })
-            );
-            expect(comprobar.status).toBe(200);
-        }, 60000);
 
         it('SUP-07: el estado de las migraciones de cada liceo se puede consultar y reintentar', async () => {
             const estado = await comoSuper(request(server.server).get('/api/superadmin/institutes/migrations'));

@@ -435,12 +435,6 @@ describe('Auditoría — quién puede hacer qué', () => {
     describe('los datos personales solo los toca el administrador', () => {
         it('el estudiante NO puede editar su propia ficha', async () => {
             prohibido(
-                await auth(tk.ana)(request(server.server).put('/api/students/profile/me')).send({
-                    firstName: 'ElMejor',
-                    lastName: 'DelLiceo',
-                })
-            );
-            prohibido(
                 await auth(tk.ana)(request(server.server).put('/api/users/profile/me')).send({ phone: '0000000' })
             );
 
@@ -449,12 +443,6 @@ describe('Auditoría — quién puede hacer qué', () => {
         }, 60000);
 
         it('el profesor NO puede editar su propia ficha', async () => {
-            prohibido(
-                await auth(tk.profeA)(request(server.server).put('/api/teachers/profile/me')).send({
-                    firstName: 'Profesor',
-                    lastName: 'Cambiado',
-                })
-            );
             prohibido(
                 await auth(tk.profeA)(request(server.server).put('/api/users/profile/me')).send({
                     firstName: 'Otro',

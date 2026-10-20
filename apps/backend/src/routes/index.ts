@@ -8,18 +8,13 @@ import { gradesRoutes } from './grades.routes';
 import { classroomsRoutes } from './classrooms.routes';
 import { academicYearsRoutes } from './academic-years.routes';
 import { subjectsRoutes } from './subjects.routes';
-import { notificationsRoutes } from './notifications.routes';
 import { dashboardRoutes } from './dashboard.routes';
 import { institutesRoutes } from './institutes.routes';
-import { reportsRoutes } from './reports.routes';
-import { schedulesRoutes } from './schedules.routes';
 import { studentsRoutes } from './students.routes';
-import { teachersRoutes } from './teachers.routes';
 import { attendanceRoutes } from './attendance.routes';
 import { classReplacementsRoutes } from './class-replacements.routes';
 import { pagosRoutes } from './pagos.routes';
 import { finanzasRoutes } from './finanzas.routes';
-import { cycleStatisticsRoutes } from './cycle-statistics.routes';
 import { classroomSubjectsRoutes } from './classroomSubjects.routes';
 import { scheduleBlocksRoutes } from './scheduleBlocks.routes';
 import { classSessionsRoutes } from './classSessions.routes';
@@ -110,7 +105,6 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(misDatosRoutes, { prefix: '/api' });
   await fastify.register(legalRoutes, { prefix: '/api' });
   await fastify.register(paeRoutes, { prefix: '/api/pae' });
-  await fastify.register(schedulesRoutes, { prefix: '/api/schedules' });
   await fastify.register(scheduleBlocksRoutes, { prefix: '/api' });
   await fastify.register(classSessionsRoutes, { prefix: '/api/sessions' });
   await fastify.register(classReplacementsRoutes, { prefix: '/api/class-replacements' });
@@ -122,17 +116,13 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // Rutas por roles específicos
   await fastify.register(studentsRoutes, { prefix: '/api/students' });
   await fastify.register(boletaRoutes, { prefix: '/api/boleta' });
-  await fastify.register(teachersRoutes, { prefix: '/api/teachers' });
 
   // Rutas de comunicación
-  await fastify.register(notificationsRoutes, { prefix: '/api/notifications' });
 
   // Rutas de reportes y dashboard
-  await fastify.register(reportsRoutes, { prefix: '/api/reports' });
   await fastify.register(dashboardRoutes, { prefix: '/api/dashboard' });
 
   // Rutas de estadísticas jerárquicas (School Archivist)
-  await fastify.register(cycleStatisticsRoutes, { prefix: '/api/statistics' });
 
   // Rutas de administración
   await fastify.register(institutesRoutes, { prefix: '/api/institutes' });
@@ -202,14 +192,9 @@ export {
   gradesRoutes,
   classroomsRoutes,
   subjectsRoutes,
-  notificationsRoutes,
   dashboardRoutes,
   institutesRoutes,
   attendanceRoutes,
-  reportsRoutes,
-  schedulesRoutes,
   studentsRoutes,
-  teachersRoutes,
-  cycleStatisticsRoutes,
   classSessionsRoutes
 };

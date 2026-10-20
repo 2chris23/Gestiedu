@@ -340,11 +340,4 @@ api.interceptors.response.use(
     }
 );
 
-// Exportar la baseURL configurada para referencia
-export function getConnectionStatus(): { baseURL: string } {
-    return {
-        baseURL: API_BASE_URL,
-    };
-}
-
 export default api;

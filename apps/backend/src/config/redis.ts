@@ -128,18 +128,6 @@ export async function disconnectRedis(): Promise<void> {
     console.error('❌ Redis disconnection failed:', error);
   }
 }
-
-// Función para verificar el estado de Redis
-export async function checkRedisHealth(): Promise<boolean> {
-  try {
-    const result = await redis.ping();
-    return result === 'PONG';
-  } catch (error) {
-    console.error('Redis health check failed:', error);
-    return false;
-  }
-}
-
 // Utilidades para caché
 /**
  * Lo que varios patrones tienen en común antes de su primer comodín.

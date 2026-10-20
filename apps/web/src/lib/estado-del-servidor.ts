@@ -134,21 +134,6 @@ export function elServidorNoContesta(): void {
     estado = { ...estado, contesta: false };
     avisar();
 }
-
-/** Solo para reiniciar el estado en las pruebas unitarias. */
-export function _reiniciarEstadoParaPruebas(): void {
-    estado = { contesta: true, ultimaRespuesta: null };
-    iniciado = false;
-    oyentes.clear();
-    ultimoGuardado = 0;
-    ultimoFallo = 0;
-    exitosSeguidos = 0;
-    if (temporizadorRebote) {
-        clearTimeout(temporizadorRebote);
-        temporizadorRebote = null;
-    }
-}
-
 /**
  * ¿Este error es que el servidor no contestó, y no que dijo que no?
  *

@@ -55,11 +55,6 @@ const personalPorSeccion = new Map<string, { ids: string[]; hasta: number }>();
 function clavePorLiceo(classroomId: string): string {
     return `${liceoActual() ?? 'sin-liceo'}|${classroomId}`;
 }
-
-export function olvidarPersonalRecordado(): void {
-    personalPorSeccion.clear();
-}
-
 async function personalDeLaSeccion(prisma: PrismaClient, classroomId: string): Promise<string[]> {
     const clave = clavePorLiceo(classroomId);
     const recordado = personalPorSeccion.get(clave);

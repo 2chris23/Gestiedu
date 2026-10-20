@@ -473,8 +473,5 @@ export async function buildServer(): Promise<FastifyInstance> {
     };
   });
 
-  const { fijarServidorParaPaquetes } = await import('./services/paquete-de-precarga.service');
-  fijarServidorParaPaquetes(server);
-
   return server;
 }

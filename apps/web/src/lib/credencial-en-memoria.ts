@@ -49,12 +49,6 @@ let credencial: string | null = null;
 export function guardarCredencial(token: string | null | undefined): void {
     credencial = token || null;
 }
-
-/** La llave de esta pestaña, o nada si todavía no hay. */
-export function laCredencial(): string | null {
-    return credencial;
-}
-
 /** Al cerrar sesión. */
 export function olvidarCredencial(): void {
     credencial = null;

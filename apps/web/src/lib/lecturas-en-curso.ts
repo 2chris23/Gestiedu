@@ -32,8 +32,3 @@ export function apuntarFalta(clave: string): void {
     const lista = (w.__lecturasSinGuardar ??= []);
     if (lista.length < 200 && !lista.includes(clave)) lista.push(clave);
 }
-
-/** Cuántas hay en curso en otra ventana (el marco del recorrido). */
-export function enCursoEn(w: Window | null | undefined): number {
-    return (w as ConCuentas | null | undefined)?.__lecturasEnCurso ?? 0;
-}

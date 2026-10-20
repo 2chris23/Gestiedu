@@ -588,6 +588,3 @@ export async function elCubo(prisma: any, yo: { id: string }, clave: string): Pr
     if (!c?.contenido || !c.huella) return null;
     return { contenido: Buffer.from(c.contenido), huella: c.huella };
 }
-
-/** Para las pruebas: la firma de un conjunto de lecturas. */
-export const _firma = firmaDe;

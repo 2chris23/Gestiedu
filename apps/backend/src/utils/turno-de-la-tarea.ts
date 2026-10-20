@@ -31,11 +31,6 @@ export async function tomarElTurno(nombre: string, duraMs: number): Promise<bool
     return filas.length > 0 && filas[0].quien === yo;
 }
 
-/** Suelta el turno (al acabar), para que la siguiente vuelta la pueda tomar cualquiera. */
-export async function soltarElTurno(nombre: string): Promise<void> {
-    await platformPrisma.$executeRawUnsafe(`DELETE FROM "turnos_de_tareas" WHERE "nombre" = $1 AND "quien" = $2`, nombre, yo).catch(() => undefined);
-}
-
 /**
  * Corre `tarea` como mucho UNA vez cada `cadaMs` entre todos los procesos.
  * El turno no se suelta al acabar: dura el periodo entero, así el proceso

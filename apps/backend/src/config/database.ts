@@ -426,13 +426,6 @@ export async function healthCheck(): Promise<{
 export async function disconnectDatabase(): Promise<void> {
   await disconnectAll();
 }
-
-// @deprecated - Use healthCheck() instead
-export async function checkDatabaseHealth(): Promise<boolean> {
-  const health = await healthCheck();
-  return health.platform;
-}
-
 // =====================================================
 // GRACEFUL SHUTDOWN
 // =====================================================
