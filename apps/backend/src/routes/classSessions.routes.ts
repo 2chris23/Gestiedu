@@ -1,17 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import { authenticate } from '../middleware/auth.middleware';
 import { requireAdmin, requireTeacher } from '../middleware/auth.middleware';
-import {
-    getClassSessionById,
-    updateClassSession,
-    createClassSession,
-    getLiveClassDetail,
-    saveLiveClassSession,
-    suspendClassSession,
-    getLiveOverview,
-    searchStudentsForSession,
-    savePlanWeekRow,
-} from '../controllers/classSessions.controller';
+import { getClassSessionById, updateClassSession } from '../controllers/clase-en-vivo/sesion-de-clase.controller';
+import { getLiveClassDetail } from '../controllers/clase-en-vivo/detalle-de-la-clase.controller';
+import { createClassSession, saveLiveClassSession } from '../controllers/clase-en-vivo/guardar-la-clase.controller';
+import { getLiveOverview } from '../controllers/clase-en-vivo/resumen-en-vivo.controller';
+import { suspendClassSession } from '../controllers/clase-en-vivo/suspender-la-clase.controller';
+import { searchStudentsForSession, savePlanWeekRow } from '../controllers/clase-en-vivo/semana-del-plan.controller';
 import {
     getClassActivities,
     createClassActivity,

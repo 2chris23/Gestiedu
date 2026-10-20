@@ -165,7 +165,7 @@ cierra, llega SIGPIPE y el proceso muere. Cuesta horas de pruebas falsas en rojo
 
 - **Una actividad "para la próxima clase" solo se anuncia en la clase donde se creó.**
   Así se sabe en qué clase se puso y no se acumulan varias en "próxima clase".
-  Está en `classSessions.controller.ts` con su comentario: no cambiar sin hablarlo.
+  Está en `controllers/clase-en-vivo/detalle-de-la-clase.controller.ts` con su comentario: no cambiar sin hablarlo.
 
 ## Permisos (lo que puede cada rol)
 
