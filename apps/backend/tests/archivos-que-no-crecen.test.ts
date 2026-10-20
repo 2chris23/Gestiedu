@@ -35,7 +35,6 @@ const GRANDES: Record<string, number> = {
     'apps/backend/src/controllers/superadmin-institutes.controller.ts': 864,
     'apps/web/src/app/(dashboard)/dashboard/usuarios/[cedula]/page.tsx': 851,
     'apps/backend/src/services/materias-pendientes.service.ts': 821,
-    'apps/backend/src/controllers/academic-years.controller.ts': 817,
 };
 const TOPE_NUEVO = 1000;
 

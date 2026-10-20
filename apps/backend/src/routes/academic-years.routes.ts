@@ -1,18 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
-import {
-    createAcademicYear,
-    getAcademicYears,
-    getActiveAcademicYear,
-    changeYearStatus,
-    deleteAcademicYear,
-    getAcademicYearStats,
-    updateAcademicYear,
-    prepareAcademicYearClose,
-    confirmAcademicYearClose,
-    getCloseStrategies,
-    getPromotionContext,
-    previewPromotionStrategy
-} from '../controllers/academic-years.controller';
+import { createAcademicYear, getAcademicYears, getActiveAcademicYear, changeYearStatus, deleteAcademicYear, updateAcademicYear } from '../controllers/academic-years.controller';
+import { getAcademicYearStats } from '../controllers/ano-escolar/estadisticas-del-ano.controller';
+import { prepareAcademicYearClose, confirmAcademicYearClose, getCloseStrategies, getPromotionContext, previewPromotionStrategy } from '../controllers/ano-escolar/cierre-del-ano.controller';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
 import { listarRevisiones, guardarRevision } from '../controllers/revision.controller';
 import {
