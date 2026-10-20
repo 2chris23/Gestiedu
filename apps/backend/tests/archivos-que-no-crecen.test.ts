@@ -16,7 +16,6 @@ import * as path from 'path';
  */
 const RAIZ = path.resolve(__dirname, '../../..');
 const GRANDES: Record<string, number> = {
-    'apps/backend/src/controllers/scheduleBlocks.controller.ts': 1748,
     'apps/backend/src/controllers/classSessions.controller.ts': 1730,
     'apps/backend/src/controllers/users.controller.ts': 1626,
     'apps/web/src/app/(dashboard)/dashboard/clase-en-vivo/[classroomId]/[subjectId]/page.tsx': 1457,
