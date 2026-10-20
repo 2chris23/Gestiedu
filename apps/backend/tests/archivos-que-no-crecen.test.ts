@@ -19,7 +19,6 @@ const GRANDES: Record<string, number> = {
     'apps/web/src/app/(dashboard)/dashboard/clase-en-vivo/[classroomId]/[subjectId]/page.tsx': 1457,
     'apps/web/src/components/evaluation/EvaluationPlanSection.tsx': 1408,
     'apps/web/src/app/(dashboard)/dashboard/academico/[cycleId]/promocion/page.tsx': 1205,
-    'apps/backend/src/controllers/classroomSubjects.controller.ts': 1000,
     'apps/web/src/components/landing/escaparate/Pantallas.tsx': 986,
     'apps/web/src/components/finanzas/NuevoMovimiento.tsx': 969,
     'apps/web/src/components/schedule/StudentScheduleSection.tsx': 946,
@@ -28,7 +27,6 @@ const GRANDES: Record<string, number> = {
     'apps/web/src/app/(dashboard)/dashboard/academico/[cycleId]/[sectionId]/page.tsx': 910,
     'apps/backend/src/controllers/superadmin-institutes.controller.ts': 864,
     'apps/web/src/app/(dashboard)/dashboard/usuarios/[cedula]/page.tsx': 851,
-    'apps/backend/src/services/materias-pendientes.service.ts': 821,
 };
 const TOPE_NUEVO = 1000;
 

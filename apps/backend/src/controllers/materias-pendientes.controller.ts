@@ -1,20 +1,6 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
-import {
-    listarPendientes,
-    pendientesDelAlumno,
-    evaluarMomento,
-    quitarMomento,
-    asignarProfesor,
-    actaDeCompromiso,
-    ponerOpcion,
-    quitarOpcion,
-    pendientesDeLaClase,
-    pendientesDeLaSeccion,
-    moverDeClase,
-    cronograma,
-    guardarCronograma,
-    type MomentoDelCronograma,
-} from '../services/materias-pendientes.service';
+import { listarPendientes, pendientesDelAlumno, evaluarMomento, quitarMomento, asignarProfesor, ponerOpcion, quitarOpcion, pendientesDeLaClase, pendientesDeLaSeccion, moverDeClase } from '../services/materias-pendientes.service';
+import { actaDeCompromiso, cronograma, guardarCronograma, type MomentoDelCronograma } from '../services/pendientes/cronograma-de-pendientes';
 import { canSeeStudent } from '../services/authorization.service';
 import {
     planYEncuentrosDeLaClase,
