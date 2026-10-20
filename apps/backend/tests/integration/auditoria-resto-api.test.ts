@@ -304,27 +304,7 @@ describe('Auditoría — lo que quedaba de la API', () => {
         }, 60000);
     });
 
-    describe('estadísticas de notas y materias', () => {
-        it('RES-API-12: las notas de una actividad y sus estadísticas responden', async () => {
-            const deActividad = await como('profesor')(
-                request(server.server).get(`/api/grades/activity/${actividad.id}`)
-            );
-            expect(deActividad.status).toBe(200);
-            expect(JSON.stringify(deActividad.body)).toContain(alumno.id);
-
-            const stats = await como('profesor')(
-                request(server.server).get('/api/grades/stats').query({ classroomId: classroom.id })
-            );
-            expect(stats.status).toBe(200);
-        }, 60000);
-
-        it('RES-API-13: exportar notas responde', async () => {
-            const res = await como('profesor')(
-                request(server.server).get('/api/grades/export/csv').query({ classroomId: classroom.id })
-            );
-            expect(res.status).toBeLessThan(500);
-        }, 60000);
-
+    describe('las materias y las secciones', () => {
         it('RES-API-14: de una materia se consultan sus profesores y sus estudiantes', async () => {
             const profesores = await como('admin')(request(server.server).get(`/api/subjects/${subject.id}/teachers`));
             expect(profesores.status).toBe(200);

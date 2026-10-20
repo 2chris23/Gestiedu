@@ -11,6 +11,9 @@ import {
     createTestPrismaClient,
     cleanTestDatabase,
     createTestUser,
+    createTestAcademicYear,
+    createTestClassroom,
+    createTestSubject,
     generateTestToken,
 } from '../helpers';
 import { RedisCache } from '../../src/config/redis';
@@ -37,6 +40,9 @@ import { conLiceo, sinLiceo, liceoActual } from '../../src/config/ambito-del-lic
  * Y al guardar una nota se limpiaba `grades:list:*`, que tiraba lo guardado de
  * **todos** los liceos, no solo del suyo.
  *
+ * (Esas rutas ya no existen; la prueba usa hoy otra clave que es igual en
+ * todos los liceos, la de las materias con apreciación.)
+ *
  * ─── CÓMO SE COMPRUEBA AQUÍ ──────────────────────────────────────────────────
  *
  * Con dos liceos apuntando a la misma base. Eso es a propósito: si los datos
@@ -54,9 +60,13 @@ const SUFIJO = Date.now();
 const ID_B = `otro-liceo-${SUFIJO}`;
 const SLUG_B = `otro-liceo-${SUFIJO}`;
 
-/** La clave exacta que construye `getGrades` cuando no se le pasa ningún filtro. */
-const CLAVE_DE_TODAS_LAS_NOTAS =
-    'grades:list|stu:-|sub:-|per:-|act:-|tch:-|cls:-|min:-|max:-|typ:-|df:-|dt:-|pg:1|lm:10|sb:createdAt|so:desc|prof:-';
+/**
+ * Una clave que es LA MISMA en todos los liceos: las materias con apreciación
+ * (`apreciaciones.service.ts`), que se guardan un minuto porque se preguntan en
+ * cada promedio. (Antes se probaba con la lista de `/api/grades`, ruta que
+ * ninguna pantalla usaba y se quitó el 20-oct-2026.)
+ */
+const CLAVE_COMUN = 'materias:cualitativas';
 
 function datosDeConexion() {
     const url = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || '';
@@ -97,6 +107,8 @@ describe('La memoria rápida no mezcla liceos', () => {
     let prisma: PrismaClient;
     let tokenA: string;
     let tokenB: string;
+    let seccionA: string;
+    let seccionB: string;
     let baseDeB: string | undefined;
     let prismaB: PrismaClient | undefined;
 
@@ -167,6 +179,18 @@ describe('La memoria rápida no mezcla liceos', () => {
 
         tokenA = generateTestToken(admin.id, UserRole.ADMIN, ID_A);
         tokenB = generateTestToken(adminDeB.id, UserRole.ADMIN, ID_B);
+
+        // Una sección con una materia en cada liceo: al pedir el resumen de sus
+        // materias, el promedio pregunta cuáles son con apreciación.
+        const unaSeccion = async (db: PrismaClient, liceo: string) => {
+            const ano = await createTestAcademicYear(db, liceo);
+            const seccion = await createTestClassroom(db, ano.id, liceo);
+            const materia = await createTestSubject(db, liceo);
+            await db.classroomSubject.create({ data: { classroomId: seccion.id, subjectId: materia.id, weeklyBlocks: 2 } });
+            return seccion.id;
+        };
+        seccionA = await unaSeccion(prisma, ID_A);
+        seccionB = await unaSeccion(prismaB, ID_B);
     });
 
     afterAll(async () => {
@@ -189,31 +213,29 @@ describe('La memoria rápida no mezcla liceos', () => {
     // ═════════════════════════════════════════════════════════════════════════
 
     it('MEZCLA-01: lo que un liceo deja guardado NO se le sirve al siguiente', async () => {
-        // 1. El liceo A pide todas sus notas. Queda guardado.
-        const primera = await request(server.server)
-            .get('/api/grades')
-            .set(auth(tokenA, SLUG_A));
-        expect(primera.status).toBe(200);
+        const resumen = (token: string, slug: string, seccion: string) =>
+            request(server.server).get(`/api/classrooms/${seccion}/subjects`).query({ stats: 'true' }).set(auth(token, slug));
+
+        // 1. El liceo A pide el resumen de sus materias. Queda guardada la
+        //    lista de sus materias con apreciación.
+        expect((await resumen(tokenA, SLUG_A, seccionA)).status).toBe(200);
 
         // 2. Lo guardado está donde se cree que está. Si esta comprobación
-        //    fallara, la clave de abajo ya no sería la que usa el sistema y el
+        //    fallara, la clave de arriba ya no sería la que usa el sistema y el
         //    resto de la prueba no probaría nada.
-        const guardado = await conLiceo(ID_A, () => RedisCache.get(CLAVE_DE_TODAS_LAS_NOTAS));
-        expect(guardado).not.toBeNull();
+        expect(await conLiceo(ID_A, () => RedisCache.get(CLAVE_COMUN))).not.toBeNull();
 
         // 3. Se marca lo del liceo A para poder reconocerlo si sale por donde
         //    no debe.
-        const SENA = { grades: [{ id: 'ESTO-ES-DEL-LICEO-A' }], pagination: { page: 1, limit: 10, total: 1, pages: 1 } };
-        await conLiceo(ID_A, () => RedisCache.set(CLAVE_DE_TODAS_LAS_NOTAS, SENA, 300));
+        await conLiceo(ID_A, () => RedisCache.set(CLAVE_COMUN, ['ESTO-ES-DEL-LICEO-A'], 300));
 
-        // 4. El liceo A lo recibe: la copia guardada es lo que se sirve.
-        const suya = await request(server.server).get('/api/grades').set(auth(tokenA, SLUG_A));
-        expect(JSON.stringify(suya.body)).toContain('ESTO-ES-DEL-LICEO-A');
-
-        // 5. Y el liceo B pide lo mismo: NO puede recibir lo del A.
-        const ajena = await request(server.server).get('/api/grades').set(auth(tokenB, SLUG_B));
-        expect(ajena.status).toBe(200);
-        expect(JSON.stringify(ajena.body)).not.toContain('ESTO-ES-DEL-LICEO-A');
+        // 4. Y el liceo B pide lo mismo: hace SU cuenta y la guarda en lo suyo,
+        //    sin tocar lo del A.
+        expect((await resumen(tokenB, SLUG_B, seccionB)).status).toBe(200);
+        const deB = await conLiceo(ID_B, () => RedisCache.get<string[]>(CLAVE_COMUN));
+        expect(Array.isArray(deB)).toBe(true);
+        expect(deB).not.toContain('ESTO-ES-DEL-LICEO-A');
+        expect(await conLiceo(ID_A, () => RedisCache.get(CLAVE_COMUN))).toEqual(['ESTO-ES-DEL-LICEO-A']);
     });
 
     it('MEZCLA-02: guardar en un liceo no tira lo guardado del otro', async () => {
@@ -392,13 +414,14 @@ describe('La memoria rápida no mezcla liceos', () => {
         // Esto es lo que sostiene todo lo anterior, y es justo lo que falló al
         // primer intento: el liceo se apuntaba al empezar la petición y **no
         // llegaba** al servicio, que guardaba en el apartado «sin liceo».
-        await request(server.server).get('/api/grades').set(auth(tokenA, SLUG_A));
+        // `materiasCualitativas` no dice el liceo: lo pone el ambiente.
+        await request(server.server).get(`/api/classrooms/${seccionA}/subjects`).query({ stats: 'true' }).set(auth(tokenA, SLUG_A));
 
         const claves: string[] = Array.from((RedisCache as never as { memoryStore: Map<string, unknown> }).memoryStore.keys());
-        const laDeLasNotas = claves.find((k) => k.includes('grades:list|'));
+        const laComun = claves.find((k) => k.endsWith(CLAVE_COMUN));
 
-        expect(laDeLasNotas).toBeDefined();
-        expect(laDeLasNotas).toContain(`liceo:${ID_A}:`);
-        expect(laDeLasNotas).not.toContain('sin-liceo:');
+        expect(laComun).toBeDefined();
+        expect(laComun).toContain(`liceo:${ID_A}:`);
+        expect(laComun).not.toContain('sin-liceo:');
     });
 });

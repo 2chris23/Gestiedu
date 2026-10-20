@@ -7,6 +7,7 @@ import { parseDay } from '../../services/school-events.service';
 import { logger } from '../../utils/logger';
 import { esUnAhoraNoDeLaBase, responderAhoraNo } from '../../utils/error-handler';
 import { randomUUID } from 'crypto';
+import { AttendanceStatus } from '../../utils/prisma-enums';
 import { RequestUser } from '../../types/fastify';
 import { instituteTimezone, isFutureDate, todayInTimezone } from '../../utils/school-time';
 
@@ -125,10 +126,20 @@ export async function saveLiveClassSession(
             });
         }
 
+        // Un estado que no existe llegaba a la base y respondía 500 («error
+        // en el servidor») sin decir qué pasaba (20-oct-2026).
+        const estados = new Set<string>(Object.values(AttendanceStatus));
+        const malo = attendances.find((a) => !a || typeof a.studentId !== 'string' || !estados.has(a.status));
+        if (malo) {
+            return reply.status(400).send({
+                error: `Estado de asistencia no válido: ${String(malo?.status)}`,
+                code: 'ESTADO_NO_VALIDO',
+            });
+        }
+
         // La lista que se pasa es la de ESTA sección. Sin mirarlo, el profesor
         // de 1.º A ponía ausente a un alumno de 1.º B —y le pisaba lo que su
-        // profesor ya hubiera marcado ese día—, igual que ya no puede por
-        // `/attendance` (`quien-puede-que.test.ts`).
+        // profesor ya hubiera marcado ese día— (`quien-puede-que.test.ts`).
         if (attendances.length > 0) {
             const ids = Array.from(new Set(attendances.map((a) => a.studentId)));
             const deLaSeccion = await prisma.studentClassroom.count({

@@ -246,11 +246,6 @@ async function principal(): Promise<void> {
     const tokenProfesor = firmar(profesores[0], liceo.id);
 
     // Una actividad nueva, para que la nota no choque con una que ya exista
-    const { rows: periodos } = await tenant.query(
-        `SELECT id FROM periods WHERE "isActive" = true ORDER BY "startDate" DESC LIMIT 1`
-    );
-    const periodId = periodos[0]?.id;
-
     // El id tiene que ser un cuid: la ruta lo valida y un UUID se rechaza con 400.
     const nuevoId = () => {
         const id = createId();
@@ -258,13 +253,12 @@ async function principal(): Promise<void> {
     };
     const activityId = nuevoId();
 
+    // Una actividad de la clase en vivo, que es donde el profesor pone notas.
     await tenant.query(
-        `INSERT INTO activities (id, title, type, scope, "startDate", "maxGrade", weight,
-                                 "classroomId", "subjectId", "periodId", lapso, "createdBy",
-                                 "createdAt", "updatedAt")
-         VALUES ($1, $2, 'SUMATIVA', 'CLASSROOM', now(), 20, 1,
-                 $3, $4, $5, '1', $6, now(), now())`,
-        [activityId, `Prueba de carga ${Date.now()}`, classroomId, subjectId, periodId, teacherId]
+        `INSERT INTO class_activities (id, title, type, target, "maxScore", scores,
+                                       "classroomId", "subjectId", "createdAt", "updatedAt")
+         VALUES ($1, $2, 'TAREA', 'CURRENT', 20, '{}'::jsonb, $3, $4, now(), now())`,
+        [activityId, `Prueba de carga ${Date.now()}`, classroomId, subjectId]
     );
 
     console.log('Un profesor pone UNA nota. Viendo a cuántos les llega...\n');
@@ -274,8 +268,8 @@ async function principal(): Promise<void> {
 
     try {
         await axios.post(
-            `${API}/api/grades`,
-            { score: 18, studentId, activityId, periodId, subjectId },
+            `${API}/api/sessions/activities/${activityId}/grades`,
+            { scores: { [studentId]: 18 }, maxScore: 20 },
             {
                 headers: {
                     Authorization: `Bearer ${tokenProfesor}`,
@@ -287,7 +281,7 @@ async function principal(): Promise<void> {
         );
     } catch (error: any) {
         console.log('  La nota no se pudo poner:', error?.response?.status, JSON.stringify(error?.response?.data));
-        await tenant.query(`DELETE FROM activities WHERE id = $1`, [activityId]);
+        await tenant.query(`DELETE FROM class_activities WHERE id = $1`, [activityId]);
         await tenant.end();
         sockets.forEach((s) => s.disconnect());
         throw new Error('Sin la nota no se puede medir el aviso.');
@@ -309,8 +303,7 @@ async function principal(): Promise<void> {
     }
 
     // 5. Limpiar lo que se creó para medir
-    await tenant.query(`DELETE FROM grades WHERE "activityId" = $1`, [activityId]);
-    await tenant.query(`DELETE FROM activities WHERE id = $1`, [activityId]);
+    await tenant.query(`DELETE FROM class_activities WHERE id = $1`, [activityId]);
     await tenant.end();
 
     if (MANTENER > 0) {

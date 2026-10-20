@@ -246,14 +246,6 @@ describe('Auditoría — lo que ve cada quien de sí mismo', () => {
     describe('el alumno', () => {
 
 
-        it('MIS-03: "mis actividades" trae las de su sección', async () => {
-            const res = await comoAlumno(request(server.server).get('/api/activities/student/my-activities'));
-
-            expect(res.status).toBe(200);
-            const texto = JSON.stringify(res.body);
-            expect(texto).not.toContain('Actividad de la otra sección');
-        }, 60000);
-
 
 
         it('MIS-06: no puede leer la notificación de otro alumno', async () => {

@@ -45,6 +45,11 @@ import {
  *
  * Ninguna de las 696 pruebas anteriores tocaba estas rutas. Por eso esta.
  *
+ * Las puertas 4, 5, 6 y la del representante eran rutas viejas
+ * (`/api/attendance`, `/api/grades`) que ninguna pantalla usaba: se quitaron
+ * el 20-oct-2026 y con ellas sus pruebas (PUERTA-04…10). La asistencia y las
+ * notas se escriben hoy por la clase en vivo, que vigila `quien-puede-que`.
+ *
  * Montaje: el profesor A imparte Matemática en 1er Año A y es su guía. El
  * profesor B no imparte nada ahí. Ana estudia en A; Luis, en B. La madre de Luis
  * lo representa solo a él.
@@ -247,93 +252,6 @@ describe('Puertas sin cerradura', () => {
                 select: { nombreDocente: true },
             });
             expect(escrito?.nombreDocente ?? '').not.toBe('ME LO INVENTO YO');
-        }, 60000);
-    });
-
-    describe('el alumno no lee la asistencia de la sección entera', () => {
-        it('PUERTA-04: un alumno NO puede pedir la asistencia de una sección', async () => {
-            // Ni la suya: la asistencia de la sección es de los profesores y del
-            // admin. El alumno ve la SUYA, que tiene su propia ruta.
-            prohibido(
-                await auth(tk.ana)(
-                    request(server.server).get(`/api/attendance/classroom/${seccionA.id}`)
-                )
-            );
-        }, 60000);
-
-        it('PUERTA-05: un profesor NO puede leer la asistencia de una sección que no lleva', async () => {
-            prohibido(
-                await auth(tk.profeB)(
-                    request(server.server).get(`/api/attendance/classroom/${seccionA.id}`)
-                )
-            );
-        }, 60000);
-    });
-
-    // ═════════════════════════════════════════════════════════════════════════
-    // LO QUE UN PROFESOR NO PUEDE HACER FUERA DE SUS CLASES
-    // ═════════════════════════════════════════════════════════════════════════
-
-    describe('el profesor solo toca las notas de las clases que imparte', () => {
-        it('PUERTA-06: un profesor NO puede cambiar la nota de una clase que no imparte', async () => {
-            prohibido(
-                await auth(tk.profeB)(
-                    request(server.server).put(`/api/grades/${notaDeAna.id}`)
-                ).send({ score: 1 })
-            );
-
-            const sigue = await prisma.grade.findUnique({
-                where: { id: notaDeAna.id },
-                select: { score: true },
-            });
-            expect(Number(sigue?.score)).toBe(15);
-        }, 60000);
-
-        it('PUERTA-07: un profesor NO puede borrar la nota de una clase que no imparte', async () => {
-            prohibido(
-                await auth(tk.profeB)(
-                    request(server.server).delete(`/api/grades/${notaDeAna.id}`)
-                )
-            );
-
-            const sigue = await prisma.grade.count({ where: { id: notaDeAna.id } });
-            expect(sigue).toBe(1);
-        }, 60000);
-
-        it('PUERTA-08: el profesor que SÍ la imparte puede cambiarla', async () => {
-            // El contrapeso: si al cerrar la puerta se cerrara también para
-            // quien tiene la llave, el sistema quedaría inservible.
-            const res = await auth(tk.profeA)(
-                request(server.server).put(`/api/grades/${notaDeAna.id}`)
-            ).send({ score: 16 });
-
-            expect(res.status).toBe(200);
-            const ahora = await prisma.grade.findUnique({
-                where: { id: notaDeAna.id },
-                select: { score: true },
-            });
-            expect(Number(ahora?.score)).toBe(16);
-        }, 60000);
-    });
-
-    // ═════════════════════════════════════════════════════════════════════════
-    // LO QUE UN REPRESENTANTE NO PUEDE HACER
-    // ═════════════════════════════════════════════════════════════════════════
-
-    describe('el representante solo ve a los suyos', () => {
-        it('PUERTA-09: NO puede leer la asistencia de un alumno que no representa', async () => {
-            prohibido(
-                await auth(tk.madre)(
-                    request(server.server).get(`/api/attendance/student/${ana.id}`)
-                )
-            );
-        }, 60000);
-
-        it('PUERTA-10: SÍ puede leer la de su propio representado', async () => {
-            const res = await auth(tk.madre)(
-                request(server.server).get(`/api/attendance/student/${luis.id}`)
-            );
-            expect(res.status).toBe(200);
         }, 60000);
     });
 });

@@ -13,7 +13,7 @@ import { avisar } from '../services/avisos.service';
 import { logger } from '../utils/logger';
 import { RequestUser } from '../types/fastify';
 import { instituteTimezone, isFutureDate, todayInTimezone } from '../utils/school-time';
-import { assertClassroomScope } from '../services/authorization.service';
+import { assertClassroomScope, assertAlumnosDeLaSeccion } from '../services/authorization.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 import { revisarNotas, sumarNotas, arreglarNotasGuardadasComoTexto, Notas } from '../utils/notas-de-clase';
 import { clasificar } from '../utils/actividad-del-dia';
@@ -357,6 +357,7 @@ export async function updateClassActivity(
             if (problema) {
                 return reply.status(400).send({ error: problema, code: 'NOTA_NO_VALIDA' });
             }
+            await assertAlumnosDeLaSeccion(prisma, propia.classroomId, Object.keys(scores || {}), actual?.scores as any);
             await arreglarNotasGuardadasComoTexto(prisma as any, activityId, actual?.scores);
             await sumarNotas(prisma as any, activityId, scores as Notas);
             await apuntarQuienPuso(prisma, activityId, Object.keys(scores || {}), (request.user as RequestUser).id);
@@ -461,6 +462,7 @@ export async function saveClassActivityGrades(
         if (problema) {
             return reply.status(400).send({ error: problema, code: 'NOTA_NO_VALIDA' });
         }
+        await assertAlumnosDeLaSeccion(prisma, activity.classroomId, Object.keys(scores || {}), activity.scores as any);
 
         const { choques } = await ponerNotasMirandoAntes(
             prisma,

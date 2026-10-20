@@ -21,6 +21,12 @@ import {
  *   - dos personas corrigen la misma nota al mismo tiempo;
  *   - un guardado de toda la sección se corta a mitad.
  *
+ * Las notas y la asistencia se prueban por la clase en vivo, que es por donde
+ * se escriben. «Dos personas corrigen lo mismo a la vez» con notas y
+ * asistencia lo vigilan `sin-conexion` (409 CAMBIO_MIENTRAS_TANTO) y
+ * `notas-que-no-se-pisan`; las rutas viejas `/api/grades` y `/api/attendance`
+ * se quitaron el 20-oct-2026 con sus casos (RES-05/06/07/09/10/11).
+ *
  * Ninguno de esos casos puede terminar en datos a medias, en duplicados, ni en
  * un "Error en el servidor" que deje al profesor sin saber si se guardó.
  */
@@ -44,8 +50,8 @@ describe('Auditoría — resistencia a fallos', () => {
     let period: any;
     let classroom: any;
     let subject: any;
-    let actividad: any;
-    let actividadB: any;
+    let tarea: any;
+    let tareaB: any;
 
     const auth = (token: string) => (req: request.Test) =>
         req.set('Authorization', `Bearer ${token}`).set('X-Institute-Slug', SLUG);
@@ -116,26 +122,12 @@ describe('Auditoría — resistencia a fallos', () => {
             });
         }
 
-        const nuevaActividad = (titulo: string) =>
-            prisma.activity.create({
-                data: {
-                    title: titulo,
-                    type: 'SUMATIVA',
-                    scope: 'CLASSROOM',
-                    startDate: new Date('2026-09-10'),
-                    maxGrade: 20,
-                    weight: 1,
-                    classroomId: classroom.id,
-                    subjectId: subject.id,
-                    periodId: period.id,
-                    lapso: '1',
-                    createdBy: profesor.id,
-                    instituteId: 'institute',
-                },
-            });
-
-        actividad = await nuevaActividad('Prueba escrita');
-        actividadB = await nuevaActividad('Exposicion');
+        tarea = await prisma.classActivity.create({
+            data: { classroomId: classroom.id, subjectId: subject.id, title: 'Prueba escrita', target: 'CURRENT', scores: {} },
+        });
+        tareaB = await prisma.classActivity.create({
+            data: { classroomId: classroom.id, subjectId: subject.id, title: 'Exposicion', target: 'CURRENT', scores: {} },
+        });
     }, 180000);
 
     afterAll(async () => {
@@ -150,28 +142,19 @@ describe('Auditoría — resistencia a fallos', () => {
         }
     };
 
-    it('RES-01: pulsar dos veces "guardar nota" no crea dos notas', async () => {
-        const nota = {
-            score: 15,
-            studentId: alumnos[0].id,
-            activityId: actividad.id,
-            periodId: period.id,
-            subjectId: subject.id,
-        };
+    it('RES-01: pulsar dos veces "guardar nota" no deja la nota a medias ni rompe', async () => {
+        const nota = { scores: { [alumnos[0].id]: 15 }, maxScore: 20 };
 
         // Los dos clics salen a la vez, como en un doble clic real
         const respuestas = await Promise.all([
-            comoProfesor(request(server.server).post('/api/grades')).send(nota),
-            comoProfesor(request(server.server).post('/api/grades')).send(nota),
+            comoProfesor(request(server.server).post(`/api/sessions/activities/${tarea.id}/grades`)).send(nota),
+            comoProfesor(request(server.server).post(`/api/sessions/activities/${tarea.id}/grades`)).send(nota),
         ]);
 
         sin500(respuestas);
 
-        const enBD = await prisma.grade.findMany({
-            where: { studentId: alumnos[0].id, activityId: actividad.id },
-        });
-        expect(enBD).toHaveLength(1);
-        expect(enBD[0].score).toBe(15);
+        const enBD = await prisma.classActivity.findUnique({ where: { id: tarea.id } });
+        expect(enBD?.scores).toEqual({ [alumnos[0].id]: 15 });
     }, 60000);
 
     it('RES-02: pulsar dos veces "pasar asistencia" no duplica ni rompe', async () => {
@@ -186,8 +169,8 @@ describe('Auditoría — resistencia a fallos', () => {
         };
 
         const respuestas = await Promise.all([
-            comoProfesor(request(server.server).post('/api/attendance/bulk')).send(pase),
-            comoProfesor(request(server.server).post('/api/attendance/bulk')).send(pase),
+            comoProfesor(request(server.server).post('/api/sessions/live-save')).send(pase),
+            comoProfesor(request(server.server).post('/api/sessions/live-save')).send(pase),
         ]);
 
         sin500(respuestas);
@@ -222,106 +205,14 @@ describe('Auditoría — resistencia a fallos', () => {
         expect(enBD).toHaveLength(1);
     }, 60000);
 
-    it('RES-04: si una nota del guardado masivo es inválida, no se guarda ninguna', async () => {
-        const res = await comoProfesor(request(server.server).post('/api/grades/bulk')).send({
-            grades: [
-                { score: 18, studentId: alumnos[0].id, activityId: actividadB.id, periodId: period.id, subjectId: subject.id },
-                { score: 99, studentId: alumnos[1].id, activityId: actividadB.id, periodId: period.id, subjectId: subject.id },
-                { score: 12, studentId: alumnos[2].id, activityId: actividadB.id, periodId: period.id, subjectId: subject.id },
-            ],
+    it('RES-04: si una nota del guardado de la sección es inválida, no se guarda ninguna', async () => {
+        const res = await comoProfesor(request(server.server).post(`/api/sessions/activities/${tareaB.id}/grades`)).send({
+            scores: { [alumnos[0].id]: 14, [alumnos[1].id]: 25, [alumnos[2].id]: 12 },
+            maxScore: 20,
         });
-
-        // Se rechaza entero y se dice qué fila está mal
         expect(res.status).toBe(400);
-
-        // Y no queda ni una nota a medias
-        const enBD = await prisma.grade.findMany({ where: { activityId: actividadB.id } });
-        expect(enBD).toHaveLength(0);
-    }, 60000);
-
-    it('RES-05: el guardado masivo válido entra completo', async () => {
-        const res = await comoProfesor(request(server.server).post('/api/grades/bulk')).send({
-            grades: alumnos.map((a, i) => ({
-                score: 10 + i,
-                studentId: a.id,
-                activityId: actividadB.id,
-                periodId: period.id,
-                subjectId: subject.id,
-            })),
-        });
-
-        expect([200, 201]).toContain(res.status);
-        const enBD = await prisma.grade.findMany({ where: { activityId: actividadB.id } });
-        expect(enBD).toHaveLength(alumnos.length);
-    }, 60000);
-
-    it('RES-06: si dos personas corrigen la misma nota a la vez, la segunda recibe aviso', async () => {
-        const nota = await prisma.grade.findFirst({
-            where: { studentId: alumnos[0].id, activityId: actividad.id },
-        });
-        expect(nota).not.toBeNull();
-
-        // Los dos abrieron la pantalla viendo la misma versión de la nota
-        const versionQueVieron = nota!.updatedAt.toISOString();
-
-        const primero = await comoProfesor(request(server.server).put(`/api/grades/${nota!.id}`)).send({
-            score: 18,
-            expectedUpdatedAt: versionQueVieron,
-        });
-        expect([200, 201]).toContain(primero.status);
-
-        // La segunda guarda encima sin saber que ya cambió. Es el administrador:
-        // el otro profesor no imparte esa materia y el sistema —con razón— ya no
-        // le deja tocarla.
-        const segundo = await comoAdmin(request(server.server).put(`/api/grades/${nota!.id}`)).send({
-            score: 9,
-            expectedUpdatedAt: versionQueVieron,
-        });
-
-        expect(segundo.status).toBe(409);
-        expect(JSON.stringify(segundo.body)).toMatch(/modific|cambi|actualiz/i);
-
-        // La nota conserva el primer cambio, no el pisotón
-        const final = await prisma.grade.findUnique({ where: { id: nota!.id } });
-        expect(final!.score).toBe(18);
-    }, 60000);
-
-    it('RES-10: si una nota del lote se cae por otro motivo, no queda media sección cargada', async () => {
-        // Un alumno que no está en la sección: la fila del medio no se puede poner.
-        const ajeno = (await createTestUser(prisma, UserRole.STUDENT)).user;
-        const actividadC = await prisma.activity.create({
-            data: {
-                title: 'Taller',
-                type: 'SUMATIVA',
-                scope: 'CLASSROOM',
-                startDate: new Date('2026-09-10'),
-                maxGrade: 20,
-                weight: 1,
-                classroomId: classroom.id,
-                subjectId: subject.id,
-                periodId: period.id,
-                lapso: '1',
-                createdBy: profesor.id,
-                instituteId: 'institute',
-            },
-        });
-
-        const res = await comoProfesor(request(server.server).post('/api/grades/bulk')).send({
-            grades: [
-                { score: 16, studentId: alumnos[0].id, activityId: actividadC.id, periodId: period.id, subjectId: subject.id },
-                { score: 14, studentId: ajeno.id, activityId: actividadC.id, periodId: period.id, subjectId: subject.id },
-                { score: 11, studentId: alumnos[2].id, activityId: actividadC.id, periodId: period.id, subjectId: subject.id },
-            ],
-        });
-
-        expect(res.status).toBeGreaterThanOrEqual(400);
-        expect(res.status).toBeLessThan(500);
-        // Y dice qué fila estorba: la segunda
-        expect(res.body.fila).toBe(1);
-
-        // No quedó ninguna puesta, ni siquiera la primera
-        const enBD = await prisma.grade.findMany({ where: { activityId: actividadC.id } });
-        expect(enBD).toHaveLength(0);
+        const enBD = await prisma.classActivity.findUnique({ where: { id: tareaB.id } });
+        expect(enBD?.scores ?? {}).toEqual({});
     }, 60000);
 
     it('RES-08: volver a pulsar "guardar observación" un rato después tampoco duplica', async () => {
@@ -349,46 +240,6 @@ describe('Auditoría — resistencia a fallos', () => {
         expect(enBD).toHaveLength(1);
     }, 60000);
 
-    it('RES-09: intentar a propósito algo que ya existe sigue avisando', async () => {
-        // El freno de los dobles clics no puede tapar un "ya existe": un botón
-        // que dice "listo" sin haber hecho nada es peor que un aviso claro.
-        const nota = {
-            score: 14,
-            studentId: alumnos[0].id,
-            activityId: actividad.id,
-            periodId: period.id,
-            subjectId: subject.id,
-        };
-
-        const res = await comoProfesor(request(server.server).post('/api/grades')).send(nota);
-        expect([400, 409]).toContain(res.status);
-    }, 60000);
-
-    it('RES-11: dos personas corrigiendo la misma asistencia: la segunda recibe aviso', async () => {
-        const registro = await prisma.dailyAttendance.findFirst({
-            where: { classroomId: classroom.id },
-        });
-        expect(registro).not.toBeNull();
-
-        const versionQueVieron = registro!.updatedAt.toISOString();
-
-        const primero = await comoProfesor(request(server.server).put(`/api/attendance/${registro!.id}`)).send({
-            status: 'EXCUSED',
-            expectedUpdatedAt: versionQueVieron,
-        });
-        expect([200, 201]).toContain(primero.status);
-
-        const segundo = await comoProfesor(request(server.server).put(`/api/attendance/${registro!.id}`)).send({
-            status: 'ABSENT',
-            expectedUpdatedAt: versionQueVieron,
-        });
-        expect(segundo.status).toBe(409);
-
-        // Se conserva el primer cambio, no el pisotón
-        const final = await prisma.dailyAttendance.findUnique({ where: { id: registro!.id } });
-        expect(final!.status).toBe('EXCUSED');
-    }, 60000);
-
     it('RES-12: dos administrativos corrigiendo la misma ficha: el segundo recibe aviso', async () => {
         const ficha = await prisma.user.findUnique({ where: { id: alumnos[1].id } });
         const versionQueVieron = ficha!.updatedAt.toISOString();
@@ -414,15 +265,4 @@ describe('Auditoría — resistencia a fallos', () => {
         expect(final!.phone).toBe('0412-1111111');
     }, 60000);
 
-    it('RES-07: quien no envía versión sigue pudiendo corregir', async () => {
-        const nota = await prisma.grade.findFirst({
-            where: { studentId: alumnos[0].id, activityId: actividad.id },
-        });
-
-        const res = await comoProfesor(request(server.server).put(`/api/grades/${nota!.id}`)).send({ score: 17 });
-        expect([200, 201]).toContain(res.status);
-
-        const final = await prisma.grade.findUnique({ where: { id: nota!.id } });
-        expect(final!.score).toBe(17);
-    }, 60000);
 });

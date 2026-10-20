@@ -15,7 +15,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { UserRole } from '../utils/prisma-enums';
-import { AppErrors } from '../middleware/error.middleware';
+import { AppErrors, createError } from '../middleware/error.middleware';
 
 export interface ActingUser {
     id?: string;
@@ -99,6 +99,35 @@ export async function assertClassroomScope(
                 ? `Solo puedes ${opciones.accion} en las clases que impartes`
                 : 'Solo puedes trabajar en las clases que impartes'
         );
+    }
+}
+
+/**
+ * Las notas de una actividad son de los alumnos de SU sección.
+ *
+ * La puerta de la clase (`assertClassroomScope`) dice que la clase es tuya; no
+ * dice nada de a quién le pones la nota. Sin esto, el profesor de 1.º A podía
+ * poner una nota a un alumno de 1.º B en su propia actividad, y como los
+ * promedios miran también las secciones donde el alumno tiene notas, esa nota
+ * acababa en la boleta ajena. La ruta vieja `/api/grades` lo comprobaba; la de
+ * la clase en vivo, no (20-oct-2026).
+ *
+ * Quien ya tiene nota en la actividad pasa (se puede corregir o quitar la de
+ * un alumno que se fue de la sección); un alumno nuevo, solo si está inscrito.
+ */
+export async function assertAlumnosDeLaSeccion(
+    prisma: PrismaClient,
+    classroomId: string,
+    studentIds: string[],
+    yaCalificados: Record<string, unknown> | null | undefined = {}
+): Promise<void> {
+    const nuevos = Array.from(new Set(studentIds.filter((id) => id && !(yaCalificados && id in yaCalificados))));
+    if (nuevos.length === 0) return;
+    const inscritos = await prisma.studentClassroom.count({
+        where: { classroomId, isActive: true, studentId: { in: nuevos } },
+    });
+    if (inscritos !== nuevos.length) {
+        throw createError(400, 'Ese alumno no es de esta sección', 'ALUMNO_AJENO');
     }
 }
 

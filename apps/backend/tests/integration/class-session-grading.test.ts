@@ -28,11 +28,9 @@ function gId(): string {
  * calificar actividad del plan → asistencia → finalizar.
  *
  * BUGS REALES CORREGIDOS POR ESTE FLUJO (ver reporte final):
- *  - gradesService.createGrade no validaba que el estudiante perteneciera al
- *    aula de la actividad ni que el profesor impartiera la materia ahí.
- *    Ahora rechaza con 403.
- *  - grades.controller no pasaba errores de dominio (statusCode) — devolvía
- *    500 en vez de 403/400.
+ *  - poner nota no validaba que el estudiante perteneciera al aula de la
+ *    actividad: primero en `/api/grades` (ya quitada) y, otra vez, en la
+ *    clase en vivo (20-oct-2026). Ahora 400 ALUMNO_AJENO.
  *
  * COMPORTAMIENTO DOCUMENTADO:
  *  - "Cerrar sesión de clase" no existe como concepto separado: el único
@@ -240,99 +238,81 @@ describe('Flujo 2 — Sesión de clase + calificación', () => {
         expect(res.body.activities).toBeDefined();
     });
 
+    // Las notas y la asistencia se escriben por la clase en vivo, como en la
+    // pantalla. (Antes por `/api/grades` y `/api/attendance`, rutas que
+    // ninguna pantalla usaba: se quitaron el 20-oct-2026.)
+    let tarea: any;
+    const notas = (token: string, scores: Record<string, number>) =>
+        request(server.server)
+            .post(`/api/sessions/activities/${tarea.id}/grades`)
+            .set(auth(token))
+            .send({ scores, maxScore: 20 });
+    // Cada prueba empieza con la base limpia (`beforeEach`): la suya.
+    const nuevaTarea = async (scores: Record<string, number> = {}) => {
+        tarea = await prisma.classActivity.create({
+            data: { classroomId: classroomA.id, subjectId: subject.id, title: 'Prueba Escrita de Sumas', target: 'CURRENT', maxScore: 20, scores },
+        });
+    };
+
     it('3. califica a un estudiante del aula → se persiste y es recuperable', async () => {
-        const res = await request(server.server)
-            .post('/api/grades')
+        const creada = await request(server.server)
+            .post('/api/sessions/activities')
             .set(auth(teacher1.token))
-            .send({
-                studentId: student1.id,
-                activityId: activity.id,
-                periodId: period.id,
-                subjectId: subject.id,
-                score: 18,
-                comments: 'Excelente',
-            })
+            .send({ classroomId: classroomA.id, subjectId: subject.id, title: 'Prueba Escrita de Sumas', target: 'CURRENT', date: DATE, maxScore: 20 })
             .expect(201);
+        tarea = creada.body.activity ?? creada.body.data ?? creada.body;
+        expect(tarea.id).toBeTruthy();
 
-        expect(res.body.grade.score).toBe(18);
-        expect(res.body.grade.student.id).toBe(student1.id);
+        await notas(teacher1.token, { [student1.id]: 18 }).expect(200);
 
-        const list = await request(server.server)
-            .get('/api/grades')
-            .query({ studentId: student1.id })
+        const res = await request(server.server)
+            .get('/api/sessions/live-detail')
+            .query({ classroomId: classroomA.id, subjectId: subject.id, date: DATE })
             .set(auth(teacher1.token))
             .expect(200);
-
-        expect(list.body.grades.length).toBe(1);
-        expect(list.body.grades[0].score).toBe(18);
+        const enLaClase = JSON.stringify(res.body.activities);
+        expect(enLaClase).toContain(tarea.id);
+        const guardada = await prisma.classActivity.findUnique({ where: { id: tarea.id } });
+        expect((guardada?.scores as any)?.[student1.id]).toBe(18);
     });
 
-    it('4. calificar a un estudiante que NO pertenece al aula → 403 y no crea el registro', async () => {
-        const res = await request(server.server)
-            .post('/api/grades')
-            .set(auth(teacher1.token))
-            .send({
-                studentId: student3.id, // aula B
-                activityId: activity.id, // actividad del aula A
-                periodId: period.id,
-                subjectId: subject.id,
-                score: 15,
-            })
-            .expect(403);
+    it('4. calificar a un estudiante que NO pertenece al aula → 400 y no lo guarda', async () => {
+        await nuevaTarea();
+        const res = await notas(teacher1.token, { [student3.id]: 15 }).expect(400);
+        expect(res.body.code).toBe('ALUMNO_AJENO');
 
-        expect(res.body.code).toBe('FORBIDDEN');
-
-        const count = await prisma.grade.count({ where: { studentId: student3.id } });
-        expect(count).toBe(0);
+        const guardada = await prisma.classActivity.findUnique({ where: { id: tarea.id } });
+        expect((guardada?.scores as any)?.[student3.id]).toBeUndefined();
     });
 
-    it('5. calificación fuera de rango (negativa o >20) → 400 y no crea el registro', async () => {
+    it('5. calificación fuera de rango (negativa o >20) → 400 y no la guarda', async () => {
+        await nuevaTarea();
         for (const badScore of [-5, 25]) {
-            await request(server.server)
-                .post('/api/grades')
-                .set(auth(teacher1.token))
-                .send({
-                    studentId: student1.id,
-                    activityId: activity.id,
-                    periodId: period.id,
-                    subjectId: subject.id,
-                    score: badScore,
-                })
-                .expect(400);
+            await notas(teacher1.token, { [student2.id]: badScore }).expect(400);
         }
 
-        const count = await prisma.grade.count({ where: { studentId: student1.id } });
-        expect(count).toBe(0);
+        const guardada = await prisma.classActivity.findUnique({ where: { id: tarea.id } });
+        expect((guardada?.scores as any)?.[student2.id]).toBeUndefined();
     });
 
     it('6. un profesor de OTRA materia/aula intenta calificar → 403', async () => {
-        const res = await request(server.server)
-            .post('/api/grades')
-            .set(auth(teacher2.token))
-            .send({
-                studentId: student1.id,
-                activityId: activity.id,
-                periodId: period.id,
-                subjectId: subject.id,
-                score: 17,
-            })
-            .expect(403);
-
-        expect(res.body.code).toBe('FORBIDDEN');
+        await nuevaTarea({ [student1.id]: 18 });
+        await notas(teacher2.token, { [student1.id]: 17 }).expect(403);
+        const guardada = await prisma.classActivity.findUnique({ where: { id: tarea.id } });
+        expect((guardada?.scores as any)?.[student1.id]).toBe(18);
     });
 
     it('7. asistencia marcada se refleja en el detalle de la clase', async () => {
         await request(server.server)
-            .post('/api/attendance')
+            .post('/api/sessions/live-save')
             .set(auth(teacher1.token))
             .send({
-                studentId: student1.id,
                 classroomId: classroomA.id,
-                date: DATE, // el schema de la ruta espera formato 'date' (YYYY-MM-DD)
-                status: 'PRESENT',
                 subjectId: subject.id,
+                date: DATE,
+                attendances: [{ studentId: student1.id, status: 'PRESENT' }],
             })
-            .expect(201);
+            .expect((r) => expect([200, 201]).toContain(r.status));
 
         const res = await request(server.server)
             .get('/api/sessions/live-detail')

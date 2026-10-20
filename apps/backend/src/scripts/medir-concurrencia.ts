@@ -145,38 +145,26 @@ async function main() {
         });
         if (asignaciones.length === 0) return null;
 
-        const lapso: any = await db.period.findFirst({ where: { academicYearId: anio?.id }, select: { id: true } });
-
+        // Como en la clase en vivo: cada profesor califica una actividad SUYA
+        // (una nueva, que se borra al acabar) con la nota de toda la sección.
         const preparados = [];
         for (const a of asignaciones) {
-            const actividad: any = await db.activity.findFirst({
-                where: { classroomId: a.classroomId, subjectId: a.subjectId },
-                select: { id: true },
-            });
             const suyos = await db.studentClassroom.findMany({
                 where: { classroomId: a.classroomId, isActive: true },
                 select: { studentId: true },
                 take: 30,
             });
-            if (!actividad || suyos.length === 0) continue;
-
-            // Cada profesor empieza con su actividad limpia.
-            await db.grade.deleteMany({
-                where: { activityId: actividad.id, studentId: { in: suyos.map((x) => x.studentId) } },
+            if (suyos.length === 0) continue;
+            const actividad: any = await db.classActivity.create({
+                data: { classroomId: a.classroomId, subjectId: a.subjectId, title: 'Medición de guardado', target: 'CURRENT', scores: {} },
+                select: { id: true },
             });
 
             preparados.push({
                 token: await entrar(a.teacher.email),
-                cuerpo: {
-                    grades: suyos.map((x) => ({
-                        studentId: x.studentId,
-                        activityId: actividad.id,
-                        subjectId: a.subjectId,
-                        periodId: lapso?.id,
-                        score: 15,
-                    })),
-                },
-                limpieza: { activityId: actividad.id, studentId: { in: suyos.map((x) => x.studentId) } },
+                url: `${API}/sessions/activities/${actividad.id}/grades`,
+                cuerpo: { scores: Object.fromEntries(suyos.map((x) => [x.studentId, 15])), maxScore: 20 },
+                actividadId: actividad.id,
             });
         }
         if (preparados.length === 0) return null;
@@ -185,7 +173,7 @@ async function main() {
         const tiempos = await Promise.all(
             preparados.map(async (p) => {
                 const t = Date.now();
-                const res = await fetch(`${API}/grades/bulk`, {
+                const res = await fetch(p.url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -200,7 +188,7 @@ async function main() {
         );
         const total = Date.now() - t0;
 
-        for (const p of preparados) await db.grade.deleteMany({ where: p.limpieza });
+        await db.classActivity.deleteMany({ where: { id: { in: preparados.map((p) => p.actividadId) } } });
 
         const buenos = tiempos.filter((x) => x >= 0);
         return {

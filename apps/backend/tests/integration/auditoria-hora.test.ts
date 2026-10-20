@@ -135,11 +135,11 @@ describe('Auditoría — la hora la pone el servidor', () => {
 
     describe('un reloj adelantado no mete datos en el futuro', () => {
         it('no deja pasar asistencia de un día que no ha llegado', async () => {
-            const res = await auth(tokenProfesor)(request(server.server).post('/api/attendance')).send({
-                studentId: alumno.id,
+            const res = await auth(tokenProfesor)(request(server.server).post('/api/sessions/live-save')).send({
                 classroomId: classroom.id,
+                subjectId: subject.id,
                 date: futuro(),
-                status: 'PRESENT',
+                attendances: [{ studentId: alumno.id, status: 'PRESENT' }],
             });
 
             expect(res.status).toBe(400);
@@ -177,14 +177,15 @@ describe('Auditoría — la hora la pone el servidor', () => {
 
         it('la asistencia de HOY sí se registra', async () => {
             const hoy = todayInTimezone('America/Caracas');
-            const res = await auth(tokenProfesor)(request(server.server).post('/api/attendance')).send({
-                studentId: alumno.id,
+            const res = await auth(tokenProfesor)(request(server.server).post('/api/sessions/live-save')).send({
                 classroomId: classroom.id,
+                subjectId: subject.id,
                 date: hoy,
-                status: 'PRESENT',
+                attendances: [{ studentId: alumno.id, status: 'PRESENT' }],
             });
 
             expect([200, 201]).toContain(res.status);
+            expect(await prisma.dailyAttendance.count({ where: { studentId: alumno.id } })).toBe(1);
         }, 60000);
     });
 

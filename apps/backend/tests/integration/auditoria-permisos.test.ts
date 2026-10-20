@@ -55,7 +55,8 @@ describe('Auditoría — quién puede hacer qué', () => {
     let seccionA: any;
     let seccionB: any;
     let matematica: any;
-    let actividad: any;
+    let tareaDeA: any;
+    let tareaDeB: any;
 
     const auth = (token: string) => (req: request.Test) =>
         req.set('Authorization', `Bearer ${token}`).set('X-Institute-Slug', SLUG);
@@ -64,6 +65,24 @@ describe('Auditoría — quién puede hacer qué', () => {
     const prohibido = (res: request.Response) => {
         expect([401, 403]).toContain(res.status);
     };
+
+    /**
+     * Las dos puertas por las que se escriben de verdad notas y asistencia: la
+     * clase en vivo. (Las rutas viejas `/api/grades` y `/api/attendance` no las
+     * usaba ninguna pantalla y se quitaron el 20-oct-2026.)
+     */
+    const ponerNota = (token: string, actividadId: string, studentId: string, nota: number) =>
+        auth(token)(request(server.server).post(`/api/sessions/activities/${actividadId}/grades`)).send({
+            scores: { [studentId]: nota },
+            maxScore: 20,
+        });
+    const pasarLista = (token: string, classroomId: string, studentId: string, status: string) =>
+        auth(token)(request(server.server).post('/api/sessions/live-save')).send({
+            classroomId,
+            subjectId: matematica.id,
+            date: HOY,
+            attendances: [{ studentId, status }],
+        });
 
     beforeAll(async () => {
         server = await createTestServer();
@@ -131,21 +150,11 @@ describe('Auditoría — quién puede hacer qué', () => {
             data: { studentId: ana.id, tutorId: madreDeAna.id, relationship: 'MADRE' },
         });
 
-        actividad = await prisma.activity.create({
-            data: {
-                title: 'Prueba de sumas',
-                type: 'SUMATIVA',
-                scope: 'CLASSROOM',
-                startDate: new Date('2026-09-10'),
-                maxGrade: 20,
-                weight: 1,
-                classroomId: seccionA.id,
-                subjectId: matematica.id,
-                periodId: period.id,
-                lapso: '1',
-                createdBy: profeA.id,
-                instituteId: 'institute',
-            },
+        tareaDeA = await prisma.classActivity.create({
+            data: { classroomId: seccionA.id, subjectId: matematica.id, title: 'Taller de sumas', target: 'CURRENT', scores: {} },
+        });
+        tareaDeB = await prisma.classActivity.create({
+            data: { classroomId: seccionB.id, subjectId: matematica.id, title: 'Taller ajeno', target: 'CURRENT', scores: {} },
         });
     }, 180000);
 
@@ -168,26 +177,11 @@ describe('Auditoría — quién puede hacer qué', () => {
         }, 60000);
 
         it('NO puede ponerse ni poner notas', async () => {
-            prohibido(
-                await auth(tk.ana)(request(server.server).post('/api/grades')).send({
-                    score: 20,
-                    studentId: ana.id,
-                    activityId: actividad.id,
-                    periodId: period.id,
-                    subjectId: matematica.id,
-                })
-            );
+            prohibido(await ponerNota(tk.ana, tareaDeA.id, ana.id, 20));
         }, 60000);
 
         it('NO puede pasar asistencia', async () => {
-            prohibido(
-                await auth(tk.ana)(request(server.server).post('/api/attendance')).send({
-                    studentId: ana.id,
-                    classroomId: seccionA.id,
-                    date: HOY,
-                    status: 'PRESENT',
-                })
-            );
+            prohibido(await pasarLista(tk.ana, seccionA.id, ana.id, 'PRESENT'));
         }, 60000);
 
         it('NO puede tocar el plan de evaluación', async () => {
@@ -240,7 +234,7 @@ describe('Auditoría — quién puede hacer qué', () => {
 
         it('NO ve la información de otro estudiante', async () => {
             prohibido(await auth(tk.ana)(request(server.server).get(`/api/students/${luis.id}/dashboard`)));
-            prohibido(await auth(tk.ana)(request(server.server).get(`/api/grades/student/${luis.id}`)));
+            prohibido(await auth(tk.ana)(request(server.server).get(`/api/students/${luis.id}/boleta`)));
             prohibido(await auth(tk.ana)(request(server.server).get(`/api/observations/student/${luis.id}`)));
         }, 60000);
 
@@ -261,28 +255,13 @@ describe('Auditoría — quién puede hacer qué', () => {
 
         it('NO ve a un estudiante que no representa', async () => {
             prohibido(await auth(tk.madre)(request(server.server).get(`/api/students/${luis.id}/dashboard`)));
-            prohibido(await auth(tk.madre)(request(server.server).get(`/api/grades/student/${luis.id}`)));
+            prohibido(await auth(tk.madre)(request(server.server).get(`/api/students/${luis.id}/boleta`)));
             prohibido(await auth(tk.madre)(request(server.server).get(`/api/observations/student/${luis.id}`)));
         }, 60000);
 
         it('NO escribe nada', async () => {
-            prohibido(
-                await auth(tk.madre)(request(server.server).post('/api/grades')).send({
-                    score: 20,
-                    studentId: ana.id,
-                    activityId: actividad.id,
-                    periodId: period.id,
-                    subjectId: matematica.id,
-                })
-            );
-            prohibido(
-                await auth(tk.madre)(request(server.server).post('/api/attendance')).send({
-                    studentId: ana.id,
-                    classroomId: seccionA.id,
-                    date: HOY,
-                    status: 'PRESENT',
-                })
-            );
+            prohibido(await ponerNota(tk.madre, tareaDeA.id, ana.id, 20));
+            prohibido(await pasarLista(tk.madre, seccionA.id, ana.id, 'PRESENT'));
             prohibido(
                 await auth(tk.madre)(request(server.server).post('/api/observations')).send({
                     studentIds: [ana.id],
@@ -299,23 +278,14 @@ describe('Auditoría — quién puede hacer qué', () => {
     // ------------------------------------------------------------------
     describe('el profesor solo toca las clases que imparte', () => {
         it('SÍ pone nota en su materia', async () => {
-            const res = await auth(tk.profeA)(request(server.server).post('/api/grades')).send({
-                score: 15,
-                studentId: ana.id,
-                activityId: actividad.id,
-                periodId: period.id,
-                subjectId: matematica.id,
-            });
+            const res = await ponerNota(tk.profeA, tareaDeA.id, ana.id, 15);
             expect([200, 201]).toContain(res.status);
+            const guardada = await prisma.classActivity.findUnique({ where: { id: tareaDeA.id } });
+            expect((guardada?.scores as any)?.[ana.id]).toBe(15);
         }, 60000);
 
         it('SÍ pasa asistencia en su sección', async () => {
-            const res = await auth(tk.profeA)(request(server.server).post('/api/attendance')).send({
-                studentId: ana.id,
-                classroomId: seccionA.id,
-                date: HOY,
-                status: 'PRESENT',
-            });
+            const res = await pasarLista(tk.profeA, seccionA.id, ana.id, 'PRESENT');
             expect([200, 201]).toContain(res.status);
         }, 60000);
 
@@ -330,54 +300,33 @@ describe('Auditoría — quién puede hacer qué', () => {
         }, 60000);
 
         it('NO pone nota en una sección que no imparte', async () => {
-            const otraActividad = await prisma.activity.create({
-                data: {
-                    title: 'Prueba ajena',
-                    type: 'SUMATIVA',
-                    scope: 'CLASSROOM',
-                    startDate: new Date('2026-09-10'),
-                    maxGrade: 20,
-                    weight: 1,
-                    classroomId: seccionB.id,
-                    subjectId: matematica.id,
-                    periodId: period.id,
-                    lapso: '1',
-                    createdBy: profeB.id,
-                    instituteId: 'institute',
-                },
-            });
-
-            prohibido(
-                await auth(tk.profeB)(request(server.server).post('/api/grades')).send({
-                    score: 20,
-                    studentId: ana.id,
-                    activityId: actividad.id,
-                    periodId: period.id,
-                    subjectId: matematica.id,
-                })
-            );
-
+            prohibido(await ponerNota(tk.profeB, tareaDeA.id, ana.id, 20));
             // Y tampoco al revés: el profesor A en la sección B
-            prohibido(
-                await auth(tk.profeA)(request(server.server).post('/api/grades')).send({
-                    score: 20,
-                    studentId: luis.id,
-                    activityId: otraActividad.id,
-                    periodId: period.id,
-                    subjectId: matematica.id,
-                })
-            );
+            prohibido(await ponerNota(tk.profeA, tareaDeB.id, luis.id, 20));
+            const intacta = await prisma.classActivity.findUnique({ where: { id: tareaDeB.id } });
+            expect((intacta?.scores as any)?.[luis.id]).toBeUndefined();
+        }, 60000);
+
+        it('NO le pone nota en su clase a un alumno de otra sección', async () => {
+            // La clase es suya, el alumno no: la nota acabaría en la boleta de
+            // Luis, que estudia en B (los promedios miran también las
+            // secciones donde el alumno tiene notas).
+            const res = await ponerNota(tk.profeA, tareaDeA.id, luis.id, 20);
+            expect(res.status).toBe(400);
+            expect(res.body.code).toBe('ALUMNO_AJENO');
+            const intacta = await prisma.classActivity.findUnique({ where: { id: tareaDeA.id } });
+            expect((intacta?.scores as any)?.[luis.id]).toBeUndefined();
+
+            // Lo mismo editando la actividad con notas dentro
+            const editando = await auth(tk.profeA)(request(server.server).put(`/api/sessions/activities/${tareaDeA.id}`)).send({
+                scores: { [luis.id]: 19 },
+            });
+            expect(editando.status).toBe(400);
+            expect(editando.body.code).toBe('ALUMNO_AJENO');
         }, 60000);
 
         it('NO pasa asistencia en una sección que no imparte', async () => {
-            prohibido(
-                await auth(tk.profeB)(request(server.server).post('/api/attendance')).send({
-                    studentId: ana.id,
-                    classroomId: seccionA.id,
-                    date: HOY,
-                    status: 'ABSENT',
-                })
-            );
+            prohibido(await pasarLista(tk.profeB, seccionA.id, ana.id, 'ABSENT'));
         }, 60000);
 
         it('NO toca el plan de evaluación de una materia que no imparte', async () => {

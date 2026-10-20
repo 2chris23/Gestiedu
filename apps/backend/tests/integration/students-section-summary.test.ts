@@ -161,28 +161,20 @@ describe('Bug 2 — Resumen de sección (Promedio/Asistencia) con Clase en Vivo'
     });
 
     it('2. asistencia PRESENT se refleja al 100% y ABSENT al 0% en el resumen', async () => {
+        // Por la clase en vivo, como en la pantalla.
         await request(server.server)
-            .post('/api/attendance')
+            .post('/api/sessions/live-save')
             .set(auth(teacher.token))
             .send({
-                studentId: student1.id,
                 classroomId: classroom.id,
-                date: DATE,
-                status: 'PRESENT',
                 subjectId: subject.id,
-            })
-            .expect(201);
-        await request(server.server)
-            .post('/api/attendance')
-            .set(auth(teacher.token))
-            .send({
-                studentId: student2.id,
-                classroomId: classroom.id,
                 date: DATE,
-                status: 'ABSENT',
-                subjectId: subject.id,
+                attendances: [
+                    { studentId: student1.id, status: 'PRESENT' },
+                    { studentId: student2.id, status: 'ABSENT' },
+                ],
             })
-            .expect(201);
+            .expect(200);
 
         const res = await request(server.server)
             .get('/api/students')

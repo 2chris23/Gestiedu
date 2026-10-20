@@ -183,11 +183,6 @@ describe('El barrido de privacidad: cada lectura de la API, como alumno y como r
         expect(deVuelta).not.toContain(u.companero.id);
     });
 
-    it('BARRIDO-05: la asistencia de un alumno con ?subjectId= no revienta (antes, 500)', async () => {
-        const r = await server.inject({ method: 'GET', url: `/api/attendance/student/${u.companero.id}?subjectId=${ids.materia}`, headers: comoAdmin() });
-        expect(r.statusCode).toBe(200);
-    });
-
     it('BARRIDO-06: el contexto de promoción de un año que no existe es 404 (antes, 500)', async () => {
         const r = await server.inject({ method: 'GET', url: `/api/academic-years/no-existe/promotion-context`, headers: comoAdmin() });
         expect(r.statusCode).toBe(404);

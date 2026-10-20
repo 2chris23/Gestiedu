@@ -261,7 +261,6 @@ describe('Acciones de la API que no tenían ninguna prueba', () => {
         expect(copia).not.toBeNull();
     });
 
-
     // ─────────────────────────────────────────────────────────────────────────
     // ALUMNOS DISPONIBLES PARA INSCRIBIR
     // ─────────────────────────────────────────────────────────────────────────
@@ -297,68 +296,6 @@ describe('Acciones de la API que no tenían ninguna prueba', () => {
         const res = await request(server.server)
             .get('/api/students/available')
             .set(auth(tokenProfeA));
-
-        expect(res.status).toBe(403);
-    });
-
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // NOTAS POR MATERIA
-    // ─────────────────────────────────────────────────────────────────────────
-
-    async function notaEn(classroomId: string, subjectId: string, studentId: string, valor: number) {
-        const actividad = await prisma.activity.create({
-            data: {
-                id: gId(),
-                title: `Actividad ${valor}`,
-                type: 'EXAM',
-                scope: 'CLASSROOM',
-                startDate: new Date('2024-03-01'),
-                maxGrade: 20,
-                classroomId,
-                subjectId,
-                createdBy: profeA.id,
-                isActive: true,
-            },
-        });
-        return prisma.grade.create({
-            data: {
-                id: gId(),
-                score: valor,
-                studentId,
-                activityId: actividad.id,
-                periodId: lapso.id,
-                subjectId,
-                teacherId: profeA.id,
-            },
-        });
-    }
-
-    it('NOT-01: las notas de una materia solo traen las de esa materia', async () => {
-        const otraMateria = await createTestSubject(prisma, 'institute');
-        await prisma.classroomSubject.create({
-            data: { classroomId: seccionA.id, subjectId: otraMateria.id, teacherId: profeA.id },
-        });
-
-        await notaEn(seccionA.id, materia.id, alumnoA.id, 18);
-        await notaEn(seccionA.id, otraMateria.id, alumnoA.id, 9);
-
-        const res = await request(server.server)
-            .get(`/api/grades/subject/${materia.id}`)
-            .set(auth(tokenAdmin))
-            .expect(200);
-
-        const notas = res.body.grades ?? res.body.data ?? [];
-        expect(notas).toHaveLength(1);
-        expect(Number(notas[0].score)).toBe(18);
-    });
-
-    it('NOT-02: un alumno no puede pedir las notas de una materia entera', async () => {
-        await notaEn(seccionA.id, materia.id, alumnoA.id, 18);
-
-        const res = await request(server.server)
-            .get(`/api/grades/subject/${materia.id}`)
-            .set(auth(tokenAlumnoA));
 
         expect(res.status).toBe(403);
     });

@@ -3,15 +3,12 @@ import { FastifyInstance } from 'fastify';
 // Importar todas las rutas
 import { authRoutes } from './auth.routes';
 import { usersRoutes } from './users.routes';
-import { activitiesRoutes } from './activities.routes';
-import { gradesRoutes } from './grades.routes';
 import { classroomsRoutes } from './classrooms.routes';
 import { academicYearsRoutes } from './academic-years.routes';
 import { subjectsRoutes } from './subjects.routes';
 import { dashboardRoutes } from './dashboard.routes';
 import { institutesRoutes } from './institutes.routes';
 import { studentsRoutes } from './students.routes';
-import { attendanceRoutes } from './attendance.routes';
 import { classReplacementsRoutes } from './class-replacements.routes';
 import { pagosRoutes } from './pagos.routes';
 import { finanzasRoutes } from './finanzas.routes';
@@ -71,12 +68,9 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(academicYearsRoutes, { prefix: '/api/academic-years' });
   await fastify.register(classroomsRoutes, { prefix: '/api/classrooms' });
   await fastify.register(evaluationPlanRoutes, { prefix: '/api/evaluation-plan' });
-  await fastify.register(activitiesRoutes, { prefix: '/api/activities' });
-  await fastify.register(gradesRoutes, { prefix: '/api/grades' });
 
   await fastify.register(subjectsRoutes, { prefix: '/api/subjects' });
   await fastify.register(classroomSubjectsRoutes, { prefix: '/api' });
-  await fastify.register(attendanceRoutes, { prefix: '/api/attendance' });
   // La hora oficial del liceo (el reloj del dispositivo no es de fiar)
   await fastify.register(schoolTimeRoutes, { prefix: '/api/time' });
   // La versión nueva de la app del teléfono (ver `app-movil.routes.ts`).
@@ -162,23 +156,20 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     return {
       message: 'API del Sistema de Gestión Escolar',
       version: '1.0.0',
-      documentation: '/documentation',
       endpoints: {
         auth: '/api/auth',
         users: '/api/users',
-        activities: '/api/activities',
-        grades: '/api/grades',
+        students: '/api/students',
         classrooms: '/api/classrooms',
         subjects: '/api/subjects',
-        attendance: '/api/attendance',
-        schedules: '/api/schedules',
-        students: '/api/students',
-        teachers: '/api/teachers',
-        notifications: '/api/notifications',
-        reports: '/api/reports',
+        sessions: '/api/sessions',
+        evaluationPlan: '/api/evaluation-plan',
+        academicYears: '/api/academic-years',
+        observations: '/api/observations',
+        avisos: '/api/avisos',
         dashboard: '/api/dashboard',
         institutes: '/api/institutes',
-        statistics: '/api/statistics'
+        finanzas: '/api/finanzas',
       }
     };
   });
@@ -188,13 +179,10 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
 export {
   authRoutes,
   usersRoutes,
-  activitiesRoutes,
-  gradesRoutes,
   classroomsRoutes,
   subjectsRoutes,
   dashboardRoutes,
   institutesRoutes,
-  attendanceRoutes,
   studentsRoutes,
   classSessionsRoutes
 };

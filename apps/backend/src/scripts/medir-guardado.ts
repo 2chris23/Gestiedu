@@ -42,7 +42,6 @@ async function main() {
     const db = await getTenantPrisma(inst.id);
 
     const anio: any = await db.academicYear.findFirst({ where: { status: 'ACTIVE' as any }, select: { id: true } });
-    const lapso: any = await db.period.findFirst({ where: { academicYearId: anio?.id }, select: { id: true } });
     const cs: any = await db.classroomSubject.findFirst({
         where: { classroom: { academicYearId: anio?.id }, teacherId: { not: null } },
         select: { classroomId: true, subjectId: true, teacher: { select: { id: true, email: true } } },
@@ -65,63 +64,31 @@ async function main() {
         'X-Institute-Slug': SLUG,
     };
 
-    const actividad: any = await db.activity.findFirst({
-        where: { classroomId: cs.classroomId, subjectId: cs.subjectId },
-        select: { id: true },
-    });
-    if (!actividad) {
-        console.error('no hay ninguna actividad en esa sección para medir el guardado de notas');
-        process.exit(1);
-    }
-
     /**
-     * ANTES DE MEDIR, LA PIZARRA LIMPIA
-     *
-     * La medición escribe notas de verdad. Si quedaran de una corrida anterior,
-     * la siguiente respondería "ya existe una calificación" —que es lo correcto,
-     * y está probado— pero no se podría medir nada.
-     *
-     * Se quitan **solo las de esta actividad y estos alumnos**, que es
-     * exactamente lo que escribe la medición. Nada más se toca.
+     * Las notas se guardan como en la clase en vivo: en una actividad de la
+     * clase (`/sessions/activities/:id/grades`). La medición crea la suya y la
+     * borra al final, así que no toca ninguna nota de verdad. (Antes medía
+     * `/grades/bulk`, ruta que ninguna pantalla usaba; se quitó el 20-oct-2026.)
      */
     const { borrarGuardandoCopia } = await import('../utils/papelera');
-    const deLaMedicion = {
-        activityId: actividad.id,
-        studentId: { in: alumnos.map((a) => a.studentId) },
-    };
     const quien = { userId: 'medicion', nombre: 'medición de rendimiento' } as any;
+    const actividad: any = await db.classActivity.create({
+        data: { classroomId: cs.classroomId, subjectId: cs.subjectId, title: 'Medición de guardado', target: 'CURRENT', scores: {} },
+        select: { id: true },
+    });
+    const notasUrl = `${API}/sessions/activities/${actividad.id}/grades`;
 
-    const habia = await db.grade.count({ where: deLaMedicion });
-    if (habia > 0) await borrarGuardandoCopia(db as any, 'grade', deLaMedicion, quien);
-
-    /**
-     * GUARDAR LAS NOTAS DE TODA LA SECCIÓN, VARIAS VECES DE VERDAD
-     *
-     * Guardar dos veces las mismas notas responde 409 —correcto: ya están
-     * puestas— así que de diez vueltas solo la primera medía algo, y esa
-     * primera es siempre la más lenta (la primera de todo paga el arranque).
-     * Salían números que no se repetían: 28 ms una vez, 181 otra.
-     *
-     * Ahora **antes de cada vuelta se recoge lo de la anterior**, así que las
-     * diez guardan de verdad y el número se puede repetir.
-     */
+    // ── Las notas de toda la sección, de una vez ────────────────────────────
+    // Cada vuelta cambia la nota, así que cada una guarda de verdad.
     const lotes: number[] = [];
     for (let i = 0; i < VECES + 1; i++) {
-        const habiaAntes = await db.grade.count({ where: deLaMedicion });
-        if (habiaAntes > 0) await borrarGuardandoCopia(db as any, 'grade', deLaMedicion, quien);
-
         const t = Date.now();
-        const res = await fetch(`${API}/grades/bulk`, {
+        const res = await fetch(notasUrl, {
             method: 'POST',
             headers: cabeceras,
             body: JSON.stringify({
-                grades: alumnos.map((a) => ({
-                    studentId: a.studentId,
-                    activityId: actividad.id,
-                    subjectId: cs.subjectId,
-                    periodId: lapso?.id,
-                    score: 10 + (i % 10),
-                })),
+                scores: Object.fromEntries(alumnos.map((a) => [a.studentId, 10 + (i % 10)])),
+                maxScore: 20,
             }),
         });
         const cuerpo: any = await res.json().catch(() => ({}));
@@ -137,16 +104,10 @@ async function main() {
     const sueltas: number[] = [];
     for (let i = 0; i < VECES; i++) {
         const t = Date.now();
-        const res = await fetch(`${API}/grades`, {
+        const res = await fetch(notasUrl, {
             method: 'POST',
             headers: cabeceras,
-            body: JSON.stringify({
-                studentId: alumnos[i % alumnos.length].studentId,
-                activityId: actividad.id,
-                subjectId: cs.subjectId,
-                periodId: lapso?.id,
-                score: 12 + (i % 6),
-            }),
+            body: JSON.stringify({ scores: { [alumnos[i % alumnos.length].studentId]: 12 + (i % 6) }, maxScore: 20 }),
         });
         const cuerpo: any = await res.json().catch(() => ({}));
         if (res.ok) sueltas.push(Date.now() - t);
@@ -173,6 +134,14 @@ async function main() {
             })
         ).map((a) => a.id)
     );
+    const sesionesQueYaHabia = new Set(
+        (
+            await db.classSession.findMany({
+                where: { classroomId: cs.classroomId, subjectId: cs.subjectId },
+                select: { id: true },
+            })
+        ).map((x) => x.id)
+    );
 
     // ── Pasar asistencia a toda la sección ──────────────────────────────────
     //
@@ -181,11 +150,13 @@ async function main() {
     const asistencias: number[] = [];
     for (let i = 0; i < VECES; i++) {
         const t = Date.now();
-        const res = await fetch(`${API}/attendance/bulk`, {
+        // Como la pantalla: la clase en vivo guarda la lista entera de una vez.
+        const res = await fetch(`${API}/sessions/live-save`, {
             method: 'POST',
             headers: cabeceras,
             body: JSON.stringify({
                 classroomId: cs.classroomId,
+                subjectId: cs.subjectId,
                 /**
                  * Fechas de hace años, a propósito.
                  *
@@ -233,10 +204,10 @@ async function main() {
     // ── Se recoge lo que escribió la medición ───────────────────────────────
     //
     // Por la vía normal: la papelera guarda copia, como todo en este sistema.
-    const dejadas = await db.grade.count({ where: deLaMedicion });
-    if (dejadas > 0) await borrarGuardandoCopia(db as any, 'grade', deLaMedicion, quien);
+    const dejadas = alumnos.length;
+    await borrarGuardandoCopia(db as any, 'classActivity', { id: actividad.id }, quien);
 
-    // Solo la asistencia que escribió ESTA medición: la que no estaba antes.
+    // Solo la asistencia y las clases que escribió ESTA medición: lo que no estaba antes.
     const ahoraHay = await db.dailyAttendance.findMany({
         where: { classroomId: cs.classroomId },
         select: { id: true },
@@ -247,6 +218,12 @@ async function main() {
     if (nuevas.length > 0) {
         diasDejados = nuevas.length;
         await borrarGuardandoCopia(db as any, 'dailyAttendance', { id: { in: nuevas } }, quien);
+    }
+    const sesionesNuevas = (
+        await db.classSession.findMany({ where: { classroomId: cs.classroomId, subjectId: cs.subjectId }, select: { id: true } })
+    ).map((x) => x.id).filter((id) => !sesionesQueYaHabia.has(id));
+    if (sesionesNuevas.length > 0) {
+        await borrarGuardandoCopia(db as any, 'classSession', { id: { in: sesionesNuevas } }, quien);
     }
 
     console.log(`  Limpieza: ${dejadas} notas y ${diasDejados} asistencias de la medición recogidas.

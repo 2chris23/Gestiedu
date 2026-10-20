@@ -124,16 +124,12 @@ async function main() {
         ['buscar usuario por texto', admin, '/users?search=ana&page=1&limit=20'],
         ['alumnos de una sección', admin, `/students?classroomId=${seccion?.id}&page=1&limit=30`],
         ['resumen de la sección', admin, `/classrooms/${seccion?.id}/stats`],
-        ['medidores de la sección', admin, `/statistics/section/${seccion?.id}`],
-        ['materias del profesor', profe, '/teachers/my-subjects'],
-        ['secciones del profesor', profe, '/teachers/my-classrooms'],
         ['ficha de un alumno', admin, `/students/${alumno?.id}`],
         ['materias del liceo', admin, '/subjects'],
         ['secciones del ciclo', admin, `/classrooms?academicYearId=${anio?.id}`],
         ['plan de evaluación', profe, `/evaluation-plan/rows?classroomId=${seccion?.id}&subjectId=${materia?.subjectId}&lapso=1`],
-        ['notas de una materia', profe, `/grades?classroomId=${seccion?.id}&subjectId=${materia?.subjectId}`],
-        ['estadísticas del grado', admin, `/statistics/grade/${anio?.id}/${seccion?.grade}`],
-        ['estadísticas del ciclo', admin, `/statistics/cycle/${anio?.id}`],
+        ['la clase en vivo', profe, `/sessions/live-detail?classroomId=${seccion?.id}&subjectId=${materia?.subjectId}`],
+        ['resumen del ciclo', admin, `/academic-years/${anio?.id}/stats`],
     ];
 
     console.log(`\n  Liceo: ${SLUG} · ${VECES} llamadas por pantalla · sin carga en paralelo\n`);

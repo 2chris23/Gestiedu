@@ -66,7 +66,6 @@ export async function invalidateStudentsGradesCache(
 
     try {
         const patterns = unicos.flatMap((studentId) => [
-            `cache:${instituteId}:/api/grades:${studentId}:*`,
             `cache:${instituteId}:/api/dashboard:${studentId}:*`,
             `cache:${instituteId}:/api/students/me:${studentId}:*`,
         ]);
@@ -93,7 +92,6 @@ export async function invalidateStudentGradesCache(
 ): Promise<void> {
     try {
         const patterns = [
-            `cache:${instituteId}:/api/grades:${studentId}:*`,
             `cache:${instituteId}:/api/dashboard:${studentId}:*`,
             `cache:${instituteId}:/api/students/me:${studentId}:*`,
         ];

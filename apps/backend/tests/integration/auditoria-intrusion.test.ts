@@ -72,7 +72,7 @@ describe('Auditoría — intentos de entrar sin credenciales', () => {
         it.each([
             ['/api/users', 'la lista de usuarios'],
             ['/api/students', 'la lista de estudiantes'],
-            ['/api/grades', 'las notas'],
+            ['/api/profesores', 'los profesores'],
             ['/api/dashboard/admin', 'el panel del liceo'],
             ['/api/classrooms', 'las secciones'],
         ])('%s (%s) responde 401', async (ruta) => {
