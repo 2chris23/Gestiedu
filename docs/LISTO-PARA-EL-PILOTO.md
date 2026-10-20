@@ -5,7 +5,7 @@ estará listo el sistema». No se busca liceo piloto hasta que las **cuatro
 puertas** estén al 100 %, **medidas**. Este archivo dice dónde está cada una,
 con su evidencia, y se actualiza al cerrar cada tanda de trabajo.
 
-**Estado al 19-oct-2026 (tarde): NO está listo.** Lo que falta está abajo, en orden.
+**Estado al 20-oct-2026 (noche): NO está listo.** Lo que falta está abajo, en orden.
 
 **Desarrollo antes de producción** (CLAUDE.md, 0-ter): ni dominio ni servidores
 hasta cerrar las cinco etapas. Drive, el abogado y el titular de lo legal esperan.
@@ -14,13 +14,13 @@ hasta cerrar las cinco etapas. Drive, el abogado y el titular de lo legal espera
 |---|---|
 | 1. Implementación | 🟡 Grupos estables, fases 3–5 por hacer |
 | 2. Corrección de diseño | 🟡 Continua, con Cristian mirando |
-| 3. Revisar de pie a cabeza | 🟡 Hecho lo obsoleto (−19.000 líneas, 50 rutas sin pantalla) y la cifra única; `grades.service` partido; quedan 26 archivos de más de 800 líneas (ya no crecen: TAMAÑO-01/02). `docs/ARQUITECTURA.md` |
+| 3. Revisar de pie a cabeza | 🟡 Hecho lo obsoleto (−19.000 líneas, 50 rutas sin pantalla y las viejas de notas, asistencia y actividades) y la cifra única; **ningún archivo pasa ya de 800 líneas** (había 26; TAMAÑO-01 lo exige). Falta juntar cada tema en su módulo. `docs/ARQUITECTURA.md` |
 | 4. Que todo funcione | 🟡 Ver puertas 1 y 4 |
 | 5. Estrés: 10.000 a la vez, ≤ 100 ms | 🟡 Medido por escalones y proyectado: un proceso, ~400–500 a ≤ 100 ms; harían falta ~10–12 procesos para 10.000 (falta probarlo en un servidor) |
 
 | Puerta | Qué exige | Estado |
 |---|---|---|
-| 1. Cero errores | jest y navegador enteros en verde; Salud sin errores abiertos; barrido de privacidad limpio; la misma cifra en todas partes | 🟡 jest entero en verde (1.386, tras quitar las pruebas de rutas borradas). La misma cifra: 0 diferencias en 62 alumnos. Navegador, tanda entera (423): 395 en verde; de los 20 rojos, 14 son del montaje (puertos 3000/3107 fijos, la IP del túnel), 4 arreglados y 2 por mirar (TR-02, INSTR-UI-02) |
+| 1. Cero errores | jest y navegador enteros en verde; Salud sin errores abiertos; barrido de privacidad limpio; la misma cifra en todas partes | 🟡 jest entero en verde (1.332). La misma cifra: 0 diferencias, comparando ahora también el cuadro general, el resumen final, el cierre y las tarjetas. Navegador (423): 401 en verde en el 3100; los rojos son del montaje (3107, el tiempo real que el 3100 no sirve: en el 3000 pasan) y la velocidad de PRECARGA-09 |
 | 2. No se pierde nada | lo hecho sin conexión sube; los respaldos vuelven; nada se borra sin copia; nada se pisa callado | 🟡 Probado por partes; hoy se cerraron dos huecos. Falta la prueba de caos y la copia fuera del servidor |
 | 3. Rápido con 100.000 | más de 10.000 a la vez a ≤ 100 ms (p99), sin romperse; medido por escalones en este PC y proyectado | 🔴 Medido solo en este PC. Hace falta el servidor de verdad |
 | 4. Cada opción funciona | cada botón de cada rol, con su prueba | 🟡 Servidor: 455 de 456 opciones vistas funcionando. Falta lo mismo en las pantallas |
@@ -35,6 +35,15 @@ npm run test:e2e
 ```
 
 y `/superadmin/salud` → Errores, sin ninguno abierto.
+
+**Medido el 20-oct-2026 (noche), tras partir los archivos grandes y quitar las rutas viejas:**
+- **jest entero: 1.332 pruebas en verde, 0 fallos.**
+- **La misma cifra:** el barrido compara ahora 13 fuentes (también el cuadro general del guía, el resumen final del MPPE, el cierre del año y las tarjetas de la sección): **0 diferencias**. Antes del arreglo, el cuadro general daba **2.641** con los mismos 62 alumnos.
+- **Navegador, tanda entera (423, 1,4 h) en el 3100:** 401 en verde, 17 en rojo, 5 saltadas.
+  - **Del montaje (14):** las de sin servidor y descarga apuntan al 3107; APP-01 a la IP del túnel; TR-02/TR-03 y las de medir el tiempo real necesitan `/socket.io`, que el 3100 no sirve (solo el túnel): **corridas en el 3000, pasan**.
+  - **Arreglados:** REC-05 y TR-04 usaban rutas quitadas; INSTR-UI-02 pasó (no era un fallo).
+  - **Abierto:** PRECARGA-09, la velocidad del admin (meta ≤ 10 s).
+- **Fallos de verdad encontrados y arreglados:** nota a un alumno de otra sección desde la clase en vivo (llegaba a su boleta); un estado de asistencia inventado daba 500; borrar un año escolar con notas de la clase en vivo o asistencia se dejaba (ANO-03); el cuadro general, las tarjetas de materias y la ficha del profesor daban otra cifra que la boleta.
 
 **Medido el 20-oct-2026:**
 - **jest entero: 194 de 194 archivos, 1.386 pruebas en verde, 0 fallos.** Son menos que antes porque se quitaron las que solo probaban rutas borradas; las reglas que vivían en ellas se prueban ahora sobre las pantallas de verdad.
