@@ -25,7 +25,6 @@ const GRANDES: Record<string, number> = {
     'apps/web/src/lib/precarga.ts': 941,
     'apps/web/src/components/schedule/TeacherScheduleEditor.tsx': 916,
     'apps/web/src/app/(dashboard)/dashboard/academico/[cycleId]/[sectionId]/page.tsx': 910,
-    'apps/backend/src/controllers/superadmin-institutes.controller.ts': 864,
     'apps/web/src/app/(dashboard)/dashboard/usuarios/[cedula]/page.tsx': 851,
 };
 const TOPE_NUEVO = 1000;
