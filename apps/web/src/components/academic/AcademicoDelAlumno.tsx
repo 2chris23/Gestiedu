@@ -41,9 +41,14 @@ export default function AcademicoDelAlumno() {
     );
 
     // Consultar boleta del estudiante en el ciclo seleccionado
+    // El ciclo se sabe en cuanto llegan los ciclos: sin esperar al efecto que
+    // lo elige (si no, la boleta se pedía sin ciclo y luego otra vez con él).
+    const cicloDeLaBoleta =
+        selectedCycleId || (years.find((y: any) => y.status === 'ACTIVE' || y.isActive) || years[0])?.id || '';
     const { data: boleta, isLoading: cargandoBoleta } = useBoleta(
         studentId || '',
-        selectedCycleId || undefined
+        cicloDeLaBoleta || undefined,
+        !cargandoCiclos
     );
 
     // Lapso seleccionado (id del lapso o 'definitivo')

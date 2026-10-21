@@ -12,10 +12,11 @@ export function useSubjects(params?: {
     search?: string;
     isActive?: boolean;
     academicYearId?: string;
-}) {
+}, habilitado = true) {
     return useQuery({
         queryKey: ['subjects', params],
         queryFn: () => subjectsService.getAllSubjects(params),
+        enabled: habilitado,
     });
 }
 

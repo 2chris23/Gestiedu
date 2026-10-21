@@ -82,6 +82,12 @@ y `/superadmin/salud` → Errores, sin ninguno abierto.
 
 ## Puerta 3 — Rápido con 100.000 personas (más de 10.000 a la vez, p99 ≤ 100 ms)
 
+**La auditoría de rendimiento (21-oct-2026, `docs/AUDITORIA-RENDIMIENTO.md`):**
+- **Lecturas dobles:** cinco pantallas pedían lo mismo dos veces, entre ellas la boleta y el Inicio del alumno. Ya piden una.
+- **Un índice nuevo:** las actividades por fila del plan.
+- **Una pantalla, una persona:** en el liceo de 637 todo va por debajo de 50 ms, salvo el resumen del ciclo (~210 ms).
+- **Pendiente de decidir:** en el de 15.326 personas, el resumen del ciclo y el primer Inicio del admin tardan **25–27 s**. Es la tabla vieja `grades`: 1,8 millones de filas sembradas, y nada del sistema la escribe. Mientras siga en las cuentas, lo que se mide con `test-load-5k` no vale para un liceo de verdad.
+
 **Medido el 19-oct-2026 por escalones** (`npm run medir:estres`, este PC: el generador, PostgreSQL, Redis y el servidor en la misma máquina de 12 hilos; 50 liceos sembrados con `seed:muchos-liceos`; una conexión por liceo).
 
 **Primero se encontró y arregló lo que lo rompía:**

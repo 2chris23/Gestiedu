@@ -58,19 +58,57 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
       };
     });
 
-    const classrooms = await prisma.classroom.findMany({
-      where: { academicYearId: id },
-      select: {
-        id: true,
-        grade: true,
-        capacity: true,
-        _count: {
-          select: {
-            studentClassrooms: { where: { isActive: true } }
+    const instDelAno = (request.user as any)?.instituteId ?? (request as any).institute?.id;
+    // Todo lo que sigue es independiente: a la vez, no una consulta detrás de
+    // otra (eran seis seguidas, ~230 ms medidos el 20-oct-2026).
+    const [classrooms, observations, config, seccionesDelAno, attendanceGroups] = await Promise.all([
+      prisma.classroom.findMany({
+        where: { academicYearId: id },
+        select: {
+          id: true,
+          grade: true,
+          capacity: true,
+          _count: {
+            select: {
+              studentClassrooms: { where: { isActive: true } }
+            }
           }
         }
-      }
-    });
+      }),
+      prisma.observation.findMany({
+        where: {
+          student: {
+            studentClassrooms: {
+              some: { academicYearId: id, isActive: true }
+            }
+          },
+          ...(periodDateFilter ? { date: periodDateFilter } : {}),
+        },
+        select: {
+          id: true,
+          student: {
+            select: {
+              studentClassrooms: {
+                where: { academicYearId: id, isActive: true },
+                select: { classroom: { select: { grade: true } } },
+                take: 1
+              }
+            }
+          }
+        }
+      }),
+      getAcademicConfig(getRequestInstituteId(request)).catch(() => null),
+      cifrasOficialesDelAno(prisma as any, instDelAno, id),
+      prisma.dailyAttendance.groupBy({
+        by: ['classroomId', 'status'],
+        where: {
+          classroom: { academicYearId: id },
+          ...(periodDateFilter ? { date: periodDateFilter } : {}),
+        },
+        _count: { id: true }
+      }),
+    ]);
+    const minPassing = typeof config?.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
 
     classrooms.forEach(cls => {
       const g = cls.grade;
@@ -81,29 +119,6 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
     });
 
     // Contar observaciones creadas en este ciclo escolar agrupadas por año/grado (filtradas por lapso si se indica)
-    const observations = await prisma.observation.findMany({
-      where: {
-        student: {
-          studentClassrooms: {
-            some: { academicYearId: id, isActive: true }
-          }
-        },
-        ...(periodDateFilter ? { date: periodDateFilter } : {}),
-      },
-      select: {
-        id: true,
-        student: {
-          select: {
-            studentClassrooms: {
-              where: { academicYearId: id, isActive: true },
-              select: { classroom: { select: { grade: true } } },
-              take: 1
-            }
-          }
-        }
-      }
-    });
-
     observations.forEach(obs => {
       const grade = obs.student?.studentClassrooms?.[0]?.classroom?.grade;
       if (grade && yearStats[grade]) {
@@ -115,15 +130,6 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
     // sección por sección y a la vez. El año: la media de sus secciones (MAPA §6,
     // la misma que `yearGradeAverage`); el mínimo, el máximo y el riesgo, de sus
     // alumnos. Antes era la media a pelo de la tabla de notas.
-    let minPassing = 10;
-    try {
-      const config = await getAcademicConfig(getRequestInstituteId(request));
-      minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
-    } catch {
-      minPassing = 10;
-    }
-    const instDelAno = (request.user as any)?.instituteId ?? (request as any).institute?.id;
-    const seccionesDelAno = await cifrasOficialesDelAno(prisma as any, instDelAno, id);
     const gradeEvaluatedStudents = new Map<number, number>();
     const mediasDeSecciones = new Map<number, number[]>();
     for (const { grade, oficiales } of seccionesDelAno) {
@@ -144,15 +150,6 @@ export const getAcademicYearStats = async (request: FastifyRequest, reply: Fasti
     }
 
     // 3. Calcular asistencia por sección y agregarla por año/grado (Nivel Jerárquico)
-    const attendanceGroups = await prisma.dailyAttendance.groupBy({
-      by: ['classroomId', 'status'],
-      where: {
-        classroom: { academicYearId: id },
-        ...(periodDateFilter ? { date: periodDateFilter } : {}),
-      },
-      _count: { id: true }
-    });
-
     const classroomAttendanceMap = new Map<string, { attended: number; total: number }>();
     attendanceGroups.forEach(g => {
       if (!classroomAttendanceMap.has(g.classroomId)) {

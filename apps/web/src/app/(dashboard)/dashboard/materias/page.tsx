@@ -65,13 +65,17 @@ function AdminMateriasPage() {
 
     // Un liceo tiene unas veinte materias: todas de una vez (con 20 por página,
     // la 21.ª se iba a una segunda página que nadie veía).
+    // El año se sabe en cuanto llegan los años: sin esperar al efecto que lo
+    // elige (si no, se pedían las materias sin año y luego con él).
+    const anioDeLaLista =
+        selectedYearId || academicYears?.find((y) => y.status === 'ACTIVE')?.id || academicYears?.[0]?.id || '';
     const { data: subjectsData, isLoading } = useSubjects({
         page: 1,
         limit: 100,
         search: debouncedSearch,
         grade: '',
-        academicYearId: selectedYearId || undefined,
-    });
+        academicYearId: anioDeLaLista || undefined,
+    }, !isLoadingYears);
     const createMutation = useCreateSubject();
     const updateMutation = useUpdateSubject();
     const deleteMutation = useDeleteSubject();
@@ -91,7 +95,7 @@ function AdminMateriasPage() {
         if (si) await deleteMutation.mutateAsync(m.id);
     };
 
-    if (isLoading && !subjectsData) {
+    if ((isLoading || isLoadingYears) && !subjectsData) {
         return <CargandoMaterias />;
     }
 

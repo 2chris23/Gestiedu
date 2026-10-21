@@ -166,9 +166,17 @@ export function useFichaDelUsuario({ params }: { params: Promise<{ cedula: strin
     const [lapsoId, setLapsoId] = useState<string | undefined>(undefined);
     const [studentPeriods, setStudentPeriods] = useState<Array<{ id: string; name: string }>>([]);
 
+    // El ciclo de la ficha sale ya del usuario: si se esperara al efecto que
+    // lo elige, la primera pintada pedía las cifras sin ciclo y luego otra
+    // vez con él (dos veces lo mismo, y la primera tirada).
+    // La misma cuenta que el efecto de abajo, letra por letra: si el primer
+    // ciclo de la lista no trae id, no se elige ninguno.
+    const cicloInicial: string =
+        ((dbUser as any)?.studentClassrooms?.[0]?.academicYear || (dbUser?.classroom as any)?.academicYear)?.id || '';
+    const cicloDeLaFicha = selectedStudentYearId || cicloInicial;
     const estadisticas = useQuery({
-        queryKey: ['usuario', cedula, 'estadisticas', lapsoId ?? null, selectedStudentYearId || null],
-        queryFn: () => studentsService.getStudentDashboardStatsById(dbUser!.id, lapsoId, selectedStudentYearId || undefined),
+        queryKey: ['usuario', cedula, 'estadisticas', lapsoId ?? null, cicloDeLaFicha || null],
+        queryFn: () => studentsService.getStudentDashboardStatsById(dbUser!.id, lapsoId, cicloDeLaFicha || undefined),
         enabled: dbUser?.role === 'STUDENT',
         placeholderData: (anteriores) => anteriores,
     });

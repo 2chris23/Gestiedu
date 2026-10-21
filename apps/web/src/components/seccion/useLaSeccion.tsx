@@ -38,7 +38,7 @@ export function useLaSeccion({ params }: { params: Promise<{ cycleId: string, se
     const passingGrade = academicConfig?.notaMinimaAprobatoria ?? academicConfig?.passingGrade ?? 10;
 
     const { data: studentsData, isLoading } = useStudents(classroomId || '', { page, limit, periodId: lapsoId });
-    const { data: classroomStats } = useClassroomStats(classroomId || sectionId, lapsoId);
+    const { data: classroomStats } = useClassroomStats(classroomId || '', lapsoId);
     const { data: subjectsData, isLoading: isLoadingSubjects } = useClassroomSubjects(classroomId || '');
     const { data: subjectsWithStats, isLoading: isLoadingSubjectsStats, refetch: refetchSubjects } =
         useClassroomSubjectsStats(classroomId || '', lapsoId);
@@ -73,10 +73,12 @@ export function useLaSeccion({ params }: { params: Promise<{ cycleId: string, se
         esGuiaOAdmin && !!reglasDelLiceo?.laborSocial?.activa && !!classroom?.grade && reglasDelLiceo.laborSocial.grados.includes(classroom.grade);
     // La lista de alumnos sin sección (para inscribir) es del admin: el
     // profesor recibía nombres y correos de alumnos que no son suyos.
+    // Solo al abrir «Inscribir» y con el año ya sabido: antes se pedía al abrir
+    // la sección, dos veces (sin año y con él), y casi nunca se usaba.
     const { data: availableStudentsData, isLoading: isLoadingAvailable } = useAvailableStudents(
         debouncedSearchAvailable,
         targetYearId,
-        yo?.role === 'ADMIN'
+        yo?.role === 'ADMIN' && isAddStudentModalOpen && !!targetYearId
     );
 
     const students = studentsData?.students || studentsData?.users || [];

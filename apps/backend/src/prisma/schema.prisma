@@ -2314,6 +2314,9 @@ model ClassActivity {
   @@index([classroomId, subjectId])
   @@index([classSessionId])
   @@index([classroomId, subjectId, target])
+  /// Guardar el plan o su instrumento busca las actividades de una fila
+  /// (`instrumentos.service`, `evaluation-plan`): sin esto, la tabla entera.
+  @@index([planRowId])
   @@map("class_activities")
 }
 

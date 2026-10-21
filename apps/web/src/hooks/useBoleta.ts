@@ -39,7 +39,7 @@ export interface Boleta {
  * Va por `useQuery` a propósito: así se guarda en el teléfono y se puede
  * volver a ver sin señal (CLAUDE.md, «Sin señal se mira, no se toca»).
  */
-export function useBoleta(cedula: string, academicYearId?: string) {
+export function useBoleta(cedula: string, academicYearId?: string, habilitado = true) {
     return useQuery<Boleta>({
         queryKey: ['boleta', cedula, academicYearId ?? null],
         queryFn: async () => {
@@ -47,7 +47,7 @@ export function useBoleta(cedula: string, academicYearId?: string) {
             const { data } = await api.get(`/students/${encodeURIComponent(cedula)}/boleta${params}`);
             return data.data;
         },
-        enabled: Boolean(cedula),
+        enabled: Boolean(cedula) && habilitado,
         // Un «no puedes» o un «no existe» no cambia por insistir.
         retry: (veces, error: any) => {
             const status = error?.response?.status;

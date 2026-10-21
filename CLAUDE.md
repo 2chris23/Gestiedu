@@ -1219,6 +1219,11 @@ de navegador no ven la oferta (la tapa `navigator.webdriver`) salvo que pongan
   «100 % en verde» y fallaban 10 pruebas; ver auditoría §64.
 - `docs/ARQUITECTURA.md` — cómo está hecho, qué se limpió (19-oct-2026) y qué falta ordenar.
 - `docs/AUDITORIA-FUNCIONAL.md` — auditoría funcional y el porcentaje de avance.
+- `docs/AUDITORIA-RENDIMIENTO.md` — los cinco pilares (20-oct-2026): lo medido
+  por pantalla, lo fijo frente a lo que cambia y por qué no hay caché de un
+  solo proceso. **La tabla vieja `grades` no la escribe nada y la leen diez
+  cuentas**: en los liceos sembrados es casi todo el tiempo (25 s el resumen
+  del ciclo con 15.000), y ensucia lo que mide `test-load-5k`.
 - `docs/MAPA_DE_CALCULOS.md` — toda regla de cálculo.
 - `docs/DESPLIEGUE.md` — despliegue y operación.
 - `docs/APP-MOVIL.md` — la app del teléfono: PWA y APK.
