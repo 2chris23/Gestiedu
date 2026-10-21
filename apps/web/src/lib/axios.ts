@@ -4,8 +4,9 @@ import { conseguirCredencial, guardarCredencial, olvidarCredencial } from './cre
 import { laPuertaDelLiceo } from './la-puerta-del-liceo';
 import { API_URL } from '@/config/env';
 import { elServidorContesto, elServidorNoContesta, esQueNoContesta } from './estado-del-servidor';
-import { claveDeLaPeticion, guardarRespuesta, leerRespuesta } from './respuestas-guardadas';
+import { ESTADO_GUARDADO, claveDeLaPeticion, guardarRespuesta, leerRespuesta, seGuarda } from './respuestas-guardadas';
 import { elDuenoDeAhora } from './el-dueno';
+import { empiezaUnaLectura, terminaUnaLectura, apuntarFalta } from './lecturas-en-curso';
 
 // Asegurar que la baseURL del cliente axios siempre tenga el prefijo /api
 // NEXT_PUBLIC_API_URL puede ser 'http://localhost:3001' o 'http://localhost:3001/api'
@@ -25,6 +26,25 @@ const api = axios.create({
         'Content-Type': 'application/json',
     },
 });
+
+/**
+ * CUÁNTO SE ESTÁ PIDIENDO AHORA (`lecturas-en-curso.ts`)
+ *
+ * La grabadora de la precarga (`grabar-lecturas.spec.ts`) necesita saber
+ * cuándo una pantalla terminó de pedir (y de guardar) lo suyo. Se cuenta en
+ * el adaptador: solo lo que sale de verdad a la red.
+ */
+if (api.defaults && typeof axios.getAdapter === 'function') {
+    const adaptadorDeSiempre = axios.getAdapter(api.defaults.adapter);
+    api.defaults.adapter = async (config) => {
+        empiezaUnaLectura();
+        try {
+            return await adaptadorDeSiempre(config);
+        } finally {
+            terminaUnaLectura();
+        }
+    };
+}
 
 
 /**
@@ -86,10 +106,39 @@ function esLecturaQueSeGuarda(config: any): boolean {
  * `x-desde-lo-guardado` (cuándo se bajó). Si no hay nada guardado, el error
  * de siempre.
  */
+/**
+ * Al abrir una pantalla sin conexión, sus lecturas salen antes de que se sepa
+ * quién tiene la sesión (el almacén se rellena un instante después): se
+ * buscaban «de nadie» y no se encontraba nada. Medido con la precarga del
+ * admin: 5 secciones de 25 salían vacías con todo guardado. Se espera un poco.
+ */
+async function elDuenoEnCuantoSeSepa(tope = 3000): Promise<string | null> {
+    const fin = Date.now() + tope;
+    for (let dueno = elDuenoDeAhora(); ; dueno = elDuenoDeAhora()) {
+        if (dueno || Date.now() > fin) return dueno;
+        await new Promise((r) => setTimeout(r, 100));
+    }
+}
+
 async function deLoGuardado(config: any): Promise<any | null> {
     if (!esLecturaQueSeGuarda(config)) return null;
-    const guardada = await leerRespuesta(elDuenoDeAhora(), claveDeLaPeticion(config.url || '', config.params));
-    if (!guardada) return null;
+    const clave = claveDeLaPeticion(config.url || '', config.params);
+    const guardada = await leerRespuesta(await elDuenoEnCuantoSeSepa(), clave);
+    if (!guardada) {
+        // Lo que faltó sin conexión: lo mira PRECARGA-* (y sirve para saber qué no se bajó).
+        // La hora y la salud no se guardan nunca, a propósito: no son faltas.
+        if (seGuarda(clave)) apuntarFalta(clave);
+        return null;
+    }
+    // Un «no» del servidor apuntado por la precarga: el mismo «no», sin conexión.
+    const estado = (guardada.datos as Record<string, unknown> | null)?.[ESTADO_GUARDADO];
+    if (typeof estado === 'number') {
+        throw Object.assign(new Error(`Request failed with status code ${estado}`), {
+            isAxiosError: true,
+            config,
+            response: { status: estado, data: { error: 'Sin permiso', code: 'GUARDADO' }, headers: {}, config },
+        });
+    }
     return {
         data: guardada.datos,
         status: 200,
@@ -126,7 +175,11 @@ api.interceptors.request.use(
              */
             const token = await conseguirCredencial();
             if (token) {
-                config.headers.Authorization = `Bearer ${token}`;
+                if (typeof (config.headers as any)?.set === 'function') {
+                    (config.headers as any).set('Authorization', `Bearer ${token}`);
+                } else {
+                    config.headers.Authorization = `Bearer ${token}`;
+                }
             }
 
             // El liceo sí se lee de la cookie: no es una credencial, solo dice
@@ -140,8 +193,13 @@ api.interceptors.request.use(
 
             const slug = cookies['institute_slug'];
             // Si la petición ya dice de qué liceo es, manda la petición.
-            if (slug && !config.headers['X-Institute-Slug']) {
-                config.headers['X-Institute-Slug'] = slug;
+            const yaTieneSlug = config.headers['X-Institute-Slug'] || (typeof (config.headers as any)?.get === 'function' && (config.headers as any).get('X-Institute-Slug'));
+            if (slug && !yaTieneSlug) {
+                if (typeof (config.headers as any)?.set === 'function') {
+                    (config.headers as any).set('X-Institute-Slug', slug);
+                } else {
+                    config.headers['X-Institute-Slug'] = slug;
+                }
             }
         }
 
@@ -168,12 +226,19 @@ api.interceptors.response.use(
     (response) => {
         elServidorContesto();
         if (response.status === 200 && esLecturaQueSeGuarda(response.config)) {
-            void guardarRespuesta(elDuenoDeAhora(), claveDeLaPeticion(response.config.url || '', response.config.params), response.data);
+            empiezaUnaLectura();
+            void guardarRespuesta(elDuenoDeAhora(), claveDeLaPeticion(response.config.url || '', response.config.params), response.data).finally(
+                terminaUnaLectura
+            );
         }
         return response;
     },
     async (error) => {
         const originalRequest = error.config;
+        // Peticiones canceladas o abortadas (unmount de componentes o cambio de pantalla) no son fallo
+        if (error?.name === 'CanceledError' || error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') {
+            return Promise.reject(error);
+        }
 
         // ¿Contestó el servidor (aunque fuera para decir que no), o no llegó nada?
         if (esQueNoContesta(error)) {
@@ -197,7 +262,11 @@ api.interceptors.response.use(
                     if (success) {
                         originalRequest._retry = true;
                         if (token && originalRequest.headers) {
-                            originalRequest.headers.Authorization = `Bearer ${token}`;
+                            if (typeof (originalRequest.headers as any)?.set === 'function') {
+                                (originalRequest.headers as any).set('Authorization', `Bearer ${token}`);
+                            } else {
+                                originalRequest.headers.Authorization = `Bearer ${token}`;
+                            }
                         }
                         resolve(api.request(originalRequest));
                     } else {
@@ -270,12 +339,5 @@ api.interceptors.response.use(
         }
     }
 );
-
-// Exportar la baseURL configurada para referencia
-export function getConnectionStatus(): { baseURL: string } {
-    return {
-        baseURL: API_BASE_URL,
-    };
-}
 
 export default api;

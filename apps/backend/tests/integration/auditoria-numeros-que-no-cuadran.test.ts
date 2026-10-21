@@ -160,6 +160,14 @@ describe('Números que tienen que cuadrar', () => {
         });
     }
 
+    /** La fila de nuestra sección en la pantalla de la materia. */
+    const enLaSeccion = (res: any) => {
+        const secciones = (res.body.data ?? res.body).sections ?? [];
+        const fila = secciones.find((x: any) => x.id === seccion.id);
+        if (!fila) throw new Error('La materia no enseña nuestra sección');
+        return fila;
+    };
+
     const configurarNotaMinima = (valor: number) =>
         platformPrisma.institute.update({
             where: { id: 'institute' },
@@ -170,17 +178,17 @@ describe('Números que tienen que cuadrar', () => {
     // LA NOTA MÍNIMA PARA APROBAR ES LA DEL LICEO
     // ─────────────────────────────────────────────────────────────────────────
 
-    it('CAL-01: con la nota mínima por defecto (10), un 9,7 está reprobado', async () => {
+    it('CAL-01: con la nota mínima por defecto (10), un 9,4 está reprobado (9,5 sube a 10 con el redondeo del MPPE)', async () => {
         await configurarNotaMinima(10);
-        await ponerNota(9.7);
+        await ponerNota(9.4);
 
         const res = await request(server.server)
-            .get(`/api/statistics/subject/${seccion.id}/${materia.id}`)
-            .set(auth(tokenProfe))
+            .get(`/api/subjects/${materia.id}`)
+            .set(auth(tokenAdmin))
             .expect(200);
 
-        const datos = res.body.data;
-        expect(datos.studentsAtRisk).toBe(1);
+        // La pantalla de la materia (Materias → una): su fila de la sección.
+        expect(enLaSeccion(res).riskCount).toBe(1);
     });
 
     it('CAL-02: si el liceo pone la mínima en 12, un 11 está reprobado', async () => {
@@ -188,11 +196,11 @@ describe('Números que tienen que cuadrar', () => {
         await ponerNota(11);
 
         const res = await request(server.server)
-            .get(`/api/statistics/subject/${seccion.id}/${materia.id}`)
-            .set(auth(tokenProfe))
+            .get(`/api/subjects/${materia.id}`)
+            .set(auth(tokenAdmin))
             .expect(200);
 
-        expect(res.body.data.studentsAtRisk).toBe(1);
+        expect(enLaSeccion(res).riskCount).toBe(1);
     });
 
     it('CAL-03: si el liceo pone la mínima en 8, un 9 está aprobado', async () => {
@@ -200,80 +208,45 @@ describe('Números que tienen que cuadrar', () => {
         await ponerNota(9);
 
         const res = await request(server.server)
-            .get(`/api/statistics/subject/${seccion.id}/${materia.id}`)
-            .set(auth(tokenProfe))
+            .get(`/api/subjects/${materia.id}`)
+            .set(auth(tokenAdmin))
             .expect(200);
 
-        expect(res.body.data.studentsAtRisk).toBe(0);
+        expect(enLaSeccion(res).riskCount).toBe(0);
     });
 
     it('CAL-04: la sección usa la misma nota mínima que la materia', async () => {
         await configurarNotaMinima(10);
-        await ponerNota(9.7);
+        await ponerNota(9.4);
 
         const res = await request(server.server)
-            .get(`/api/statistics/section/${seccion.id}`)
-            .set(auth(tokenProfe))
+            .get(`/api/classrooms/${seccion.id}/stats`)
+            .set(auth(tokenAdmin))
             .expect(200);
 
-        expect(res.body.data.studentsAtRisk).toBe(1);
+        // El resumen de la sección (la cabecera de la sección).
+        expect(res.body.riskCount).toBe(1);
     });
 
     // ─────────────────────────────────────────────────────────────────────────
     // LOS DÍAS SIN TOMAR ASISTENCIA NO BAJAN EL PORCENTAJE
     // ─────────────────────────────────────────────────────────────────────────
 
-    it('CAL-05: sin ningún registro de asistencia, nadie figura con asistencia baja', async () => {
+    it('CAL-05: sin ningún registro de asistencia, la sección no inventa un porcentaje', async () => {
         await configurarNotaMinima(10);
         await ponerNota(15);
 
         const res = await request(server.server)
-            .get(`/api/statistics/section/${seccion.id}`)
-            .set(auth(tokenProfe))
-            .expect(200);
-
-        // Nadie ha pasado lista todavía. Decir que el alumno "asiste poco"
-        // es inventarse un dato que no existe (MAPA_DE_CALCULOS, sección 4).
-        expect(res.body.data.studentsWithLowAttendance).toBe(0);
-    });
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // EL RESUMEN DE ASISTENCIA DE UN ALUMNO
-    // ─────────────────────────────────────────────────────────────────────────
-
-    it('CAL-06: el resumen de asistencia de un alumno trae los números, no una caja vacía', async () => {
-        for (const [dia, estado] of [
-            ['2024-03-01', 'PRESENT'],
-            ['2024-03-04', 'PRESENT'],
-            ['2024-03-05', 'ABSENT'],
-            ['2024-03-06', 'LATE'],
-        ] as const) {
-            await prisma.dailyAttendance.create({
-                data: {
-                    id: gId(),
-                    studentId: alumno.id,
-                    classroomId: seccion.id,
-                    teacherId: profe.id,
-                    date: new Date(dia),
-                    status: estado as any,
-                },
-            });
-        }
-
-        const res = await request(server.server)
-            .get(`/api/attendance/summary/student/${alumno.id}`)
+            .get(`/api/classrooms/${seccion.id}/stats`)
             .set(auth(tokenAdmin))
             .expect(200);
 
-        // Antes esta ruta respondía 200 con `{}`: la plantilla de la respuesta
-        // declaraba unos campos y el código enviaba otros, y lo que no está
-        // declarado se cae por el camino sin avisar.
-        expect(Object.keys(res.body).length).toBeGreaterThan(0);
-
-        const resumen = res.body.summary ?? res.body;
-        expect(resumen.totalDays).toBe(4);
-        expect(resumen.present).toBe(2);
-        expect(resumen.absent).toBe(1);
-        expect(resumen.late).toBe(1);
+        // Nadie ha pasado lista todavía. Decir un porcentaje (un 0 %) es
+        // inventarse un dato que no existe (MAPA_DE_CALCULOS, sección 4).
+        expect(res.body.attendance).toBeNull();
     });
+
+    // CAL-06 (`/api/attendance/summary/student`) se quitó con esa ruta el
+    // 19-oct-2026: ninguna pantalla la usaba. La asistencia del alumno la
+    // vigilan LISTA-03 y CIFRAS-01.
 });

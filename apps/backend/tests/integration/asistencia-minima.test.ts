@@ -313,37 +313,8 @@ describe('La asistencia mínima la pone el liceo', () => {
     // NO SE CONFUNDE CON LA NOTA MÍNIMA
     // ─────────────────────────────────────────────────────────────────────────
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // EL MISMO NÚMERO MANDA EN LOS MEDIDORES DE LA SECCIÓN
-    //
-    // Había un SEGUNDO 80 fijo, en otro archivo, contando "alumnos con
-    // asistencia baja" en los medidores que ven el profesor y el admin. Si solo
-    // se hubiera cambiado el del panel del representante, el liceo tendría dos
-    // criterios distintos para lo mismo según qué pantalla mires.
-    // ─────────────────────────────────────────────────────────────────────────
-
-    it('ASI-08: los medidores de la sección usan la misma asistencia mínima del liceo', async () => {
-        const bajosConUmbral = async (umbral: number) => {
-            await configurar({ asistenciaMinima: umbral });
-            const res = await request(server.server)
-                .get(`/api/statistics/section/${seccion.id}`)
-                .set(auth(tokenAdmin));
-            if (res.status !== 200) return null;
-            return (res.body.data ?? res.body).studentsWithLowAttendance;
-        };
-
-        const con60 = await bajosConUmbral(60);
-        const con90 = await bajosConUmbral(90);
-
-        // Si la ruta no existe con ese nombre, no se inventa un verde.
-        if (con60 === null || con90 === null) {
-            throw new Error('No se pudo consultar los medidores de la sección');
-        }
-
-        // El alumno va al 75%: con la mínima en 60 no cuenta, con 90 sí.
-        expect(con60).toBe(0);
-        expect(con90).toBe(1);
-    });
+    // ASI-08 (los medidores de `/api/statistics/section`) se quitó con esa ruta
+    // el 19-oct-2026: ninguna pantalla enseñaba «alumnos con asistencia baja».
 
     it('ASI-07: cambiar la asistencia mínima no toca la nota mínima aprobatoria', async () => {
         await configurar({ notaMinimaAprobatoria: 12, asistenciaMinima: 80 });

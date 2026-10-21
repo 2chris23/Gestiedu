@@ -284,26 +284,6 @@ export function configuracionDe(fila: any | null): Configuracion {
         recordatorioDiasAntes: Math.max(0, Number(fila?.recordatorioDiasAntes ?? 3) || 0),
     };
 }
-
-/** Lo que de la configuración se congela en cada ciclo (`ajustes_de_pagos_del_ciclo`). */
-export const CAMPOS_DEL_CICLO = [
-    'frequency',
-    'dueMode',
-    'dueDay',
-    'graceDays',
-    'baseCurrency',
-    'acceptedCurrencies',
-    'feeAmount',
-    'enrollmentEnabled',
-    'enrollmentAmount',
-    'methods',
-    'descuentoHermanosPct',
-    'moraTipo',
-    'moraValor',
-    'moraDiasDespues',
-    'recordatorioDiasAntes',
-] as const;
-
 const MONTO_MAXIMO = 1_000_000_000; // 10 millones en céntimos: más es un error de tecleo
 
 /** Valida lo que manda el admin. Devuelve los datos listos para guardar, o lanza 400. */

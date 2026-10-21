@@ -121,8 +121,8 @@ Ver [Security Advisories](https://github.com/2chris34/Cristian/security/advisori
 
 ### Incidente: secreto en historial git
 
-El password de PostgreSQL (`megustaelcoco2003`) quedó expuesto en `origin/main` (commit `a716d8c`). **Mitigación aplicada**:
-- Password **rotado** (`82nQKb95S7wNDmuxyvIG6dOYkZUo` en entornos locales, gitignored).
+El password de PostgreSQL (`«la vieja, ya cambiada»`) quedó expuesto en `origin/main` (commit `a716d8c`). **Mitigación aplicada**:
+- Password **rotado** (`«la de tu .env»` en entornos locales, gitignored).
 - `.env.test` y `.env.development` des-trackeados + `.env.*.example` commiteados.
 - Scripts dev usan fallback `postgres:postgres` (sin secretos).
 
@@ -142,3 +142,58 @@ El password de PostgreSQL (`megustaelcoco2003`) quedó expuesto en `origin/main`
 - **E2E**: logins autenticados (SuperAdmin UI + instituto API) con **0 violaciones axe** en dashboards.
 - **Pruebas**: backend 84/84, web 10/10, e2e 6/6.
 
+
+## Secretos en el historial público (2026-10-04)
+
+Una revisión encontró, en archivos del repositorio (que es público), tres claves
+reales: la de PostgreSQL local (en ocho guiones y en este mismo archivo), la del
+superadmin (escrita YA PUESTA en la pantalla `/superadmin/login`, en el README,
+en `.env.example` y en `inicio.ps1`) y una clave vieja de la base en
+`check-db.mjs`. Se quitaron todas del árbol: los guiones leen el entorno o le
+preguntan a la plataforma, y la pantalla del superadmin abre vacía.
+
+**Siguen en el historial de git**, así que hay que darlas por conocidas:
+
+1. Cambiar la contraseña del superadmin (y `SUPERADMIN_PASSWORD` en el `.env`).
+2. Cambiar la contraseña de PostgreSQL local (y las URL del `.env`).
+3. Si alguna de las dos se usa o se usó en un servidor de verdad, cambiarla allí.
+4. Opcional: limpiar el historial (`git filter-repo`) y forzar la subida. Reescribe
+   GitHub para todos: solo con el visto bueno del dueño.
+
+Para que no vuelva a pasar: el escaneo de secretos de la integración continua
+(ver `ci.yml`).
+
+## La llave maestra: el superadmin (propuesta, 2026-10-04)
+
+El superadmin abre **todos** los liceos. Hoy lo protegen la contraseña, el
+límite de intentos por dirección y la rotación de su sesión. Si alguien la
+adivina o la roba (una contraseña reutilizada en otro sitio), entra a todo.
+
+**Propuesta** (pendiente de que el dueño la apruebe; no está hecha):
+
+1. **Segundo factor TOTP** (Google Authenticator, Aegis): al entrar, además de
+   la contraseña, el código de 6 cifras del teléfono del dueño. Se guarda solo
+   la semilla cifrada con una llave del servidor, y 10 códigos de rescate de un
+   solo uso para el día que se pierda el teléfono.
+2. **Registro de lo que hace** (`registros_del_superadmin`): quién, cuándo,
+   desde dónde y qué (crear, suspender o borrar un liceo, ver sus métricas).
+   Solo se añade, nunca se borra.
+3. **Aviso al correo del dueño** en cada entrada desde una dirección nueva.
+
+Lo que ya defiende el resto (los admins de cada liceo): límite de intentos
+por cuenta y dirección (BRUTO-01), llaves que rotan y se anulan al salir, y el
+`instituteId` del token mandando sobre todo lo demás (`TENANT_MISMATCH`).
+
+## Revisado en la tanda de robustez (2026-10-04)
+
+| Riesgo | Estado |
+|---|---|
+| SSRF por los avisos web | **Cerrado**: solo servicios de avisos de verdad (SSRF-01) |
+| CSRF | La cookie de renovar es `httpOnly` y `SameSite=lax`; las escrituras van con la credencial en la cabecera, no en cookie |
+| XSS por `dangerouslySetInnerHTML` | Dos: un guion fijo del arranque y los datos estructurados de la portada (con `<` escapado). Ninguno lleva texto del usuario |
+| Recorrido de rutas en la descarga de la APK | El nombre del paquete pasa por una expresión cerrada antes de tocar el disco |
+| Inyección de órdenes en los respaldos | `pg_dump`/`pg_restore` se lanzan con `spawn` y argumentos en lista (sin intérprete); el esquema se valida (`^[a-z0-9_]{1,63}$`) |
+| ReDoS | La única expresión construida en tiempo de ejecución escapa su entrada (`config/redis.ts`) |
+| Datos personales en los registros | Quitado el correo al pedir cambiar la contraseña; se apunta el id |
+| Números correlativos (recibos) | Secuencia de la base con restricción única: dos a la vez no repiten número |
+| Librerías | `npm audit` en la CI (falla con un crítico) y Dependabot cada semana |

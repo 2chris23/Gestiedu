@@ -258,6 +258,22 @@ describe('Eventos del liceo', () => {
         expect(at930.isSuspended).toBe(true);
     }, 60000);
 
+    it('4c. editar el evento rehace sus suspensiones con lo nuevo', async () => {
+        // Solo 1er año y con otro nombre: siguen las dos de 1º, ahora con el motivo nuevo.
+        const res = await auth(request(server.server).put(`/api/events/${eventId}`)).send({ title: 'Acto de bandera', scope: 'GRADES', grades: [1] });
+        expect(res.status).toBe(200);
+        expect(res.body.event.title).toBe('Acto de bandera');
+        expect(res.body.suspendedSessions).toBe(2);
+        const sesiones = await prisma.classSession.findMany({ where: { suspendedByEventId: eventId } });
+        expect(sesiones.map((s) => s.classroomId).sort()).toEqual([classroomA.id, classroomB.id].sort());
+        expect(sesiones.every((s) => s.suspendedReason === 'Evento: Acto de bandera')).toBe(true);
+        // La del profesor, intacta.
+        const c = await prisma.classSession.findFirst({ where: { classroomId: classroomC.id } });
+        expect(c?.suspendedReason).toBe('Reposo médico');
+        // Un profesor no edita eventos.
+        expect((await auth(request(server.server).put(`/api/events/${eventId}`), teacherToken).send({ title: 'x' })).status).toBe(403);
+    }, 60000);
+
     it('5. borrar el evento deshace sus suspensiones y solo las suyas', async () => {
         // A 1er año A le había dado tiempo de registrar el tema: esa sesión
         // tiene contenido y debe volver a ACTIVE, no borrarse

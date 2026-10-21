@@ -99,15 +99,20 @@ test.describe('Con el servidor apagado', () => {
                 page.waitForURL('**/dashboard**', { timeout: 60_000 }),
                 page.getByRole('button', { name: /^Ingresar$/ }).click(),
             ]);
-            await expect(page.getByText('Estudiantes').first()).toBeVisible({ timeout: 30_000 });
+            await expect(page.getByText('Estudiantes').filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
 
             // El ayudante toma el control, y con él al mando se vuelve a cargar
             // una vez: así la cáscara del panel queda guardada.
             await page.waitForFunction(() => !!navigator.serviceWorker?.controller, null, { timeout: 60_000 });
             await page.reload();
-            await expect(page.getByText('Estudiantes').first()).toBeVisible({ timeout: 30_000 });
+            await expect(page.getByText('Estudiantes').filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
             await expect.poll(() => lleganDatosGuardados(page), { timeout: 20_000 }).toBe(true);
             const cifras = await page.locator('main').innerText();
+            // La contraseña vive en Configuración (14-oct-2026): se abre una vez con servidor.
+            await page.goto(`${WEB}/dashboard/configuracion?seccion=acceso`);
+            await expect(page.getByPlaceholder('Contraseña actual')).toBeVisible({ timeout: 30_000 });
+            await page.goto(`${WEB}/dashboard`);
+            await expect(page.getByText('Estudiantes').filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
 
             // ── Se apaga el servidor ───────────────────────────────────
             await puerta.cerrar();
@@ -118,13 +123,12 @@ test.describe('Con el servidor apagado', () => {
 
             // Lo mismo que se veía, y el aviso de que es lo de antes.
             await expect(page.getByText('Sin conexión con el liceo').first()).toBeVisible({ timeout: 20_000 });
-            await expect(page.getByText('Estudiantes').first()).toBeVisible();
+            await expect(page.getByText('Estudiantes').filter({ visible: true }).first()).toBeVisible();
             const primeraCifra = cifras.match(/\d+/)?.[0];
             if (primeraCifra) await expect(page.locator('main')).toContainText(primeraCifra);
 
             // Guardar algo: se dice que falta conexión, no un error cualquiera.
-            await page.locator('header button').first().click();
-            await page.getByRole('button', { name: /Cambiar mi contraseña/i }).click();
+            await page.goto(`${WEB}/dashboard/configuracion?seccion=acceso`);
             await page.getByPlaceholder('Contraseña actual').fill('123456');
             await page.getByPlaceholder(/Contraseña nueva/).fill('otraclave123');
             await page.getByPlaceholder(/Repite/).fill('otraclave123');
@@ -135,7 +139,7 @@ test.describe('Con el servidor apagado', () => {
             // Abrir la app por la entrada, sin servidor: va a lo guardado.
             await page.goto(`${WEB}/login?slug=${TENANT_SLUG}`);
             await page.waitForURL('**/dashboard**', { timeout: 20_000 });
-            await expect(page.getByText('Estudiantes').first()).toBeVisible({ timeout: 20_000 });
+            await expect(page.getByText('Estudiantes').filter({ visible: true }).first()).toBeVisible({ timeout: 20_000 });
 
             // ── Vuelve el servidor ─────────────────────────────────────
             puerta = await abrirPuerta(PUERTO, DESTINO);
@@ -183,15 +187,16 @@ test.describe('Con el servidor apagado', () => {
             await page.reload();
             await expect(page.getByText('Sin conexión con el liceo').first()).toBeVisible({ timeout: 20_000 });
 
-            await page.getByRole('button', { name: /Apariencia/ }).click();
+            // Sigue abierta en su apartado (`?seccion=`); se vuelve a la lista.
             await expect(page.getByText('Logos del liceo')).toBeVisible({ timeout: 15_000 });
+            await page.getByRole('link', { name: 'Volver a Configuración' }).filter({ visible: true }).first().click();
 
             // «Seguridad» no se abrió nunca, y abre igual: desde el 30-09 la
             // app se baja entera en segundo plano (`sw.js`, `ponerseAlDia`).
             // El aviso «no está guardada» queda para lo que de verdad falte.
             await page.getByRole('button', { name: /Seguridad/ }).click();
             await expect(page.getByText('Sesión y Tiempo de Espera')).toBeVisible({ timeout: 15_000 });
-            await expect(page.getByRole('button', { name: /Apariencia/ })).toBeVisible(); // la pantalla sigue viva
+            await expect(page.getByRole('heading', { name: 'Seguridad' }).filter({ visible: true })).toBeVisible(); // la pantalla sigue viva
         } finally {
             await puerta.cerrar().catch(() => undefined);
             await context.unroute(`${API}/**`).catch(() => undefined);
@@ -217,7 +222,11 @@ test.describe('Con el servidor apagado', () => {
                     page.waitForURL('**/dashboard**', { timeout: 60_000 }),
                     page.getByRole('button', { name: /^Ingresar$/ }).click(),
                 ]);
-                await expect(page.getByText('Estudiantes').first()).toBeVisible({ timeout: 30_000 });
+                // Sin el ayudante no se navega sin servidor: se mira desde
+                // Configuración → «Contraseña y acceso», donde luego se guarda.
+                await page.goto(`${WEB}/dashboard/configuracion?seccion=acceso`);
+                await expect(page.getByPlaceholder('Contraseña actual')).toBeVisible({ timeout: 30_000 });
+                await page.waitForTimeout(2000);
                 const antes = await page.locator('main').innerText();
 
                 await puerta.cerrar();
@@ -229,8 +238,6 @@ test.describe('Con el servidor apagado', () => {
                 expect(await page.locator('main').innerText()).toBe(antes);
 
                 // Y guardar lo dice.
-                await page.locator('header button').first().click();
-                await page.getByRole('button', { name: /Cambiar mi contraseña/i }).click();
                 await page.getByPlaceholder('Contraseña actual').fill('123456');
                 await page.getByPlaceholder(/Contraseña nueva/).fill('otraclave123');
                 await page.getByPlaceholder(/Repite/).fill('otraclave123');
@@ -242,4 +249,46 @@ test.describe('Con el servidor apagado', () => {
             }
         });
     });
+
+    /**
+     * FASE A: EL AVISO «SIN CONEXIÓN» NO DEBE PARPADEAR
+     *
+     * Con las rutas de autenticación de Next caídas (/api/auth/**) y la API arriba,
+     * useConexion no debe alternar entre conectado y desconectado.
+     * El aviso debe aparecer y mantenerse visible durante 40 segundos sin desaparecer.
+     */
+    test('APAGADO-04: con /api/auth/** abortado y la API arriba, el aviso no parpadea y permanece visible durante 40 s', async ({ page }) => {
+        test.setTimeout(90_000);
+
+        const urlWeb = `http://localhost:${DESTINO}`;
+
+        // 1. Iniciar sesión normalmente
+        await page.goto(`${urlWeb}/login?slug=${TENANT_SLUG}`);
+        await page.fill('input[type="email"]', 'admin@testing.edu.ve');
+        await page.fill('input[type="password"]', '123456');
+        await Promise.all([
+            page.waitForURL('**/dashboard**', { timeout: 60_000 }),
+            page.getByRole('button', { name: /^Ingresar$/ }).click(),
+        ]);
+        await expect(page.getByRole('button', { name: /Promedio general/i })).toBeVisible({ timeout: 30_000 });
+
+        // 2. Abortar solo las rutas de Next (/api/auth/**), dejando la API arriba
+        await page.route('**/api/auth/**', (route) => route.abort('connectionrefused'));
+
+        // 3. Forzar el refresco / recarga para que falle la autenticación en Next
+        // pero la página y la API sigan arriba.
+        await page.reload();
+
+        // 4. El aviso debe aparecer
+        const aviso = page.locator('[data-aviso="sin-conexion"]:visible');
+        await expect(aviso).toBeVisible({ timeout: 20_000 });
+
+        // 5. Verificar durante 40 segundos que no desaparece en ningún momento
+        const inicio = Date.now();
+        while (Date.now() - inicio < 40_000) {
+            await expect(aviso).toBeVisible();
+            await page.waitForTimeout(1_000);
+        }
+    });
 });
+

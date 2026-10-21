@@ -5,7 +5,7 @@ import request = require('supertest');
 import { PrismaClient } from '@prisma/client';
 import { createId } from '@paralleldrive/cuid2';
 import { UserRole } from '../../src/utils/prisma-enums';
-import { gradesService } from '../../src/services/grades.service';
+import { gradesService, redondearComoElMPPE } from '../../src/services/grades.service';
 import { consultasALaBase, invalidateTenantCache } from '../../src/config/database';
 import {
     createTestServer,
@@ -126,26 +126,33 @@ describe('El panel del alumno, en bloque', () => {
         expect(b.consultas).toBeLessThan(42);
     }, 240000);
 
-    it('PANEL-02: los promedios son exactamente los de siempre, materia por materia y lapso por lapso', async () => {
+    it('PANEL-02: los promedios son los oficiales (los de la boleta), materia por materia y lapso por lapso', async () => {
         const { est, materias } = await alumnoCon(5, [1, 3]);
         const { datos } = await panel(est);
 
-        const lapsosDelCiclo = lapsos.map((l) => l.id);
+        // La cifra oficial (la de la boleta, `cifras-oficiales.service`): cada
+        // lapso con el redondeo del MPPE; la definitiva, la media de esos
+        // lapsos redondeada otra vez; el lapso, la media de sus materias.
+        const porLapso = new Map<string, number[]>();
         for (const id of materias) {
-            const deSiempre = await gradesService.calculateWeightedSubjectAverage(prisma as any, est.id, id, undefined, lapsosDelCiclo);
+            const delLapso: number[] = [];
+            for (const lapso of lapsos) {
+                const d = await gradesService.promedioDeLaMateria(prisma as any, est.id, id, lapso.id);
+                if (!d.conNotas) continue;
+                const r = redondearComoElMPPE(d.promedio);
+                delLapso.push(r);
+                porLapso.set(lapso.id, [...(porLapso.get(lapso.id) ?? []), r]);
+            }
+            const oficial = delLapso.length ? redondearComoElMPPE(delLapso.reduce((x, y) => x + y, 0) / delLapso.length) : 0;
             const enElPanel = datos.subjects.find((s: any) => s.id === id)?.average ?? 0;
-            expect(enElPanel).toBeCloseTo(parseFloat(Number(deSiempre).toFixed(1)), 5);
+            expect(enElPanel).toBe(oficial);
         }
 
         for (const lapso of lapsos) {
-            const promedios: number[] = [];
-            for (const id of materias) {
-                const p = await gradesService.calculateWeightedSubjectAverage(prisma as any, est.id, id, lapso.id);
-                if (p > 0) promedios.push(p);
-            }
-            const deSiempre = promedios.length ? Math.round((promedios.reduce((x, y) => x + y, 0) / promedios.length) * 10) / 10 : 0;
+            const xs = porLapso.get(lapso.id) ?? [];
+            const oficial = xs.length ? Math.round((xs.reduce((x, y) => x + y, 0) / xs.length) * 100) / 100 : 0;
             const enElPanel = datos.periodAverages.find((p: any) => p.periodId === lapso.id)?.average;
-            expect(enElPanel).toBe(deSiempre);
+            expect(enElPanel).toBe(oficial);
         }
     }, 240000);
 });

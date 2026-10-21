@@ -1,10 +1,13 @@
 'use client';
 
-import { use, useMemo } from 'react';
+import { use, useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { ChevronLeft, Edit } from 'lucide-react';
 import Link from 'next/link';
 import { useTeachers } from '@/hooks/useTeachers';
 import { useTeacherScheduleBlocks, useTeacherClassroomSubjects } from '@/hooks/useSchedules';
+import { useQuienSoy } from '@/hooks/useQuienSoy';
+import { useAuthStore } from '@/store/auth.store';
 import TeacherScheduleEditor from '@/components/schedule/TeacherScheduleEditor';
 
 export default function TeacherScheduleEditorPage({
@@ -13,16 +16,32 @@ export default function TeacherScheduleEditorPage({
     params: Promise<{ teacherId: string }>;
 }) {
     const { teacherId } = use(params);
-    const { data: teachersData, isLoading: isLoadingTeachers } = useTeachers();
+    const router = useRouter();
+    const { yo, cargando: cargandoYo } = useQuienSoy();
+    const esProfesor = yo?.role === 'TEACHER';
+
+    // Un profesor solo puede ver su propio horario
+    useEffect(() => {
+        if (!cargandoYo && esProfesor && yo?.id && teacherId !== yo.id) {
+            router.replace(`/dashboard/horarios/profesor/${yo.id}`);
+        }
+    }, [cargandoYo, esProfesor, yo, teacherId, router]);
+
+    // La lista de profesores es del admin (al profesor el servidor le responde
+    // 403, PANT-profesor): el profesor solo mira el suyo y su nombre ya lo tiene.
+    const yoMismo = useAuthStore((s) => s.user);
+    const { data: teachersData, isLoading: cargandoLaLista } = useTeachers(undefined, { enabled: !cargandoYo && !esProfesor });
+    const isLoadingTeachers = !esProfesor && cargandoLaLista;
     const { data: blocks, isLoading: isLoadingSchedule } = useTeacherScheduleBlocks(teacherId);
     const { data: assignments, isLoading: isLoadingAssignments } = useTeacherClassroomSubjects(teacherId);
 
     const teacher = useMemo(() => {
+        if (esProfesor) return yoMismo ? { firstName: yoMismo.firstName, lastName: yoMismo.lastName } : null;
         const list = Array.isArray(teachersData) ? teachersData : teachersData?.users || [];
         return list.find((t: any) => t.id === teacherId) || null;
-    }, [teachersData, teacherId]);
+    }, [esProfesor, yoMismo, teachersData, teacherId]);
 
-    const isLoading = isLoadingTeachers || isLoadingSchedule || isLoadingAssignments;
+    const isLoading = cargandoYo || isLoadingTeachers || isLoadingSchedule || isLoadingAssignments;
     const scheduleBlocks = blocks || [];
 
     const sectionCount = useMemo(() => {
@@ -34,15 +53,24 @@ export default function TeacherScheduleEditorPage({
         return ids.size;
     }, [scheduleBlocks]);
 
+    if (esProfesor && yo?.id && teacherId !== yo.id) {
+        return (
+            <div className="flex items-center justify-center py-20">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                <span className="ml-3 text-gray-500">Cargando horario...</span>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex items-center gap-3">
                 <Link
-                    href="/dashboard/horarios"
+                    href={esProfesor ? '/dashboard' : '/dashboard/horarios'}
                     className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-indigo-600 transition-colors"
                 >
                     <ChevronLeft className="w-4 h-4" />
-                    Volver a Horarios
+                    {esProfesor ? 'Volver al Inicio' : 'Volver a Horarios'}
                 </Link>
             </div>
 
@@ -72,7 +100,12 @@ export default function TeacherScheduleEditorPage({
             )}
 
             {!isLoading && (
-                <TeacherScheduleEditor teacherId={teacherId} initialBlocks={scheduleBlocks} assignments={assignments || []} />
+                <TeacherScheduleEditor
+                    teacherId={teacherId}
+                    initialBlocks={scheduleBlocks}
+                    assignments={assignments || []}
+                    readOnly={esProfesor}
+                />
             )}
         </div>
     );

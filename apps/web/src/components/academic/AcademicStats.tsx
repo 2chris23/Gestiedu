@@ -1,6 +1,7 @@
 import { AlertTriangle, Bell, Calendar, GraduationCap, Users, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAcademicConfig } from '@/hooks/useAcademicConfig';
+import { useSchoolToday } from '@/hooks/useSchoolTime';
 
 /**
  * LAS CIFRAS DE UN CICLO, UNA SECCIÓN O UNA MATERIA, EN UN SOLO BLOQUE
@@ -69,7 +70,12 @@ interface Cifra {
     alerta?: boolean;
     barra?: Barra;
     pie?: string;
+    /** El lapso elegido aún no empieza: no hay nada que contar todavía. */
+    sinRegistrar?: boolean;
 }
+
+/** Guarda la altura de la fila del pie cuando va vacía. */
+const ESPACIO_FIJO = String.fromCharCode(160);
 
 const entre0y100 = (n: number) => Math.max(0, Math.min(100, Number.isFinite(n) ? n : 0));
 
@@ -98,11 +104,22 @@ function BarraDeLaCifra({ barra }: { barra: Barra }) {
     );
 }
 
-function Celda({ cifra, className }: { cifra: Cifra; className?: string }) {
+/**
+ * Todas las celdas llevan las MISMAS cuatro filas —rótulo, cifra, barra y
+ * pie— aunque alguna vaya vacía: así los rótulos, las cifras y las barras
+ * quedan a la misma altura de una celda a otra, todo a la izquierda (centrado
+ * se veía feo, dijo Cristian). Antes cada
+ * una se centraba con lo que tenía y el «Promedio» (con su rango debajo) se
+ * subía respecto de las demás.
+ */
+function Celda({ cifra, className, grande = false }: { cifra: Cifra; className?: string; grande?: boolean }) {
     const Icono = cifra.icono;
     return (
-        <div className={cn('flex min-w-0 flex-col justify-center bg-white px-2.5 py-2 sm:px-3', className)} title={cifra.detalle}>
-            <span className="flex items-center gap-1 text-xs font-medium text-gray-500 sm:gap-1.5">
+        <div
+            className={cn('flex min-w-0 flex-col justify-center bg-white px-2.5 py-2 sm:px-3', className)}
+            title={cifra.detalle}
+        >
+            <span className="flex max-w-full items-center gap-1 text-xs font-medium text-gray-500 sm:gap-1.5">
                 {/* En el teléfono, sin icono: con él «Observaciones» no cabía
                     (y con la letra del teléfono agrandada, tampoco otras). */}
                 <Icono className={cn('hidden h-3.5 w-3.5 shrink-0 sm:block', TONOS[cifra.tono])} aria-hidden />
@@ -110,16 +127,26 @@ function Celda({ cifra, className }: { cifra: Cifra; className?: string }) {
                     y «Promedio Sec…» no decían qué cifra era. */}
                 <span className="line-clamp-2 break-words leading-tight">{cifra.titulo}</span>
             </span>
-            <span
-                className={cn(
-                    'mt-0.5 truncate text-lg font-bold tabular-nums leading-6',
-                    cifra.alerta ? 'text-red-600' : 'text-gray-900'
-                )}
-            >
-                {cifra.valor}
+            {cifra.sinRegistrar ? (
+                // Misma altura que la cifra, para que todo siga alineado.
+                <span className={cn('mt-0.5 max-w-full truncate text-sm font-medium text-gray-500', grande ? 'leading-9 md:leading-6' : 'leading-6')}>
+                    Sin registrar
+                </span>
+            ) : (
+                <span
+                    className={cn(
+                        'mt-0.5 max-w-full truncate font-bold tabular-nums',
+                        grande ? 'text-3xl leading-9 md:text-lg md:leading-6' : 'text-lg leading-6',
+                        cifra.alerta ? 'text-red-600' : 'text-gray-900'
+                    )}
+                >
+                    {cifra.valor}
+                </span>
+            )}
+            {cifra.barra && !cifra.sinRegistrar ? <BarraDeLaCifra barra={cifra.barra} /> : <div aria-hidden className="mt-1.5 h-1.5" />}
+            <span className="mt-1 block min-h-4 max-w-full truncate text-xs tabular-nums leading-4 text-gray-500">
+                {(!cifra.sinRegistrar && cifra.pie) || ESPACIO_FIJO}
             </span>
-            {cifra.barra && <BarraDeLaCifra barra={cifra.barra} />}
-            {cifra.pie && <span className="mt-1 line-clamp-2 break-words text-xs tabular-nums leading-tight text-gray-500">{cifra.pie}</span>}
             {cifra.detalle && <span className="sr-only">{cifra.detalle}</span>}
         </div>
     );
@@ -127,18 +154,24 @@ function Celda({ cifra, className }: { cifra: Cifra; className?: string }) {
 
 interface AcademicStatsProps {
     stats?: {
-        average: number;
-        minAverage?: number;
-        maxAverage?: number;
+        average: number | null;
+        minAverage?: number | null;
+        maxAverage?: number | null;
         riskCount: number;
         occupancy: string;
-        attendance: string;
+        attendance?: string | null;
         observations: number;
     };
     isStudentView?: boolean;
     averageTitle?: string;
     /** Lo que cuenta «en riesgo» aquí. Se lee al dejar el dedo o el ratón encima. */
     riskSubtext?: string;
+    /**
+     * El día en que empieza el lapso elegido (vacío = todo el ciclo). Si aún no
+     * llega, las cifras de ese lapso dicen «Sin registrar» en vez de un 0 o un
+     * 0 % que parecen un dato (lo pidió Cristian). La ocupación sí se ve.
+     */
+    inicioDelLapso?: string | null;
     className?: string;
 }
 
@@ -147,16 +180,20 @@ export default function AcademicStats({
     isStudentView = false,
     averageTitle = 'Promedio',
     riskSubtext,
+    inicioDelLapso,
     className,
 }: AcademicStatsProps) {
     const { data: config } = useAcademicConfig();
+    // El día del liceo, no el del aparato.
+    const hoy = useSchoolToday();
+    const sinEmpezar = Boolean(inicioDelLapso) && hoy < String(inicioDelLapso).slice(0, 10);
     const data = stats || {
         average: 0,
         minAverage: 0,
         maxAverage: 0,
         riskCount: 0,
         occupancy: '0/0',
-        attendance: '0%',
+        attendance: null,
         observations: 0,
     };
 
@@ -166,13 +203,14 @@ export default function AcademicStats({
     const asistenciaMinima = config?.asistenciaMinima ?? 80;
     const enLaEscala = (nota: number) => ((nota - escalaMin) / Math.max(1, escalaMax - escalaMin)) * 100;
 
-    const promedio = Number(data.average) || 0;
-    const hayPromedio = promedio > 0;
-    const conRango = !isStudentView && data.minAverage !== undefined && data.minAverage > 0;
+    const promedio = typeof data.average === 'number' && !isNaN(data.average) && data.average > 0 ? data.average : null;
+    const hayPromedio = promedio !== null;
+    const conRango = !isStudentView && hayPromedio && data.minAverage !== undefined && data.minAverage !== null && data.minAverage > 0;
     const [ocupados, puestos] = String(data.occupancy || '0/0')
         .split('/')
         .map((n) => parseInt(n, 10) || 0);
-    const asistencia = parseFloat(String(data.attendance || '0').replace('%', '').replace(',', '.')) || 0;
+    const hayAsistencia = data.attendance !== null && data.attendance !== undefined && data.attendance !== '' && data.attendance !== '—';
+    const asistencia = hayAsistencia ? parseFloat(String(data.attendance).replace('%', '').replace(',', '.')) || 0 : null;
 
     const resto: Cifra[] = [
         {
@@ -182,6 +220,7 @@ export default function AcademicStats({
             icono: AlertTriangle,
             tono: 'rojo',
             alerta: data.riskCount > 0,
+            sinRegistrar: sinEmpezar,
             // Qué parte de los alumnos. En la vista del alumno son sus
             // materias, y no hay con qué compararlas.
             barra:
@@ -195,16 +234,20 @@ export default function AcademicStats({
         },
         {
             titulo: 'Asistencia',
-            valor: data.attendance,
+            valor: hayAsistencia ? String(data.attendance) : '—',
             detalle: isStudentView ? 'Asistencia acumulada' : 'Asistencia promedio',
             icono: Calendar,
             tono: 'indigo',
-            barra: {
-                lleno: asistencia,
-                color: asistencia >= asistenciaMinima ? 'bien' : asistencia >= asistenciaMinima - 10 ? 'aviso' : 'mal',
-                marca: asistenciaMinima,
-                dice: `${asistencia} %; el mínimo del liceo es ${asistenciaMinima} %`,
-            },
+            sinRegistrar: sinEmpezar,
+            barra:
+                asistencia !== null
+                    ? {
+                          lleno: asistencia,
+                          color: asistencia >= asistenciaMinima ? 'bien' : asistencia >= asistenciaMinima - 10 ? 'aviso' : 'mal',
+                          marca: asistenciaMinima,
+                          dice: `${asistencia} %; el mínimo del liceo es ${asistenciaMinima} %`,
+                      }
+                    : undefined,
         },
         ...(!isStudentView
             ? [
@@ -231,6 +274,7 @@ export default function AcademicStats({
             detalle: 'Observaciones registradas',
             icono: Bell,
             tono: 'ambar',
+            sinRegistrar: sinEmpezar,
             // Las observaciones no tienen un «lleno»: se dice cuántas tocan por
             // alumno, que es lo que deja comparar una sección con otra.
             pie:
@@ -239,6 +283,26 @@ export default function AcademicStats({
                     : undefined,
         },
     ];
+
+    const promedioCifra: Cifra = {
+        titulo: averageTitle,
+        detalle: conRango ? 'Debajo, el promedio más bajo y el más alto' : undefined,
+        valor: hayPromedio ? (data.average as number) : '—',
+        icono: GraduationCap,
+        tono: 'azul',
+        sinRegistrar: sinEmpezar,
+        alerta: hayPromedio && promedio < aprueba,
+        barra: hayPromedio
+            ? {
+                  lleno: enLaEscala(promedio),
+                  color: promedio >= aprueba ? 'bien' : 'mal',
+                  marca: enLaEscala(aprueba),
+                  dice: `${data.average} de ${escalaMax}; se aprueba con ${aprueba}`,
+              }
+            : undefined,
+        // El más bajo y el más alto de la sección (o del año).
+        pie: conRango ? `${data.minAverage} – ${data.maxAverage}` : undefined,
+    };
 
     return (
         <section
@@ -252,36 +316,7 @@ export default function AcademicStats({
             )}
         >
             {/* El promedio: la cifra que se viene a mirar. */}
-            <div className="row-span-2 flex min-w-0 flex-col justify-center bg-white px-2.5 py-2 sm:px-3 md:row-span-1">
-                <span className="flex items-center gap-1.5 text-xs font-medium text-gray-500">
-                    <GraduationCap className="hidden h-3.5 w-3.5 shrink-0 text-blue-600 sm:block" aria-hidden />
-                    <span className="line-clamp-2 break-words leading-tight">{averageTitle}</span>
-                </span>
-                <span
-                    className={cn(
-                        'mt-0.5 text-3xl font-bold tabular-nums leading-9 md:text-lg md:leading-6',
-                        hayPromedio && promedio < aprueba ? 'text-red-600' : 'text-gray-900'
-                    )}
-                >
-                    {data.average}
-                </span>
-                {hayPromedio && (
-                    <BarraDeLaCifra
-                        barra={{
-                            lleno: enLaEscala(promedio),
-                            color: promedio >= aprueba ? 'bien' : 'mal',
-                            marca: enLaEscala(aprueba),
-                            dice: `${data.average} de ${escalaMax}; se aprueba con ${aprueba}`,
-                        }}
-                    />
-                )}
-                {conRango && (
-                    <span className="mt-1 truncate text-xs tabular-nums text-gray-500">
-                        {data.minAverage} – {data.maxAverage}
-                        <span className="sr-only"> (el más bajo y el más alto)</span>
-                    </span>
-                )}
-            </div>
+            <Celda cifra={promedioCifra} grande className="row-span-2 md:row-span-1" />
 
             {resto.map((cifra, i) => (
                 <Celda

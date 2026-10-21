@@ -1,13 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { authenticate, requireTeacher } from '../middleware/auth.middleware';
-import {
-  createObservation,
-  getStudentObservations,
-  getClassroomObservations,
-  getSubjectObservations,
-  getSessionObservations,
-  deleteObservation,
-} from '../controllers/observations.controller';
+import { createObservation, deleteObservation } from '../controllers/observations.controller';
+import { getStudentObservations, getClassroomObservations, getSubjectObservations } from '../controllers/observaciones/ver-observaciones.controller';
 
 export async function observationsRoutes(fastify: FastifyInstance) {
   fastify.register(async (authenticatedRoutes) => {
@@ -36,12 +30,6 @@ export async function observationsRoutes(fastify: FastifyInstance) {
     authenticatedRoutes.get(
       '/subject/:classroomId/:subjectId',
       getSubjectObservations as any
-    );
-
-    // Obtener observaciones de una sesión de clase
-    authenticatedRoutes.get(
-      '/session/:sessionId',
-      getSessionObservations as any
     );
 
     // Eliminar observación

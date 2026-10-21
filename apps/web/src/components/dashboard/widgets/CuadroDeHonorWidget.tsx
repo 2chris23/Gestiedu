@@ -1,0 +1,270 @@
+'use client';
+
+import React from 'react';
+import Link from 'next/link';
+import { Trophy, ChevronRight, ChevronDown, Crown, ArrowUp, ArrowDown, Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useCuadroDeHonor, fechaDeLaFoto, type FilaDelCuadro } from '@/hooks/useCuadroDeHonor';
+import { cn } from '@/lib/utils';
+
+/**
+ * EL CUADRO DE HONOR DEL INICIO (2026-10-04; forma nueva 2026-10-05)
+ *
+ * Cristian: por lapso y por ciclo completo, y que se actualice solo los
+ * sábados. Lee la foto del último sábado (`/api/cuadro-de-honor`); con el
+ * selector se ve un lapso o el ciclo, y el liceo entero o un año.
+ *
+ * La forma es la del diseño «Panel Admin — App móvil»: el podio (plata, oro
+ * con corona, bronce), tres filas más y «Ver ranking completo» para el resto.
+ * Las letras de 11 px del diseño van a 12: es el mínimo del teléfono
+ * (`npm run movil`, regla `letra`).
+ *
+ * Antes enseñaba cinco alumnos INVENTADOS cuando no había datos: un nombre
+ * de muestra en el Inicio de un liceo parece un alumno de verdad. Sin foto
+ * todavía, lo dice.
+ */
+
+const LICEO = 'liceo';
+const ANOS = [1, 2, 3, 4, 5];
+const FILAS_A_LA_VISTA = 3;
+/** En el ordenador la tarjeta llega al fondo de la pantalla: caben dos filas más. */
+const FILAS_EN_EL_ORDENADOR = 5; // en una pantalla alta (`alta:`); en un portátil, tres
+
+const iniciales = (nombre: string) =>
+    nombre
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((p) => p[0])
+        .join('')
+        .toUpperCase();
+
+function Subio({ n }: { n: number | null }) {
+    if (n === null || n === 0) return null;
+    const sube = n > 0;
+    return (
+        <span
+            className={cn('inline-flex items-center gap-0.5 text-xs font-bold', sube ? 'text-emerald-700' : 'text-rose-700')}
+            title={sube ? `Subió ${n} desde el sábado anterior` : `Bajó ${-n} desde el sábado anterior`}
+        >
+            {sube ? <ArrowUp className="h-3 w-3" aria-hidden /> : <ArrowDown className="h-3 w-3" aria-hidden />}
+            {Math.abs(n)}
+            <span className="sr-only">{sube ? ' puestos más arriba' : ' puestos más abajo'}</span>
+        </span>
+    );
+}
+
+/** Los colores del diseño: plata, oro y bronce. */
+const PODIO = [
+    {
+        lugar: 2,
+        medalla: 'Plata',
+        caja: 'rounded-[18px] border border-borde-suave bg-superficie-pagina px-1.5 py-3',
+        chapa: 'bg-[#E9EDF3] text-texto-medio dark:bg-[#2a2a2a]',
+        circulo: 'h-[42px] w-[42px] bg-cabecera-claro text-cabecera-tinta text-[13px]',
+        puntos: 'text-[15px]',
+    },
+    {
+        lugar: 1,
+        medalla: 'Oro',
+        caja: 'rounded-[20px] border-2 border-[#F2C94C] bg-[#FFFBEA] px-1.5 pb-3.5 pt-4 dark:border-[#8a6d1a] dark:bg-[#231d0b]',
+        chapa: 'bg-[#FDEBB0] text-[#6B4A00] dark:bg-[#3d3210] dark:text-[#F2C94C]',
+        circulo: 'h-12 w-12 bg-[#FDEBB0] text-[#6B4A00] dark:bg-[#3d3210] dark:text-[#F2C94C] text-sm',
+        puntos: 'text-[17px]',
+    },
+    {
+        lugar: 3,
+        medalla: 'Bronce',
+        caja: 'rounded-[18px] border border-[#F6D2B8] bg-[#FFF6EF] px-1.5 py-3 dark:border-[#6b3a1e] dark:bg-[#24160e]',
+        chapa: 'bg-[#FBE0CC] text-[#8A4416] dark:bg-[#3d2416] dark:text-[#F4B48A]',
+        circulo: 'h-[42px] w-[42px] bg-[#FBE0CC] text-[#8A4416] dark:bg-[#3d2416] dark:text-[#F4B48A] text-[13px]',
+        puntos: 'text-[15px]',
+    },
+] as const;
+
+/** «1.° Oro»; si el puesto no es el del cajón (un empate), «2.° Empate». */
+const laChapa = (puesto: number, lugar: number, medalla: string) => (puesto === lugar ? `${puesto}.° ${medalla}` : `${puesto}.° Empate`);
+
+const SELECTOR =
+    'h-10 w-auto gap-1.5 rounded-full border border-borde-suave bg-white px-3.5 text-[13px] font-bold text-texto-fuerte [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-100';
+
+export function CuadroDeHonorWidget({ className }: { className?: string } = {}) {
+    const titulo = React.useId();
+    const [alcance, setAlcance] = React.useState<string | null>(null);
+    const [ano, setAno] = React.useState<number | null>(null);
+    const [todos, setTodos] = React.useState(false);
+    const { data, isLoading, isError } = useCuadroDeHonor(alcance, ano);
+    const filas = data?.filas ?? [];
+    const podio = (lugar: number) => filas[lugar - 1];
+    const resto = filas.slice(3);
+    const aLaVista = todos ? resto : resto.slice(0, FILAS_EN_EL_ORDENADOR);
+
+    return (
+        <section
+            className={cn(
+                'flex flex-col justify-between gap-3.5 rounded-3xl bg-white px-4 py-[18px] shadow-[0_1px_2px_rgba(13,71,161,0.06)] lateral:gap-3.5 lateral:rounded-[28px] lateral:p-5 lateral:shadow-[0_1px_2px_rgba(13,71,161,0.06),0_8px_24px_rgba(13,71,161,0.05)]',
+                className
+            )}
+            aria-labelledby={titulo}
+        >
+            {/* En el ordenador, los dos selectores van a la derecha del título (el diseño). */}
+            <div className="flex flex-col gap-3.5 lateral:flex-row lateral:flex-wrap lateral:items-center lateral:justify-between lateral:gap-3">
+                <div className="flex items-center gap-2.5 lateral:gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-[#FFF6DA] text-[#9A6B00] dark:bg-[#2b2410] dark:text-[#F2C94C] lateral:h-11 lateral:w-11">
+                        <Trophy className="h-5 w-5" aria-hidden />
+                    </span>
+                    <div className="min-w-0">
+                        <h3 id={titulo} className="text-[15px] font-extrabold text-texto-fuerte lateral:text-[17px]">
+                            Cuadro de honor
+                        </h3>
+                        <p className="text-xs text-texto-gris">
+                            Se actualiza cada sábado{data?.fecha ? ` · última: ${fechaDeLaFoto(data.fecha)}` : ''}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                    <Select value={alcance ?? data?.alcance ?? 'CICLO'} onValueChange={(v) => setAlcance(v)}>
+                        <SelectTrigger aria-label="Lapso o ciclo completo" className={SELECTOR}>
+                            <SelectValue placeholder="Ciclo completo" />
+                        </SelectTrigger>
+                        <SelectContent position="popper" align="start" className="rounded-xl bg-white p-1">
+                            {(data?.alcances ?? [{ id: 'CICLO', nombre: 'Ciclo completo' }]).map((a) => (
+                                <SelectItem key={a.id} value={a.id} className="min-h-[44px] rounded-lg text-sm">
+                                    {a.nombre}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Select value={ano ? String(ano) : LICEO} onValueChange={(v) => setAno(v === LICEO ? null : Number(v))}>
+                        <SelectTrigger aria-label="Todo el liceo o un año" className={SELECTOR}>
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent position="popper" align="start" className="rounded-xl bg-white p-1">
+                            <SelectItem value={LICEO} className="min-h-[44px] rounded-lg text-sm">
+                                Todo el liceo
+                            </SelectItem>
+                            {ANOS.map((n) => (
+                                <SelectItem key={n} value={String(n)} className="min-h-[44px] rounded-lg text-sm">
+                                    {n}.º año
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+
+            {isLoading ? (
+                <div className="flex justify-center py-10">
+                    <Loader2 className="h-6 w-6 animate-spin text-[#9A6B00] dark:text-[#F2C94C]" aria-label="Cargando el cuadro de honor" />
+                </div>
+            ) : isError ? (
+                <p className="py-8 text-center text-sm text-gray-700">No se pudo cargar el cuadro de honor.</p>
+            ) : filas.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <Trophy className="mb-2 h-8 w-8 text-[#9A6B00] dark:text-[#F2C94C]" aria-hidden />
+                    <p className="text-sm font-semibold text-gray-900">{data?.fecha ? 'Nadie con notas en este período' : 'Todavía no hay cuadro de honor'}</p>
+                    <p className="mt-1 max-w-[280px] text-xs text-gray-600">
+                        {data?.fecha
+                            ? 'Sale cuando los alumnos tengan notas cargadas en este lapso o año.'
+                            : 'El primero sale con las notas cargadas; luego se actualiza cada sábado.'}
+                    </p>
+                </div>
+            ) : (
+                <>
+                    <div className="flex min-h-0 flex-1 flex-col gap-3 lateral:gap-4 lateral:overflow-y-auto">
+                        <ol className="grid grid-cols-[1fr_1.12fr_1fr] items-end gap-2 pt-3" aria-label="Los tres primeros">
+                        {PODIO.map(({ lugar, medalla, caja, chapa, circulo, puntos }) => {
+                            const f = podio(lugar);
+                            if (!f) {
+                                return (
+                                    <li key={lugar} className="flex min-h-[140px] flex-col items-center justify-center rounded-[18px] border border-dashed border-borde-suave p-2.5 text-center">
+                                        <span className="text-xs font-bold text-texto-gris">
+                                            {lugar}.° {medalla}
+                                        </span>
+                                    </li>
+                                );
+                            }
+                            return (
+                                <li key={lugar}>
+                                    <Link
+                                        href={`/dashboard/usuarios/${encodeURIComponent(f.id)}`}
+                                        className={cn('relative flex flex-col items-center gap-1.5 text-center transition-shadow hover:shadow-sm', caja)}
+                                    >
+                                        {lugar === 1 && (
+                                            <span className="absolute -top-3.5 flex h-7 w-7 items-center justify-center rounded-full bg-[#F2C94C] text-[#6B4A00]" aria-hidden>
+                                                <Crown className="h-[15px] w-[15px]" />
+                                            </span>
+                                        )}
+                                        <span className={cn('whitespace-nowrap rounded-full px-1.5 py-0.5 text-xs font-extrabold', chapa)}>{laChapa(f.puesto, lugar, medalla)}</span>
+                                        <span className={cn('flex items-center justify-center rounded-full font-extrabold', circulo)} aria-hidden>
+                                            {iniciales(f.nombre)}
+                                        </span>
+                                        <span className="w-full min-w-0 text-xs font-bold leading-tight text-texto-fuerte [overflow-wrap:anywhere]" title={f.nombre}>
+                                            {f.nombre}
+                                        </span>
+                                        <span className="w-full truncate text-xs text-texto-gris">{f.seccion}</span>
+                                        <span className={cn('inline-flex items-center gap-1 font-extrabold text-texto-fuerte', puntos)}>
+                                            {f.puntaje.toFixed(1)} <span className="text-xs font-semibold text-texto-gris">pts</span>
+                                            <Subio n={f.subio} />
+                                        </span>
+                                    </Link>
+                                </li>
+                            );
+                        })}
+                    </ol>
+
+                    {aLaVista.length > 0 && (
+                        <ol
+                            className={cn('flex flex-col gap-2', todos && 'max-h-[200px] overflow-y-auto pr-1 lateral:max-h-none lateral:min-h-0 lateral:flex-1')}
+                            start={4}
+                            aria-label="Del cuarto en adelante"
+                        >
+                            {aLaVista.map((f, i) => (
+                                // En el teléfono y en un portátil, tres; las dos de más, en un ordenador con altura.
+                                <li key={f.id} className={cn(!todos && i >= FILAS_A_LA_VISTA && 'hidden lateral:alta:block')}>
+                                    <Link
+                                        href={`/dashboard/usuarios/${encodeURIComponent(f.id)}`}
+                                        className="flex min-h-[44px] items-center gap-3 rounded-2xl bg-superficie-pagina px-3 py-2 text-texto-fuerte transition-colors hover:bg-superficie-hover"
+                                    >
+                                        <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full border border-borde-suave bg-white text-xs font-extrabold text-texto-medio">
+                                            {f.puesto}
+                                        </span>
+                                        <span className="flex min-w-0 flex-1 flex-col">
+                                            <span className="truncate text-sm font-bold">{f.nombre}</span>
+                                            <span className="truncate text-xs text-texto-gris">
+                                                {f.seccion} · Prom. {f.promedio.toFixed(1)} · Asist. {f.asistencia}%
+                                            </span>
+                                        </span>
+                                        <Subio n={f.subio} />
+                                        <span className="text-[15px] font-extrabold">{f.puntaje.toFixed(1)}</span>
+                                    </Link>
+                                </li>
+                            ))}
+                        </ol>
+                    )}
+                    </div>
+
+                    {resto.length > FILAS_A_LA_VISTA && (
+                        <button
+                            type="button"
+                            onClick={() => setTodos((v) => !v)}
+                            aria-expanded={todos}
+                            className={cn(
+                                'flex min-h-[44px] items-center gap-1.5 self-center rounded-full px-3 text-[13px] font-bold text-cabecera-tinta transition-colors hover:bg-cabecera-claro',
+                                // Con cinco o menos, en el ordenador ya se ven todas.
+                                !todos && resto.length <= FILAS_EN_EL_ORDENADOR && 'lateral:alta:hidden'
+                            )}
+                        >
+                            {todos ? 'Ver menos' : 'Ver ranking completo'}
+                            {todos ? <ChevronDown className="h-3.5 w-3.5 rotate-180" aria-hidden /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden />}
+                        </button>
+                    )}
+                </>
+            )}
+        </section>
+    );
+}
+
+export type { FilaDelCuadro };
+export default CuadroDeHonorWidget;

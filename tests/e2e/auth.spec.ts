@@ -331,4 +331,28 @@ test.describe('Módulo 1: Autenticación y Sesiones', () => {
     }
   });
 
+  /**
+   * Sin cookies pero con la sesión de otro en el almacén del navegador, el
+   * login rebota al Inicio, el guardián lo devuelve a `/login?redirect=…` y
+   * el enrutador se guarda esa vuelta. Al entrar, la contraseña era buena,
+   * las cookies quedaban puestas… y la pantalla seguía en el login
+   * (lo destapó PAGOS-UI-04, 2026-10-14).
+   */
+  test('AUTH-15: con la sesión vieja en el navegador y sin cookies, entrar lleva al Inicio', async ({ page }, testInfo) => {
+    try {
+      await loginViaUI(page, 'tutor.prueba@testing.edu.ve', '123456');
+      await page.context().clearCookies();
+      await page.goto(`${WEB_BASE}/login?slug=${TENANT_SLUG}`);
+      await expect(page).toHaveURL(/\/login\?redirect=/, { timeout: 15000 });
+
+      await page.fill('input[type="email"]', 'admin@testing.edu.ve');
+      await page.fill('input[type="password"]', '123456');
+      await page.click('button[type="submit"]');
+      await page.waitForURL('**/dashboard**', { timeout: 30000 });
+    } catch (error) {
+      await captureEvidence(testInfo, page, 'AUTH-15', 'Entrar tras perder las cookies', error);
+      throw error;
+    }
+  });
+
 });

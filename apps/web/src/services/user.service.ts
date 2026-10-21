@@ -162,25 +162,16 @@ export const userService = {
     },
 
     getUserById: async (id: string): Promise<User> => {
-        const response = await fetch(`${API_URL}/users/${id}`, {
-            method: 'GET',
-            headers: await getHeaders()
-        });
-
-        if (!response.ok) {
-            if (response.status === 401) {
-                console.error('Auth error (401) fetching user');
-                if (typeof window !== 'undefined') window.location.href = '/login';
-                throw new Error('Sesión expirada. Por favor inicie sesión nuevamente.');
-            }
-            if (response.status === 403) {
-                console.error('Auth error (403) fetching user');
-                throw new Error('No tiene permisos para ver este usuario.');
-            }
-            throw new Error('Error al obtener detalles del usuario');
+        // Por `api` (no `fetch` a mano), como `getUsers`: con `fetch` la ficha
+        // no quedaba en el teléfono y, sin conexión, una ficha bajada por la
+        // precarga decía «no está guardada» (PLANTILLA-01). La sesión
+        // caducada la atiende `api` (renueva o manda al login).
+        try {
+            const { data } = await api.get(`/users/${encodeURIComponent(id)}`);
+            return data.user;
+        } catch (error: any) {
+            if (error?.response?.status === 403) throw new Error('No tiene permisos para ver este usuario.');
+            throw error;
         }
-
-        const data = await response.json();
-        return data.user;
     }
 };

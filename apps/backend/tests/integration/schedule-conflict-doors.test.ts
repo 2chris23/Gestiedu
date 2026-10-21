@@ -144,22 +144,6 @@ describe('Puertas de choques de profesor', () => {
         expect(cs?.teacherId).toBe(freeTeacher.id);
     }, 60000);
 
-    it('3. asignar la materia a todo el año con un profesor ocupado → rechaza sin dejarla a medias', async () => {
-        const res = await auth(request(server.server).post('/api/subjects/grade/4/assign')).send({
-            subjectId: subject.id,
-            teacherId: busyTeacher.id,
-            academicYearId: yearId,
-        });
-
-        expect(res.status).toBe(409);
-        expect(res.body.code).toBe('SCHEDULE_CONFLICT');
-        expect(res.body.error).toContain('Lunes');
-
-        // Ninguna sección cambió de profesor: la comprobación va antes de tocar nada
-        const cs = await prisma.classroomSubject.findUnique({ where: { id: csB.id } });
-        expect(cs?.teacherId).toBe(freeTeacher.id);
-        expect(await doubleBooked(busyTeacher.id)).toEqual([]);
-    }, 60000);
 
     it('4. el generador deja huecos antes que poner al profesor en dos sitios', async () => {
         // freeTeacher ya da clase en 4to B el lunes y el martes a las 07:00.

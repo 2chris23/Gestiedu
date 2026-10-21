@@ -44,11 +44,77 @@ describe('¿Contestó el servidor?', () => {
         elServidorContesto();
     });
 
-    it('lleva la cuenta: no contesta, y vuelve', () => {
-        elServidorNoContesta();
-        expect(elEstadoDelServidor().contesta).toBe(false);
-        elServidorContesto();
-        expect(elEstadoDelServidor().contesta).toBe(true);
-        expect(elEstadoDelServidor().ultimaRespuesta).toBeGreaterThan(0);
+    describe('anti-rebote (histéresis)', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
+        it('un fallo pone «no contesta» en el acto', () => {
+            elServidorContesto();
+            elServidorNoContesta();
+            expect(elEstadoDelServidor().contesta).toBe(false);
+        });
+
+        it('una sola respuesta buena tras un fallo NO lo pone en «contesta»', () => {
+            elServidorNoContesta();
+            expect(elEstadoDelServidor().contesta).toBe(false);
+
+            elServidorContesto();
+            // Solo una respuesta: debe seguir en false
+            expect(elEstadoDelServidor().contesta).toBe(false);
+
+            // Incluso si pasan 10 segundos, si solo hubo una respuesta, sigue en false
+            jest.advanceTimersByTime(11_000);
+            expect(elEstadoDelServidor().contesta).toBe(false);
+        });
+
+        it('dos respuestas buenas seguidas requieren 10 s sin fallos para volver a «contesta»', () => {
+            elServidorNoContesta();
+            expect(elEstadoDelServidor().contesta).toBe(false);
+
+            // Primera respuesta buena a los 2 s
+            jest.advanceTimersByTime(2_000);
+            elServidorContesto();
+            expect(elEstadoDelServidor().contesta).toBe(false);
+
+            // Segunda respuesta buena a los 5 s (faltan 5 s para los 10 s sin fallos)
+            jest.advanceTimersByTime(3_000);
+            elServidorContesto();
+            expect(elEstadoDelServidor().contesta).toBe(false);
+
+            // Pasan 3 s más (total 8 s desde el fallo): aún no debe marcar true
+            jest.advanceTimersByTime(3_000);
+            expect(elEstadoDelServidor().contesta).toBe(false);
+
+            // Pasan los 2 s restantes (total 10 s limpios): ahora sí pasa a true
+            jest.advanceTimersByTime(2_000);
+            expect(elEstadoDelServidor().contesta).toBe(true);
+            expect(elEstadoDelServidor().ultimaRespuesta).toBeGreaterThan(0);
+        });
+
+        it('un fallo en medio de la ventana reinicia la cuenta y cancela el regreso', () => {
+            elServidorNoContesta();
+            expect(elEstadoDelServidor().contesta).toBe(false);
+
+            // Dos respuestas buenas a los 4 s
+            jest.advanceTimersByTime(2_000);
+            elServidorContesto();
+            jest.advanceTimersByTime(2_000);
+            elServidorContesto();
+            expect(elEstadoDelServidor().contesta).toBe(false);
+
+            // Nuevo fallo a los 7 s (antes de cumplir los 10 s)
+            jest.advanceTimersByTime(3_000);
+            elServidorNoContesta();
+            expect(elEstadoDelServidor().contesta).toBe(false);
+
+            // Pasan 5 s más (habrían sido 12 s del primer fallo): pero hubo un fallo, así que debe seguir en false
+            jest.advanceTimersByTime(5_000);
+            expect(elEstadoDelServidor().contesta).toBe(false);
+        });
     });
 });

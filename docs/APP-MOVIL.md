@@ -288,21 +288,33 @@ La llave de firma es **la identidad del liceo en Google Play**: quien la tenga
 puede publicar actualizaciones en su nombre. Se crea una vez y se guarda como se
 guarda una llave, no en el repositorio (ya está en `.gitignore`).
 
+**La de pruebas NO se reparte** (2026-10-06): va firmada con la llave de
+depuración de este PC y marcada «depurable» (`application-debuggable`):
+cualquiera con el teléfono y un cable puede mirar dentro de la app, y los
+antivirus la dan por riesgosa (el de un Transsion lo dijo). La que se reparte
+es `npm run publicar -- --firmada`: compila `release`, no depurable, y la firma
+con la llave del liceo (`build.gradle` la lee de `key.properties`; sin él,
+`publicar --firmada` se niega).
+
+La llave la crea el dueño, fuera del repositorio (por ejemplo en
+`C:\Users\Windows\Cristian\llaves\`), con el `keytool` del JDK:
+
 ```bash
-keytool -genkey -v -keystore gestiedu.keystore -alias gestiedu \
-        -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkey -v -keystore C:/Users/Windows/Cristian/llaves/gestiedu.keystore -alias gestiedu -keyalg RSA -keysize 2048 -validity 10000
 ```
 
 Luego, en `apps/movil/android/key.properties` (que tampoco se versiona):
 
 ```properties
-storeFile=../../gestiedu.keystore
+storeFile=C:/Users/Windows/Cristian/llaves/gestiedu.keystore
 storePassword=...
 keyAlias=gestiedu
 keyPassword=...
 ```
 
-y `npm run apk:firmada`.
+y `npm run publicar -- --firmada`. **Cambiar de la firma de pruebas a la de
+verdad obliga a desinstalar la app una vez** (Android no actualiza encima de
+otra firma); después, las actualizaciones siguen solas.
 
 > Si se pierde esa llave, Google Play **no deja publicar más actualizaciones**
 > de esa app: hay que subir una nueva y que todos la instalen otra vez. Se
@@ -437,3 +449,55 @@ Como en WhatsApp: el aviso llega aunque la app esté cerrada.
 como PDF»); la web lo usa sola (`lib/imprimir.ts`). Una APK de antes no lo tiene:
 al pulsar «Imprimir» dice que hay que actualizar la app. Lo que sale es la hoja
 sola, igual que en el navegador (`lib/documentos.ts`).
+
+## El diseño dentro de la APK y la primera descarga (octubre 2026)
+
+- **La APK lleva la web compilada** (`assets/cascara/_next/static`, ~5 MB más):
+  `npm run publicar` la copia de `apps/web/.next` antes de compilar, así que
+  **compila la web primero** (la misma que sirve el servidor). `CascaraDeLaApk.java`
+  la sirve a la ventana y al ayudante (`ServiceWorkerController`); lo que no está
+  (una versión nueva del servidor) baja por la red como siempre.
+- **La primera vez que alguien entra**, se baja todo lo suyo en un paquete, con
+  los MB; sin conexión espera y no deja seguir. Después, solo lo que cambia.
+  Detalle en `CLAUDE.md` («La precarga»).
+- **Para probar desde cualquier teléfono**: `npm run tunel` (Tailscale Funnel,
+  https) y la APK con `--url=https://<pc>.ts.net/login?slug=<liceo>`. Sin cable
+  ni `adb reverse`.
+- **Firebase, activo desde la 1.11** (2026-10-06). Las dos llaves viven FUERA
+  del repo, en `C:\Users\Windows\Cristian\firebase\`: `google-services.json`
+  (va dentro de la APK: `preparar-liceo.mjs --firebase=<ruta>`) y
+  `llave-servidor.json` (la cuenta de servicio; `FCM_CUENTA_DE_SERVICIO=<ruta>`
+  en el `.env` del servidor). Quien tenga la del servidor manda avisos en
+  nombre del proyecto: si se escapa, se borra en Firebase → Cuentas de
+  servicio y se genera otra.
+- **El toque silencioso**: cada escritura manda a la APK de los afectados un
+  mensaje de Firebase solo con datos (`data.gestiedu = 'datos-cambiaron'`,
+  sin nada que enseñar, uno por minuto como mucho) y la app pregunta qué
+  cambió (`ponerseAlDia`). Llega con la app abierta o en segundo plano; **con
+  la app cerrada del todo no corre nada** (Android no tiene dónde correr la
+  web): se pone al día al abrirla. NOTI-07. El teléfono se apunta aunque no
+  haya dado permiso de avisos: un mensaje de datos no lo necesita.
+
+## Repartir la APK sin Google Play (decidido por Cristian, 2026-10-06)
+
+- **En el navegador de un Android**, al entrar al sistema sale «Descarga la
+  app» con la última versión de SU liceo (`DescargarLaApp.tsx`,
+  `GET /api/app-movil/del-liceo/:slug`; el paquete sale del liceo con la misma
+  cuenta que `preparar-liceo.mjs`). La X la esconde una semana o hasta que
+  haya otra versión. En un ordenador, un iPhone o dentro de la APK, no sale
+  (APP-05, APPDESC-UI-01…03).
+- **Dentro de la APK**, una versión nueva sale en la ventana «Actualización
+  de versión»: la versión, lo nuevo numerado (las `--notas` de `npm run
+  publicar`, separadas por `;`), «Actualizar», el enlace para bajarla a mano
+  y la versión actual. La X la deja para mañana.
+
+## La APK no es el navegador: `addListener` no devuelve una promesa
+
+La 1.10 no abría en ningún teléfono («This page couldn't load», la pantalla
+de error de Next): `lib/el-candado.ts` hacía `App.addListener(...).then(...)`
+y dentro de la APK eso no es una promesa. En el navegador no hay Capacitor,
+así que las pruebas pasaban. **Toda llamada a un complemento va con
+`Promise.resolve(...)`**, y BLOQUEO-UI-06 imita un Capacitor como el de
+verdad (oyentes que no son promesas). Se arregló en el servidor: los
+teléfonos con la 1.10 se curan solos al abrir. Y `app/global-error.tsx`
+enseña ahora una pantalla en español si algo vuelve a tumbar la app.

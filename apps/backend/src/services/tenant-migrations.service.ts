@@ -19,6 +19,7 @@ import { Client } from 'pg';
 import { platformPrisma } from '../config/database';
 import { buildTenantDatabaseUrl, maskDatabaseUrl, TenantDbCredentials } from '../config/tenant-db-url';
 import { logger } from '../utils/logger';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 const execAsync = promisify(exec);
 
@@ -74,6 +75,7 @@ async function activeInstitutes(): Promise<InstituteRow[]> {
             slug: true,
             name: true,
             databaseName: true,
+            databaseSchema: true,
             databaseHost: true,
             databasePort: true,
             databaseUser: true,
@@ -102,9 +104,24 @@ export async function getTenantMigrationStatus(institute: InstituteRow): Promise
         return { ...base, error: 'El liceo no tiene base de datos aprovisionada' };
     }
 
-    const client = new Client({ connectionString: buildTenantDatabaseUrl(institute, 'direct') });
+    // Un liceo sin credenciales (o con un esquema raro) sale con su error en la
+    // lista: no tumba el panel de todos (antes, un 500 para los 200).
+    let client: Client;
+    try {
+        client = new Client({ connectionString: buildTenantDatabaseUrl(institute, 'direct') });
+    } catch (error: any) {
+        return { ...base, error: error?.message ?? 'Sin credenciales de base de datos' };
+    }
+    if (institute.databaseSchema && !/^[a-z0-9_]{1,63}$/.test(institute.databaseSchema)) {
+        return { ...base, error: 'Nombre de esquema no válido' };
+    }
     try {
         await client.connect();
+        if (institute.databaseSchema) {
+            // SOLO su esquema: con `, public` detrás, un esquema sin historial
+            // leería el de `public` y saldría «al día» sin estarlo.
+            await client.query(`SET search_path TO "${institute.databaseSchema}"`);
+        }
         const { rows } = await client.query<{
             migration_name: string;
             finished_at: Date | null;
@@ -132,7 +149,7 @@ export async function getTenantMigrationStatus(institute: InstituteRow): Promise
         const message = error?.message ?? 'Error desconocido';
         return { ...base, error: /_prisma_migrations/.test(message) ? 'Base sin historial de migraciones' : message };
     } finally {
-        await client.end().catch(() => {});
+        await client.end().catch(avisarSiFalla('tenant-migrations.service'));
     }
 }
 

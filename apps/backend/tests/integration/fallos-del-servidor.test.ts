@@ -14,7 +14,7 @@ describe('Fallos del servidor, al panel', () => {
         const antes = await prisma.systemAlert.count({ where: { type: 'SERVER_ERROR' } });
 
         for (let i = 0; i < 3; i++) apuntarFallo('liceo-a', 'GET', '/api/students');
-        for (let i = 0; i < 12; i++) apuntarFallo('liceo-b', 'POST', '/api/grades');
+        for (let i = 0; i < 12; i++) apuntarFallo('liceo-b', 'POST', '/api/sessions/live-save');
 
         expect(await volcarFallos()).toBe(2);
 

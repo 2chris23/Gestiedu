@@ -230,8 +230,19 @@ model User {
   joinDate            DateTime  @default(now())
   lastLogin           DateTime?
 
+  // El PIN de 4 números de la app, para teléfonos sin bloqueo de pantalla
+  // (`services/pin-de-la-app.service.ts`). Su resumen (bcrypt), nunca el PIN.
+  // `pinVersion` sube cuando un admin lo cambia o lo resetea: el teléfono
+  // tira su copia. `pinFallos`: a los 10 seguidos, solo un admin lo suelta.
+  pinDeLaApp String?
+  pinVersion Int     @default(0)
+  pinFallos  Int     @default(0)
+
   // Campos específicos para profesores
   specialization String?
+  /// Las horas de su cargo (36, 24, 12…); sin ellas, el máximo del liceo
+  /// (`academicConfig.cargaHoraria`). `personal.service.ts`.
+  horasDelCargo  Int?
 
   // Campos específicos para estudiantes
   studentCode String?
@@ -286,10 +297,15 @@ model User {
   notasDeRevision         NotaDeRevision[]         @relation("RevisionAlumno")
   apreciaciones           Apreciacion[]            @relation("ApreciacionAlumno")
   apreciacionesPuestas    Apreciacion[]            @relation("ApreciacionPuestaPor")
+  gruposQueDirige         GrupoEstable[]           @relation("GrupoEstableProfesor")
+  solicitudesDeGrupo      SolicitudDeGrupo[]       @relation("SolicitudDeGrupoAlumno")
+  solicitudesRevisadas    SolicitudDeGrupo[]       @relation("SolicitudDeGrupoRevisor")
+  asistenciaEnGrupos      AsistenciaDeGrupo[]      @relation("AsistenciaDeGrupoAlumno")
   decisionesDeFinDeAno    DecisionDeFinDeAno[]     @relation("DecisionFinDeAnoAlumno")
   materiasPendientes      MateriaPendiente[]       @relation("PendienteAlumno")
   pendientesQueEvalua     MateriaPendiente[]       @relation("PendienteProfesor")
   evaluacionesDePendiente EvaluacionDePendiente[]  @relation("EvaluacionPendientePuestaPor")
+  opcionesDePendiente     OpcionDePendiente[]      @relation("OpcionPendientePuestaPor")
   laborSocial             ActividadDeLaborSocial[] @relation("LaborSocialAlumno")
   laborSocialAnotada      ActividadDeLaborSocial[] @relation("LaborSocialPuestaPor")
   calificacionesExternas  CalificacionExterna[]    @relation("CalificacionExternaAlumno")
@@ -417,8 +433,12 @@ model AcademicYear {
   decisionesDeFinDeAno  DecisionDeFinDeAno[]
   pendientesQueNacieron MateriaPendiente[]       @relation("PendienteOrigen")
   pendientesQueSeCursan MateriaPendiente[]       @relation("PendienteCiclo")
+  momentosDePendientes  MomentoDePendiente[]
   laborSocial           ActividadDeLaborSocial[]
   titulos               Titulo[]
+  gruposEstables        GrupoEstable[]
+  horarioDeGrupos       HorarioDeGrupos[]
+  solicitudesDeGrupo    SolicitudDeGrupo[]
   institute             Institute?               @relation(fields: [instituteId], references: [id])
   instituteId           String?
 
@@ -467,6 +487,9 @@ model Subject {
   color       String?
   /// Con nota (01 a 20) o con apreciación; la eligen en el liceo.
   evaluacion  EvaluacionDeMateria @default(NUMERICA)
+  /// Los estudiantes eligen grupo (los grupos estables / GCRP): a la misma
+  /// hora, cada uno va al suyo, de cualquier sección y año.
+  porGrupos   Boolean             @default(false)
 
   // Instituto
   // Timestamps
@@ -490,6 +513,9 @@ model Subject {
   observations       Observation[]
   notasDeRevision    NotaDeRevision[]
   notasDeOtroPlantel NotaDeOtroPlantel[]
+  gruposEstables     GrupoEstable[]
+  horarioDeGrupos    HorarioDeGrupos[]
+  solicitudesDeGrupo SolicitudDeGrupo[]
   institute          Institute?          @relation(fields: [instituteId], references: [id])
   instituteId        String?
 
@@ -640,6 +666,11 @@ model ClassroomSubject {
 
   teacherHistory SubjectTeacherHistory[]
   scheduleBlocks ScheduleBlock[]
+
+  /// Las materias pendientes que se trabajan en esta clase, su plan y sus encuentros.
+  pendientes             MateriaPendiente[]     @relation("PendientesDeLaClase")
+  planDePendientes       EvaluacionDelMomento[]
+  encuentrosDePendientes EncuentroDePendiente[]
 
   @@unique([classroomId, subjectId])
   @@index([teacherId])
@@ -959,8 +990,8 @@ model DailyAttendance {
   classSessionId String?
   classSession   ClassSession? @relation(fields: [classSessionId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
   /// Quién la cambió por última vez (la crea `teacherId`).
   modificadoPorId String?
 
@@ -1215,8 +1246,11 @@ model DecisionDeFinDeAno {
 }
 
 /// LA MATERIA PENDIENTE: la que el alumno reprobó y arrastra al año siguiente.
-/// La evalúa un profesor en varios momentos (`EvaluacionDePendiente`); el
-/// cierre de ese año la tiene en cuenta. Ver `services/materias-pendientes.service.ts`.
+/// Se trabaja en una CLASE (la materia de una sección del grado de origen, ese
+/// año) y la evalúa su profesor, en varios momentos con 1ª y 2ª opción
+/// (`OpcionDePendiente`); la nota de cada momento queda en
+/// `EvaluacionDePendiente`. El cierre de ese año la tiene en cuenta. Ver
+/// `services/materias-pendientes.service.ts`.
 model MateriaPendiente {
   id String @id @default(cuid())
 
@@ -1237,7 +1271,12 @@ model MateriaPendiente {
   cicloId String
   ciclo   AcademicYear @relation("PendienteCiclo", fields: [cicloId], references: [id], onDelete: Cascade)
 
-  /// Quién la evalúa: por defecto el que da esa materia en ese grado este año.
+  /// La clase donde se trabaja (`classroom_subjects` del grado de origen, este
+  /// año): la evalúa su profesor. Sin clase todavía, se le busca una sola.
+  claseId String?
+  clase   ClassroomSubject? @relation("PendientesDeLaClase", fields: [claseId], references: [id], onDelete: SetNull)
+
+  /// Un profesor puesto a mano (la forma de antes): manda sobre el de la clase.
   profesorId String?
   profesor   User?   @relation("PendienteProfesor", fields: [profesorId], references: [id], onDelete: SetNull)
 
@@ -1249,14 +1288,20 @@ model MateriaPendiente {
   updatedAt DateTime @updatedAt
 
   evaluaciones EvaluacionDePendiente[]
+  opciones     OpcionDePendiente[]
+  notasDelPlan NotaDePendiente[]
+  asistencias  AsistenciaDePendiente[]
 
   @@unique([studentId, subjectId, cicloDeOrigenId, cicloId])
   @@index([cicloId])
   @@index([profesorId])
+  @@index([claseId])
   @@map("materias_pendientes")
 }
 
-/// Cada momento en que se evalúa una materia pendiente (4 por defecto).
+/// La nota de cada momento de una materia pendiente (4 por defecto). Con
+/// opciones, sale de ellas (la mejor) cuando el momento queda decidido; a mano
+/// (la forma de antes), se pone directa. Sin nota: no se presentó («IN»).
 model EvaluacionDePendiente {
   id String @id @default(cuid())
 
@@ -1264,7 +1309,7 @@ model EvaluacionDePendiente {
   materiaPendiente   MateriaPendiente @relation(fields: [materiaPendienteId], references: [id], onDelete: Cascade)
 
   momento       Int
-  nota          Float
+  nota          Float?
   fecha         DateTime @db.Date
   observaciones String?
 
@@ -1276,6 +1321,159 @@ model EvaluacionDePendiente {
 
   @@unique([materiaPendienteId, momento])
   @@map("evaluaciones_de_pendientes")
+}
+
+/// Cada opción de un momento: la 1ª y la 2ª (el «112» de los liceos, una
+/// semana después). Si se abre la 2ª y si faltar cuenta lo dice el liceo
+/// (`academicConfig.pendientes`).
+model OpcionDePendiente {
+  id String @id @default(cuid())
+
+  materiaPendienteId String
+  materiaPendiente   MateriaPendiente @relation(fields: [materiaPendienteId], references: [id], onDelete: Cascade)
+
+  momento       Int
+  /// 1 | 2
+  opcion        Int
+  /// Sin nota: no se presentó.
+  nota          Float?
+  asistio       Boolean  @default(true)
+  /// La falta justificada no cuenta: la opción sigue abierta.
+  justificada   Boolean  @default(false)
+  /// La puso el plan del momento (la suma de sus evaluaciones), no el profesor a mano.
+  delPlan       Boolean  @default(false)
+  fecha         DateTime @db.Date
+  observaciones String?
+
+  registradaPorId String?
+  registradaPor   User?   @relation("OpcionPendientePuestaPor", fields: [registradaPorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([materiaPendienteId, momento, opcion])
+  @@map("opciones_de_pendientes")
+}
+
+/// El cronograma de la materia pendiente de un año escolar: cuándo es cada
+/// momento, con su 1ª y su 2ª opción. Sin guardar, se propone el del MPPE.
+model MomentoDePendiente {
+  id String @id @default(cuid())
+
+  cicloId String
+  ciclo   AcademicYear @relation(fields: [cicloId], references: [id], onDelete: Cascade)
+
+  numero Int
+  desde1 DateTime  @db.Date
+  hasta1 DateTime  @db.Date
+  desde2 DateTime? @db.Date
+  hasta2 DateTime? @db.Date
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cicloId, numero])
+  @@map("momentos_de_pendientes")
+}
+
+/// El plan de evaluación de una clase de pendientes, momento a momento: qué se
+/// evalúa, cuánto pesa y con qué instrumento. Sin plan, la nota va a mano.
+model EvaluacionDelMomento {
+  id String @id @default(cuid())
+
+  claseId String
+  clase   ClassroomSubject @relation(fields: [claseId], references: [id], onDelete: Cascade)
+
+  momento     Int
+  nombre      String
+  /// Lo que pesa en el momento (las de un momento suman 100).
+  peso        Int
+  /// El instrumento (lista de cotejo, escala, rúbrica, por puntos), con la forma de `utils/instrumentos.ts`.
+  instrumento Json?
+  contenidos  String?
+  orden       Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notas NotaDePendiente[]
+
+  @@index([claseId, momento])
+  @@map("evaluaciones_del_momento")
+}
+
+/// La nota de un alumno en una evaluación del plan, en una opción.
+model NotaDePendiente {
+  id String @id @default(cuid())
+
+  evaluacionId String
+  evaluacion   EvaluacionDelMomento @relation(fields: [evaluacionId], references: [id], onDelete: Cascade)
+
+  materiaPendienteId String
+  materiaPendiente   MateriaPendiente @relation(fields: [materiaPendienteId], references: [id], onDelete: Cascade)
+
+  opcion   Int
+  nota     Float
+  /// Lo marcado en el instrumento, si lo tiene.
+  desglose Json?
+
+  registradaPorId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([evaluacionId, materiaPendienteId, opcion])
+  @@index([materiaPendienteId])
+  @@map("notas_de_pendientes")
+}
+
+/// Un encuentro de la clase de pendientes: una tutoría o una evaluación, con
+/// su fecha, hora y aula. De su asistencia sale el acta de presentación.
+model EncuentroDePendiente {
+  id String @id @default(cuid())
+
+  claseId String
+  clase   ClassroomSubject @relation(fields: [claseId], references: [id], onDelete: Cascade)
+
+  momento Int
+  /// TUTORIA | EVALUACION
+  tipo    String   @default("TUTORIA")
+  /// Para una evaluación: la opción (1 | 2).
+  opcion  Int?
+  fecha   DateTime @db.Date
+  hora    String?
+  aula    String?
+  tema    String?
+
+  creadoPorId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  asistencias AsistenciaDePendiente[]
+
+  @@index([claseId, momento])
+  @@map("encuentros_de_pendientes")
+}
+
+/// Quién vino a un encuentro. PRESENTE | AUSENTE | JUSTIFICADO.
+model AsistenciaDePendiente {
+  id String @id @default(cuid())
+
+  encuentroId String
+  encuentro   EncuentroDePendiente @relation(fields: [encuentroId], references: [id], onDelete: Cascade)
+
+  materiaPendienteId String
+  materiaPendiente   MateriaPendiente @relation(fields: [materiaPendienteId], references: [id], onDelete: Cascade)
+
+  estado String @default("PRESENTE")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([encuentroId, materiaPendienteId])
+  @@index([materiaPendienteId])
+  @@map("asistencias_de_pendientes")
 }
 
 /// LA LABOR SOCIAL (las horas comunitarias de los últimos años): cada alumno
@@ -1847,6 +2045,14 @@ model PaymentSettings {
   /// Las categorías con que se anotan los gastos (lista de textos, editable).
   categoriasDeGasto Json @default("[\"Mantenimiento\", \"Reparación\", \"Compras\", \"Servicios\", \"Otro\"]")
 
+  /// Las áreas del personal que crea el admin (Cocina, Limpieza…). «Profesor»
+  /// va siempre y no está aquí: es el cargo de quien tiene cuenta.
+  areasDelPersonal Json @default("[]")
+
+  /// Los movimientos recurrentes del liceo (el internet, el sueldo de la
+  /// cocinera…): plantillas para anotarlos de un toque desde «Nuevo movimiento».
+  recurrentes Json @default("[]")
+
   /// Lo que lleva un ciclo nuevo (ver `AjustesDePagosDelCiclo`).
   descuentoHermanosPct  Int     @default(0)
   moraTipo              String  @default("NINGUNA")
@@ -1884,14 +2090,14 @@ model AjustesDePagosDelCiclo {
   methods            Json    @default("[\"Efectivo\", \"Pago Móvil\", \"Transferencia\", \"Zelle\"]")
 
   /// Descuento automático desde el 2.º hijo del mismo representante (0–100).
-  descuentoHermanosPct Int     @default(0)
+  descuentoHermanosPct  Int     @default(0)
   /// Recargo por cuota vencida: NINGUNA | FIJA | PORCENTAJE. Una vez por cuota.
-  moraTipo             String  @default("NINGUNA")
-  moraValor            Decimal @default(0) @db.Decimal(12, 2)
+  moraTipo              String  @default("NINGUNA")
+  moraValor             Decimal @default(0) @db.Decimal(12, 2)
   /// Días después de la gracia en que se cobra el recargo.
-  moraDiasDespues      Int     @default(0)
+  moraDiasDespues       Int     @default(0)
   /// Cuántos días antes del vencimiento se le recuerda al representante (0 = no).
-  recordatorioDiasAntes Int    @default(3)
+  recordatorioDiasAntes Int     @default(3)
 
   updatedById String?
   createdAt   DateTime @default(now())
@@ -1911,9 +2117,9 @@ model StudentPaymentPlan {
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
 
-  dueDay       Int?
-  exempt       Boolean @default(false)
-  exemptReason String?
+  dueDay          Int?
+  exempt          Boolean @default(false)
+  exemptReason    String?
   /// Beca o descuento propio (0–100 %), con su motivo (2026-10-01).
   descuentoPct    Int     @default(0)
   descuentoMotivo String?
@@ -2108,6 +2314,9 @@ model ClassActivity {
   @@index([classroomId, subjectId])
   @@index([classSessionId])
   @@index([classroomId, subjectId, target])
+  /// Guardar el plan o su instrumento busca las actividades de una fila
+  /// (`instrumentos.service`, `evaluation-plan`): sin esto, la tabla entera.
+  @@index([planRowId])
   @@map("class_activities")
 }
 
@@ -2153,8 +2362,14 @@ model RegistroBorrado {
   borradoPor String?
   motivo     String?
 
+  /// Un mismo borrado (el alumno y todo lo que arrastra): se restaura junto.
+  operacion  String?
+  /// En qué orden entró cada fila de la operación.
+  orden      BigInt  @default(autoincrement())
+
   createdAt DateTime @default(now())
 
+  @@index([operacion])
   @@index([tabla, registroId])
   @@index([createdAt])
   @@index([tabla, createdAt(sort: Desc)])
@@ -2210,9 +2425,9 @@ model InstrumentoDeEvaluacion {
   planRow   EvaluationPlanRow @relation(fields: [planRowId], references: [id], onDelete: Cascade)
 
   /// COTEJO | ESCALA | RUBRICA | PUNTOS
-  tipo       String
-  definicion Json
-  version    Int    @default(1)
+  tipo        String
+  definicion  Json
+  version     Int     @default(1)
   /// Quién lo cambió por última vez: a quien se le pregunta si llegan marcas del anterior.
   cambiadoPor String?
 
@@ -2350,18 +2565,18 @@ model Comprobante {
 /// Una persona a la que el liceo le paga: un profesor (con cuenta) u otro
 /// personal (sin cuenta: la señora de la limpieza, el vigilante…).
 model Personal {
-  id     String  @id @default(cuid())
+  id                        String  @id @default(cuid())
   /// Si tiene cuenta en el sistema (profesor o admin).
-  userId String? @unique
-  user   User?   @relation("PersonalConCuenta", fields: [userId], references: [id], onDelete: SetNull)
+  userId                    String? @unique
+  user                      User?   @relation("PersonalConCuenta", fields: [userId], references: [id], onDelete: SetNull)
   /// Si no tiene cuenta, su nombre.
-  nombre String?
-  cedula String?
-  cargo  String
-  activo Boolean @default(true)
+  nombre                    String?
+  cedula                    String?
+  cargo                     String
+  activo                    Boolean @default(true)
   /// Se trae solo al ciclo siguiente, con su mismo acuerdo.
   seQuedaParaProximosCiclos Boolean @default(true)
-  notas  String?
+  notas                     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2410,11 +2625,11 @@ model AjustesDeNomina {
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
 
   /// Día del mes del pago mensual (31 = el último día del mes).
-  diaDePago         Int      @default(31)
+  diaDePago         Int       @default(31)
   /// Meses de vacaciones, como «AAAA-MM».
-  mesesDeVacaciones Json     @default("[]")
-  cobraEnVacaciones Boolean  @default(true)
-  bonoVacacional    Decimal  @default(0) @db.Decimal(12, 2)
+  mesesDeVacaciones Json      @default("[]")
+  cobraEnVacaciones Boolean   @default(true)
+  bonoVacacional    Decimal   @default(0) @db.Decimal(12, 2)
   fechaBono         DateTime? @db.Date
 
   updatedById String?
@@ -2509,3 +2724,285 @@ model PagoReportado {
   @@map("pagos_reportados")
 }
 
+/// La foto del cuadro de honor de un sábado (`reglas-del-cuadro.ts`, MAPA §8h).
+/// Una fila por alumno, ciclo, alcance (un lapso o el ciclo entero) y sábado:
+/// comparando con la foto anterior se sabe cuántos puestos subió. Única, así
+/// que dos procesos que saquen la misma foto no la duplican.
+model PuntajeDelCuadro {
+  id               String   @id @default(cuid())
+  studentId        String
+  academicYearId   String
+  /// `CICLO` o el id del lapso.
+  alcance          String
+  /// El sábado de la foto.
+  fecha            DateTime @db.Date
+  grado            Int
+  promedio         Decimal  @db.Decimal(5, 2)
+  asistencia       Int
+  observaciones    Int
+  puntosNotas      Decimal  @db.Decimal(5, 1)
+  puntosAsistencia Decimal  @db.Decimal(5, 1)
+  resta            Decimal  @db.Decimal(5, 1)
+  puntaje          Decimal  @db.Decimal(5, 1)
+  puestoLiceo      Int
+  puestoAno        Int
+  createdAt        DateTime @default(now())
+
+  @@unique([studentId, academicYearId, alcance, fecha])
+  @@index([academicYearId, alcance, fecha])
+  @@map("cuadro_de_honor")
+}
+
+/// CADA CAMBIO DEL LICEO, PARA QUE LOS TELÉFONOS BAJEN SOLO LO QUE CAMBIÓ
+///
+/// Lo apunta `plugins/avisar-cambios.ts` por cada escritura que sale bien. El
+/// teléfono pregunta «¿qué cambió desde el número N?» (`POST /precarga/cambios`)
+/// y se baja solo lo que esos cambios tocan. No guarda QUÉ se escribió, solo
+/// qué recurso, a quién toca y qué ids nombraba. Se tira a los 30 días
+/// (`CAMBIOS_DEL_LICEO_DIAS`, `mantenimiento.service.ts`).
+model CambioDelLiceo {
+  id            Int      @id @default(autoincrement())
+  momento       DateTime @default(now())
+  recurso       String
+  accion        String
+  /// Alumnos, sección y los ids que nombraba la dirección de la escritura.
+  ids           String[] @default([])
+  /// A quién toca. Vacío con `todos` = todo el liceo.
+  destinatarios String[] @default([])
+  todos         Boolean  @default(false)
+
+  @@index([momento])
+  @@map("cambios_del_liceo")
+}
+
+/// EL PAQUETE DE PRECARGA PREPARADO DE ANTEMANO (Fase B, octubre 2026)
+///
+/// El servidor arma de antemano el paquete de lecturas de cada usuario y lo
+/// guarda aquí comprimido en gzip. El teléfono lo baja como un solo archivo a
+/// la velocidad del internet. `marca` dice desde qué cambio está al día;
+/// `huella` vigila si cambiaron los permisos o secciones de esa persona.
+model PaqueteDePrecarga {
+  id        String    @id @default(cuid())
+  usuarioId String    @unique
+  contenido Bytes
+  marca     BigInt
+  version   String
+  huella    String
+  bytes     Int
+  lecturas  Int
+  armadoEn  DateTime  @default(now()) @db.Timestamptz(6)
+  usadoEn   DateTime? @db.Timestamptz(6)
+
+  @@index([usadoEn])
+  @@map("paquetes_de_precarga")
+}
+
+/// LOS GRUPOS ESTABLES (Grupos de Creación, Recreación y Producción)
+///
+/// A una hora común de la semana, cada estudiante va a SU grupo —fútbol,
+/// costura, lectura…—, de cualquier sección y año. Los crea el admin dentro
+/// de una materia «por grupos» (`Subject.porGrupos`); el alumno pide entrar y
+/// el profesor del grupo acepta o rechaza. La apreciación sigue en
+/// `Apreciacion` (de la materia, con la sección del alumno): la boleta y el
+/// resumen final no cambian. Ver `services/grupos-estables.service.ts`.
+model GrupoEstable {
+  id String @id @default(cuid())
+
+  subjectId      String
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  nombre      String
+  descripcion String?
+  /// Una de las cuatro áreas del MPPE (ARTE_Y_PATRIMONIO, ACCION_CIENTIFICA,
+  /// ACTIVIDAD_FISICA, PRODUCCION) o vacío.
+  area        String?
+  profesorId  String?
+  profesor    User?   @relation("GrupoEstableProfesor", fields: [profesorId], references: [id], onDelete: SetNull)
+  cupo        Int
+  /// MANANA | TARDE | INTEGRAL; vacío = de cualquier turno.
+  turno       String?
+  activo      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  solicitudes SolicitudDeGrupo[]
+  asistencias AsistenciaDeGrupo[]
+
+  @@unique([subjectId, academicYearId, nombre])
+  @@index([profesorId])
+  @@map("grupos_estables")
+}
+
+/// La hora común de los grupos de una materia, por turno.
+model HorarioDeGrupos {
+  id String @id @default(cuid())
+
+  subjectId      String
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  turno     String
+  dayOfWeek Int
+  startTime String
+  endTime   String
+
+  createdAt DateTime @default(now())
+
+  @@index([subjectId, academicYearId])
+  @@map("horario_de_grupos")
+}
+
+/// El alumno pide entrar a un grupo; el profesor del grupo acepta o rechaza.
+/// Una sola viva (PENDIENTE o ACEPTADA) por alumno, materia y momento: un
+/// índice parcial en la migración lo hace cumplir aunque pidan dos a la vez.
+model SolicitudDeGrupo {
+  id String @id @default(cuid())
+
+  grupoId        String
+  grupo          GrupoEstable @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+  subjectId      String
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        User         @relation("SolicitudDeGrupoAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  /// «ANUAL» si el liceo elige una vez al año; si no, el id del lapso.
+  momento        String
+
+  /// PENDIENTE | ACEPTADA | RECHAZADA | RETIRADA
+  estado           String    @default("PENDIENTE")
+  motivoRechazo    String?
+  revisadoPorId    String?
+  revisadoPor      User?     @relation("SolicitudDeGrupoRevisor", fields: [revisadoPorId], references: [id], onDelete: SetNull)
+  revisadoEn       DateTime?
+  asignadaPorAdmin Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([grupoId, estado])
+  @@index([studentId, subjectId, academicYearId, momento])
+  @@map("solicitudes_de_grupo")
+}
+
+/// La asistencia de cada encuentro del grupo (aparte de la diaria de la sección).
+model AsistenciaDeGrupo {
+  id String @id @default(cuid())
+
+  grupoId         String
+  grupo           GrupoEstable @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         User         @relation("AsistenciaDeGrupoAlumno", fields: [studentId], references: [id], onDelete: Cascade)
+  fecha           DateTime     @db.Date
+  /// PRESENTE | AUSENTE | JUSTIFICADO
+  estado          String
+  registradaPorId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([grupoId, studentId, fecha])
+  @@map("asistencia_de_grupo")
+}
+
+/// LA DESCARGA EN CUBOS (18-oct-2026, `services/cubos-de-precarga.service.ts`).
+/// Se leen y escriben con SQL a mano (la cola usa FOR UPDATE SKIP LOCKED).
+model CuboDePrecarga {
+  clave      String    @id
+  lecturas   String[]  @default([])
+  firma      String    @default("")
+  ids        String[]  @default([])
+  sinIds     Boolean   @default(false)
+  dueno      String?
+  armadoComo String?
+  contenido  Bytes?
+  huella     String?
+  bytes      Int       @default(0)
+  marca      BigInt    @default(0)
+  sucio      Boolean   @default(true)
+  prioridad  Int       @default(0)
+  armadoEn   DateTime? @db.Timestamptz(6)
+
+  @@index([dueno])
+  @@map("cubos_de_precarga")
+}
+
+model IndiceDePrecarga {
+  usuarioId         String    @id
+  claves            String[]  @default([])
+  paginas           String[]  @default([])
+  version           String    @default("")
+  huellaDeLaPersona String    @default("")
+  dia               String    @default("")
+  pendiente         Boolean   @default(true)
+  prioridad         Int       @default(0)
+  pedidoEn          DateTime  @default(now()) @db.Timestamptz(6)
+  armadoEn          DateTime? @db.Timestamptz(6)
+
+  @@map("indices_de_precarga")
+}
+
+model CursorDeLosCubos {
+  id    String @id @default("liceo")
+  hasta BigInt @default(0)
+
+  @@map("cursor_de_los_cubos")
+}
+
+/// «Reportar un problema» (18-oct-2026, `routes/reportes-de-problemas.routes.ts`).
+model ReporteDeProblema {
+  id            String   @id
+  autorId       String
+  texto         String
+  pantalla      String?
+  version       String?
+  aparato       String?
+  huellas       String[] @default([])
+  estado        String   @default("abierto")
+  respuesta     String?
+  respondidoPor String?
+  creadoEn      DateTime @default(now()) @db.Timestamptz(6)
+  actualizadoEn DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([autorId])
+  @@index([estado, creadoEn(sort: Desc)])
+  @@map("reportes_de_problemas")
+}
+
+/// «Descargar todos mis datos» (19-oct-2026): el ZIP con contraseña que arma
+/// `services/mis-datos.service.ts` de fondo. Se usa con SQL a mano.
+model Exportacion {
+  id        String    @id
+  pedidoPor String
+  estado    String    @default("ARMANDO")
+  progreso  Int       @default(0)
+  paso      String?
+  archivo   String?
+  bytes     BigInt?
+  error     String?
+  creadaEn  DateTime  @default(now())
+  latidoEn  DateTime  @default(now())
+  listaEn   DateTime?
+  caducaEn  DateTime?
+
+  @@index([creadaEn])
+  @@map("exportaciones")
+}
+
+/// Quién aceptó los términos y la privacidad, qué versión y cuándo (19-oct-2026;
+/// `services/legal.service.ts`). Se usa con SQL a mano.
+model AceptacionLegal {
+  id         String   @id
+  usuarioId  String
+  version    String
+  aceptadaEn DateTime
+  direccion  String?
+  aparato    String?
+
+  @@unique([usuarioId, version])
+  @@map("aceptaciones_legales")
+}

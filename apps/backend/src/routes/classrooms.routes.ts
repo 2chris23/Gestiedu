@@ -1,18 +1,10 @@
 import { FastifyPluginAsync } from 'fastify';
-import {
-  getClassrooms,
-  getClassroom,
-  getClassroomBySlug,
-  getClassroomStats,
-  createClassroom,
-  updateClassroom,
-  deleteClassroom,
-  enrollStudent,
-  unenrollStudent,
-  assignTeacher
-} from '../controllers/classrooms.controller';
+import { getClassrooms, getClassroom, getClassroomBySlug, createClassroom, updateClassroom, deleteClassroom, assignTeacher } from '../controllers/classrooms.controller';
+import { getClassroomStats } from '../controllers/secciones/resumen-de-la-seccion.controller';
+import { enrollStudent, unenrollStudent } from '../controllers/secciones/inscribir-alumnos.controller';
 import { authenticate, requireAdmin, requireTeacher } from '../middleware/auth.middleware';
 import { obtenerResumenFinal } from '../controllers/resumen-final.controller';
+import { obtenerMisSeccionesGuia, obtenerCuadroGeneral } from '../controllers/cuadro-general.controller';
 
 const classroomsRoutes: FastifyPluginAsync = async (fastify) => {
 
@@ -21,7 +13,9 @@ const classroomsRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Listar y Ver detalle (Profesor/Admin necesitan ver)
     protectedRoutes.get('/', getClassrooms);
+    protectedRoutes.get('/mis-secciones-guia', obtenerMisSeccionesGuia);
     protectedRoutes.get('/:id/stats', getClassroomStats);
+    protectedRoutes.get('/:id/cuadro-general', obtenerCuadroGeneral);
     // El resumen final del rendimiento: admin y profesor guía (lo decide
     // `puedeVerElResumen` dentro).
     protectedRoutes.get('/:id/resumen-final', obtenerResumenFinal as any);

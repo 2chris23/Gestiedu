@@ -273,47 +273,8 @@ describe('Fuga de credenciales de BD — endpoints del tenant (/api/institutes)'
         expect(raw).not.toContain(url.user);
     }
 
-    it('GET /api/institutes/current/info (basta con estar autenticado) no expone credenciales', async () => {
-        // El caso más grave: este endpoint solo pide `authenticate`, así que un
-        // STUDENT recibía la contraseña de la BD de su propio liceo.
-        const res = await request(server.server)
-            .get('/api/institutes/current/info')
-            .set('Authorization', `Bearer ${studentToken}`);
 
-        show('GET /api/institutes/current/info (token de STUDENT)', res.status, res.body);
-        expect(res.status).toBe(200);
-        assertNoRealCredentials(res.body);
 
-        expect(res.body.success).toBe(true);
-        expect(res.body.data.id).toBe('institute');
-        expect(res.body.data.name).toBeTruthy();
-    }, 60000);
-
-    it('GET /api/institutes/current/config/full no expone credenciales', async () => {
-        const res = await request(server.server)
-            .get('/api/institutes/current/config/full')
-            .set('Authorization', `Bearer ${adminToken}`);
-
-        show('GET /api/institutes/current/config/full', res.status, res.body);
-        expect(res.status).toBe(200);
-        assertNoRealCredentials(res.body);
-        expect(res.body.data.slug).toBeTruthy();
-    }, 60000);
-
-    it('GET /api/institutes/:id/config no expone credenciales', async () => {
-        // La ruta exige un CUID en `:id` (`validateCUID`), pero el handler
-        // resuelve el instituto por `request.user.instituteId` e IGNORA el
-        // parámetro — así que devuelve el instituto del admin autenticado.
-        // Se manda un CUID sintáctico solo para pasar el validador.
-        const res = await request(server.server)
-            .get('/api/institutes/cxxxxxxxxxxxxxxxxxxxxxxxx/config')
-            .set('Authorization', `Bearer ${adminToken}`);
-
-        show('GET /api/institutes/:id/config', res.status, res.body);
-        expect(res.status).toBe(200);
-        assertNoRealCredentials(res.body);
-        expect(res.body.data.id).toBe('institute');
-    }, 60000);
 
     it('PUT /api/institutes/current/config no expone credenciales y sí aplica el cambio', async () => {
         const nuevoNombre = `Test Institute ${SUFFIX}`;

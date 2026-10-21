@@ -25,17 +25,6 @@ export function toPrismaUserRole(role: RoleES | string): UserRole {
     default: return role as UserRole;
   }
 }
-
-// Mapeo Prisma -> ES
-export function fromPrismaUserRole(role: UserRole): RoleES {
-  switch (role) {
-    case UserRole.ADMIN: return 'ADMIN';
-    case UserRole.TEACHER: return 'PROFESOR';
-    case UserRole.STUDENT: return 'ESTUDIANTE';
-    case UserRole.TUTOR: return 'TUTOR';
-  }
-}
-
 // Jerarquía de roles (de mayor a menor privilegio)
 export const ROLE_HIERARCHY = [
   UserRole.ADMIN,

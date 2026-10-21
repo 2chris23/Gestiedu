@@ -65,10 +65,16 @@ describe('La cola de lo pendiente', () => {
         expect(cola).toHaveLength(3);
     });
 
-    it('tras un fallo de red, se espera cada vez más (hasta 5 min)', () => {
-        expect(esperaTras(1)).toBe(5000);
-        expect(esperaTras(3)).toBe(20000);
-        expect(esperaTras(20)).toBe(300000);
+    it('tras un fallo de red, se espera cada vez más (hasta 5 min), con azar', () => {
+        const todo = () => 1;
+        expect(esperaTras(1, todo)).toBe(5000);
+        expect(esperaTras(3, todo)).toBe(20000);
+        expect(esperaTras(20, todo)).toBe(300000);
+        // Con azar, entre la mitad y el total: dos teléfonos no reintentan juntos.
+        expect(esperaTras(3, () => 0)).toBe(10000);
+        const muchos = new Set(Array.from({ length: 50 }, () => esperaTras(3)));
+        expect(muchos.size).toBeGreaterThan(10);
+        for (const v of muchos) expect(v).toBeGreaterThanOrEqual(10000);
     });
 });
 

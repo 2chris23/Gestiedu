@@ -1,14 +1,19 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import UserAvatar from '@/components/ui/UserAvatar';
 import Link from 'next/link';
 import {
-    ArrowLeft, Users, BookOpen, GraduationCap, Calendar,
-    Bell, Search, Plus, TrendingUp, Clock,
-    FileText, CheckCircle, AlertTriangle, MapPin, Settings,
-    ChevronRight, Home, UserCircle,
-    ListTodo
+    ArrowLeft,
+    Users,
+    BookOpen,
+    GraduationCap,
+    Bell,
+    FileText,
+    CheckCircle,
+    ListTodo,
+    ClipboardCheck,
 } from 'lucide-react';
 import { useClassroomBySlug } from '@/hooks/useClassrooms';
 import { useClassroomSubjectDetail, useClassroomSubjectsStats } from '@/hooks/useClassroomSubjects';
@@ -16,7 +21,6 @@ import AcademicStats from '@/components/academic/AcademicStats';
 import { useStudents } from '@/hooks/useStudents';
 import { SectionStudent } from '@/services/students.service';
 import { Pagination } from '@/components/ui';
-import { useAuthStore } from '@/store/auth.store';
 import { useAcademicConfig } from '@/hooks/useAcademicConfig';
 import { getAcademicRisk } from '@/utils/academicRisk';
 import { TablaAdaptable } from '@/components/ui/tabla-adaptable';
@@ -24,14 +28,16 @@ import LapsoSelector from '@/components/academic/LapsoSelector';
 import SubjectScheduleSection from '@/components/schedule/SubjectScheduleSection';
 import { diferido } from '@/components/common/Diferido';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
+import { BuscadorDeAlumnos, CabezaDeLaClase, ElegirMomento, PartesDeLaPantalla } from '@/components/academic/CabezaDeLaClase';
 
 // Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
-const AssignSubjectTeacherModal = diferido(() => import('@/components/subject/AssignSubjectTeacherModal').then((m) => ({ default: m.AssignSubjectTeacherModal })), { sinEsqueleto: true });
 const EvaluationPlanSection = diferido(() => import('@/components/evaluation/EvaluationPlanSection'), { alto: 400 });
 const SubjectActivitiesTab = diferido(() => import('@/components/subject/SubjectActivitiesTab'), { alto: 300 });
 const SubjectObservationsTab = diferido(() => import('@/components/subject/SubjectObservationsTab'), { alto: 300 });
 const RevisionDeLaMateria = diferido(() => import('@/components/subject/RevisionDeLaMateria'), { alto: 300 });
 const ApreciacionesDeLaMateria = diferido(() => import('@/components/subject/ApreciacionesDeLaMateria'), { alto: 300 });
+// Las materias pendientes que se trabajan en esta clase (las de este grado, que los alumnos arrastran).
+const PendientesDeLaClase = diferido(() => import('@/components/pendientes/PendientesDeLaClase'), { alto: 300 });
 const StudentObservationsModal = diferido(() => import('@/components/observations/StudentObservationsModal'), { sinEsqueleto: true });
 
 const DAY_ABBR: Record<number, string> = {
@@ -49,9 +55,9 @@ const SCHEDULE_COLORS = ['#4F46E5', '#7C3AED', '#0891B2', '#059669', '#D97706'];
 export default function SectionSubjectDashboard() {
     const params = useParams();
     const { cycleId, sectionId, subjectId } = params as { cycleId: string; sectionId: string; subjectId: string };
+    const router = useRouter();
     const [activeTab, setActiveTab] = useState('estudiantes');
     const [searchTerm, setSearchTerm] = useState('');
-    const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [selectedLapso, setSelectedLapso] = useState('1');
     const [selectedStudentForObs, setSelectedStudentForObs] = useState<any | null>(null);
     
@@ -92,7 +98,6 @@ export default function SectionSubjectDashboard() {
     const students = studentsData?.students || studentsData?.users || [];
     const pagination = studentsData?.pagination;
     
-    const { user } = useAuthStore();
     const { yo } = useQuienSoy();
 
     // Obtener estadísticas de materias de la sección filtradas por lapso
@@ -116,8 +121,10 @@ export default function SectionSubjectDashboard() {
         const minScore = validAverages.length > 0 ? Math.min(...validAverages) : 0;
         const maxScore = validAverages.length > 0 ? Math.max(...validAverages) : 0;
 
+        // Dos decimales y sin redondear los extremos: las mismas cifras que la
+        // lista de alumnos y el resumen de la sección (MAPA §0).
         const calculatedAvg = validAverages.length > 0
-            ? Math.round((validAverages.reduce((acc, curr) => acc + curr, 0) / validAverages.length) * 10) / 10
+            ? Math.round((validAverages.reduce((acc, curr) => acc + curr, 0) / validAverages.length) * 100) / 100
             : 0;
 
         const avg = currentSubjectStats?.stats?.average ?? calculatedAvg;
@@ -129,9 +136,9 @@ export default function SectionSubjectDashboard() {
         const obs = currentSubjectStats?.stats?.observations ?? 0;
 
         return {
-            average: avg || 0,
-            minAverage: minScore > 0 ? Math.round(minScore * 10) / 10 : undefined,
-            maxAverage: maxScore > 0 ? Math.round(maxScore * 10) / 10 : undefined,
+            average: avg && avg > 0 ? avg : null,
+            minAverage: minScore > 0 ? minScore : undefined,
+            maxAverage: maxScore > 0 ? maxScore : undefined,
             riskCount: atRisk,
             occupancy: `${count}/${capacity}`,
             attendance: `${attendance}%`,
@@ -193,9 +200,6 @@ export default function SectionSubjectDashboard() {
     }));
 
     // Iniciales del profesor
-    const teacherInitials = teacher
-        ? `${teacher.firstName?.[0] || ''}${teacher.lastName?.[0] || ''}`
-        : '';
     const teacherName = teacher
         ? `${teacher.firstName} ${teacher.lastName}`
         : 'Sin profesor asignado';
@@ -297,113 +301,24 @@ export default function SectionSubjectDashboard() {
 
     return (
         <div className="space-y-6">
-            {/* La franja blanca, de borde a borde y con el contenido en la columna
-                de la pantalla: con su propio `px-4` dentro del margen del marco
-                quedaba 16 px más adentro que todo lo demás (ver Promoción). */}
-            <header className="-mx-4 -mt-6 border-b border-gray-200 bg-white px-4 py-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-                <div>
-                    {/* Breadcrumbs */}
-                    <nav aria-label="Ruta" className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
-                        <Link href="/dashboard" className="hover:text-indigo-600" aria-label="Inicio">
-                            <Home className="w-4 h-4" aria-hidden />
-                        </Link>
-                        <ChevronRight className="w-4 h-4" />
-                        <Link href="/dashboard/academico" className="hover:text-indigo-600">Académico</Link>
-                        <ChevronRight className="w-4 h-4" />
-                        <Link href={`/dashboard/academico/${cycleId}`} className="hover:text-indigo-600">
-                            {decodeURIComponent(cycleId)}
-                        </Link>
-                        <ChevronRight className="w-4 h-4" />
-                        <span>Secciones</span>
-                        <ChevronRight className="w-4 h-4" />
-                        <Link href={`/dashboard/academico/${cycleId}/${sectionId}`} className="hover:text-indigo-600">
-                            {sectionName}
-                        </Link>
-                        <ChevronRight className="w-4 h-4" />
-                        <span className="font-semibold text-gray-900">{subject.name}</span>
-                    </nav>
+            <div className="space-y-4">
+                <CabezaDeLaClase
+                    volverA={`/dashboard/academico/${cycleId}/${sectionId}`}
+                    rotuloVolver={`Volver a ${sectionName}`}
+                    titulo={subject.name}
+                    subtitulo={`${sectionName} · ${Number(hoursPerWeek).toLocaleString('es-VE')} h/sem`}
+                    profesor={{
+                        rotulo: 'Profesor',
+                        nombre: teacher ? teacherName : null,
+                        avatar: (teacher as any)?.avatar,
+                        // El profesor se cambia en Profesores (Cristian, 18-oct-2026): ahí se ve su carga.
+                        alCambiar: yo?.role === 'ADMIN' ? () => router.push(teacher?.id ? `/dashboard/profesores/${encodeURIComponent(teacher.id)}` : '/dashboard/profesores') : undefined,
+                    }}
+                >
+                    {periods.length > 0 && <LapsoSelector periods={periods} value={lapsoId} onChange={setLapsoId} compact />}
+                </CabezaDeLaClase>
 
-                    {/* Title Row — se parte en vez de empujar la pantalla: en un
-                        teléfono, «Educación Física 5to Año A» más el código, los
-                        estudiantes y el selector de lapso en una sola línea sacaban
-                        la pantalla 440 px de ancho. */}
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-start gap-2 sm:gap-3">
-                            <Link
-                                href={`/dashboard/academico/${cycleId}/${sectionId}`}
-                                aria-label={`Volver a ${sectionName}`}
-                                className="-ml-2.5 flex h-11 w-11 shrink-0 items-center justify-center hover:bg-gray-100 rounded-full transition-colors text-gray-500"
-                            >
-                                <ArrowLeft className="w-5 h-5" aria-hidden />
-                            </Link>
-                            <div>
-                                <h1 className="flex flex-wrap items-center gap-x-2 text-seccion font-bold text-gray-900 sm:text-pantalla">
-                                    {subject.name}{' '}
-                                    <span className="text-indigo-600">{sectionName}</span>
-                                </h1>
-                                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2">
-                                    {subject.code && (
-                                        <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded">
-                                            {subject.code}
-                                        </span>
-                                    )}
-                                    <span className="flex items-center gap-1 text-sm text-gray-500">
-                                        <Users className="w-4 h-4" /> {studentCount} Estudiantes
-                                    </span>
-                                    {periods.length > 0 && (
-                                        <span className="ml-1">
-                                            <LapsoSelector
-                                                periods={periods}
-                                                value={lapsoId}
-                                                onChange={setLapsoId}
-                                                compact
-                                            />
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Teacher and Hours Card — de pie se parte y se
-                            redondea menos: en una línea de 390 px, el profesor
-                            más «Cambiar» más las horas sacaban la pantalla
-                            434 px de ancho. */}
-                        <div className="flex w-full flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-gray-200 bg-white px-4 py-2 shadow-sm sm:w-auto sm:flex-nowrap sm:rounded-full">
-                            <div className="flex items-center gap-3">
-                                {teacher ? (
-                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center text-white font-bold text-sm">
-                                        {teacherInitials}
-                                    </div>
-                                ) : (
-                                    <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
-                                        <UserCircle className="w-6 h-6 text-gray-400" />
-                                    </div>
-                                )}
-                                <div>
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide">Profesor</p>
-                                    <p className="font-semibold text-gray-900 text-sm">{teacherName}</p>
-                                </div>
-                            </div>
-
-                            <button 
-                                onClick={() => setIsAssignModalOpen(true)}
-                                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-full transition-colors whitespace-nowrap"
-                            >
-                                {teacher ? 'Cambiar' : 'Asignar'}
-                            </button>
-
-                            <div className="hidden h-8 w-px bg-gray-200 sm:block" />
-                            <div className="flex items-center gap-2">
-                                <Clock className="w-4 h-4 text-gray-400" />
-                                <div>
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide">Horario</p>
-                                    <p className="font-semibold text-gray-900 text-sm">{hoursPerWeek}h Semanales</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </header>
+            </div>
 
             <div>
                 {/* Estadísticas de la Materia (Ancho Completo como en Secciones) */}
@@ -411,6 +326,7 @@ export default function SectionSubjectDashboard() {
                     <AcademicStats
                         stats={subjectAcademicStats}
                         averageTitle="Promedio Materia"
+                        inicioDelLapso={((classroom as any)?.academicYear?.periods || []).find((p: any) => p.id === lapsoId)?.startDate}
                         riskSubtext="Alumnos con promedio < 10 pts"
                     />
                 </div>
@@ -420,7 +336,7 @@ export default function SectionSubjectDashboard() {
                     <SubjectScheduleSection
                         schedule={schedule}
                         subject={subject}
-                        role={user?.role === 'TEACHER' || user?.role === 'ADMIN' ? 'teacher' : 'student'}
+                        role={yo?.role === 'TEACHER' || yo?.role === 'ADMIN' ? 'teacher' : 'student'}
                         showActions={true}
                         classroomId={classroomId}
                         // El horario lo arma el admin (el servidor lo exige): al profesor el lápiz
@@ -430,63 +346,42 @@ export default function SectionSubjectDashboard() {
                     />
                 </div>
 
-                {/* Tabs */}
-                <div className="border-b border-gray-200 mb-6">
-                    <nav className="-mb-px flex flex-wrap gap-x-6">
-                        {[
-                            { id: 'estudiantes', label: 'Estudiantes', icon: Users },
+                <div className="mb-5">
+                    <PartesDeLaPantalla
+                        etiqueta="Partes de la materia"
+                        activa={activeTab}
+                        alElegir={setActiveTab}
+                        partes={[
+                            { id: 'estudiantes', nombre: 'Estudiantes', icono: Users },
                             // Una materia sin nota (Orientación…) se evalúa con apreciación.
-                            ...(subject.evaluacion === 'CUALITATIVA'
-                                ? [{ id: 'apreciaciones', label: 'Apreciaciones', icon: CheckCircle }]
-                                : []),
-                            { id: 'calificaciones', label: 'Plan de Evaluación / Calificaciones', icon: GraduationCap },
-                            { id: 'actividades', label: 'Actividades', icon: ListTodo },
-                            { id: 'observaciones', label: 'Observaciones', icon: Bell },
+                            ...(subject.evaluacion === 'CUALITATIVA' ? [{ id: 'apreciaciones', nombre: 'Apreciaciones', icono: CheckCircle }] : []),
+                            { id: 'calificaciones', nombre: 'Plan', rotulo: 'Plan de evaluación', icono: GraduationCap },
+                            { id: 'actividades', nombre: 'Actividades', icono: ListTodo },
+                            { id: 'observaciones', nombre: 'Observaciones', icono: Bell },
                             // Al terminar el año: los que la reprobaron la presentan en revisión.
-                            ...(subject.evaluacion !== 'CUALITATIVA' ? [{ id: 'revision', label: 'Revisión', icon: FileText }] : []),
-                        ].map((tab) => {
-                            const Icon = tab.icon;
-                            const isActive = activeTab === tab.id;
-                            return (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => setActiveTab(tab.id)}
-                                    className={`group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-colors ${isActive
-                                        ? 'border-indigo-500 text-indigo-600'
-                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                        }`}
-                                >
-                                    <Icon className={`-ml-0.5 mr-2 h-5 w-5 ${isActive ? 'text-indigo-500' : 'text-gray-400'}`} />
-                                    {tab.label}
-                                </button>
-                            );
-                        })}
-                    </nav>
+                            ...(subject.evaluacion !== 'CUALITATIVA' ? [{ id: 'revision', nombre: 'Revisión', icono: FileText }] : []),
+                            // Y los que la arrastran del año anterior: la evalúa el profesor de esta clase.
+                            ...(subject.evaluacion !== 'CUALITATIVA' && (yo?.role === 'ADMIN' || (yo?.role === 'TEACHER' && !!teacher && teacher.id === yo.id))
+                                ? [{ id: 'pendientes', nombre: 'Pendientes', icono: ClipboardCheck }]
+                                : []),
+                        ]}
+                    />
                 </div>
 
                 {/* Students Tab */}
                 {activeTab === 'estudiantes' && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-                        <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                            <div className="relative max-w-sm w-full">
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <Search className="h-5 w-5 text-gray-400" />
-                                </div>
-                                <input
-                                    type="text"
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition duration-150 ease-in-out"
-                                    placeholder="Buscar alumno por nombre o cédula..."
-                                />
-                            </div>
+                    <div className="overflow-hidden rounded-[24px] bg-white ring-1 ring-gray-200">
+                        <div className="border-b border-gray-100 p-4">
+                            <BuscadorDeAlumnos valor={searchTerm} alCambiar={setSearchTerm} />
                         </div>
 
                         {/* Cada alumno, una tarjeta con todo lo suyo. Antes eran
                             siete columnas dentro de un `overflow-x-auto`: 765 px
                             de tabla en una pantalla de 390. */}
-                        <div className="p-4 sm:p-5">
+                        <div className="p-2 sm:p-5">
                             <TablaAdaptable<SectionStudent>
+                                compacta
+                                alPulsar={(a) => router.push(`/dashboard/usuarios/${a.id}`)}
                                 datos={sortedStudents}
                                 cargando={isLoadingStudents}
                                 clave={(a) => a.id}
@@ -504,6 +399,23 @@ export default function SectionSubjectDashboard() {
                                         tituloCorto: 'Nombre',
                                         principal: true,
                                         ordenable: true,
+                                        celdaCompacta: (a) => {
+                                            const obs = (a as any).observationsCount || 0;
+                                            return (
+                                                <div className="flex min-w-0 items-center gap-2">
+                                                    <UserAvatar name={`${a.firstName} ${a.lastName}`} src={(a as any).avatar} className="h-8 w-8 shrink-0" initialsClassName="text-xs" />
+                                                    <div className="min-w-0">
+                                                        <p className="line-clamp-2 break-words text-sm font-medium leading-5 text-gray-900" title={`${a.firstName} ${a.lastName}`}>
+                                                            {a.firstName} {a.lastName}
+                                                        </p>
+                                                        <p className="truncate text-xs text-gray-500">
+                                                            <span className="font-mono">{a.studentCode || a.id}</span>
+                                                            {obs > 0 && <span className="font-semibold text-amber-700"> · {obs} obs</span>}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        },
                                         celda: (a) => (
                                             <div className="flex items-center gap-3">
                                                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-600">
@@ -534,6 +446,23 @@ export default function SectionSubjectDashboard() {
                                         id: 'riesgo',
                                         titulo: 'Riesgo',
                                         ordenable: true,
+                                        // En la fila: el nivel en una letra de color (la materia es una sola).
+                                        compacta: {
+                                            ancho: 'w-12',
+                                            celda: (a) => {
+                                                const r = getAcademicRisk(a.average, passingGrade);
+                                                const rojo = r.level === 'ALTO';
+                                                const ambar = r.level === 'MEDIO';
+                                                return (
+                                                    <span
+                                                        className={`inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-1.5 text-xs font-bold ${rojo ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200' : ambar ? 'bg-amber-50 text-amber-800 ring-1 ring-amber-200' : 'text-emerald-700'}`}
+                                                        title={r.label}
+                                                    >
+                                                        {rojo ? 'A' : ambar ? 'M' : r.level === 'SIN_CALIFICAR' ? '—' : 'B'}
+                                                    </span>
+                                                );
+                                            },
+                                        },
                                         celda: (a) => {
                                             const risk = getAcademicRisk(a.average, passingGrade);
                                             return (
@@ -548,6 +477,18 @@ export default function SectionSubjectDashboard() {
                                         titulo: 'Promedio',
                                         ordenable: true,
                                         alinear: 'derecha',
+                                        compacta: {
+                                            ancho: 'w-12',
+                                            titulo: 'Prom.',
+                                            celda: (a) =>
+                                                a.average || a.hasGrades ? (
+                                                    <span className={`text-sm font-bold tabular-nums ${(a.average ?? 0) < passingGrade ? 'text-red-600' : 'text-indigo-700'}`}>
+                                                        {(a.average ?? 0).toFixed(1)}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs text-gray-500">—</span>
+                                                ),
+                                        },
                                         celda: (a) =>
                                             a.average ? (
                                                 <span className="inline-flex rounded bg-indigo-50 px-2 py-0.5 text-sm font-semibold text-indigo-700">
@@ -555,7 +496,7 @@ export default function SectionSubjectDashboard() {
                                                 </span>
                                             ) : (
                                                 <span className="inline-flex rounded bg-gray-100 px-2 py-0.5 text-sm font-medium text-gray-500">
-                                                    Sin calificar
+                                                    Sin notas
                                                 </span>
                                             ),
                                     },
@@ -564,6 +505,25 @@ export default function SectionSubjectDashboard() {
                                         titulo: 'Asistencia',
                                         ordenable: true,
                                         alinear: 'derecha',
+                                        compacta: {
+                                            ancho: 'w-14',
+                                            titulo: 'Asist.',
+                                            celda: (a) => {
+                                                const pct = a.attendancePercentage ?? 0;
+                                                const minima = academicConfig?.asistenciaMinima ?? 80;
+                                                return (
+                                                    <span className="flex w-full flex-col items-center gap-1">
+                                                        <span className="text-xs font-semibold tabular-nums text-gray-900">{pct}%</span>
+                                                        <span className="h-1 w-10 rounded-full bg-gray-200">
+                                                            <span
+                                                                className={`block h-1 rounded-full ${pct >= minima ? 'bg-green-500' : pct >= minima - 10 ? 'bg-amber-500' : 'bg-red-500'}`}
+                                                                style={{ width: `${Math.min(pct, 100)}%` }}
+                                                            />
+                                                        </span>
+                                                    </span>
+                                                );
+                                            },
+                                        },
                                         celda: (a) => (
                                             <span className="inline-flex items-center gap-2">
                                                 <span className="text-sm text-gray-900">
@@ -620,6 +580,8 @@ export default function SectionSubjectDashboard() {
                     />
                 )}
 
+                {activeTab === 'pendientes' && classroomSubject?.id && <PendientesDeLaClase claseId={classroomSubject.id} />}
+
                 {activeTab === 'revision' && (
                     <RevisionDeLaMateria
                         classroomId={classroomId}
@@ -631,29 +593,7 @@ export default function SectionSubjectDashboard() {
                 {/* Calificaciones / Evaluation Plan Tab */}
                 {activeTab === 'calificaciones' && (
                     <div className="space-y-4">
-                        {/* Lapso Selector */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 flex items-center gap-3">
-                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide shrink-0">Momento:</span>
-                            <div className="flex gap-2">
-                                {[
-                                    { id: '1', label: '1er Momento', color: 'from-blue-500 to-indigo-600' },
-                                    { id: '2', label: '2do Momento', color: 'from-violet-500 to-purple-600' },
-                                    { id: '3', label: '3er Momento', color: 'from-amber-500 to-orange-600' },
-                                ].map(l => (
-                                    <button
-                                        key={l.id}
-                                        onClick={() => setSelectedLapso(l.id)}
-                                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                            selectedLapso === l.id
-                                                ? `bg-gradient-to-r ${l.color} text-white shadow-md`
-                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                        }`}
-                                    >
-                                        {l.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
+                        <ElegirMomento valor={selectedLapso} alCambiar={setSelectedLapso} />
 
                         <EvaluationPlanSection
                             classroomId={classroomId}
@@ -696,15 +636,6 @@ export default function SectionSubjectDashboard() {
                 />
             )}
 
-            {isAssignModalOpen && classroomId && (
-                <AssignSubjectTeacherModal
-                    sectionId={classroomId}
-                    sectionName={sectionName}
-                    subjectSlug={subjectId}
-                    currentTeacherId={teacher?.id}
-                    onClose={() => setIsAssignModalOpen(false)}
-                />
-            )}
         </div>
     );
 }

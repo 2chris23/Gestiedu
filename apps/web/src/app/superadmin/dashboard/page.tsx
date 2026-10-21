@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useConfirm } from '@/hooks/useConfirm';
 import Link from 'next/link';
 import { superAdminFetch } from '@/lib/superadmin-fetch';
+import SaludDelSistema from '@/components/superadmin/SaludDelSistema';
 
 interface Stats {
     totalInstitutes: number;
@@ -102,6 +103,9 @@ export default function SuperAdminDashboardPage() {
                 <h1 className="text-3xl font-bold text-white mb-2">Dashboard</h1>
                 <p className="text-gray-400">Vista general de la plataforma</p>
             </div>
+
+            {/* Lo que falla callado: tareas, respaldos y disco. */}
+            <SaludDelSistema />
 
             {/* Stats Cards */}
             {loading ? (

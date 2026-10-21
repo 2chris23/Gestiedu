@@ -5,6 +5,8 @@ import { ERROR_MESSAGES } from '../utils/constants';
 import { config } from '../config/environment';
 
 import { logger } from '../utils/logger';
+import { esUnAhoraNoDeLaBase, responderAhoraNo } from '../utils/error-handler';
+import { apuntarErrorDelServidor } from '../plugins/medidor-de-rutas';
 
 // Tipos para errores personalizados
 interface CustomError extends Error {
@@ -49,6 +51,9 @@ export function errorHandler(
   request: FastifyRequest,
   reply: FastifyReply
 ) {
+  // El error de verdad, para agruparlo si la respuesta acaba en 500 (salud).
+  apuntarErrorDelServidor(request, error);
+
   // Determinar nivel de log
   const logLevel = (error as CustomError).logLevel || 'error';
 
@@ -82,6 +87,10 @@ export function errorHandler(
       code: 'VALIDATION_ERROR',
     });
   }
+
+  // La base dijo «ahora no» (sin conexión libre, transacción que no abre a
+  // tiempo, dos escrituras que chocan): se reintenta, no es un 500.
+  if (esUnAhoraNoDeLaBase(error)) return responderAhoraNo(reply);
 
   // Errores de Prisma
   if (isPrismaKnownRequestError(error)) {
@@ -284,21 +293,6 @@ function formatZodErrors(error: ZodError): Array<{ field: string; message: strin
   }));
 }
 
-/**
- * Middleware para capturar errores no manejados
- */
-export function notFoundHandler(
-  request: FastifyRequest,
-  reply: FastifyReply
-) {
-  console.warn(`Route not found: ${request.method} ${request.url}`);
-  
-  return reply.status(404).send({
-    error: 'Endpoint no encontrado',
-    message: `La ruta ${request.method} ${request.url} no existe`,
-    code: 'ROUTE_NOT_FOUND',
-  });
-}
 
 /**
  * Crear error personalizado
@@ -346,37 +340,3 @@ export const AppErrors = {
   InvalidTenant: () => createError(400, ERROR_MESSAGES.INVALID_TENANT, 'INVALID_TENANT'),
 };
 
-/**
- * Middleware para logging de errores en auditoría
- */
-export async function logErrorToAudit(
-  error: any,
-  request: FastifyRequest
-): Promise<void> {
-  if (!config.isProduction) return;
-  
-  try {
-    // Log de auditoría en base de datos
-    // await prisma.auditLog.create({
-    //   data: {
-    //     action: 'ERROR',
-    //     entityType: 'System',
-    //     entityId: 'error',
-    //     newValues: {
-    //       error: error.message,
-    //       stack: error.stack,
-    //       url: request.url,
-    //       method: request.method,
-    //       userAgent: request.headers['user-agent'],
-    //       ip: request.ip,
-    //     },
-    //     userId: request.user?.userId,
-    //     instituteId: request.user?.instituteId || 'system',
-    //     ipAddress: request.ip,
-    //     userAgent: request.headers['user-agent'],
-    //   },
-    // });
-  } catch (auditError) {
-    console.error('Error logging to audit:', auditError);
-  }
-}

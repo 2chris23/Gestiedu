@@ -3,7 +3,8 @@
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { FileText, Loader2, Plus, RotateCcw, X } from 'lucide-react';
+import { FileText, Plus, RotateCcw, X } from 'lucide-react';
+import { Ajustes, BotonGuardar, CargandoAjustes, EN_LA_FILA, Fila, FilaCampo, Grupo } from '@/components/configuracion/ajustes';
 import api from '@/lib/axios';
 import { Lista } from '@/components/ui/lista';
 import { getApiErrorMessage } from '@/lib/utils';
@@ -65,10 +66,10 @@ const rellenar = (texto: string, ejemplo: Record<string, string> = {}) =>
 
 export function DocumentSettings() {
     return (
-        <div className="space-y-10">
+        <Ajustes className="max-w-5xl">
             <PlantillasDeDocumentos />
             <RecaudosDeInscripcion />
-        </div>
+        </Ajustes>
     );
 }
 
@@ -105,81 +106,70 @@ function RecaudosDeInscripcion() {
         onError: (e) => toast.error(getApiErrorMessage(e, 'No se pudo')),
     });
 
-    if (isLoading) return <p className="text-sm text-gray-600">Cargando los recaudos…</p>;
-    if (error || !data) return <p className="text-sm text-rose-700">{getApiErrorMessage(error, 'No se pudieron cargar los recaudos.')}</p>;
+    if (isLoading) return <CargandoAjustes />;
+    if (error || !data) return <p className="px-4 text-sm text-rose-700">{getApiErrorMessage(error, 'No se pudieron cargar los recaudos.')}</p>;
     const cambiado = JSON.stringify(lista) !== JSON.stringify(data);
 
     return (
-        <section aria-labelledby="recaudos-titulo" className="space-y-3">
-            <div>
-                <h3 id="recaudos-titulo" className="mb-1 text-lg font-medium text-gray-900">
-                    Recaudos de inscripción
-                </h3>
-                <p className="text-sm text-gray-600">
-                    Lo que el liceo pide al inscribir. En la ficha de cada alumno se marca lo que ya entregó; crear su cuenta no lo pide.
-                </p>
-            </div>
-            <ul className="space-y-2">
+        <div className="space-y-4">
+            <Grupo
+                id="recaudos"
+                titulo="Recaudos de inscripción"
+                descripcion="Lo que el liceo pide al inscribir. En la ficha de cada alumno se marca lo que ya entregó."
+            >
                 {lista.map((r, i) => (
-                    <li key={r.clave ?? `nuevo-${i}`} className="flex items-center gap-2">
+                    <div key={r.clave ?? `nuevo-${i}`} className="flex min-h-[56px] items-center gap-2 px-4 py-1">
                         <input
                             aria-label={`Recaudo ${i + 1}`}
                             value={r.nombre}
                             maxLength={80}
                             onChange={(e) => setLista((l) => l.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)))}
-                            className="min-h-[44px] flex-1 rounded-lg border border-gray-300 px-3 text-sm"
+                            className="min-h-[44px] min-w-0 flex-1 bg-transparent text-[15px] text-gray-900 outline-none"
                         />
                         <button
                             type="button"
                             onClick={() => setLista((l) => l.filter((_, j) => j !== i))}
                             aria-label={`Quitar «${r.nombre}»`}
-                            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-red-700"
                         >
-                            <X className="h-4 w-4" aria-hidden />
+                            <X className="h-[18px] w-[18px]" aria-hidden />
                         </button>
-                    </li>
+                    </div>
                 ))}
-            </ul>
-            <form
-                className="flex gap-2"
-                onSubmit={(e) => {
-                    e.preventDefault();
-                    if (nuevo.trim().length < 3) return;
-                    setLista((l) => [...l, { nombre: nuevo.trim() }]);
-                    setNuevo('');
-                }}
-            >
-                <input
-                    aria-label="Recaudo nuevo"
-                    placeholder="Otro recaudo (p. ej. «Carpeta marrón»)"
-                    value={nuevo}
-                    maxLength={80}
-                    onChange={(e) => setNuevo(e.target.value)}
-                    className="min-h-[44px] flex-1 rounded-lg border border-gray-300 px-3 text-sm"
-                />
-                <button type="submit" className="inline-flex min-h-[44px] items-center gap-1 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">
-                    <Plus className="h-4 w-4" aria-hidden /> Añadir
-                </button>
-            </form>
-            <div className="flex flex-wrap gap-2">
-                <button
-                    type="button"
-                    onClick={() => guardar.mutate()}
-                    disabled={!cambiado || guardar.isPending}
-                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                <form
+                    className="flex min-h-[56px] items-center gap-2 px-4 py-1"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        if (nuevo.trim().length < 3) return;
+                        setLista((l) => [...l, { nombre: nuevo.trim() }]);
+                        setNuevo('');
+                    }}
                 >
-                    {guardar.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} Guardar recaudos
-                </button>
+                    <input
+                        aria-label="Recaudo nuevo"
+                        placeholder="Otro recaudo (p. ej. «Carpeta marrón»)"
+                        value={nuevo}
+                        maxLength={80}
+                        onChange={(e) => setNuevo(e.target.value)}
+                        className="min-h-[44px] min-w-0 flex-1 bg-transparent text-[15px] text-gray-900 outline-none placeholder:text-gray-400"
+                    />
+                    <button type="submit" className="flex min-h-[40px] shrink-0 items-center gap-1 rounded-full bg-gray-100 px-4 text-sm font-medium text-gray-800 hover:bg-gray-200">
+                        <Plus className="h-4 w-4" aria-hidden /> Añadir
+                    </button>
+                </form>
+            </Grupo>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
                 <button
                     type="button"
                     onClick={() => deSiempre.mutate()}
                     disabled={deSiempre.isPending}
-                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                    className="flex min-h-[48px] items-center justify-center gap-2 rounded-full px-5 text-sm font-medium text-gray-700 hover:bg-gray-100"
                 >
                     <RotateCcw className="h-4 w-4" aria-hidden /> Volver a la lista de siempre
                 </button>
+                <BotonGuardar type="button" texto="Guardar recaudos" onClick={() => guardar.mutate()} guardando={guardar.isPending} disabled={!cambiado} />
             </div>
-        </section>
+        </div>
     );
 }
 
@@ -232,96 +222,80 @@ function PlantillasDeDocumentos() {
         });
     };
 
-    if (isLoading) {
-        return (
-            <p className="flex items-center gap-2 py-8 text-sm text-gray-600">
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Cargando las plantillas…
-            </p>
-        );
-    }
-    if (error || !data || !actual) return <p className="text-sm text-rose-700">{getApiErrorMessage(error, 'No se pudieron cargar las plantillas.')}</p>;
+    if (isLoading) return <CargandoAjustes />;
+    if (error || !data || !actual) return <p className="px-4 text-sm text-rose-700">{getApiErrorMessage(error, 'No se pudieron cargar las plantillas.')}</p>;
 
     const desconocidos = [...texto.matchAll(/\{([a-zA-Z]+)\}/g)].map((m) => m[1]).filter((m) => !(m in actual.marcadores));
     const cambiado = titulo !== actual.titulo || texto !== actual.texto;
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h3 className="mb-1 text-lg font-medium text-gray-900">
-                    <FileText className="mr-2 inline h-5 w-5" aria-hidden />
-                    Textos de los documentos
-                </h3>
-                <p className="text-sm text-gray-600">
-                    El texto de cada constancia y de los demás documentos del liceo, con marcadores entre llaves que se
-                    rellenan solos. Deja una línea en blanco para separar párrafos.
-                </p>
-            </div>
+        <div className="space-y-4">
+            <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+                <div className="space-y-4">
+                    <Grupo
+                        id="plantillas"
+                        titulo="Textos de los documentos"
+                        descripcion="El texto de cada constancia, con marcadores entre llaves que se rellenan solos. Una línea en blanco separa los párrafos."
+                    >
+                        <Fila icono={FileText} etiqueta="Documento">
+                            <Lista
+                                etiqueta="Documento"
+                                valor={tipo}
+                                alCambiar={setTipo}
+                                className={EN_LA_FILA}
+                                opciones={data.map((p) => ({ valor: p.tipo, texto: `${p.nombre ?? NOMBRE[p.tipo] ?? p.tipo}${p.propia ? ' (del liceo)' : ''}` }))}
+                            />
+                        </Fila>
+                        <FilaCampo etiqueta="Título" value={titulo} maxLength={80} onChange={(e) => setTitulo(e.target.value)} />
+                        <div className="px-4 py-3">
+                            <label className="block text-[15px] text-gray-900">
+                                Texto
+                                <textarea
+                                    ref={areaRef}
+                                    value={texto}
+                                    maxLength={3000}
+                                    onChange={(e) => setTexto(e.target.value)}
+                                    rows={12}
+                                    className="mt-1.5 w-full resize-y rounded-xl bg-gray-50 px-3 py-2.5 font-mono text-sm leading-6 text-gray-800 outline-none ring-1 ring-gray-200/80 focus:ring-2 focus:ring-indigo-500"
+                                />
+                            </label>
+                            {desconocidos.length > 0 && <p className="mt-1 text-sm text-rose-700">No existen: {desconocidos.map((d) => `{${d}}`).join(', ')}</p>}
+                        </div>
+                    </Grupo>
 
-            <div className="sm:w-72">
-                <Lista etiqueta="Documento" valor={tipo} alCambiar={setTipo} opciones={data.map((p) => ({ valor: p.tipo, texto: `${p.nombre ?? NOMBRE[p.tipo] ?? p.tipo}${p.propia ? ' (del liceo)' : ''}` }))} />
-            </div>
-
-            <div className="grid gap-6 lg:grid-cols-2">
-                <div className="space-y-3">
-                    <label className="block text-sm font-medium text-gray-700">
-                        Título
-                        <input value={titulo} maxLength={80} onChange={(e) => setTitulo(e.target.value)} className="mt-1 min-h-[44px] w-full rounded-lg border border-gray-300 px-3 text-sm" />
-                    </label>
-                    <label className="block text-sm font-medium text-gray-700">
-                        Texto
-                        <textarea
-                            ref={areaRef}
-                            value={texto}
-                            maxLength={3000}
-                            onChange={(e) => setTexto(e.target.value)}
-                            rows={12}
-                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm leading-6"
-                        />
-                    </label>
-                    {desconocidos.length > 0 && (
-                        <p className="text-sm text-rose-700">No existen: {desconocidos.map((d) => `{${d}}`).join(', ')}</p>
-                    )}
-                    <div>
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Marcadores (toca para ponerlo)</p>
-                        <div className="flex flex-wrap gap-2">
+                    <Grupo id="marcadores" titulo="Marcadores" descripcion="Toca uno para ponerlo donde está el cursor.">
+                        <div className="flex flex-wrap gap-2 p-4">
                             {Object.entries(actual.marcadores).map(([m, que]) => (
                                 <button
                                     key={m}
                                     type="button"
                                     title={que}
                                     onClick={() => insertar(m)}
-                                    className="min-h-[44px] rounded-lg border border-gray-200 px-2.5 font-mono text-xs text-indigo-800 hover:bg-indigo-50"
+                                    className="min-h-[40px] rounded-full bg-indigo-50 px-3 font-mono text-xs text-indigo-800 hover:bg-indigo-100"
                                 >
                                     {`{${m}}`}
                                 </button>
                             ))}
                         </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        <button
-                            type="button"
-                            onClick={() => guardar.mutate()}
-                            disabled={!cambiado || guardar.isPending || desconocidos.length > 0}
-                            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                        >
-                            {guardar.isPending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} Guardar
-                        </button>
+                    </Grupo>
+
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
                         {actual.propia && (
                             <button
                                 type="button"
                                 onClick={() => restaurar.mutate()}
                                 disabled={restaurar.isPending}
-                                className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                                className="flex min-h-[48px] items-center justify-center gap-2 rounded-full px-5 text-sm font-medium text-gray-700 hover:bg-gray-100"
                             >
                                 <RotateCcw className="h-4 w-4" aria-hidden /> Volver al texto de siempre
                             </button>
                         )}
+                        <BotonGuardar type="button" texto="Guardar" onClick={() => guardar.mutate()} guardando={guardar.isPending} disabled={!cambiado || desconocidos.length > 0} />
                     </div>
                 </div>
 
-                <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Vista previa (datos de ejemplo)</p>
-                    <article className="rounded-xl border border-gray-200 bg-white p-6 text-gray-900 shadow-xs" aria-label="Vista previa de la constancia">
+                <Grupo id="vista-previa" titulo="Vista previa (datos de ejemplo)">
+                    <article className="modo-claro bg-white p-6 text-gray-900" aria-label="Vista previa de la constancia">
                         <h4 className="text-center text-sm font-bold uppercase tracking-widest">{titulo}</h4>
                         {rellenar(texto, actual.ejemplo)
                             .split(/\n\s*\n/)
@@ -333,7 +307,7 @@ function PlantillasDeDocumentos() {
                                 </p>
                             ))}
                     </article>
-                </div>
+                </Grupo>
             </div>
         </div>
     );

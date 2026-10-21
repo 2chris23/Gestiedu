@@ -8,6 +8,8 @@ import { AppErrors } from '../middleware/error.middleware';
 import { SESSION_CONFIG } from '../utils/constants';
 import { validatePassword } from '../utils/password-validator'; // ✅ SECURITY: Password policy
 import { logger } from '../utils/logger';
+import { avisarSiFalla } from '../utils/sin-callar';
+import { encargarElPaquete } from './paquete-de-precarga.service';
 
 // =====================================================
 // SESIONES PERSISTENTES ("Recordar sesión")
@@ -128,7 +130,12 @@ class AuthService {
       throw AppErrors.UserInactive();
     }
 
-    return this.abrirSesion(user, db, { keepSession, rememberMe }, instituteContextId, deviceMeta);
+    const sesion = await this.abrirSesion(user, db, { keepSession, rememberMe }, instituteContextId, deviceMeta);
+    const liceo = String(instituteContextId ?? user.instituteId ?? (user.institute as any)?.id ?? '');
+    if (liceo && user.id) {
+      encargarElPaquete(liceo, user.id).catch(avisarSiFalla('encargar-paquete-login'));
+    }
+    return sesion;
   }
 
   /**
@@ -330,7 +337,7 @@ class AuthService {
       await tenantDb.refreshToken.update({
         where: { id: refreshTokenRecord.id },
         data: { replacedAt: now, lastUsedAt: now },
-      }).catch(() => undefined);
+      }).catch(avisarSiFalla('auth.service'));
     }
 
     const newTokenRecordId = randomUUID();
@@ -357,7 +364,7 @@ class AuthService {
         userId: refreshTokenRecord.userId,
         replacedAt: { lt: new Date(now.getTime() - GRACIA_DE_ROTACION_MS) },
       },
-    }).catch(() => undefined);
+    }).catch(avisarSiFalla('auth.service'));
 
     // Guardar el nuevo refresh token en la BD del tenant
     await tenantDb.refreshToken.create({
@@ -599,57 +606,6 @@ class AuthService {
   }
 
   /**
-   * Verificar si un usuario está en línea
-   */
-  async isUserOnline(userId: string): Promise<boolean> {
-    const sessions = await RedisSession.getUserSessions(userId);
-    return sessions.length > 0;
-  }
-
-  /**
-   * Obtener sesiones activas de un usuario
-   */
-  async getUserActiveSessions(userId: string): Promise<Array<any>> {
-    const sessions = await RedisSession.getUserSessions(userId);
-
-    return sessions.map(session => ({
-      sessionId: session.sessionId,
-      createdAt: session.createdAt,
-      keepSession: session.keepSession,
-      device: session.userAgent
-    }));
-  }
-
-  /**
-   * Limpiar tokens expirados
-   * SEGURIDAD: tenantDb es requerido.
-   */
-  async cleanupExpiredTokens(tenantDb: PrismaClient): Promise<void> {
-    const expiredTokens = await tenantDb.refreshToken.findMany({
-      where: {
-        expiresAt: {
-          lt: new Date()
-        }
-      },
-      select: { id: true }
-    });
-
-    // Eliminar de BD
-    await tenantDb.refreshToken.deleteMany({
-      where: {
-        expiresAt: {
-          lt: new Date()
-        }
-      }
-    });
-
-    // Eliminar de Redis
-    for (const token of expiredTokens) {
-      await RedisSession.deleteSession(token.id);
-    }
-  }
-
-  /**
    * Limpiar un token específico
    */
   private async cleanupExpiredToken(tokenId: string, tenantDb: PrismaClient): Promise<void> {
@@ -658,36 +614,6 @@ class AuthService {
     }).catch(() => { }); // Ignorar si ya no existe
 
     await RedisSession.deleteSession(tokenId);
-  }
-
-  /**
-   * Validar formato de email
-   */
-  private isValidEmail(email: string): boolean {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  }
-
-  /**
-   * Resetear contraseña (para futuras implementaciones)
-   * SEGURIDAD: tenantDb es requerido.
-   */
-  async requestPasswordReset(email: string, tenantDb: PrismaClient): Promise<void> {
-    const user = await tenantDb.user.findUnique({
-      where: { email: email.toLowerCase() },
-      select: { id: true, email: true, firstName: true, isActive: true }
-    });
-
-    if (!user || !user.isActive) {
-      // No revelar si el usuario existe o no por seguridad
-      return;
-    }
-
-    // TODO: Implementar lógica de reset de contraseña
-    // 1. Generar token de reset
-    // 2. Guardar en BD con expiración
-    // 3. Enviar email
-    logger.info(`Password reset requested for user: ${user.email}`);
   }
 }
 

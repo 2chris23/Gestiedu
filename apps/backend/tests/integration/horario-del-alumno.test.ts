@@ -239,15 +239,27 @@ describe('Horario en vivo del alumno', () => {
             });
         expect(creada.status).toBe(201);
 
+        // Un compañero de Ana, de su misma sección: su nota no le llega a ella.
+        const companero = (await createTestUser(prisma, UserRole.STUDENT)).user;
+        await prisma.studentClassroom.create({
+            data: { studentId: companero.id, classroomId: seccion.id, academicYearId: year.id, isActive: true },
+        });
         await request(server.server)
             .post(`/api/sessions/activities/${creada.body.activity.id}/grades`)
             .set(cab(tk.profe))
-            .send({ scores: { [ana.id]: 18, [luis.id]: 5 }, maxScore: 20 })
+            .send({ scores: { [ana.id]: 18, [companero.id]: 5 }, maxScore: 20 })
             .expect(200);
+        // Y a Luis, que es de otra sección, no se le puede poner nota aquí.
+        await request(server.server)
+            .post(`/api/sessions/activities/${creada.body.activity.id}/grades`)
+            .set(cab(tk.profe))
+            .send({ scores: { [luis.id]: 5 }, maxScore: 20 })
+            .expect(400);
 
         const res = await resumen(tk.ana, seccion.id, LUNES);
         const quiz = res.body.overview[materia.id].actividades.find((a: any) => a.title === 'Quiz del lunes');
         expect(quiz.miNota).toBe(18);
+        expect(JSON.stringify(res.body)).not.toContain(companero.id);
         expect(JSON.stringify(res.body)).not.toContain(luis.id);
     }, 60000);
 

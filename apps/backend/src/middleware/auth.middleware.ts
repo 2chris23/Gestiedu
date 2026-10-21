@@ -2,9 +2,7 @@ import { UserRole } from '../utils/prisma-enums';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { verifyAccessToken, extractTokenFromHeader } from '../config/jwt';
-import { hasPermission, Permission, PermissionContext } from '../utils/permissions';
 import { ERROR_MESSAGES } from '../utils/constants';
-import { RequestUser } from '../types/fastify';
 import { RedisCache } from '../config/redis';
 import { createHash } from 'crypto';
 import { logger } from '../utils/logger';
@@ -276,30 +274,6 @@ export function requireRoles(...allowedRoles: UserRole[]) {
   });
 }
 
-/**
- * Middleware para verificar permisos específicos
- */
-export function requirePermission(
-  permission: Permission,
-  contextGetter?: (request: FastifyRequest) => PermissionContext
-) {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
-    if (!request.user) {
-      return reply.status(401).send({
-        error: ERROR_MESSAGES.UNAUTHORIZED
-      });
-    }
-
-    const context = contextGetter ? contextGetter(request) : undefined;
-
-    if (!hasPermission(request.user, permission, context)) {
-      return reply.status(403).send({
-        error: ERROR_MESSAGES.FORBIDDEN,
-        message: `Permiso requerido: ${permission}`
-      });
-    }
-  };
-}
 
 /**
  * Middleware para verificar acceso al instituto (multi-tenancy)
@@ -415,52 +389,7 @@ export const requireStudent = requireRoles(UserRole.STUDENT);
  */
 export const requireTutor = requireRoles(UserRole.TUTOR);
 
-/**
- * Middleware para verificar acceso a un aula específica
- */
-export function requireClassroomAccess(classroomIdParam: string = 'classroomId') {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
-    if (!request.user) {
-      return reply.status(401).send({
-        error: ERROR_MESSAGES.UNAUTHORIZED
-      });
-    }
 
-    const classroomId = (request.params as Record<string, string>)?.[classroomIdParam];
-
-    if (!classroomId) {
-      return reply.status(400).send({
-        error: 'ID de aula requerido'
-      });
-    }
-
-    // Los administradores tienen acceso a todas las aulas de su instituto
-    if (request.user.role === UserRole.ADMIN) {
-      return;
-    }
-
-    // Para otros roles, verificar permisos específicos
-    // En una implementación real, consultarías la base de datos
-    // Por ahora, permitimos el acceso
-
-  };
-}
-
-/**
- * Middleware para logging de acciones de usuario
- */
-export async function logUserAction(
-  request: FastifyRequest,
-  reply: FastifyReply
-) {
-  if (request.user) {
-    const action = `${request.method} ${request.url}`;
-    console.log(`[${new Date().toISOString()}] Usuario ${request.user.userId} (${request.user.role}): ${action}`);
-
-    // Aquí podrías guardar en base de datos para auditoría
-    // await prisma.auditLog.create({ ... });
-  }
-}
 
 /**
  * Middleware de rate limiting por usuario / intentos de login.

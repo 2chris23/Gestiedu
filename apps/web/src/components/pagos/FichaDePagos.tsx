@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, Ban, Check, CheckCircle2, Clock3, Download, FileText, Loader2, Lock, Receipt, Save } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Clock3, Loader2, Lock, Receipt, Save } from 'lucide-react';
 import {
     dinero,
     errorDe,
@@ -13,13 +13,12 @@ import {
     PagoRegistrado,
     PagoReportadoEnFicha,
     subirCaptura,
-    useAnularPago,
     useGuardarPlanDePago,
     useRegistrarPago,
     useReportarPago,
 } from '@/hooks/usePagos';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
-import { descargarComprobante } from '@/lib/comprobante-de-pago';
+import { abrirComprobante } from '@/lib/comprobante-abierto';
 import { cn } from '@/lib/utils';
 
 /**
@@ -58,7 +57,7 @@ export function FichaDePagos({ ficha, editable: puedeEditar, reportar = false }:
         });
 
     return (
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
             <div className="flex flex-wrap items-center gap-3">
                 <span className={cn('rounded-full border px-3 py-1 text-sm font-semibold', estado.clases)}>
                     {estado.texto}
@@ -103,72 +102,68 @@ export function FichaDePagos({ ficha, editable: puedeEditar, reportar = false }:
                             <button
                                 type="button"
                                 onClick={() => setElegidas(new Set(pendientes.filter((c) => c.state === 'VENCIDA').map((c) => c.key)))}
-                                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50"
+                                className="min-h-[44px] rounded-full bg-white px-4 text-sm font-medium text-gray-800 ring-1 ring-gray-200 hover:bg-gray-50"
                             >
                                 Las vencidas
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setElegidas(new Set(pendientes.map((c) => c.key)))}
-                                className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-100"
+                                className="min-h-[44px] rounded-full bg-indigo-50 px-4 text-sm font-medium text-indigo-800 hover:bg-indigo-100"
                             >
                                 Todo el año
                             </button>
                         </div>
                     )}
                 </div>
-                {/* Un calendario de baldosas, una por cuota (2026-10-01): Cristian pidió
-                    los pagos «más como un calendario». Cada baldosa dice su estado con
-                    palabra e icono, no solo con color; al tocar una, se elige para cobrar. */}
-                {eligeCuotas && pendientes.length > 0 && (
-                    <p className="mb-2 text-xs text-gray-600">
-                        {reporta ? '¿Ya pagaste? Toca las cuotas que pagaste para avisar al liceo.' : 'Toca las cuotas que paga para elegirlas.'}
-                    </p>
-                )}
-                <ol className="grid grid-cols-3 gap-2 sm:grid-cols-4" aria-label="Cuotas del ciclo">
+                {/* Las cuotas en un carril de lado (2026-10-14; antes, doce baldosas en
+                    cuatro filas con «Vence …» en cada una). Cada una: el mes, el monto y
+                    su estado con icono y palabra. Al tocar una, se elige para cobrar. */}
+                {reporta && pendientes.length > 0 && <p className="mb-2 text-sm text-gray-600">Toca lo que ya pagaste.</p>}
+                <ol className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2 pt-1 [scrollbar-width:thin]" aria-label="Cuotas del ciclo">
                     {ficha.installments.map((c) => {
                         const e = ESTADO_DE_CUOTA[c.state];
                         const sePuede = eligeCuotas && aCent(c.pending) > 0 && c.state !== 'EXONERADA';
                         const elegida = elegidas.has(c.key);
                         const Icono = c.state === 'PAGADA' ? CheckCircle2 : c.state === 'VENCIDA' ? AlertTriangle : c.state === 'EXONERADA' ? Check : Clock3;
                         const abono = c.state === 'ABONADA' || (c.state === 'VENCIDA' && aCent(c.paid) > 0);
+                        const corto = /^\p{L}+ \d{4}$/u.test(c.label) ? `${c.label.slice(0, 3)} ${c.label.slice(-2)}` : c.label;
                         const contenido = (
                             <>
                                 <span className="flex items-start justify-between gap-1">
-                                    <span className="min-w-0 break-words text-sm font-bold leading-tight text-gray-900">{c.label}</span>
+                                    <span className="min-w-0 break-words text-sm font-bold leading-tight text-gray-900">{corto}</span>
                                     {elegida && <Check className="h-4 w-4 shrink-0 text-indigo-700" aria-hidden />}
                                 </span>
-                                <span className="text-sm font-semibold tabular-nums text-gray-900">
-                                    {dinero(c.amount, base)}
-                                    {c.fullAmount && <span className="ml-1 text-xs font-normal text-gray-500 line-through">{dinero(c.fullAmount, base)}</span>}
-                                </span>
-                                {c.lateFee && <span className="text-xs font-semibold text-red-800">Incluye mora de {dinero(c.lateFee, base)}</span>}
-                                <span className={cn('inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold', e.clases)}>
+                                <span className="text-[15px] font-semibold tabular-nums text-gray-900">{dinero(c.amount, base)}</span>
+                                <span className={cn('inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold', e.clases)}>
                                     <Icono className="h-3.5 w-3.5" aria-hidden />
                                     {e.texto}
                                 </span>
-                                <span className="text-xs text-gray-600">{abono ? `Abonó ${dinero(c.paid, base)}` : `Vence ${fechaCorta(c.dueDate)}`}</span>
+                                {abono && c.state !== 'PAGADA' && <span className="text-xs text-gray-600">Abonó {dinero(c.paid, base)}</span>}
+                                {c.lateFee && <span className="text-xs font-semibold text-red-800">+ mora {dinero(c.lateFee, base)}</span>}
                             </>
                         );
                         const clases = cn(
-                            'flex h-full min-h-[44px] w-full flex-col gap-1 rounded-xl border p-2 text-left',
-                            elegida ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200' : 'border-gray-200 bg-white',
+                            'flex h-full min-h-[104px] w-[112px] flex-col gap-1.5 rounded-2xl p-2.5 text-left',
+                            elegida ? 'bg-indigo-50 ring-2 ring-indigo-500' : 'bg-white ring-1 ring-gray-200',
                             sePuede && !elegida && 'hover:bg-gray-50'
                         );
                         return (
-                            <li key={c.key}>
+                            <li key={c.key} className="shrink-0">
                                 {sePuede ? (
                                     <button
                                         type="button"
                                         onClick={() => alternar(c.key)}
                                         aria-pressed={elegida}
-                                        aria-label={`${c.label}, ${e.texto}, ${dinero(c.pending, base)} por pagar. ${elegida ? 'Elegida' : 'Tocar para elegirla'}`}
+                                        aria-label={`${c.label}, ${e.texto}, vence ${fechaCorta(c.dueDate)}, ${dinero(c.pending, base)} por pagar. ${elegida ? 'Elegida' : 'Tocar para elegirla'}`}
                                         className={clases}
                                     >
                                         {contenido}
                                     </button>
                                 ) : (
-                                    <div className={cn(clases, 'bg-gray-50/60')}>{contenido}</div>
+                                    <div className={cn(clases, 'bg-gray-50')} title={`Vence ${fechaCorta(c.dueDate)}`}>
+                                        {contenido}
+                                    </div>
                                 )}
                             </li>
                         );
@@ -191,7 +186,7 @@ export function FichaDePagos({ ficha, editable: puedeEditar, reportar = false }:
                 {ficha.payments.length === 0 ? (
                     <p className="text-sm text-gray-600">Todavía no hay pagos registrados.</p>
                 ) : (
-                    <ul className="space-y-2">
+                    <ul className="divide-y divide-gray-100 overflow-hidden rounded-[22px] bg-white ring-1 ring-gray-200">
                         {ficha.payments.map((p) => (
                             <PagoEnHistorial key={p.id} pago={p} base={base} editable={editable} />
                         ))}
@@ -262,7 +257,7 @@ function RegistrarPago({ ficha, elegidas, alTerminar, reportar = false }: { fich
                 paidAt: fecha,
             });
             toast.success(`Pago registrado · comprobante Nº ${String(pago.receiptNumber).padStart(6, '0')}`, {
-                action: { label: 'Descargar', onClick: () => descargarComprobante(pago.id, 'png') },
+                action: { label: 'Ver', onClick: () => abrirComprobante({ tipo: 'cobro', id: pago.id, editable: true }) },
             });
             alTerminar();
         } catch (err) {
@@ -371,86 +366,38 @@ function RegistrarPago({ ficha, elegidas, alTerminar, reportar = false }: { fich
     );
 }
 
-function PagoEnHistorial({ pago, base, editable }: { pago: PagoRegistrado; base: Moneda; editable: boolean }) {
-    const anular = useAnularPago();
-    const [anulando, setAnulando] = React.useState(false);
-    const [motivo, setMotivo] = React.useState('');
-    const [bajando, setBajando] = React.useState<null | 'png' | 'pdf'>(null);
+/** Un pago, como una fila de Rial; al tocarlo, su comprobante en la hoja (como un Pago Móvil). */
+export function PagoEnHistorial({ pago, editable }: { pago: PagoRegistrado; base: Moneda; editable: boolean }) {
     const anulado = Boolean(pago.annulledAt);
-
-    const bajar = async (f: 'png' | 'pdf') => {
-        setBajando(f);
-        try {
-            await descargarComprobante(pago.id, f);
-        } catch (e) {
-            toast.error(errorDe(e, 'No se pudo generar el comprobante'));
-        } finally {
-            setBajando(null);
-        }
-    };
-
-    const confirmarAnulacion = async (e: React.FormEvent) => {
-        e.preventDefault();
-        try {
-            await anular.mutateAsync({ paymentId: pago.id, reason: motivo });
-            toast.success('Pago anulado');
-            setAnulando(false);
-        } catch (err) {
-            toast.error(errorDe(err, 'No se pudo anular'));
-        }
-    };
-
+    const concepto = pago.allocations.map((a) => a.label).join(', ');
     return (
-        <li className={cn('rounded-xl border px-3 py-2.5', anulado ? 'border-gray-200 bg-gray-50' : 'border-gray-200 bg-white')}>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <Receipt size={16} className="text-gray-500" aria-hidden="true" />
-                <span className={cn('text-sm font-semibold', anulado ? 'text-gray-500 line-through' : 'text-gray-900')}>
-                    {dinero(pago.amount, pago.currency)}
-                    {pago.currency !== base && <span className="font-normal text-gray-600"> ({dinero(pago.amountBase, base)})</span>}
+        <li>
+            <button
+                type="button"
+                onClick={() => abrirComprobante({ tipo: 'cobro', id: pago.id, editable })}
+                aria-label={`Comprobante Nº ${String(pago.receiptNumber).padStart(6, '0')}`}
+                className={cn('flex min-h-[64px] w-full items-center gap-3 px-4 py-2.5 text-left active:bg-gray-100', anulado && 'opacity-70')}
+            >
+                <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-full', anulado ? 'bg-gray-100 text-gray-500' : 'bg-emerald-50 text-emerald-700')}>
+                    <Receipt className="h-5 w-5" aria-hidden />
                 </span>
-                <span className="text-sm text-gray-700">
-                    {fechaCorta(pago.paidAt)} · {pago.method}
-                    {pago.reference ? ` · Ref. ${pago.reference}` : ''}
+                <span className="min-w-0 flex-1">
+                    <span className={cn('block text-[15px] font-semibold tabular-nums', anulado ? 'text-gray-500 line-through' : 'text-gray-900')}>
+                        {dinero(pago.amount, pago.currency)} <span className="font-normal text-gray-600">· {pago.method}</span>
+                    </span>
+                    <span className="block truncate text-sm text-gray-600">
+                        {fechaCorta(pago.paidAt)}{concepto ? ` · ${concepto}` : ''}
+                    </span>
                 </span>
-                <span className="text-xs text-gray-600">Nº {String(pago.receiptNumber).padStart(6, '0')}</span>
-                {anulado && <span className="rounded-md bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-800">Anulado: {pago.annulReason}</span>}
-                <span className="ml-auto flex gap-1">
-                    <button type="button" onClick={() => bajar('png')} disabled={!!bajando} aria-label="Comprobante en imagen" title="Comprobante en imagen" className="rounded-lg p-2 text-gray-700 hover:bg-gray-100">
-                        {bajando === 'png' ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                    </button>
-                    <button type="button" onClick={() => bajar('pdf')} disabled={!!bajando} aria-label="Comprobante en PDF" title="Comprobante en PDF" className="rounded-lg p-2 text-gray-700 hover:bg-gray-100">
-                        {bajando === 'pdf' ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
-                    </button>
-                    {editable && !anulado && (
-                        <button type="button" onClick={() => setAnulando((v) => !v)} aria-label="Anular pago" title="Anular pago" className="rounded-lg p-2 text-red-700 hover:bg-red-50">
-                            <Ban size={16} />
-                        </button>
-                    )}
+                <span className="shrink-0 text-right text-xs text-gray-500">
+                    {anulado ? <span className="font-semibold text-red-700">Anulado</span> : `Nº ${String(pago.receiptNumber).padStart(6, '0')}`}
                 </span>
-            </div>
-            <p className="mt-1 text-xs text-gray-600">{pago.allocations.map((a) => `${a.label} (${dinero(a.amount, base)})`).join(' · ')}</p>
-            {anulando && (
-                <form onSubmit={confirmarAnulacion} className="mt-2 flex flex-wrap gap-2">
-                    <input
-                        autoFocus
-                        required
-                        minLength={3}
-                        maxLength={200}
-                        value={motivo}
-                        onChange={(e) => setMotivo(e.target.value)}
-                        placeholder="Motivo de la anulación"
-                        className={cn(campo, 'mt-0 flex-1')}
-                    />
-                    <button type="submit" disabled={anular.isPending} className="rounded-lg bg-red-700 px-3 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-60">
-                        Anular
-                    </button>
-                </form>
-            )}
+            </button>
         </li>
     );
 }
 
-function PlanDelAlumno({ ficha }: { ficha: Ficha }) {
+export function PlanDelAlumno({ ficha }: { ficha: Ficha }) {
     const guardar = useGuardarPlanDePago(ficha.student.id, ficha.academicYear.id);
     const [dia, setDia] = React.useState<string>(ficha.plan.dueDay?.toString() ?? '');
     const [exento, setExento] = React.useState(ficha.plan.exempt);
@@ -529,7 +476,7 @@ const ESTADO_DEL_REPORTE: Record<PagoReportadoEnFicha['estado'], { texto: string
 };
 
 /** Lo que el representante reportó y cómo va. Lo ven él y el admin. */
-function PagosReportados({ reportes }: { reportes: PagoReportadoEnFicha[] }) {
+export function PagosReportados({ reportes }: { reportes: PagoReportadoEnFicha[] }) {
     return (
         <section>
             <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-gray-700">Pagos reportados</h3>

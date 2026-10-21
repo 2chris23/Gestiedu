@@ -42,6 +42,12 @@ const PUERTAS_PUBLICAS: Array<{ patron: RegExp; porque: string }> = [
     { patron: /^\/api\/institutes\/by-domain/, porque: 'idem' },
     { patron: /^\/api\/institutes\/resolve/, porque: 'idem' },
     {
+        patron: /^\/api\/errores$/,
+        porque:
+            'la pantalla manda su fallo también sin sesión (el login también se rompe); solo RECIBE, ' +
+            'no entrega nada, sin datos personales y con cupo propio (salud.routes.ts, SALUD-06)',
+    },
+    {
         patron: /^\/api\/institutes\/current\/config$/,
         porque:
             'pinta la pantalla de entrar (nombre, logo, colores) antes de que haya sesión; ' +

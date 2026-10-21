@@ -1,7 +1,71 @@
 import { PrismaClient } from '@prisma/client';
-import { gradesService } from './grades.service';
-import { fechaDeLaActividad, lapsoDeLaFecha, LapsoConFechas } from '../utils/lapso-de-la-actividad';
-import { esCualitativa } from './apreciaciones.service';
+import { cifrasOficialesDeVariasSecciones, CifrasOficiales, notaOficial, promedioOficial } from './cifras-oficiales.service';
+
+/**
+ * EL NIVEL 2 DE TODA UNA SECCIÓN, EN BLOQUE — CON LA CUENTA OFICIAL
+ *
+ * Desde el 19-oct-2026 cada nivel de arriba sale de las CIFRAS OFICIALES de
+ * cada alumno (`cifras-oficiales.service`: la cuenta de la boleta, con el
+ * redondeo del liceo). Antes se promediaba el nivel 2 sin redondear y el
+ * promedio de una sección en una pantalla no era la media de lo que cada
+ * alumno veía en su boleta (`scripts/barrido-de-cifras.ts`).
+ *
+ * studentId → subjectId → nota oficial (la del lapso pedido, o la que cuenta
+ * en el año). Quien no tiene nota en una materia no sale en el mapa.
+ */
+export type PromediosDeLaSeccion = Map<string, Map<string, number>>;
+
+async function oficialesDeLaSeccion(prisma: PrismaClient, classroomId: string, soloMaterias?: string[]): Promise<Map<string, CifrasOficiales>> {
+    return (await oficialesDeVariasSecciones(prisma, [classroomId], soloMaterias)).get(classroomId) ?? new Map();
+}
+
+/** Las de varias secciones con las mismas consultas (`cifrasOficialesDeVariasSecciones`). */
+async function oficialesDeVariasSecciones(prisma: PrismaClient, classroomIds: string[], soloMaterias?: string[]): Promise<Map<string, Map<string, CifrasOficiales>>> {
+    if (classroomIds.length === 0) return new Map();
+    const enrollments = await prisma.studentClassroom.findMany({
+        where: { classroomId: { in: classroomIds }, isActive: true },
+        select: { studentId: true, classroomId: true },
+    });
+    const alumnosDe = new Map<string, string[]>(classroomIds.map((id) => [id, []]));
+    for (const e of enrollments) alumnosDe.get(e.classroomId)?.push(e.studentId);
+    return cifrasOficialesDeVariasSecciones(prisma, undefined, classroomIds.map((id) => ({ classroomId: id, studentIds: alumnosDe.get(id)! })), soloMaterias);
+}
+
+function aPromedios(oficiales: Map<string, CifrasOficiales>, periodId?: string, soloMaterias?: string[]): PromediosDeLaSeccion {
+    const salida: PromediosDeLaSeccion = new Map();
+    for (const [sid, c] of oficiales) {
+        const suyas = new Map<string, number>();
+        for (const subjectId of c.materias.keys()) {
+            if (soloMaterias && !soloMaterias.includes(subjectId)) continue;
+            const n = notaOficial(c, subjectId, periodId);
+            if (n !== null) suyas.set(subjectId, n);
+        }
+        salida.set(sid, suyas);
+    }
+    return salida;
+}
+
+export async function promediosDeLaSeccion(
+    prisma: PrismaClient,
+    classroomId: string,
+    periodId?: string,
+    soloMaterias?: string[]
+): Promise<PromediosDeLaSeccion> {
+    return aPromedios(await oficialesDeLaSeccion(prisma, classroomId, soloMaterias), periodId, soloMaterias);
+}
+
+/** `promediosDeLaSeccion` de varias secciones a la vez: classroomId → sus promedios. */
+export async function promediosDeVariasSecciones(
+    prisma: PrismaClient,
+    classroomIds: string[],
+    periodId?: string,
+    soloMaterias?: string[]
+): Promise<Map<string, PromediosDeLaSeccion>> {
+    const todas = await oficialesDeVariasSecciones(prisma, classroomIds, soloMaterias);
+    return new Map(classroomIds.map((id) => [id, aPromedios(todas.get(id) ?? new Map(), periodId, soloMaterias)]));
+}
+
+const media2 = (xs: number[]) => (xs.length === 0 ? 0 : Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100);
 
 /**
  * =====================================================================
@@ -41,87 +105,6 @@ export interface AggregateResult {
     average: number;
     hasData: boolean;
 }
-
-/**
- * Helper: estudiantes de la sección con AL MENOS UNA nota real en la materia
- * (Grade con score, o nota en ClassActivity.scores — incluyendo ad-hoc).
- * Con `periodId`: solo notas de ese lapso (grades del período, o actividades
- * cuya fila del plan pertenece a ese lapso; las ad-hoc solo en el global).
- */
-export async function studentsWithNoteInSubject(
-    prisma: PrismaClient,
-    classroomId: string,
-    subjectId: string,
-    periodId?: string
-): Promise<Set<string>> {
-    // Una materia con apreciación no tiene notas que promediar (CUALI-02).
-    if (await esCualitativa(prisma, subjectId)) return new Set<string>();
-
-    const enrollments = await prisma.studentClassroom.findMany({
-        where: { classroomId, isActive: true },
-        select: { studentId: true },
-    });
-    const studentIds = enrollments.map(e => e.studentId);
-    const withData = new Set<string>();
-
-    if (studentIds.length === 0) return withData;
-
-    const gradesWhere: any = { studentId: { in: studentIds }, subjectId };
-    if (periodId) gradesWhere.periodId = periodId;
-
-    const [grades, classActivities] = await Promise.all([
-        prisma.grade.findMany({ where: gradesWhere, select: { studentId: true, score: true } }),
-        prisma.classActivity.findMany({
-            where: { classroomId, subjectId, scores: { not: undefined } },
-            select: { scores: true, planRowId: true, dueDate: true, createdAt: true, classSession: { select: { date: true } } },
-        }),
-    ]);
-    grades.forEach(g => { if (g.score !== null) withData.add(g.studentId); });
-
-    if (periodId) {
-        // Filas del plan de ese lapso (para vincular actividades por planRow).
-        const period = await prisma.period.findUnique({ where: { id: periodId }, select: { name: true, academicYearId: true } });
-        const lapso = period ? segmentLapso(period.name) : '1';
-        const [rows, lapsosDelCiclo] = await Promise.all([
-            prisma.evaluationPlanRow.findMany({
-                where: { subjectId, lapso },
-                select: { id: true },
-            }),
-            period
-                ? prisma.period.findMany({ where: { academicYearId: period.academicYearId }, select: { id: true, startDate: true, endDate: true } })
-                : Promise.resolve([] as LapsoConFechas[]),
-        ]);
-        const rowIds = new Set(rows.map(r => r.id));
-        classActivities.forEach(ca => {
-            if (ca.planRowId) {
-                if (rowIds.has(ca.planRowId)) pushStudentScores(ca, studentIds, withData);
-                return;
-            }
-            // Las sueltas cuentan en el lapso de su fecha, igual que en el
-            // promedio del alumno (LAP-01…03). Antes solo en el global.
-            const suLapso = lapsoDeLaFecha(
-                fechaDeLaActividad({ fechaDeLaClase: ca.classSession?.date, dueDate: ca.dueDate, createdAt: ca.createdAt }),
-                lapsosDelCiclo
-            );
-            if (suLapso === null || suLapso === periodId) pushStudentScores(ca, studentIds, withData);
-        });
-    } else {
-        classActivities.forEach(ca => pushStudentScores(ca, studentIds, withData));
-    }
-    return withData;
-}
-
-/** Extrae los estudiante con nota de un ClassActivity.scores JSON. */
-function pushStudentScores(ca: any, studentIds: string[], withData: Set<string>): void {
-    let parsed: Record<string, number | null> = {};
-    try {
-        parsed = typeof ca.scores === 'string' ? JSON.parse(ca.scores) : (ca.scores || {});
-    } catch { /* ignorar */ }
-    Object.keys(parsed).forEach(sid => {
-        if (parsed[sid] !== null && parsed[sid] !== undefined && studentIds.includes(sid)) withData.add(sid);
-    });
-}
-
 /** Mapea el nombre del periodo al lapso del plan (mismo criterio que gradesService). */
 export function segmentLapso(periodName?: string | null): string {
     if (!periodName) return '1';
@@ -140,93 +123,38 @@ export async function subjectSectionAverage(
     prisma: PrismaClient,
     classroomId: string,
     subjectId: string,
-    periodId?: string
+    periodId?: string,
+    promedios?: PromediosDeLaSeccion
 ): Promise<AggregateResult> {
-    const withData = await studentsWithNoteInSubject(prisma, classroomId, subjectId, periodId);
-    if (withData.size === 0) return { average: 0, hasData: false };
-
-    let sum = 0;
-    for (const studentId of withData) {
-        sum += await gradesService.calculateWeightedSubjectAverage(prisma, studentId, subjectId, periodId);
-    }
-    return { average: Math.round((sum / withData.size) * 100) / 100, hasData: true };
+    const n2 = promedios ?? (await promediosDeLaSeccion(prisma, classroomId, periodId, [subjectId]));
+    const notas = [...n2.values()].map((m) => m.get(subjectId)).filter((n): n is number => typeof n === 'number');
+    if (notas.length === 0) return { average: 0, hasData: false };
+    return { average: media2(notas), hasData: true };
 }
 
 export interface SectionAverageResult extends AggregateResult {
     subjectAverages: Array<{ subjectId: string; subjectName: string; average: number }>;
 }
-
 /**
- * Promedios NIVEL 2 por estudiante de una sección (cada estudiante: promedio
- * de las materias donde tiene al menos una nota). Se usa para min/max/riesgo
- * en vistas de aula/año. Estudiantes sin notas se excluyen.
- */
-export async function sectionStudentAverages(
-    prisma: PrismaClient,
-    classroomId: string,
-    periodId?: string
-): Promise<number[]> {
-    const enrollments = await prisma.studentClassroom.findMany({
-        where: { classroomId, isActive: true },
-        select: { studentId: true },
-    });
-    const studentIds = enrollments.map(e => e.studentId);
-
-    const classroomSubjects = await prisma.classroomSubject.findMany({
-        where: { classroomId },
-        select: { subjectId: true },
-    });
-
-    const out: number[] = [];
-    for (const studentId of studentIds) {
-        let sum = 0;
-        let cnt = 0;
-        for (const cs of classroomSubjects) {
-            const withData = await studentsWithNoteInSubject(prisma, classroomId, cs.subjectId, periodId);
-            if (withData.has(studentId)) {
-                sum += await gradesService.calculateWeightedSubjectAverage(prisma, studentId, cs.subjectId, periodId);
-                cnt++;
-            }
-        }
-        if (cnt > 0) out.push(Math.round((sum / cnt) * 100) / 100);
-    }
-    return out;
-}
-
-/**
- * Nivel 4 — Promedio de la SECCIÓN (aula), con filtro opcional de lapso.
- * promedio de los Nivel 3 de las materias de la sección que tienen al menos
- * un estudiante calificado. Una materia sin notas NI AFECTA el promedio.
+ * Nivel 4 — Promedio de la SECCIÓN: la media del promedio oficial de sus
+ * alumnos con notas (MAPA-08: cuadra con el de sus alumnos). Las materias, su
+ * nivel 3 con las mismas cifras.
  */
 export async function sectionAverage(
     prisma: PrismaClient,
     classroomId: string,
     periodId?: string
 ): Promise<SectionAverageResult> {
-    const classroomSubjects = await prisma.classroomSubject.findMany({
-        where: { classroomId },
-        include: {
-            subject: { select: { id: true, name: true } },
-        },
+    const [classroomSubjects, oficiales] = await Promise.all([
+        prisma.classroomSubject.findMany({ where: { classroomId }, include: { subject: { select: { id: true, name: true } } } }),
+        oficialesDeLaSeccion(prisma, classroomId),
+    ]);
+    const deLosAlumnos = [...oficiales.values()].map((c) => promedioOficial(c, periodId)).filter((n): n is number => n !== null);
+    const subjectAverages = classroomSubjects.map((cs) => {
+        const notas = [...oficiales.values()].map((c) => notaOficial(c, cs.subjectId, periodId)).filter((n): n is number => n !== null);
+        return { subjectId: cs.subjectId, subjectName: cs.subject.name, average: media2(notas) };
     });
-
-    let sum = 0;
-    let cnt = 0;
-    const subjectAverages: Array<{ subjectId: string; subjectName: string; average: number }> = [];
-    for (const cs of classroomSubjects) {
-        const n3 = await subjectSectionAverage(prisma, classroomId, cs.subjectId, periodId);
-        if (n3.hasData) {
-            sum += n3.average;
-            cnt++;
-        }
-        subjectAverages.push({ subjectId: cs.subjectId, subjectName: cs.subject.name, average: n3.average });
-    }
-
-    return {
-        average: cnt > 0 ? Math.round((sum / cnt) * 100) / 100 : 0,
-        hasData: cnt > 0,
-        subjectAverages,
-    };
+    return { average: media2(deLosAlumnos), hasData: deLosAlumnos.length > 0, subjectAverages };
 }
 
 export interface YearGradeAverageResult extends AggregateResult {
@@ -243,28 +171,29 @@ export async function yearGradeAverage(
     gradeLevel: number,
     periodId?: string
 ): Promise<YearGradeAverageResult> {
-    const sections = await prisma.classroom.findMany({
-        where: { academicYearId, grade: gradeLevel },
-        select: { id: true, name: true },
-    });
+    return (await promediosDelAno(prisma, academicYearId, periodId)).get(gradeLevel) ?? { average: 0, hasData: false, sectionAverages: [] };
+}
 
-    let sum = 0;
-    let cnt = 0;
-    const sectionAverages: Array<{ sectionId: string; sectionName: string; average: number }> = [];
+/** Cada grado del año con sus secciones, de una sola pasada (las mismas consultas para todo el año). */
+async function promediosDelAno(prisma: PrismaClient, academicYearId: string, periodId?: string): Promise<Map<number, YearGradeAverageResult>> {
+    const sections = await prisma.classroom.findMany({ where: { academicYearId }, select: { id: true, name: true, grade: true } });
+    const todas = await oficialesDeVariasSecciones(prisma, sections.map((s) => s.id));
+    const salida = new Map<number, YearGradeAverageResult>();
     for (const section of sections) {
-        const n4 = await sectionAverage(prisma, section.id, periodId);
-        if (n4.hasData) {
-            sum += n4.average;
-            cnt++;
-        }
-        sectionAverages.push({ sectionId: section.id, sectionName: section.name, average: n4.average });
+        const deLosAlumnos = [...(todas.get(section.id) ?? new Map()).values()]
+            .map((c) => promedioOficial(c, periodId))
+            .filter((n): n is number => n !== null);
+        const g = salida.get(section.grade) ?? { average: 0, hasData: false, sectionAverages: [] };
+        g.sectionAverages.push({ sectionId: section.id, sectionName: section.name, average: media2(deLosAlumnos), conDatos: deLosAlumnos.length > 0 } as any);
+        salida.set(section.grade, g);
     }
-
-    return {
-        average: cnt > 0 ? Math.round((sum / cnt) * 100) / 100 : 0,
-        hasData: cnt > 0,
-        sectionAverages,
-    };
+    for (const g of salida.values()) {
+        const conDatos = g.sectionAverages.filter((x: any) => x.conDatos).map((x) => x.average);
+        g.average = media2(conDatos);
+        g.hasData = conDatos.length > 0;
+        for (const x of g.sectionAverages as any[]) delete x.conDatos;
+    }
+    return salida;
 }
 
 export interface CycleAverageResult extends AggregateResult {
@@ -280,96 +209,12 @@ export async function cycleAverage(
     academicYearId: string,
     periodId?: string
 ): Promise<CycleAverageResult> {
-    const gradeLevels = await prisma.classroom.findMany({
-        where: { academicYearId },
-        select: { grade: true },
-        distinct: ['grade'],
-    });
-
-    let sum = 0;
-    let cnt = 0;
-    const gradeAverages: Array<{ gradeLevel: number; average: number }> = [];
-    for (const { grade } of gradeLevels) {
-        const n5 = await yearGradeAverage(prisma, academicYearId, grade, periodId);
-        if (n5.hasData) {
-            sum += n5.average;
-            cnt++;
-        }
-        gradeAverages.push({ gradeLevel: grade, average: n5.average });
-    }
-
+    const porGrado = await promediosDelAno(prisma, academicYearId, periodId);
+    const grados = [...porGrado.entries()].sort((a, b) => a[0] - b[0]);
+    const conDatos = grados.filter(([, g]) => g.hasData).map(([, g]) => g.average);
     return {
-        average: cnt > 0 ? Math.round((sum / cnt) * 100) / 100 : 0,
-        hasData: cnt > 0,
-        gradeAverages,
+        average: media2(conDatos),
+        hasData: conDatos.length > 0,
+        gradeAverages: grados.map(([gradeLevel, g]) => ({ gradeLevel, average: g.average })),
     };
-}
-
-export interface YearGradeStudentDetails {
-    /** Promedio (Nivel 2 por estudiante → media de materias con nota). */
-    studentAverages: number[];
-    /** Promedio del año (Nivel 5). */
-    average: number;
-}
-
-/**
- * Detalle por estudiante de un año/grade: cada estudiante con datos aporta su
- * promedio de materias (cada materia = Nivel 2). Se usa para min/max/riesgo
- * de los dashboards por año. Estudiantes sin ninguna nota se excluyen.
- */
-export async function yearGradeStudentDetails(
-    prisma: PrismaClient,
-    academicYearId: string,
-    gradeLevel: number,
-    periodId?: string
-): Promise<YearGradeStudentDetails> {
-    const sections = await prisma.classroom.findMany({
-        where: { academicYearId, grade: gradeLevel },
-        select: { id: true },
-    });
-    const sectionIds = sections.map(s => s.id);
-
-    const enrollments = await prisma.studentClassroom.findMany({
-        where: { classroomId: { in: sectionIds }, isActive: true },
-        select: { studentId: true, classroomId: true },
-    });
-
-    const studentClassroom = new Map<string, string>();
-    enrollments.forEach(e => studentClassroom.set(e.studentId, e.classroomId));
-
-    const classroomSubjects = await prisma.classroomSubject.findMany({
-        where: { classroomId: { in: sectionIds } },
-        select: { classroomId: true, subjectId: true },
-    });
-    const subjectsByClassroom = new Map<string, string[]>();
-    classroomSubjects.forEach(cs => {
-        const list = subjectsByClassroom.get(cs.classroomId) || [];
-        list.push(cs.subjectId);
-        subjectsByClassroom.set(cs.classroomId, list);
-    });
-
-    const studentAverages: number[] = [];
-    for (const [studentId, classroomId] of studentClassroom.entries()) {
-        const subjectIds = subjectsByClassroom.get(classroomId) || [];
-        let sum = 0;
-        let cnt = 0;
-        for (const subjectId of subjectIds) {
-            const n3 = await subjectSectionAverage(prisma, classroomId, subjectId, periodId);
-            if (n3.hasData) {
-                // Nivel 2 del estudiante en la materia — solo si ÉL tiene nota
-                const avg2 = await gradesService.calculateWeightedSubjectAverage(prisma, studentId, subjectId, periodId);
-                if (avg2 > 0) {
-                    sum += avg2;
-                    cnt++;
-                }
-            }
-        }
-        if (cnt > 0) studentAverages.push(Math.round((sum / cnt) * 100) / 100);
-    }
-
-    const avg = studentAverages.length > 0
-        ? Math.round((studentAverages.reduce((a, b) => a + b, 0) / studentAverages.length) * 100) / 100
-        : 0;
-
-    return { studentAverages, average: avg };
 }

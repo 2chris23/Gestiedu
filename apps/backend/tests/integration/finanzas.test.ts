@@ -101,6 +101,10 @@ describe('Finanzas del liceo', () => {
         expect((await post(tk.admin, `/api/finanzas/fondos/${don.body.fondo.id}/anular`, { motivo: 'Otra vez' })).status).toBe(404);
         expect(await disponibles()).toBe(1000);
         expect(await prisma.fondoDelLiceo.count()).toBe(2); // sigue ahí, anulada
+        // La lista de fondos los enseña los dos; el anulado, marcado.
+        const fondos = (await get(tk.admin, '/api/finanzas/fondos')).body.fondos;
+        expect(fondos.map((f: any) => [f.concepto, Boolean(f.anuladoEn)]).sort()).toEqual([['DONACION', true], ['SALDO_INICIAL', false]]);
+        expect((await get(tk.profe1, '/api/finanzas/fondos')).status).toBe(403);
         const futuro = await post(tk.admin, '/api/finanzas/fondos', { concepto: 'OTRO', fecha: sumarDias(HOY, 3), monto: 5 });
         expect(futuro.body.code).toBe('FECHA_FUTURA');
     }, 60000);
@@ -126,6 +130,52 @@ describe('Finanzas del liceo', () => {
         expect(lista.body.gastos[0]).toMatchObject({ concepto: 'Tablero de básquet', categoria: 'Compras', comprobanteId: sub.body.comprobante.id });
         const resumen = (await get(tk.admin, '/api/finanzas/resumen')).body;
         expect(resumen.gastos.porCategoria).toEqual([{ categoria: 'Compras', monto: '180.00' }]);
+    }, 60000);
+
+    it('FIN-05: las categorías del liceo, anular un gasto, el mes en días y la tasa del día', async () => {
+        // Categorías: se guardan sin repetir; vacías, no.
+        expect((await put(tk.admin, '/api/finanzas/categorias', { categorias: [] })).body.code).toBe('CATEGORIAS_INVALIDAS');
+        expect((await put(tk.profe1, '/api/finanzas/categorias', { categorias: ['Compras'] })).status).toBe(403);
+        const cat = await put(tk.admin, '/api/finanzas/categorias', { categorias: ['Compras', 'Compras', 'Servicios'] });
+        expect([cat.status, cat.body.categorias]).toEqual([200, ['Compras', 'Servicios']]);
+        expect((await post(tk.admin, '/api/finanzas/gastos', { concepto: 'Pintura', categoria: 'Mantenimiento', fecha: HOY, monto: 1 })).body.code).toBe('CATEGORIA_INVALIDA');
+
+        // Un gasto anulado vuelve a los fondos y sigue en la base.
+        const antes = await disponibles();
+        const g = await post(tk.admin, '/api/finanzas/gastos', { concepto: 'Internet', categoria: 'Servicios', fecha: HOY, monto: 25 });
+        expect(g.status).toBe(201);
+        expect(await disponibles()).toBe(antes - 25);
+        const id = (await get(tk.admin, '/api/finanzas/gastos')).body.gastos.find((x: any) => x.concepto === 'Internet').id;
+        expect((await post(tk.admin, `/api/finanzas/gastos/${id}/anular`, { motivo: 'x' })).status).toBe(400);
+        expect((await post(tk.admin, `/api/finanzas/gastos/${id}/anular`, { motivo: 'Era de otro mes' })).status).toBe(200);
+        expect((await post(tk.admin, `/api/finanzas/gastos/${id}/anular`, { motivo: 'Otra vez' })).status).toBe(404);
+        expect(await disponibles()).toBe(antes);
+        expect(await prisma.gasto.count({ where: { id } })).toBe(1);
+
+        // El mes en días: el gasto de 180 de hoy está; el anulado, no.
+        const mes = HOY.slice(0, 7);
+        expect((await get(tk.admin, '/api/finanzas/mes?mes=2026-13')).body.code).toBe('MES_INVALIDO');
+        const m = await get(tk.admin, `/api/finanzas/mes?mes=${mes}`);
+        expect(m.status).toBe(200);
+        const hoy = m.body.days.find((d: any) => d.date === HOY);
+        expect(hoy.gastos.map((x: any) => x.concepto)).toEqual(['Tablero de básquet']);
+        expect((await get(tk.profe1, `/api/finanzas/mes?mes=${mes}`)).status).toBe(403);
+
+        // El calendario de cobros del mes.
+        const pm = await get(tk.admin, `/api/payments/month?month=${mes}`);
+        expect([pm.status, pm.body.month]).toEqual([200, mes]);
+        expect((await get(tk.admin, '/api/payments/month?month=x')).body.code).toBe('MES_INVALIDO');
+
+        // La tasa: la primera fuente que contesta bien gana (sin salir a internet).
+        const real = global.fetch;
+        global.fetch = (async () => new Response(JSON.stringify({ promedio: 123.45, fechaActualizacion: `${HOY}T10:00:00Z` }), { status: 200, headers: { 'content-type': 'application/json' } })) as any;
+        try {
+            const t = await get(tk.admin, '/api/finanzas/tasa');
+            expect(t.status).toBe(200);
+            expect(t.body.tasa).toMatchObject({ usd: 123.45 });
+        } finally {
+            global.fetch = real;
+        }
     }, 60000);
 
     let vigilante: string;

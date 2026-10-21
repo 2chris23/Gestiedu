@@ -12,8 +12,13 @@
  */
 
 import path from 'path';
-import { platformPrisma, disconnectAll } from '../config/database';
+import { PrismaClient } from '@prisma/client';
+import { platformPrisma, disconnectAll, invalidateTenantCache } from '../config/database';
+import { conLiceo } from '../config/ambito-del-liceo';
+import { esquemaPropio, fijarElEsquema } from '../config/esquema-del-liceo';
+import { connectRedis, disconnectRedis, redis, RedisCache } from '../config/redis';
 import { buildTenantDatabaseUrl } from '../config/tenant-db-url';
+import { apuntarLaRestauracion, laUltimaMarca } from '../services/precarga.service';
 import { restaurarLiceo, ultimoRespaldoDe } from '../services/respaldos.service';
 
 function argumento(nombre: string): string | undefined {
@@ -33,9 +38,11 @@ async function main() {
     const instituto = await platformPrisma.institute.findFirst({
         where: { slug },
         select: {
+            id: true,
             slug: true,
             name: true,
             databaseName: true,
+            databaseSchema: true,
             databaseHost: true,
             databasePort: true,
             databaseUser: true,
@@ -74,18 +81,56 @@ async function main() {
             databasePort: instituto.databasePort,
             databaseUser: instituto.databaseUser,
             databasePassword: instituto.databasePassword,
+            databaseSchema: instituto.databaseSchema,
         } as any,
         'direct'
     );
+    // Un cliente propio y no `getTenantPrisma`: ese se niega con un liceo
+    // suspendido, y restaurar uno suspendido tiene que poder hacerse.
+    const delLiceo = () => {
+        const cliente = new PrismaClient({ datasources: { db: { url } } });
+        const esquema = esquemaPropio(instituto.databaseSchema);
+        return esquema ? fijarElEsquema(cliente, esquema) : cliente;
+    };
+
+    // La marca de los cambios de ANTES de restaurar: los teléfonos van por ahí.
+    const antesDeRestaurar = delLiceo();
+    const antes = await laUltimaMarca(antesDeRestaurar);
+    await antesDeRestaurar.$disconnect();
 
     console.log('\nRestaurando...');
     await restaurarLiceo(archivo, url);
-    console.log(`\n✔ "${instituto.name}" quedó como en ${path.basename(archivo)}\n`);
+
+    // Las tablas son nuevas: ningún cliente guardado vale, se abre otro.
+    await invalidateTenantCache(instituto.id);
+    const despues = delLiceo();
+    await apuntarLaRestauracion(despues, antes);
+    await despues.$disconnect();
+    console.log(`\n✔ "${instituto.name}" quedó como en ${path.basename(archivo)}`);
+    console.log('  Los teléfonos lo bajarán todo otra vez al conectarse.');
+
+    // Lo guardado en la memoria rápida es de lo que se acaba de deshacer.
+    // Con un tope: con Redis caído, el cliente reintenta para siempre.
+    try {
+        await Promise.race([
+            (async () => {
+                await connectRedis();
+                if (redis.status !== 'ready') throw new Error('sin Redis');
+                await conLiceo(instituto.id, () => RedisCache.clearPattern('*'));
+            })(),
+            new Promise((_, no) => setTimeout(() => no(new Error('Redis no contesta')), 5000)),
+        ]);
+        console.log('  Memoria rápida del liceo vaciada.');
+    } catch {
+        console.log('  ⚠ No se pudo vaciar la memoria rápida.');
+    }
+    await disconnectRedis().catch(() => undefined);
+    console.log('  Reinicia la API (docker compose restart backend): ningún proceso debe seguir con lo de antes en su memoria.\n');
 
     await disconnectAll().catch(() => undefined);
 }
 
-main().catch(async (error) => {
+main().then(() => process.exit(0)).catch(async (error) => {
     console.error('\nLa restauración falló:', error instanceof Error ? error.message : error, '\n');
     await disconnectAll().catch(() => undefined);
     process.exit(1);

@@ -93,4 +93,15 @@ describe('La versión nueva de la app del teléfono', () => {
         const res = await request(server.server).get('/api/app-movil/com..gestiedu/apk');
         expect(res.status).toBe(400);
     });
+
+    it('APP-05: el navegador pide la app de SU liceo por su nombre corto (para ofrecer «Descarga la app»)', async () => {
+        // «pruebas» → com.gestiedu.pruebas, la misma cuenta que preparar-liceo.mjs.
+        const res = await request(server.server).get('/api/app-movil/del-liceo/pruebas');
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ paquete: PAQUETE, versionName: '1.7', url: `/api/app-movil/${PAQUETE}/apk` });
+        // Un liceo sin app publicada: nada que ofrecer.
+        expect((await request(server.server).get('/api/app-movil/del-liceo/otro-liceo')).status).toBe(404);
+        // Lo que no es un nombre de liceo no llega al disco.
+        expect((await request(server.server).get('/api/app-movil/del-liceo/' + encodeURIComponent('../..'))).status).toBe(400);
+    });
 });

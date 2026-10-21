@@ -1,49 +1,14 @@
 import { FastifyPluginAsync } from 'fastify';
-import {
-  getStudents,
-  getStudent,
-  createStudent,
-  updateStudent,
-  deleteStudent,
-  getDashboardStats,
-  getAvailableStudents,
-} from '../controllers/students.controller';
-import { getStudentCompleteHistory } from '../controllers/student-history.controller';
-import { getStudentGrades } from '../controllers/grades.controller';
-import { getStudentAttendance } from '../controllers/attendance.controller';
+import { getStudents, getAvailableStudents } from '../controllers/alumnos/lista-de-alumnos.controller';
+import { getStudent, createStudent, updateStudent } from '../controllers/students.controller';
+import { getDashboardStats } from '../controllers/alumnos/ficha-del-alumno.controller';
 import { getStudentDashboard } from '../controllers/dashboard.controller';
 import { actividadesDelAlumno } from '../controllers/actividades-del-alumno.controller';
 import { miClase, misMaterias } from '../controllers/mi-clase.controller';
 import { obtenerBoleta } from '../controllers/boleta.controller';
 import { obtenerConstancia } from '../controllers/constancias.controller';
 import { authenticate, requireAdmin, requireTeacher, requireStudent, requireSelfOrAdmin } from '../middleware/auth.middleware';
-import { validateParams, validateCUID } from '../middleware/validation.middleware';
-import { FastifyRequest, FastifyReply } from 'fastify';
-
-// Thin wrappers to adapt "my-*" and profile routes to existing controllers using the authenticated userId
-async function getMyProfileHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = (request.user as any)?.userId || (request.user as any)?.id;
-  (request as any).params = { id: userId };
-  return getStudent(request as any, reply);
-}
-
-async function updateMyProfileHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = (request.user as any)?.userId || (request.user as any)?.id;
-  (request as any).params = { id: userId };
-  return updateStudent(request as any, reply);
-}
-
-async function myGradesHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = (request.user as any)?.userId || (request.user as any)?.id;
-  (request as any).params = { studentId: userId };
-  return getStudentGrades(request as any, reply);
-}
-
-async function myAttendanceHandler(request: FastifyRequest, reply: FastifyReply) {
-  const userId = (request.user as any)?.userId || (request.user as any)?.id;
-  (request as any).params = { studentId: userId };
-  return getStudentAttendance(request as any, reply);
-}
+import { checkStudentLimit } from '../middleware/plan-limits.middleware';
 
 const studentsRoutes: FastifyPluginAsync = async (fastify) => {
   // Esquemas para validación
@@ -123,17 +88,6 @@ const studentsRoutes: FastifyPluginAsync = async (fastify) => {
     }
   };
 
-  const updateProfileSchema = {
-    body: {
-      type: 'object',
-      properties: {
-        firstName: { type: 'string', minLength: 2, maxLength: 50 },
-        lastName: { type: 'string', minLength: 2, maxLength: 50 },
-        phone: { type: 'string' },
-        address: { type: 'string' }
-      }
-    }
-  };
 
   // GET /api/students - List all students (Admin/Teacher only)
   // SEGURIDAD: requireTeacher permite ADMIN+TEACHER. Los estudiantes no deben
@@ -154,7 +108,9 @@ const studentsRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
     },
-    preHandler: [authenticate, requireTeacher] // ADMIN + TEACHER (no STUDENT/TUTOR)
+    // Solo el admin inscribe: al profesor le daba nombre y correo de alumnos
+    // que no son suyos (barrido de privacidad, 2026-10-11).
+    preHandler: [authenticate, requireAdmin]
   }, getAvailableStudents as any);
 
   // GET /api/students/:id - Get student by ID
@@ -185,23 +141,10 @@ const studentsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [authenticate, requireSelfOrAdmin('id')] // ✅ SECURITY FIX: Re-enabled authentication
   }, getDashboardStats as any);
 
-  // Nueva ruta para Historial Académico Completo
-  fastify.get('/:id/complete-history', {
-    schema: {
-      params: {
-        type: 'object',
-        required: ['id'],
-        properties: {
-          id: { type: 'string' }
-        }
-      }
-    },
-    preHandler: [authenticate, requireSelfOrAdmin('id')]
-  }, getStudentCompleteHistory as any);
 
   fastify.post('/', {
     schema: createStudentSchema,
-    preHandler: [authenticate, requireAdmin]
+    preHandler: [authenticate, requireAdmin, checkStudentLimit]
   }, createStudent as any);
 
   // Sin `validateCUID`: el id de un estudiante es su CÉDULA (`User.id` es la CI,
@@ -212,40 +155,10 @@ const studentsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [authenticate, requireAdmin]
   }, updateStudent as any);
 
-  fastify.delete('/:id', {
-    schema: {
-      params: {
-        type: 'object',
-        required: ['id'],
-        properties: {
-          id: { type: 'string' }
-        }
-      }
-    },
-    preHandler: [authenticate, requireAdmin, validateCUID('id')]
-  }, deleteStudent as any);
 
-  // Rutas de perfil personal de estudiantes
-  fastify.get('/profile/me', {
-    preHandler: [authenticate, requireStudent]
-  }, getMyProfileHandler);
 
-  // Los datos personales (nombre, correo, teléfono, dirección) los corrige SOLO
-  // el administrador: si cada quien edita su ficha, cualquiera puede poner un
-  // dato falso o un chiste en los registros del liceo.
-  fastify.put('/profile/me', {
-    schema: updateProfileSchema,
-    preHandler: [authenticate, requireAdmin]
-  }, updateMyProfileHandler);
 
-  // Rutas académicas para estudiantes
-  fastify.get('/my-grades', {
-    preHandler: [authenticate, requireStudent]
-  }, myGradesHandler);
 
-  fastify.get('/my-attendance', {
-    preHandler: [authenticate, requireStudent]
-  }, myAttendanceHandler);
 
   // TODO: Implementar handler de "my-subjects" cuando exista un controlador/servicio expuesto
 

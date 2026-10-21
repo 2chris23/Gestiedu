@@ -29,7 +29,8 @@ test.describe('Consejo de sección', () => {
             const admin = await loginApi('admin@testing.edu.ve', '123456');
             await injectSessionCookies(page, admin);
             await page.goto(`${WEB_BASE}/dashboard/academico/${s.ciclo}/${s.slug}`);
-            await page.getByRole('link', { name: 'Consejo de sección' }).click({ timeout: 60000 });
+            await page.getByRole('button', { name: 'Documentos de la sección' }).click({ timeout: 60000 });
+            await page.getByRole('link', { name: /^Consejo de sección/ }).click();
             await expect(page.getByText('Este lapso todavía no tiene acta')).toBeVisible({ timeout: 60000 });
             await page.getByLabel('Acuerdos generales').fill('Reforzar la lectura en todas las materias.');
             await page.screenshot({ path: 'test-results/evidencia/consejo-de-seccion.png', fullPage: true });

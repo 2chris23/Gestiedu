@@ -76,7 +76,7 @@ test.describe('Las dos pantallas nuevas', () => {
     const abrirElPlan = async (page: any) => {
         await page.goto(`${WEB_BASE}/dashboard/academico/${ciclo}/${seccion}/${MATERIA}`);
         await page.waitForLoadState('networkidle');
-        await page.getByRole('button', { name: /Plan de Evaluaci.n \/ Calificaciones/i }).click();
+        await page.getByRole('button', { name: 'Plan de evaluación' }).click();
         await page.waitForTimeout(2500);
     };
 

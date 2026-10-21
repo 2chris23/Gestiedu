@@ -309,12 +309,26 @@ describe('El fin del año escolar (CIERRE-01…10)', () => {
         // Ana pasa a 2do con Matemática pendiente, que evalúa el profesor de 1er año.
         expect((await matricula(al.ana))!.classroom.grade).toBe(2);
         const pendiente = await (prisma as any).materiaPendiente.findFirst({ where: { studentId: al.ana.id } });
-        expect(pendiente).toMatchObject({ subjectId: mate.id, gradoDeOrigen: 1, notaDeOrigen: 8, cicloId: siguiente!.id, profesorId: profeMate.id, estado: 'PENDIENTE' });
+        expect(pendiente).toMatchObject({ subjectId: mate.id, gradoDeOrigen: 1, notaDeOrigen: 8, cicloId: siguiente!.id, estado: 'PENDIENTE' });
+        // Nace en su clase (Matemática de 1º, la que da él): la evalúa el profesor de esa clase, no uno puesto a mano.
+        expect(pendiente.profesorId).toBeNull();
+        const clase = await prisma.classroomSubject.findUnique({ where: { id: pendiente.claseId }, include: { classroom: true } });
+        expect(clase).toMatchObject({ subjectId: mate.id, teacherId: profeMate.id, classroom: { grade: 1, academicYearId: siguiente!.id } });
         // Caro repite 1ero; en su expediente, la sugerida.
         expect((await matricula(al.caro))!.classroom.grade).toBe(1);
         expect(await expediente(al.caro)).toMatchObject({ finalResult: 'NO_PROMOVIDO', condicionSugerida: 'NO_PROMOVIDO', motivo: null });
         // No se creó ninguna sección con valores inventados: son las copiadas.
         expect(await prisma.classroom.count({ where: { academicYearId: siguiente!.id } })).toBe(3);
+
+        // El paso 5 (expedientes) cuenta lo mismo que la base, y solo lo ve el admin.
+        const exp = (await api().get(`/api/academic-years/${year.id}/cierre/expedientes`).set(comoAdmin()).expect(200)).body.data;
+        expect(exp.ciclo.cerrado).toBe(true);
+        expect(exp.anoSiguiente.nombre).toBe('2027-2028');
+        const de = (a: any) => exp.expedientes.find((e: any) => e.alumno.id === a.id);
+        expect(de(al.dani)).toMatchObject({ condicion: 'NO_PROMOVIDO', egreso: null });
+        expect(de(al.eva)).toMatchObject({ condicion: 'PROMOVIDO', egreso: 'EGRESADO' });
+        expect(de(al.ana).destino.nombre).toBeTruthy();
+        await api().get(`/api/academic-years/${year.id}/cierre/expedientes`).set(como(profeMate, UserRole.TEACHER)).expect(403);
     }, 60000);
 
     it('CIERRE-09: corregir después de cerrar, con motivo', async () => {

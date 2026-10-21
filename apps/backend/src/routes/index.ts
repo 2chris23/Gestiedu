@@ -3,23 +3,15 @@ import { FastifyInstance } from 'fastify';
 // Importar todas las rutas
 import { authRoutes } from './auth.routes';
 import { usersRoutes } from './users.routes';
-import { activitiesRoutes } from './activities.routes';
-import { gradesRoutes } from './grades.routes';
 import { classroomsRoutes } from './classrooms.routes';
 import { academicYearsRoutes } from './academic-years.routes';
 import { subjectsRoutes } from './subjects.routes';
-import { notificationsRoutes } from './notifications.routes';
 import { dashboardRoutes } from './dashboard.routes';
 import { institutesRoutes } from './institutes.routes';
-import { reportsRoutes } from './reports.routes';
-import { schedulesRoutes } from './schedules.routes';
 import { studentsRoutes } from './students.routes';
-import { teachersRoutes } from './teachers.routes';
-import { attendanceRoutes } from './attendance.routes';
 import { classReplacementsRoutes } from './class-replacements.routes';
 import { pagosRoutes } from './pagos.routes';
 import { finanzasRoutes } from './finanzas.routes';
-import { cycleStatisticsRoutes } from './cycle-statistics.routes';
 import { classroomSubjectsRoutes } from './classroomSubjects.routes';
 import { scheduleBlocksRoutes } from './scheduleBlocks.routes';
 import { classSessionsRoutes } from './classSessions.routes';
@@ -30,14 +22,20 @@ import { superAdminInstitutesRoutes } from './superadmin-institutes.routes';
 import { instituteInfoRoutes } from '../controllers/institute-info.controller';
 import { cacheMetricsRoutes } from '../controllers/cache-metrics.controller';
 import { monitoringRoutes } from './monitoring.routes';
+import { saludRoutes } from './salud.routes';
 import { schoolEventsRoutes } from './school-events.routes';
 import { schoolTimeRoutes } from './school-time.routes';
 import { appMovilRoutes } from './app-movil.routes';
 import { asistenciaQrRoutes } from './asistencia-qr.routes';
+import { pinDeLaAppRoutes } from './pin-de-la-app.routes';
+import { contrasenaPorElAdminRoutes } from './contrasena-por-el-admin.routes';
+import { precargaRoutes } from './precarga.routes';
 import { apreciacionesRoutes } from './apreciaciones.routes';
 import { revisionRoutes } from './revision.routes';
 import { materiasPendientesRoutes } from './materias-pendientes.routes';
 import { laborSocialRoutes } from './labor-social.routes';
+import { cuadroDeHonorRoutes } from './cuadro-de-honor.routes';
+import { gruposEstablesRoutes } from './grupos-estables.routes';
 import { documentosRoutes } from './documentos.routes';
 import { avisosRoutes } from './avisos.routes';
 import { cambiosEnEsperaRoutes } from './cambios-en-espera.routes';
@@ -46,7 +44,13 @@ import { trasladoRoutes } from './traslado.routes';
 import { matriculaRoutes } from './matricula.routes';
 import { consejoRoutes } from './consejo.routes';
 import { personalRoutes } from './personal.routes';
+import { profesoresRoutes } from './profesores.routes';
+import { reportesDeProblemasRoutes } from './reportes-de-problemas.routes';
+import { papeleraRoutes } from './papelera.routes';
+import { misDatosRoutes } from './mis-datos.routes';
+import { legalRoutes } from './legal.routes';
 import { paeRoutes } from './pae.routes';
+import { boletaRoutes } from './boleta.routes';
 
 // Función para registrar todas las rutas
 export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
@@ -55,17 +59,18 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
 
   // Rutas de usuarios
   await fastify.register(usersRoutes, { prefix: '/api/users' });
+  // El PIN de la app (teléfonos sin bloqueo): /api/auth/pin y /api/users/:id/pin.
+  await fastify.register(pinDeLaAppRoutes, { prefix: '/api' });
+  await fastify.register(contrasenaPorElAdminRoutes, { prefix: '/api' });
+  await fastify.register(precargaRoutes, { prefix: '/api' });
 
   // Rutas académicas
   await fastify.register(academicYearsRoutes, { prefix: '/api/academic-years' });
   await fastify.register(classroomsRoutes, { prefix: '/api/classrooms' });
   await fastify.register(evaluationPlanRoutes, { prefix: '/api/evaluation-plan' });
-  await fastify.register(activitiesRoutes, { prefix: '/api/activities' });
-  await fastify.register(gradesRoutes, { prefix: '/api/grades' });
 
   await fastify.register(subjectsRoutes, { prefix: '/api/subjects' });
   await fastify.register(classroomSubjectsRoutes, { prefix: '/api' });
-  await fastify.register(attendanceRoutes, { prefix: '/api/attendance' });
   // La hora oficial del liceo (el reloj del dispositivo no es de fiar)
   await fastify.register(schoolTimeRoutes, { prefix: '/api/time' });
   // La versión nueva de la app del teléfono (ver `app-movil.routes.ts`).
@@ -76,6 +81,8 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(revisionRoutes, { prefix: '/api/revision' });
   await fastify.register(materiasPendientesRoutes, { prefix: '/api/materias-pendientes' });
   await fastify.register(laborSocialRoutes, { prefix: '/api/labor-social' });
+  await fastify.register(cuadroDeHonorRoutes, { prefix: '/api/cuadro-de-honor' });
+  await fastify.register(gruposEstablesRoutes, { prefix: '/api/grupos-estables' });
   await fastify.register(documentosRoutes, { prefix: '/api' });
   await fastify.register(avisosRoutes, { prefix: '/api/avisos' });
   // Lo hecho sin conexión que decide otra persona (services/cambios-sin-conexion.service.ts).
@@ -85,8 +92,13 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(matriculaRoutes, { prefix: '/api' });
   await fastify.register(consejoRoutes, { prefix: '/api' });
   await fastify.register(personalRoutes, { prefix: '/api' });
+  await fastify.register(profesoresRoutes, { prefix: '/api/profesores' });
+  // «Reportar un problema»: cualquiera lo manda, le llega al admin del liceo.
+  await fastify.register(reportesDeProblemasRoutes, { prefix: '/api' });
+  await fastify.register(papeleraRoutes, { prefix: '/api' });
+  await fastify.register(misDatosRoutes, { prefix: '/api' });
+  await fastify.register(legalRoutes, { prefix: '/api' });
   await fastify.register(paeRoutes, { prefix: '/api/pae' });
-  await fastify.register(schedulesRoutes, { prefix: '/api/schedules' });
   await fastify.register(scheduleBlocksRoutes, { prefix: '/api' });
   await fastify.register(classSessionsRoutes, { prefix: '/api/sessions' });
   await fastify.register(classReplacementsRoutes, { prefix: '/api/class-replacements' });
@@ -97,17 +109,14 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
 
   // Rutas por roles específicos
   await fastify.register(studentsRoutes, { prefix: '/api/students' });
-  await fastify.register(teachersRoutes, { prefix: '/api/teachers' });
+  await fastify.register(boletaRoutes, { prefix: '/api/boleta' });
 
   // Rutas de comunicación
-  await fastify.register(notificationsRoutes, { prefix: '/api/notifications' });
 
   // Rutas de reportes y dashboard
-  await fastify.register(reportsRoutes, { prefix: '/api/reports' });
   await fastify.register(dashboardRoutes, { prefix: '/api/dashboard' });
 
   // Rutas de estadísticas jerárquicas (School Archivist)
-  await fastify.register(cycleStatisticsRoutes, { prefix: '/api/statistics' });
 
   // Rutas de administración
   await fastify.register(institutesRoutes, { prefix: '/api/institutes' });
@@ -124,6 +133,10 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
 
   // Rutas de monitoreo: métricas de queries y alertas (SuperAdmin)
   await fastify.register(monitoringRoutes, { prefix: '/api/superadmin/monitoring' });
+
+  // La salud de cada botón y de cada liceo, los errores agrupados, el
+  // pronóstico y el robot (superadmin), y POST /api/errores (la pantalla).
+  await fastify.register(saludRoutes);
 
   // Eventos del liceo (calendario del director): /api/events
   await fastify.register(schoolEventsRoutes, { prefix: '/api' });
@@ -143,23 +156,20 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
     return {
       message: 'API del Sistema de Gestión Escolar',
       version: '1.0.0',
-      documentation: '/documentation',
       endpoints: {
         auth: '/api/auth',
         users: '/api/users',
-        activities: '/api/activities',
-        grades: '/api/grades',
+        students: '/api/students',
         classrooms: '/api/classrooms',
         subjects: '/api/subjects',
-        attendance: '/api/attendance',
-        schedules: '/api/schedules',
-        students: '/api/students',
-        teachers: '/api/teachers',
-        notifications: '/api/notifications',
-        reports: '/api/reports',
+        sessions: '/api/sessions',
+        evaluationPlan: '/api/evaluation-plan',
+        academicYears: '/api/academic-years',
+        observations: '/api/observations',
+        avisos: '/api/avisos',
         dashboard: '/api/dashboard',
         institutes: '/api/institutes',
-        statistics: '/api/statistics'
+        finanzas: '/api/finanzas',
       }
     };
   });
@@ -169,18 +179,10 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
 export {
   authRoutes,
   usersRoutes,
-  activitiesRoutes,
-  gradesRoutes,
   classroomsRoutes,
   subjectsRoutes,
-  notificationsRoutes,
   dashboardRoutes,
   institutesRoutes,
-  attendanceRoutes,
-  reportsRoutes,
-  schedulesRoutes,
   studentsRoutes,
-  teachersRoutes,
-  cycleStatisticsRoutes,
   classSessionsRoutes
 };

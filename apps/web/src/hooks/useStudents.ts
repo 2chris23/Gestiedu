@@ -19,10 +19,11 @@ export function useStudents(
 /**
  * Hook para obtener estudiantes disponibles (sin sección asignada)
  */
-export function useAvailableStudents(search?: string, academicYearId?: string) {
+export function useAvailableStudents(search?: string, academicYearId?: string, habilitado = true) {
     return useQuery({
         queryKey: ['students', 'available', search, academicYearId],
         queryFn: () => studentsService.getAvailableStudents(search, academicYearId),
+        enabled: habilitado,
         staleTime: 2 * 60 * 1000,
     });
 }
@@ -41,20 +42,5 @@ export function useAssignStudent() {
             queryClient.invalidateQueries({ queryKey: ['students', variables.sectionId] });
             queryClient.invalidateQueries({ queryKey: ['students', 'available'] });
         },
-    });
-}
-
-/**
- * Hook para obtener estadísticas del dashboard de un estudiante
- */
-export function useStudentDashboard(studentId?: string) {
-    return useQuery({
-        queryKey: ['studentDashboard', studentId],
-        queryFn: () =>
-            studentId
-                ? studentsService.getStudentDashboardStatsById(studentId)
-                : studentsService.getDashboardStats(),
-        staleTime: 2 * 60 * 1000, // 2 minutos (datos más volátiles)
-        retry: false, // No reintentar si falla (ej: 403)
     });
 }

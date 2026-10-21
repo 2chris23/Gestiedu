@@ -189,17 +189,6 @@ class ClassroomSubjectsService {
     }
 
     /**
-     * Remover una materia de una sección
-     */
-    async removeSubjectFromClassroom(classroomId: string, subjectId: string): Promise<void> {
-        try {
-            await api.delete(`/classrooms/${classroomId}/subjects/${subjectId}`);
-        } catch (error) {
-            throw new Error(getApiErrorMessage(error, 'Error al remover materia'));
-        }
-    }
-
-    /**
      * Obtener horario completo de una sección
      */
     async getClassroomSchedule(classroomId: string): Promise<ScheduleBlock[]> {

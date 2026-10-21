@@ -131,17 +131,6 @@ class QueryMonitor {
 
 export const queryMonitor = new QueryMonitor();
 
-// Configurar Prisma con extensión de monitoreo (Prisma 6+ — $use ya no existe)
-export function setupPrismaMonitoring(prisma: PrismaClient) {
-    // En Prisma 6, usamos event logging en vez de $use middleware
-    // El monitoreo se hace via event listeners configurados en PrismaClient
-
-    // Log de configuración
-    logger.info('Prisma Query Monitoring enabled');
-    logger.info(`   Slow query threshold: ${SLOW_QUERY_THRESHOLD}ms`);
-    logger.info(`   Very slow threshold: ${VERY_SLOW_QUERY_THRESHOLD}ms`);
-    logger.info(`   Warning threshold: ${WARNING_QUERY_THRESHOLD}ms`);
-}
 
 // Endpoint helper para exponer métricas
 export function getQueryMetrics() {
@@ -151,33 +140,3 @@ export function getQueryMetrics() {
     };
 }
 
-// Job para reportar métricas periódicamente
-export function startMetricsReporting(intervalMinutes: number = 60) {
-    if (process.env.NODE_ENV !== 'production') {
-        logger.info('Metrics reporting disabled in development');
-        return;
-    }
-
-    setInterval(() => {
-        const metrics = queryMonitor.getMetrics();
-        const summary = queryMonitor.getSlowQueriesSummary();
-
-        logger.info('QUERY METRICS REPORT');
-        logger.info(`   Total queries: ${metrics.totalQueries}`);
-        logger.info(`   Average duration: ${metrics.averageDuration}ms`);
-        logger.info(`   Slow queries: ${metrics.slowQueries}`);
-
-        if (typeof summary !== 'string' && summary.length > 0) {
-            logger.warn('Top Slow Queries:');
-            summary.slice(0, 5).forEach((item, i) => {
-                logger.warn(`   ${i + 1}. ${item.query}`);
-                logger.warn(`      Count: ${item.count}, Avg: ${item.avgDuration}ms, Max: ${item.maxDuration}ms`);
-            });
-        }
-
-        // Reset métricas después del reporte
-        queryMonitor.reset();
-    }, intervalMinutes * 60 * 1000);
-
-    logger.info(`Metrics reporting started (every ${intervalMinutes} minutes)`);
-}

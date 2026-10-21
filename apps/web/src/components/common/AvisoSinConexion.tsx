@@ -27,7 +27,13 @@ import { cn } from '@/lib/utils';
 /** Lo que dura escrito «Sin conexión» al irse la conexión, antes de quedarse en icono. */
 const CON_TEXTO_MS = 5000;
 
-export function AvisoSinConexion() {
+/**
+ * `enLaCabecera`: en el teléfono va DENTRO de la fila de la cabecera, junto al
+ * «?» y la campana. Flotaba fijo a 64 px del borde, medido cuando la cabecera
+ * solo tenía la campana; al llegar el «?» quedaba encima de él.
+ * `soloOrdenador`: el flotante de abajo a la derecha, donde no hay cabecera.
+ */
+export function AvisoSinConexion({ enLaCabecera = false, soloOrdenador = false }: { enLaCabecera?: boolean; soloOrdenador?: boolean } = {}) {
     const { hayConexion, motivo, ultimaRespuesta } = useConexion();
     const queryClient = useQueryClient();
     const [conTexto, setConTexto] = React.useState(false);
@@ -59,12 +65,17 @@ export function AvisoSinConexion() {
         <div
             data-aviso="sin-conexion"
             className={cn(
-                'fixed z-50 print:!hidden',
-                // En el teléfono, dentro de la cabecera, a la derecha (ahí no hay
-                // nada). En el ordenador no hay cabecera: abajo a la derecha.
-                // (a la izquierda de la campana, que va en la esquina).
-                'right-16 top-[calc(var(--zona-segura-arriba)+6px)]',
-                'lateral:bottom-5 lateral:right-5 lateral:top-auto'
+                'print:!hidden',
+                enLaCabecera
+                    ? 'shrink-0'
+                    : [
+                          'fixed z-50',
+                          // Sin cabecera (las hojas): arriba a la derecha. En el
+                          // ordenador: abajo a la derecha.
+                          'right-3 top-[calc(var(--zona-segura-arriba)+6px)]',
+                          'lateral:bottom-5 lateral:right-5 lateral:top-auto',
+                          soloOrdenador && 'hidden lateral:block',
+                      ]
             )}
         >
             <p role="status" aria-live="polite" className="sr-only">

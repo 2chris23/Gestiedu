@@ -11,6 +11,8 @@ export interface AdminDashboardDto {
         averageAttendance: number;
         studentsAtRisk: number;
         pendingActivities: number;
+        /** Promedio del ciclo activo (nivel 6, MAPA §3), o null sin ciclo o sin notas. */
+        promedioGeneral?: number | null;
     };
     recentActivity: Array<{
         id: string;
@@ -26,6 +28,61 @@ export interface AdminDashboardDto {
         message: string;
         createdAt: string;
     }>;
+    todayAttendance?: {
+        total: number;
+        present: number;
+        absent: number;
+        late: number;
+        excused: number;
+        percentage: number;
+        dateLabel: string;
+    };
+    atRiskStudentsTop?: Array<{
+        id: string;
+        name: string;
+        classroomName: string;
+        failedCount: number;
+    }>;
+    gradeCapacity?: Array<{
+        grade: number;
+        name: string;
+        enrolled: number;
+        capacity: number;
+        percentage: number;
+    }>;
+    periodClosure?: {
+        periodName: string | null;
+        daysLeft: number | null;
+        endDate: string | null;
+    } | null;
+    upcomingEvents?: Array<{
+        id: string;
+        title: string;
+        description?: string | null;
+        date: string;
+        startTime?: string | null;
+        endTime?: string | null;
+        scope?: string | null;
+    }>;
+    eventsCalendar?: {
+        currentPeriod?: {
+            id: string;
+            name: string;
+            startDate: string;
+            endDate: string;
+            daysLeft: number | null;
+        } | null;
+        events: Array<{
+            id: string;
+            title: string;
+            description?: string | null;
+            date: string;
+            startTime?: string | null;
+            endTime?: string | null;
+            scope?: string | null;
+            isHoliday?: boolean;
+        }>;
+    };
 }
 
 export interface TeacherDashboardDto {
@@ -33,6 +90,7 @@ export interface TeacherDashboardDto {
         id: string;
         fullName: string;
         specialization: string | null;
+        isGuideTeacher?: boolean;
     };
     classrooms: Array<{
         id: string;
@@ -53,7 +111,31 @@ export interface TeacherDashboardDto {
         totalStudents: number;
         totalClassrooms: number;
         pendingGrades: number;
+        promedioGeneral?: number | null;
+        averageAttendance?: number;
+        studentsAtRisk?: number;
+        isGuideTeacher?: boolean;
     };
+    eventsCalendar?: {
+        currentPeriod?: {
+            id: string;
+            name: string;
+            startDate: string;
+            endDate: string;
+            daysLeft: number | null;
+        } | null;
+        events: Array<{
+            id: string;
+            title: string;
+            description?: string | null;
+            date: string;
+            startTime?: string | null;
+            endTime?: string | null;
+            scope?: string | null;
+            isHoliday?: boolean;
+        }>;
+    };
+    activeAcademicYear?: string | null;
 }
 
 export interface StudentDashboardDto {
@@ -116,6 +198,21 @@ export interface TutorDashboardDto {
     children: Array<{
         id: string;
         fullName: string;
+        firstName?: string;
+        lastName?: string;
+        avatar: string | null;
+        classroom: string | null;
+        classroomId?: string | null;
+        shift?: string | null;
+        average: number;
+        attendancePercentage: number;
+        relationship: string;
+    }>;
+    representados?: Array<{
+        id: string;
+        fullName: string;
+        firstName?: string;
+        lastName?: string;
         avatar: string | null;
         classroom: string | null;
         classroomId?: string | null;

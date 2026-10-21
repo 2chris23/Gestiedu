@@ -1,8 +1,10 @@
 /// <reference path="../types/fastify.d.ts" />
+import { esReglasDelCuadro, limpiarReglasDelCuadro } from '../services/reglas-del-cuadro';
+import { esReglasDeGrupos, limpiarReglasDeGrupos } from '../services/reglas-de-grupos';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { InstitutesService } from '../services/institutes.service';
 import { SUCCESS_MESSAGES } from '../utils/constants';
-import { getAcademicConfig, updateAcademicConfig, esAsistenciaMinimaValida, esRedondeoValido } from '../services/promotion/close-cycle.service';
+import { getAcademicConfig, updateAcademicConfig, esAsistenciaMinimaValida, esRedondeoValido } from '../services/promotion/configuracion-academica';
 import { RedisCache } from '../config/redis';
 import { conLiceo } from '../config/ambito-del-liceo';
 import { platformPrisma } from '../config/database';
@@ -201,6 +203,23 @@ export async function updateInstituteConfig(request: FastifyRequest, reply: Fast
             });
           }
           nextAcademicConfig.apreciaciones = configObj.apreciaciones.map((v: string) => v.trim());
+        }
+        // Los pesos del cuadro de honor (`reglas-del-cuadro.ts`).
+        if (configObj.cuadroDeHonor !== undefined) {
+          if (!esReglasDelCuadro(configObj.cuadroDeHonor)) {
+            return reply.status(400).send({
+              error: 'Cuadro de honor: el peso de las notas y el de la asistencia, de 0 a 100 (no los dos en 0), y lo que resta cada observación, de 0 a 50.',
+              code: 'REGLA_INVALIDA',
+            });
+          }
+          nextAcademicConfig.cuadroDeHonor = limpiarReglasDelCuadro(configObj.cuadroDeHonor);
+        }
+        // Los grupos estables: elegir una vez al año o en cada lapso (`reglas-de-grupos.ts`).
+        if (configObj.gruposEstables !== undefined) {
+          if (!esReglasDeGrupos(configObj.gruposEstables)) {
+            return reply.status(400).send({ error: 'Grupos estables: la elección es ANUAL o POR_LAPSO, y abierta sí o no.', code: 'REGLA_INVALIDA' });
+          }
+          nextAcademicConfig.gruposEstables = limpiarReglasDeGrupos(configObj.gruposEstables);
         }
         if (configObj.schedule) horarioPedido = configObj.schedule;
         if (configObj.confirmarClasesFuera === true) confirmarClasesFuera = true;
@@ -499,14 +518,24 @@ export async function updateAcademicConfigEndpoint(request: FastifyRequest, repl
       patch.pendienteNoAprobada = body.pendienteNoAprobada;
     }
     if (body.pendientes !== undefined) {
-      if (!esReglasDePendientes(body.pendientes)) return mal('Materias pendientes: de 1 a 8 momentos, y MOMENTO_APROBADO o PROMEDIO.', 'REGLA_INVALIDA');
+      if (!esReglasDePendientes(body.pendientes)) return mal('Materias pendientes: de 1 a 8 momentos; MOMENTO_APROBADO, PROMEDIO o PONDERADO (con un peso por momento que sumen 100); 2ª opción SIEMPRE, SI_REPRUEBA_30 o NO; asistencia SOLO_EVALUACIONES, OBLIGATORIA o NO.', 'REGLA_INVALIDA');
       patch.pendientes = body.pendientes;
     }
     if (body.laborSocial !== undefined) {
       if (!esReglasDeLaborSocial(body.laborSocial)) {
-        return mal('Labor social: activa, de 1 a 6 grados (1 a 6), horas de 0 a 1000 y para egresar BLOQUEA, AVISA o NO.', 'REGLA_INVALIDA');
+        return mal('Labor social: activa, de 1 a 6 grados (1 a 6), horas de 0 a 1000, para egresar BLOQUEA, AVISA o NO, y la anotan ADMIN_Y_GUIA o SOLO_ADMIN.', 'REGLA_INVALIDA');
       }
       patch.laborSocial = body.laborSocial;
+    }
+    if (body.cuadroDeHonor !== undefined) {
+      if (!esReglasDelCuadro(body.cuadroDeHonor)) {
+        return mal('Cuadro de honor: el peso de las notas y el de la asistencia, de 0 a 100 (no los dos en 0), y lo que resta cada observación, de 0 a 50.', 'REGLA_INVALIDA');
+      }
+      patch.cuadroDeHonor = body.cuadroDeHonor;
+    }
+    if (body.gruposEstables !== undefined) {
+      if (!esReglasDeGrupos(body.gruposEstables)) return mal('Grupos estables: la elección es ANUAL o POR_LAPSO, y abierta sí o no.', 'REGLA_INVALIDA');
+      patch.gruposEstables = limpiarReglasDeGrupos(body.gruposEstables);
     }
     const instId = getInstId(request);
     const config = await updateAcademicConfig(instId, patch);

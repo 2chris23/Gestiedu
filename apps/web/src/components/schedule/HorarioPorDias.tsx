@@ -72,7 +72,7 @@ export function HorarioPorDias({
     periodos,
     loDeLaHora,
     diaInicial,
-    motivoDelGiro = 'Para verlo entero',
+    motivoDelGiro,
     cargando = false,
     className,
 }: Props) {
@@ -189,7 +189,9 @@ export function HorarioPorDias({
                 )}
             </div>
 
-            {/* La rejilla entera existe: está a un giro de aquí. */}
+            {/* La rejilla entera existe: está a un giro de aquí. Solo donde se
+                deja girar (editar el horario): sin motivo, no hay botón. */}
+            {motivoDelGiro && (
             <button
                 type="button"
                 onClick={pedirElGiro}
@@ -198,6 +200,7 @@ export function HorarioPorDias({
                 <RotateCw className="h-4 w-4" aria-hidden />
                 {motivoDelGiro}, gira el teléfono
             </button>
+            )}
 
             {avisoDeGiro && (
                 <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">

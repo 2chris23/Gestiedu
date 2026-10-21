@@ -3,8 +3,9 @@
 import * as React from 'react';
 import { use } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { BookOpen, ChevronLeft, ClipboardList, Loader2, MessageSquareText } from 'lucide-react';
+import { BookOpen, ChevronLeft, ClipboardList, Clock, Loader2, MessageSquareText } from 'lucide-react';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
+import { useSchoolToday } from '@/hooks/useSchoolTime';
 import { useMiClase, type ActividadDeMiClase } from '@/hooks/useMiClase';
 import { ESTADO_DE_ACTIVIDAD } from '@/hooks/useActividadesDelAlumno';
 import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
@@ -117,6 +118,15 @@ export default function MiClasePage({ params }: { params: Promise<{ subjectId: s
     // la dirección (el servidor responde 403 si no es suyo).
     const alumnoId = yo?.role === 'STUDENT' ? yo.id : buscar.get('alumno');
 
+    const hoy = useSchoolToday();
+    const diaSemanaHoy = React.useMemo(() => {
+        try {
+            return new Date(hoy + 'T12:00:00').getDay();
+        } catch {
+            return 0;
+        }
+    }, [hoy]);
+
     const [lapso, setLapso] = React.useState<string | null>(null);
     const [pestana, setPestana] = React.useState<Pestana>('plan');
     const { data, isLoading, error } = useMiClase(alumnoId, subjectId, lapso);
@@ -196,7 +206,59 @@ export default function MiClasePage({ params }: { params: Promise<{ subjectId: s
             {/* La asistencia por QR, desde su clase: escanear el QR del profesor
                 o enseñar el suyo. Solo el alumno (el representante no pasa
                 lista por él), y solo si el liceo la usa. */}
-            {yo?.role === 'STUDENT' && <BotonesDeAsistencia />}
+            {yo?.role === 'STUDENT' && (
+                <div className="empty:hidden" data-recorrido="mi-clase-qr">
+                    <BotonesDeAsistencia />
+                </div>
+            )}
+
+            {/* Cuándo te toca: horario en vivo de la materia */}
+            {data.horario && data.horario.length > 0 && (
+                <div className="rounded-2xl border border-indigo-100 bg-linear-to-r from-indigo-50/70 to-blue-50/40 p-4">
+                    <div className="flex items-center gap-2 mb-2.5">
+                        <Clock size={16} className="text-indigo-600" aria-hidden />
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-900">
+                            Cuándo te toca
+                        </h3>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {data.horario.map((bloque) => {
+                            const esHoy = bloque.dia === diaSemanaHoy;
+                            return (
+                                <div
+                                    key={bloque.id}
+                                    className={cn(
+                                        'flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold shadow-2xs',
+                                        esHoy
+                                            ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-300'
+                                            : 'border border-gray-200 bg-white text-gray-700'
+                                    )}
+                                >
+                                    <span>{bloque.diaTexto}</span>
+                                    <span className={esHoy ? 'text-indigo-100' : 'text-gray-500'}>
+                                        {bloque.horaInicio.slice(0, 5)} – {bloque.horaFin.slice(0, 5)}
+                                    </span>
+                                    {bloque.aula && (
+                                        <span
+                                            className={cn(
+                                                'rounded-md px-1.5 py-0.5 text-[10px] font-bold',
+                                                esHoy ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600'
+                                            )}
+                                        >
+                                            {bloque.aula}
+                                        </span>
+                                    )}
+                                    {esHoy && (
+                                        <span className="rounded-md bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white uppercase">
+                                            Hoy
+                                        </span>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {data.lapsos.length > 1 && (
                 <div
@@ -240,6 +302,8 @@ export default function MiClasePage({ params }: { params: Promise<{ subjectId: s
                         role="tab"
                         aria-selected={pestana === p.clave}
                         onClick={() => setPestana(p.clave)}
+                                    data-pestana
+                        data-recorrido={`mi-clase-${p.clave}`}
                         className={cn(
                             'flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-xs font-semibold transition-colors sm:flex-row sm:gap-1.5 sm:text-sm',
                             pestana === p.clave ? 'bg-indigo-50 text-indigo-800 ring-1 ring-indigo-200' : 'text-gray-700 hover:bg-gray-50'

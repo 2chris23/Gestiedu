@@ -28,14 +28,20 @@ import { RedisCache } from '../../src/config/redis';
  *             guarda copia;
  *   LABOR-06  en el cierre del último año: BLOQUEA deja el egreso pendiente;
  *             AVISA egresa con aviso;
- *   LABOR-07  la constancia de labor social, solo cumplida y solo del admin.
+ *   LABOR-07  la constancia de labor social, solo cumplida y solo del admin;
+ *   LABOR-08  las horas se acumulan de un año a otro: lo hecho en 4to sigue
+ *             contando en 5to (y cada actividad dice de qué año es);
+ *   LABOR-09  `quienAnota: SOLO_ADMIN`: el guía la ve pero no la anota ni la
+ *             borra; sin la regla guardada, anotan el admin y el guía;
+ *   LABOR-10  la lista de UNA sección (la pestaña de la sección), con
+ *             `puedeAnotar`.
  */
 
 const SLUG = 'test-institute';
 const gId = () => `c${createId()}`;
 const dia = (ymd: string) => new Date(`${ymd}T00:00:00.000Z`);
 
-describe('La labor social (LABOR-01…07)', () => {
+describe('La labor social (LABOR-01…10)', () => {
     let server: FastifyInstance;
     let prisma: PrismaClient;
     let admin: any;
@@ -45,6 +51,7 @@ describe('La labor social (LABOR-01…07)', () => {
     let profe: any;
     let mama: any;
     let year: any;
+    let quintoA: any;
     const al: Record<string, any> = {};
 
     const como = (u: any, role: UserRole) => ({
@@ -92,7 +99,7 @@ describe('La labor social (LABOR-01…07)', () => {
             prisma.classroom.create({
                 data: { id: gId(), name: `${grado}º ${letra}`, slug: `aula-${gId()}`, grade: grado, section: letra, capacity: 30, academicYearId: year.id, instituteId: 'institute', teacherId: guia.id } as any,
             });
-        const quintoA = await seccion(5, 'A', guia5A);
+        quintoA = await seccion(5, 'A', guia5A);
         const quintoB = await seccion(5, 'B', guia5B);
         const terceroA = await seccion(3, 'A', guia3);
         // Un profesor que da clase en 5to A sin ser su guía.
@@ -205,5 +212,48 @@ describe('La labor social (LABOR-01…07)', () => {
         expect(c.titulo).toBe('Constancia de labor social');
         expect(c.parrafos[0]).toMatch(/cumplió 60 horas de labor social comunitaria en el proyecto «Huerto escolar»/);
         await api().get(url).set(como(al.ana, UserRole.STUDENT)).expect(403);
+    }, 60000);
+
+    it('LABOR-08: las horas se acumulan de un año a otro', async () => {
+        await config({ laborSocial: { activa: true, grados: [4, 5], horasRequeridas: 60, paraEgresar: 'AVISA' } }).expect(200);
+        // Ana hizo 10 h el año pasado, en 4to; ahora está en 5to.
+        const pasado = await prisma.academicYear.create({
+            data: { id: gId(), name: '2025-2026', startDate: dia('2025-09-15'), endDate: dia('2026-07-31'), status: 'COMPLETED', instituteId: 'institute' } as any,
+        });
+        await (prisma as any).actividadDeLaborSocial.create({
+            data: { studentId: al.ana.id, academicYearId: pasado.id, fecha: dia('2026-03-02'), horas: 10, que: 'Alfabetización en la comunidad', registradaPorId: admin.id },
+        });
+        await anotar([al.ana], { horas: 4 }).expect(201);
+        const suya = (await api().get(`/api/labor-social/alumno/${al.ana.id}`).set(como(al.ana, UserRole.STUDENT)).expect(200)).body.data;
+        expect(suya.avance).toMatchObject({ horas: 14, requeridas: 60 });
+        expect(suya.actividades.map((a: any) => a.ciclo).sort()).toEqual(['2025-2026', '2026-2027']);
+        const lista = (await api().get('/api/labor-social').set(como(admin, UserRole.ADMIN)).expect(200)).body.data;
+        expect(lista.alumnos.find((a: any) => a.alumno.id === al.ana.id)).toMatchObject({ horas: 14 });
+    }, 60000);
+
+    it('LABOR-09: con SOLO_ADMIN, el guía la ve pero no la anota', async () => {
+        await config({ laborSocial: { activa: true, grados: [5], horasRequeridas: 60, paraEgresar: 'AVISA', quienAnota: 'SOLO_ADMIN' } }).expect(200);
+        expect((await anotar([al.ana]).expect(403)).body.code).toBe('FORBIDDEN');
+        await anotar([al.ana], {}, admin, UserRole.ADMIN).expect(201);
+        const delGuia = (await api().get(`/api/labor-social/alumno/${al.ana.id}`).set(como(guia5A, UserRole.TEACHER)).expect(200)).body.data;
+        expect(delGuia).toMatchObject({ puedeAnotar: false, avance: { horas: 4 } });
+        await api().delete(`/api/labor-social/actividades/${delGuia.actividades[0].id}`).set(como(guia5A, UserRole.TEACHER)).expect(403);
+        expect((await api().get('/api/labor-social').set(como(guia5A, UserRole.TEACHER)).expect(200)).body.data.puedeAnotar).toBe(false);
+        // Una regla que no se entiende no se guarda.
+        expect((await config({ laborSocial: { activa: true, grados: [5], horasRequeridas: 60, paraEgresar: 'AVISA', quienAnota: 'TODOS' } }).expect(400)).body.code).toBe('REGLA_INVALIDA');
+        // Lo guardado antes de la regla (sin `quienAnota`) sigue valiendo: anotan el admin y el guía.
+        await config({ laborSocial: { activa: true, grados: [5], horasRequeridas: 60, paraEgresar: 'AVISA' } }).expect(200);
+        await anotar([al.ana]).expect(201);
+    }, 60000);
+
+    it('LABOR-10: la lista de una sección, con puedeAnotar', async () => {
+        const url = `/api/labor-social?classroomId=${quintoA.id}`;
+        const deAdmin = (await api().get(url).set(como(admin, UserRole.ADMIN)).expect(200)).body.data;
+        expect(deAdmin.alumnos.map((a: any) => a.alumno.id).sort()).toEqual([al.ana.id, al.beto.id].sort());
+        expect(deAdmin.puedeAnotar).toBe(true);
+        expect((await api().get(url).set(como(guia5A, UserRole.TEACHER)).expect(200)).body.data).toMatchObject({ puedeAnotar: true });
+        // El guía de otra sección no ve la ajena.
+        const ajena = (await api().get(url).set(como(guia5B, UserRole.TEACHER)).expect(200)).body.data;
+        expect(ajena).toMatchObject({ alumnos: [], puedeAnotar: false });
     }, 60000);
 });

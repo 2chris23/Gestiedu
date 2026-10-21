@@ -1,5 +1,5 @@
 import api from '@/lib/axios';
-import { entregarArchivo, pdfConUnaImagen } from '@/lib/horario-en-archivo';
+import { entregarArchivo } from '@/lib/horario-en-archivo';
 
 /**
  * EL COMPROBANTE DE PAGO
@@ -8,13 +8,16 @@ import { entregarArchivo, pdfConUnaImagen } from '@/lib/horario-en-archivo';
  * pantalla): así el comprobante dice lo que está registrado, y un pago anulado
  * sale marcado ANULADO aunque alguien tenga abierta una pantalla vieja.
  *
- * Tamaño media carta vertical a 150 ppp: se lee en el teléfono y se imprime.
+ * Como el de un Pago Móvil (Cristian, 2026-10-14, con el de su banco): se toca
+ * el pago, sale la hoja con los datos y «Compartir» manda UNA IMAGEN; nada de
+ * PDF ni de archivo que guardar. La imagen es la misma hoja: el nombre del
+ * liceo, el monto grande en verde y los datos uno debajo de otro.
  */
 
-interface DatosDelComprobante {
+export interface DatosDelComprobante {
     institute: { name: string };
     receiptNumber: number;
-    student: { id: string; firstName: string; lastName: string };
+    student: { id: string; firstName: string; lastName: string; studentCode?: string | null };
     academicYear: string;
     paidAt: string;
     method: string;
@@ -52,14 +55,63 @@ function recortar(ctx: CanvasRenderingContext2D, texto: string, ancho: number) {
     return `${t}…`;
 }
 
-async function dibujar(d: DatosDelComprobante): Promise<HTMLCanvasElement> {
-    const ANCHO = 1100;
-    const M = 70;
-    const filas = d.allocations.length;
-    const ALTO = 1050 + filas * 52 + (d.annulled ? 60 : 0);
+/** Los renglones de la hoja y de la imagen: los mismos, en el mismo orden. */
+export function renglonesDelComprobante(d: DatosDelComprobante): Array<[string, string]> {
+    // Un fondo o un gasto no lleva recibo (número 0): no se inventa uno.
+    const r: Array<[string, string]> = [];
+    if (d.receiptNumber > 0) r.push(['Número de recibo', String(d.receiptNumber).padStart(6, '0')]);
+    r.push([d.rotuloPersona ?? 'Estudiante', `${d.student.firstName} ${d.student.lastName}`.trim()]);
+    // La cédula es el id del alumno, salvo en cuentas viejas cuyo id es un
+    // código interno («ck1vv8…»): eso no es una cédula y no se enseña.
+    const cedula = d.student.studentCode || (/^c[a-z0-9]{20,}$/.test(d.student.id) ? '' : d.student.id);
+    if (cedula) r.push(['Cédula', cedula]);
+    if (d.cargo) r.push(['Cargo', d.cargo]);
+    r.push(['Fecha', fechaLarga(d.paidAt)]);
+    if (d.method) r.push(['Forma de pago', d.method]);
+    if (d.reference) r.push(['Referencia', d.reference]);
+    if (d.currency !== d.baseCurrency && d.exchangeRate) {
+        r.push(['Tasa', `${formato(d.exchangeRate, 'VES')} por $1`]);
+        r.push(['Equivale a', formato(d.amountBase, d.baseCurrency)]);
+    }
+    if (d.allocations.length) r.push(['Concepto', d.allocations.map((a) => a.label).join(', ')]);
+    if (d.academicYear) r.push(['Ciclo escolar', d.academicYear]);
+    return r;
+}
 
+export const montoDelComprobante = (d: DatosDelComprobante) => formato(d.amount, d.currency);
+
+/** Parte un texto en renglones que quepan en `ancho`. */
+function enRenglones(ctx: CanvasRenderingContext2D, texto: string, ancho: number, max = 3): string[] {
+    const palabras = texto.split(/\s+/);
+    const salida: string[] = [];
+    let linea = '';
+    for (const p of palabras) {
+        const prueba = linea ? `${linea} ${p}` : p;
+        if (ctx.measureText(prueba).width <= ancho) linea = prueba;
+        else {
+            if (linea) salida.push(linea);
+            linea = p;
+        }
+    }
+    if (linea) salida.push(linea);
+    if (salida.length > max) {
+        const resto = salida.slice(max - 1).join(' ');
+        return [...salida.slice(0, max - 1), recortar(ctx, resto, ancho)];
+    }
+    return salida;
+}
+
+async function dibujar(d: DatosDelComprobante): Promise<HTMLCanvasElement> {
+    const ANCHO = 900;
+    const M = 70;
+    const familia = (typeof document !== 'undefined' && getComputedStyle(document.body).fontFamily) || 'system-ui, sans-serif';
     if ((document as any).fonts?.ready) await (document as any).fonts.ready;
-    const familia = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
+
+    // Primero se mide (cuántos renglones lleva cada dato) y luego se pinta.
+    const medidor = document.createElement('canvas').getContext('2d')!;
+    medidor.font = `600 30px ${familia}`;
+    const renglones = renglonesDelComprobante(d).map(([r, v]) => [r, enRenglones(medidor, v, ANCHO - 2 * M)] as const);
+    const ALTO = 470 + renglones.reduce((t, [, v]) => t + 42 + v.length * 40 + 22, 0) + (d.annulled ? 70 : 0) + 90;
 
     const lienzo = document.createElement('canvas');
     lienzo.width = ANCHO;
@@ -68,119 +120,92 @@ async function dibujar(d: DatosDelComprobante): Promise<HTMLCanvasElement> {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, ANCHO, ALTO);
     ctx.textBaseline = 'top';
+    ctx.textAlign = 'center';
+    const centro = ANCHO / 2;
 
-    // Franja superior
-    ctx.fillStyle = '#4338ca';
-    ctx.fillRect(0, 0, ANCHO, 14);
-
-    let y = M;
+    let y = 70;
     ctx.fillStyle = '#111827';
-    ctx.font = `700 34px ${familia}`;
-    ctx.fillText(recortar(ctx, d.institute.name || 'Liceo', ANCHO - 2 * M), M, y);
-    y += 50;
+    ctx.font = `700 36px ${familia}`;
+    ctx.fillText(recortar(ctx, d.institute.name || 'Liceo', ANCHO - 2 * M), centro, y);
+    y += 60;
     ctx.fillStyle = '#4b5563';
-    ctx.font = `500 24px ${familia}`;
-    ctx.fillText(`${d.titulo ?? 'Comprobante de pago'} Nº ${String(d.receiptNumber).padStart(6, '0')}`, M, y);
-    y += 36;
-    ctx.fillText(`Ciclo escolar ${d.academicYear}`, M, y);
+    ctx.font = `500 28px ${familia}`;
+    ctx.fillText(d.titulo ?? 'Pago recibido', centro, y);
     y += 60;
 
-    const par = (rotulo: string, valor: string) => {
-        ctx.fillStyle = '#6b7280';
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(M, y);
+    ctx.lineTo(ANCHO - M, y);
+    ctx.stroke();
+    y += 36;
+
+    ctx.fillStyle = '#6b7280';
+    ctx.font = `500 24px ${familia}`;
+    ctx.fillText((d.rotuloMonto ?? 'Monto').toUpperCase(), centro, y);
+    y += 40;
+    ctx.fillStyle = d.annulled ? '#9ca3af' : '#15803d';
+    ctx.font = `700 64px ${familia}`;
+    ctx.fillText(formato(d.amount, d.currency), centro, y);
+    y += 100;
+
+    ctx.beginPath();
+    ctx.moveTo(M, y);
+    ctx.lineTo(ANCHO - M, y);
+    ctx.stroke();
+    y += 34;
+
+    // Los datos a la izquierda, uno debajo de otro (como el de Bancamiga).
+    ctx.textAlign = 'left';
+    for (const [rotulo, valor] of renglones) {
+        ctx.fillStyle = '#4338ca';
         ctx.font = `500 22px ${familia}`;
-        ctx.fillText(rotulo, M, y);
+        ctx.fillText(rotulo.toUpperCase(), M, y);
+        y += 42;
         ctx.fillStyle = '#111827';
-        ctx.font = `600 26px ${familia}`;
-        ctx.fillText(recortar(ctx, valor, ANCHO - 2 * M - 260), M + 260, y - 2);
-        y += 50;
-    };
-
-    par(d.rotuloPersona ?? 'Estudiante', `${d.student.firstName} ${d.student.lastName}`.trim());
-    if (d.student.id) par('Cédula', d.student.id);
-    if (d.cargo) par('Cargo', d.cargo);
-    par('Fecha', fechaLarga(d.paidAt));
-    par('Método', d.method);
-    if (d.reference) par('Referencia', d.reference);
-
-    y += 16;
-    ctx.fillStyle = '#eef2ff';
-    ctx.fillRect(M, y, ANCHO - 2 * M, 120);
-    ctx.fillStyle = '#3730a3';
-    ctx.font = `500 22px ${familia}`;
-    ctx.fillText(d.rotuloMonto ?? 'Monto recibido', M + 30, y + 22);
-    ctx.font = `700 48px ${familia}`;
-    ctx.fillText(formato(d.amount, d.currency), M + 30, y + 54);
-    if (d.currency !== d.baseCurrency && d.exchangeRate) {
-        ctx.textAlign = 'right';
-        ctx.font = `500 20px ${familia}`;
-        ctx.fillText(`Tasa ${formato(d.exchangeRate, 'VES')} por $1`, ANCHO - M - 30, y + 30);
-        ctx.font = `600 24px ${familia}`;
-        ctx.fillText(`Equivale a ${formato(d.amountBase, d.baseCurrency)}`, ANCHO - M - 30, y + 66);
-        ctx.textAlign = 'left';
+        ctx.font = `600 30px ${familia}`;
+        for (const linea of valor) {
+            ctx.fillText(linea, M, y);
+            y += 40;
+        }
+        y += 22;
     }
-    y += 160;
-
-    ctx.fillStyle = '#374151';
-    ctx.font = `700 22px ${familia}`;
-    ctx.fillText('Se aplicó a', M, y);
-    y += 44;
-    for (const a of d.allocations) {
-        ctx.strokeStyle = '#e5e7eb';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(M, y - 10);
-        ctx.lineTo(ANCHO - M, y - 10);
-        ctx.stroke();
-        ctx.fillStyle = '#111827';
-        ctx.font = `500 24px ${familia}`;
-        ctx.fillText(recortar(ctx, a.label, ANCHO - 2 * M - 260), M, y);
-        ctx.textAlign = 'right';
-        ctx.font = `600 24px ${familia}`;
-        ctx.fillText(formato(a.amount, d.baseCurrency), ANCHO - M, y);
-        ctx.textAlign = 'left';
-        y += 52;
-    }
+    ctx.textAlign = 'center';
 
     if (d.annulled) {
-        y += 10;
         ctx.fillStyle = '#b91c1c';
-        ctx.font = `700 24px ${familia}`;
-        ctx.fillText(recortar(ctx, `ANULADO${d.annulReason ? `: ${d.annulReason}` : ''}`, ANCHO - 2 * M), M, y);
+        ctx.font = `700 28px ${familia}`;
+        ctx.fillText(recortar(ctx, `ANULADO${d.annulReason ? `: ${d.annulReason}` : ''}`, ANCHO - 2 * M), centro, y + 10);
         // Marca de agua cruzada: que no se pueda recortar y usar como válido.
         ctx.save();
         ctx.translate(ANCHO / 2, ALTO / 2);
         ctx.rotate(-Math.PI / 6);
         ctx.fillStyle = 'rgba(185, 28, 28, 0.14)';
-        ctx.font = `800 170px ${familia}`;
-        ctx.textAlign = 'center';
+        ctx.font = `800 150px ${familia}`;
         ctx.textBaseline = 'middle';
         ctx.fillText('ANULADO', 0, 0);
         ctx.restore();
         ctx.textBaseline = 'top';
+        ctx.textAlign = 'center';
     }
 
     ctx.fillStyle = '#9ca3af';
-    ctx.font = `500 18px ${familia}`;
-    ctx.fillText('Generado con Gestiedu', M, ALTO - M + 10);
+    ctx.font = `500 20px ${familia}`;
+    ctx.fillText('Generado con Gestiedu', centro, ALTO - 60);
     return lienzo;
 }
 
-export async function descargarComprobante(paymentId: string, formatoArchivo: 'png' | 'pdf') {
+/** Lo que el servidor tiene de un cobro a un estudiante. */
+export async function leerComprobante(paymentId: string): Promise<DatosDelComprobante> {
     const { data } = await api.get(`/payments/${paymentId}/receipt`);
-    const lienzo = await dibujar(data as DatosDelComprobante);
-    const nombre = `comprobante-${String(data.receiptNumber).padStart(6, '0')}.${formatoArchivo}`;
-    const aBlob = (tipo: string, q?: number) =>
-        new Promise<Blob>((ok, mal) => lienzo.toBlob((b) => (b ? ok(b) : mal(new Error('No se pudo generar'))), tipo, q));
-
-    if (formatoArchivo === 'png') return entregarArchivo(await aBlob('image/png'), nombre);
-    const jpeg = new Uint8Array(await (await aBlob('image/jpeg', 0.92)).arrayBuffer());
-    return entregarArchivo(pdfConUnaImagen(jpeg, lienzo.width, lienzo.height), nombre);
+    return data as DatosDelComprobante;
 }
 
-/** El recibo de un pago al personal (2026-10-01): el mismo dibujo, con sus rótulos. */
-export async function descargarReciboDelPersonal(pagoId: string, formatoArchivo: 'png' | 'pdf') {
+/** Lo que el servidor tiene de un pago al personal, con los rótulos del recibo. */
+export async function leerReciboDelPersonal(pagoId: string): Promise<DatosDelComprobante> {
     const { data: r } = await api.get(`/finanzas/pagos-al-personal/${pagoId}/recibo`);
-    const lienzo = await dibujar({
+    return {
         institute: r.institute,
         receiptNumber: r.numero,
         student: { id: r.persona.cedula ?? '', firstName: r.persona.nombre, lastName: '' },
@@ -196,15 +221,18 @@ export async function descargarReciboDelPersonal(pagoId: string, formatoArchivo:
         annulled: r.anulado,
         annulReason: r.motivoAnulacion,
         allocations: r.asignaciones.map((a: any) => ({ label: a.etiqueta, amount: a.monto })),
-        titulo: 'Recibo de pago al personal',
+        titulo: 'Pago al personal',
         rotuloPersona: 'Pagado a',
         cargo: r.persona.cargo,
         rotuloMonto: 'Monto pagado',
-    });
-    const nombre = `recibo-personal-${String(r.numero).padStart(6, '0')}.${formatoArchivo}`;
-    const aBlob = (tipo: string, q?: number) =>
-        new Promise<Blob>((ok, mal) => lienzo.toBlob((b) => (b ? ok(b) : mal(new Error('No se pudo generar'))), tipo, q));
-    if (formatoArchivo === 'png') return entregarArchivo(await aBlob('image/png'), nombre);
-    const jpeg = new Uint8Array(await (await aBlob('image/jpeg', 0.92)).arrayBuffer());
-    return entregarArchivo(pdfConUnaImagen(jpeg, lienzo.width, lienzo.height), nombre);
+    };
 }
+
+/** «Compartir»: la imagen al compartir del teléfono (WhatsApp…); en el ordenador, se baja. */
+export async function compartirComprobante(d: DatosDelComprobante) {
+    const lienzo = await dibujar(d);
+    const blob = await new Promise<Blob>((ok, mal) => lienzo.toBlob((b) => (b ? ok(b) : mal(new Error('No se pudo generar'))), 'image/png'));
+    const nombre = d.receiptNumber > 0 ? `${d.rotuloPersona ? 'recibo-personal' : 'comprobante'}-${String(d.receiptNumber).padStart(6, '0')}.png` : `movimiento-${d.paidAt}.png`;
+    return entregarArchivo(blob, nombre);
+}
+

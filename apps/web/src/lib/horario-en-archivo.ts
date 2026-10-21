@@ -403,6 +403,16 @@ export function nombreDeArchivo(titulo: string, extension: 'png' | 'pdf'): strin
     return `horario-${base || 'semanal'}.${extension}`;
 }
 
+/** El archivo en base64 (sin la cabecera `data:`), para el puente nativo. */
+function enBase64(blob: Blob): Promise<string> {
+    return new Promise((ok, mal) => {
+        const lector = new FileReader();
+        lector.onload = () => ok(String(lector.result).split(',')[1] ?? '');
+        lector.onerror = () => mal(lector.error);
+        lector.readAsDataURL(blob);
+    });
+}
+
 /**
  * Entrega el archivo.
  *
@@ -411,7 +421,21 @@ export function nombreDeArchivo(titulo: string, extension: 'png' | 'pdf'): strin
  * y en el teléfono compartir es lo que la gente quiere hacer con un horario.
  * Donde no se puede compartir archivos, se descarga.
  */
-export async function entregarArchivo(blob: Blob, nombre: string): Promise<'compartido' | 'descargado' | 'cancelado'> {
+export async function entregarArchivo(blob: Blob, nombre: string): Promise<'compartido' | 'descargado' | 'cancelado' | 'actualizar'> {
+    // En la APK, ni `navigator.share` ni `<a download>` hacen nada: lo
+    // comparte el complemento nativo (`CompartirPlugin.java`). Una APK de antes
+    // de él no lo tiene: se avisa de actualizar en vez de callar.
+    const cap = typeof window !== 'undefined' ? (window as any).Capacitor : undefined;
+    if (cap?.isNativePlatform?.()) {
+        const plugin = cap.Plugins?.Compartir as
+            | { archivo: (o: { base64: string; nombre: string; tipo: string; titulo: string }) => Promise<void> }
+            | undefined;
+        if (!plugin?.archivo) return 'actualizar';
+        const base64 = await enBase64(blob);
+        await plugin.archivo({ base64, nombre, tipo: blob.type || 'application/octet-stream', titulo: 'Compartir' });
+        return 'compartido';
+    }
+
     const archivo = new File([blob], nombre, { type: blob.type });
     const nav = navigator as Navigator & { canShare?: (d: unknown) => boolean };
     const tactil = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;

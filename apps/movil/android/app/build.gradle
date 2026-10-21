@@ -2,6 +2,23 @@ apply plugin: 'com.android.application'
 
 def laVersion = new groovy.json.JsonSlurper().parse(file('../../version-de-la-app.json'))
 
+/*
+ * LA FIRMA DE VERDAD (la que se reparte)
+ *
+ * La de pruebas va firmada con la llave de depuración de este PC y marcada
+ * como «depurable»: cualquiera con el teléfono y un cable puede mirar dentro
+ * de la app, y los antivirus la dan por riesgosa (lo vio un amigo de
+ * Cristian). La que se reparte se compila como `release` —no depurable— y
+ * se firma con la llave del liceo, que crea Cristian y vive FUERA del
+ * repositorio: `android/key.properties` (ignorado) dice dónde está.
+ * Ver `docs/APP-MOVIL.md`, «La versión firmada».
+ */
+def laLlave = new Properties()
+def elArchivoDeLaLlave = rootProject.file('key.properties')
+if (elArchivoDeLaLlave.exists()) {
+    elArchivoDeLaLlave.withInputStream { laLlave.load(it) }
+}
+
 android {
     namespace "com.gestiedu.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -21,10 +38,24 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (elArchivoDeLaLlave.exists()) {
+                storeFile file(laLlave['storeFile'])
+                storePassword laLlave['storePassword']
+                keyAlias laLlave['keyAlias']
+                keyPassword laLlave['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
+            debuggable false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (elArchivoDeLaLlave.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

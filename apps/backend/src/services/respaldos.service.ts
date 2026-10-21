@@ -1,6 +1,8 @@
+import { esquemaPropio, esquemaValido } from '../config/esquema-del-liceo';
 import { spawn } from 'child_process';
 import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
 import path from 'path';
+import { Client } from 'pg';
 import { platformPrisma } from '../config/database';
 import { buildTenantDatabaseUrl, maskDatabaseUrl } from '../config/tenant-db-url';
 import { logger } from '../utils/logger';
@@ -129,6 +131,7 @@ async function liceosActivos() {
             slug: true,
             name: true,
             databaseName: true,
+            databaseSchema: true,
             databaseHost: true,
             databasePort: true,
             databaseUser: true,
@@ -152,6 +155,13 @@ export async function respaldarLiceo(
     instituto: Awaited<ReturnType<typeof liceosActivos>>[number],
     carpeta = carpetaDeRespaldos()
 ): Promise<ResultadoDeRespaldo> {
+    // En la base compartida, el liceo es SU esquema: se guarda ese y nada más.
+    // Sin esto, el respaldo de cada liceo era la base entera, con los datos de
+    // TODOS los demás dentro (y restaurarlo los pisaba a todos).
+    const esquema = esquemaPropio((instituto as { databaseSchema?: string | null }).databaseSchema);
+    if (esquema && !esquemaValido(esquema)) {
+        return { slug: instituto.slug, ok: false, error: `esquema no válido: ${esquema}`, ms: 0 };
+    }
     // Conexión directa: los respaldos no pasan por PgBouncer.
     return volcar(instituto.slug, carpeta, () =>
         buildTenantDatabaseUrl(
@@ -163,7 +173,8 @@ export async function respaldarLiceo(
                 databasePassword: instituto.databasePassword,
             } as any,
             'direct'
-        )
+        ),
+        esquema
     );
 }
 
@@ -193,7 +204,7 @@ export async function respaldarPlataforma(carpeta = carpetaDeRespaldos()): Promi
 }
 
 /** Guarda una base en un archivo de la carpeta, con el nombre de `quien`. */
-async function volcar(quien: string, carpeta: string, direccion: () => string): Promise<ResultadoDeRespaldo> {
+async function volcar(quien: string, carpeta: string, direccion: () => string, esquema: string | null = null): Promise<ResultadoDeRespaldo> {
     const t0 = Date.now();
 
     if (!existsSync(carpeta)) mkdirSync(carpeta, { recursive: true });
@@ -203,6 +214,13 @@ async function volcar(quien: string, carpeta: string, direccion: () => string): 
     try {
         const { env: pgEnv, dbName } = extraerEntornoPg(direccion());
         const args = ['--format=custom', '--no-owner', '--no-acl', '--file', archivo];
+        if (esquema) {
+            args.push(`--schema=${esquema}`);
+            // Los datos del paquete de precarga se rehacen solos; no engordan el respaldo.
+            args.push(`--exclude-table-data=${esquema}.paquetes_de_precarga`);
+        } else if (quien !== RESPALDO_DE_LA_PLATAFORMA) {
+            args.push('--exclude-table-data=paquetes_de_precarga');
+        }
         if (dbName) {
             args.push('--dbname', dbName);
         }
@@ -285,6 +303,8 @@ export async function restaurarLiceo(archivo: string, urlDestino: string): Promi
         destino: maskDatabaseUrl(urlDestino),
     });
 
+    await asegurarExtensiones(urlDestino);
+
     const { env: pgEnv, dbName } = extraerEntornoPg(urlDestino);
     const args = ['--clean', '--if-exists', '--no-owner', '--no-acl'];
     if (dbName) {
@@ -293,6 +313,34 @@ export async function restaurarLiceo(archivo: string, urlDestino: string): Promi
     args.push(archivo);
 
     await ejecutar(herramienta('pg_restore'), args, pgEnv);
+}
+
+/**
+ * LAS EXTENSIONES DE BÚSQUEDA, ANTES DE RESTAURAR
+ *
+ * El respaldo de un liceo de la base compartida es SU esquema, y las
+ * extensiones (`pg_trgm`, `unaccent`) no son de ningún esquema: no van en el
+ * archivo. Restaurar en la misma base funcionaba porque ya estaban; en un
+ * servidor nuevo —justo el día del desastre— `pg_restore` fallaba en los
+ * índices de búsqueda (`gin_trgm_ops` no existe). Medido en el simulacro del
+ * 2026-10-11. Se crean como al dar de alta un liceo (en `pg_catalog`, que es
+ * donde las busca el archivo).
+ */
+async function asegurarExtensiones(url: string): Promise<void> {
+    const cliente = new Client({ connectionString: urlParaHerramientas(url) });
+    await cliente.connect();
+    try {
+        for (const ext of ['pg_trgm', 'unaccent']) {
+            const [fila] = (await cliente.query(
+                `SELECT n.nspname AS esquema FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace WHERE e.extname = $1`,
+                [ext]
+            )).rows;
+            if (!fila) await cliente.query(`CREATE EXTENSION IF NOT EXISTS ${ext} SCHEMA pg_catalog`);
+            else if (fila.esquema !== 'pg_catalog') await cliente.query(`ALTER EXTENSION ${ext} SET SCHEMA pg_catalog`);
+        }
+    } finally {
+        await cliente.end();
+    }
 }
 
 /** Borra los respaldos más viejos que el plazo configurado. */

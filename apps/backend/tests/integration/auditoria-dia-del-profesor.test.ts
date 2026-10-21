@@ -136,23 +136,22 @@ describe('Auditoría — el día a día de un profesor', () => {
         // una fecha fija se volvería inválida con el paso del tiempo.
         const FECHA = todayInTimezone('America/Caracas');
 
-        it('se marca presente y ausente, y queda guardado así', async () => {
-            const presente = await comoProfesor(request(server.server).post('/api/attendance')).send({
-                studentId: alumno1.id,
+        // La asistencia se pasa por la clase en vivo, como en la pantalla (la
+        // ruta vieja `/api/attendance` se quitó el 20-oct-2026).
+        const pasarLista = (attendances: Array<{ studentId: string; status: string; comments?: string }>) =>
+            comoProfesor(request(server.server).post('/api/sessions/live-save')).send({
                 classroomId: classroom.id,
+                subjectId: subject.id,
                 date: FECHA,
-                status: 'PRESENT',
+                attendances,
             });
-            expect([200, 201]).toContain(presente.status);
 
-            const ausente = await comoProfesor(request(server.server).post('/api/attendance')).send({
-                studentId: alumno2.id,
-                classroomId: classroom.id,
-                date: FECHA,
-                status: 'ABSENT',
-                comments: 'Sin justificar',
-            });
-            expect([200, 201]).toContain(ausente.status);
+        it('se marca presente y ausente, y queda guardado así', async () => {
+            const res = await pasarLista([
+                { studentId: alumno1.id, status: 'PRESENT' },
+                { studentId: alumno2.id, status: 'ABSENT', comments: 'Sin justificar' },
+            ]);
+            expect([200, 201]).toContain(res.status);
 
             const registros = await prisma.dailyAttendance.findMany({
                 where: { classroomId: classroom.id, date: new Date(FECHA) },
@@ -162,50 +161,40 @@ describe('Auditoría — el día a día de un profesor', () => {
             expect(registros.find((r) => r.studentId === alumno2.id)!.status).toBe('ABSENT');
         }, 60000);
 
-        it('se consulta la asistencia de ese día de la sección', async () => {
+        it('se consulta la asistencia de ese día en la clase', async () => {
             const res = await comoProfesor(
-                request(server.server).get(`/api/attendance/classroom/${classroom.id}/date/${FECHA}`)
+                request(server.server).get('/api/sessions/live-detail').query({ classroomId: classroom.id, subjectId: subject.id, date: FECHA })
             );
 
             expect(res.status).toBe(200);
-            const lista = res.body.attendances ?? res.body.attendance ?? res.body.data ?? [];
-            expect(Array.isArray(lista) ? lista.length : 0).toBeGreaterThanOrEqual(2);
+            const estados = Object.fromEntries((res.body.students ?? []).map((e: any) => [e.id, e.status]));
+            expect(estados[alumno1.id]).toBe('PRESENT');
+            expect(estados[alumno2.id]).toBe('ABSENT');
         }, 60000);
 
-        it('se corrige una falta por presente y el cambio se guarda', async () => {
-            const registro = await prisma.dailyAttendance.findFirst({
+        it('se corrige una falta por justificada y el cambio se guarda', async () => {
+            const res = await pasarLista([{ studentId: alumno2.id, status: 'EXCUSED', comments: 'Trajo justificativo' }]);
+            expect([200, 201]).toContain(res.status);
+
+            const actualizado = await prisma.dailyAttendance.findFirst({
                 where: { classroomId: classroom.id, studentId: alumno2.id, date: new Date(FECHA) },
             });
-
-            const res = await comoProfesor(request(server.server).put(`/api/attendance/${registro!.id}`)).send({
-                status: 'EXCUSED',
-                comments: 'Trajo justificativo',
-            });
-            expect(res.status).toBe(200);
-
-            const actualizado = await prisma.dailyAttendance.findUnique({ where: { id: registro!.id } });
             expect(actualizado!.status).toBe('EXCUSED');
             expect(actualizado!.comments).toBe('Trajo justificativo');
         }, 60000);
 
         it('no acepta un estado inventado', async () => {
-            const res = await comoProfesor(request(server.server).post('/api/attendance')).send({
-                studentId: alumno1.id,
-                classroomId: classroom.id,
-                date: FECHA,
-                status: 'DE_PASEO',
-            });
+            const res = await pasarLista([{ studentId: alumno1.id, status: 'DE_PASEO' }]);
             expect(res.status).toBe(400);
+            const sigue = await prisma.dailyAttendance.findFirst({
+                where: { classroomId: classroom.id, studentId: alumno1.id, date: new Date(FECHA) },
+            });
+            expect(sigue!.status).toBe('PRESENT');
         }, 60000);
 
-        it('no deja pasar asistencia de un estudiante que no existe', async () => {
-            const res = await comoProfesor(request(server.server).post('/api/attendance')).send({
-                studentId: 'V00000000',
-                classroomId: classroom.id,
-                date: FECHA,
-                status: 'PRESENT',
-            });
-            expect(res.status).toBe(404);
+        it('no deja pasar asistencia de un estudiante que no es de la sección', async () => {
+            const res = await pasarLista([{ studentId: 'V00000000', status: 'PRESENT' }]);
+            expect(res.status).toBe(403);
         }, 60000);
     });
 

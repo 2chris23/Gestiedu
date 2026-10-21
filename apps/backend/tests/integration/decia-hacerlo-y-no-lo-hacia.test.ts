@@ -13,7 +13,6 @@ import {
 } from '../helpers';
 import { RedisCache } from '../../src/config/redis';
 import { conLiceo } from '../../src/config/ambito-del-liceo';
-import { cycleStatisticsService } from '../../src/services/cycle-statistics.service';
 
 /**
  * COSAS QUE DECÍAN HACERSE Y NO SE HACÍAN
@@ -170,34 +169,6 @@ describe('Cosas que decían hacerse y no se hacían', () => {
 
     // ═════════════════════════════════════════════════════════════════════════
 
-    it('NUM-02: limpiar la caché de la sección borra lo que de verdad hay guardado', async () => {
-        // Se guarda con la clave REAL, la que lleva la nota mínima pegada.
-        const claveReal = `stats:section:${seccion.id}:global:min10:asis80`;
-        await conLiceo('institute', () => RedisCache.set(claveReal, { promedio: 'viejo' }, 600));
-        expect(await conLiceo('institute', () => RedisCache.get(claveReal))).not.toBeNull();
-
-        await conLiceo('institute', () =>
-            cycleStatisticsService.clearSectionCache(prisma as any, seccion.id)
-        );
-
-        expect(await conLiceo('institute', () => RedisCache.get(claveReal))).toBeNull();
-    }, 120000);
-
-    it('NUM-03: limpiar la del ciclo alcanza a TODOS los años, no solo del 1 al 5', async () => {
-        // Un liceo con sexto año existía y su caché no se limpiaba nunca: el
-        // bucle iba del 1 al 5 a mano.
-        const claveDelSexto = `stats:grade:${year.id}:6:min10`;
-        const claveDelCiclo = `stats:cycle:${year.id}:global:min10`;
-        await conLiceo('institute', async () => {
-            await RedisCache.set(claveDelSexto, { promedio: 'viejo' }, 600);
-            await RedisCache.set(claveDelCiclo, { promedio: 'viejo' }, 600);
-        });
-
-        await conLiceo('institute', () =>
-            cycleStatisticsService.clearCycleCache(prisma as any, year.id)
-        );
-
-        expect(await conLiceo('institute', () => RedisCache.get(claveDelSexto))).toBeNull();
-        expect(await conLiceo('institute', () => RedisCache.get(claveDelCiclo))).toBeNull();
-    }, 120000);
+    // NUM-02/03 (limpiar la caché de `cycle-statistics`) se quitaron con ese
+    // servicio el 19-oct-2026: las estadísticas sin pantalla ya no existen.
 });

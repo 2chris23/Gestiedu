@@ -78,8 +78,16 @@ export async function observacionesDelPanel(prisma: any, quien: Quien, f: Filtro
     if (quien.role !== 'ADMIN' && quien.role !== 'TEACHER') throw AppErrors.Forbidden('El panel de observaciones es del personal');
     const where: any = { AND: [] as any[] };
     if (quien.role === 'TEACHER') {
-        const suyas = await teacherClassroomIds(prisma, quien.id);
-        where.AND.push({ OR: [{ classroomId: { in: suyas } }, { createdById: quien.id }] });
+        const seccionesGuia = (await prisma.classroom.findMany({
+            where: { teacherId: quien.id },
+            select: { id: true },
+        })).map((c: any) => c.id);
+        where.AND.push({
+            OR: [
+                { createdById: quien.id },
+                ...(seccionesGuia.length > 0 ? [{ classroomId: { in: seccionesGuia } }] : []),
+            ],
+        });
     }
     if (f.classroomId) where.AND.push({ classroomId: f.classroomId });
     if (f.studentId) where.AND.push({ studentId: f.studentId });

@@ -2,19 +2,20 @@ import { test, expect } from '@playwright/test';
 import { WEB_BASE, loginApi, injectSessionCookies, captureEvidence, queryTenantDb } from './helpers';
 
 /**
- * LA LABOR SOCIAL, EN LA PANTALLA
+ * LA LABOR SOCIAL, EN LA PANTALLA (dentro de la sección, desde 2026-10-12)
  *
- * El profesor guía de una sección de 5to marca a un alumno y le anota una
- * actividad; el alumno la ve en su Inicio, sin poder tocarla. Se quita al
- * final. Las reglas las prueban LABOR-01…07.
+ * El profesor guía de una sección de 5to abre su sección, pestaña «Labor
+ * social», marca a un alumno y le anota una actividad; el alumno la ve en su
+ * Inicio, sin poder tocarla. Ya no es una pantalla del menú: quien llegue por
+ * el enlace viejo va a Académico. Las reglas las prueban LABOR-01…10.
  */
 
 test.describe('Labor social', () => {
-    let fila: { studentId: string; firstName: string; lastName: string; email: string; guiaEmail: string };
+    let fila: { studentId: string; firstName: string; lastName: string; email: string; guiaEmail: string; slug: string; ciclo: string };
 
     test.beforeAll(async () => {
         [fila] = await queryTenantDb(
-            `SELECT u.id AS "studentId", u."firstName", u."lastName", u.email, g.email AS "guiaEmail"
+            `SELECT u.id AS "studentId", u."firstName", u."lastName", u.email, g.email AS "guiaEmail", c.slug, ay.name AS ciclo
                FROM student_classrooms sc
                JOIN users u ON u.id = sc."studentId" AND u."isActive"
                JOIN classrooms c ON c.id = sc."classroomId" AND c.grade = 5
@@ -29,13 +30,20 @@ test.describe('Labor social', () => {
         if (fila) await queryTenantDb(`DELETE FROM actividades_de_labor_social WHERE "studentId" = $1`, [fila.studentId]);
     });
 
-    test('LABOR-UI-01: el guía anota una actividad y el alumno la ve en su Inicio', async ({ page }, testInfo) => {
+    test('LABOR-UI-01: el guía la anota desde su sección y el alumno la ve en su Inicio', async ({ page }, testInfo) => {
         try {
             expect(fila, 'hace falta una sección de 5to con guía y alumnos').toBeTruthy();
             const nombre = `${fila.lastName}, ${fila.firstName}`;
             const guia = await loginApi(fila.guiaEmail, '123456');
             await injectSessionCookies(page, guia);
+
+            // El menú ya no la lleva; el enlace viejo va a Académico.
             await page.goto(`${WEB_BASE}/dashboard/labor-social`);
+            await expect(page).toHaveURL(/\/dashboard\/academico$/, { timeout: 60000 });
+            await expect(page.getByRole('link', { name: 'Labor social', exact: true })).toHaveCount(0);
+
+            await page.goto(`${WEB_BASE}/dashboard/academico/${fila.ciclo}/${fila.slug}`);
+            await page.getByRole('button', { name: 'Labor social' }).click({ timeout: 60000 });
             await page.getByRole('checkbox', { name: `Marcar a ${nombre}` }).click({ timeout: 60000 });
             await page.getByRole('button', { name: /Anotar actividad/ }).click();
             const ventana = page.getByRole('dialog');

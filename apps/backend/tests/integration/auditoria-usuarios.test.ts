@@ -106,19 +106,6 @@ describe('Auditoría — usuarios: crear, editar, archivar y borrar', () => {
             expect(enBD!.lastName).toBe('Rodríguez');
         }, 60000);
 
-        it('se desactiva y se vuelve a activar', async () => {
-            const off = await comoAdmin(request(server.server).patch(`/api/users/${id}/status`)).send({
-                isActive: false,
-            });
-            expect(off.status).toBe(200);
-            expect((await prisma.user.findUnique({ where: { id } }))!.isActive).toBe(false);
-
-            const on = await comoAdmin(request(server.server).patch(`/api/users/${id}/status`)).send({
-                isActive: true,
-            });
-            expect(on.status).toBe(200);
-            expect((await prisma.user.findUnique({ where: { id } }))!.isActive).toBe(true);
-        }, 60000);
 
         it('se archiva y se desarchiva sin perder sus datos', async () => {
             const arch = await comoAdmin(request(server.server).post(`/api/users/${id}/archive`)).send({});

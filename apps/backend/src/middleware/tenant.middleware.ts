@@ -1,5 +1,4 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { PrismaClient } from '@prisma/client';
 import { RedisCache } from '../config/redis';
 import { platformPrisma, getTenantPrisma } from '../config/database';
 import { verifyAccessToken, extractTokenFromHeader } from '../config/jwt';
@@ -185,27 +184,6 @@ export async function identifyTenant(
     }
 }
 
-/**
- * Middleware para rutas que REQUIEREN un tenant resuelto
- */
-export function requireTenantAccess() {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
-    if (!request.institute) {
-      return reply.status(400).send({
-        error: 'No se pudo identificar el instituto',
-        code: 'TENANT_NOT_FOUND',
-      });
-    }
-
-    if (request.institute.status !== 'ACTIVE') {
-      return reply.status(403).send({
-        error: 'Instituto no activo',
-        code: 'INSTITUTE_INACTIVE',
-        status: request.institute.status,
-      });
-    }
-  };
-}
 
 /**
  * Helper: Obtiene datos del tenant por ID (con cache)
@@ -296,69 +274,7 @@ async function resolveByCustomDomain(domain: string): Promise<string | null> {
   return institute.id;
 }
 
-/**
- * Obtiene el ID del tenant desde el request (para uso en controllers)
- */
-export function getTenantId(request: FastifyRequest): string | null {
-  return request.institute?.id || (request as any).user?.instituteId || null;
-}
 
-/**
- * Verifica acceso a un tenant específico
- */
-export function canAccessTenant(request: FastifyRequest, targetInstituteId: string): boolean {
-  const userInstituteId = (request as any).user?.instituteId;
-  return userInstituteId === targetInstituteId;
-}
 
-/**
- * Log de acceso al tenant
- */
-export async function logTenantAccess(
-  request: FastifyRequest,
-  _reply: FastifyReply
-) {
-  if (request.institute) {
-    logger.debug('Tenant access', {
-      instituteId: request.institute.id,
-      instituteName: request.institute.name,
-      path: request.url,
-    });
-  }
-}
 
-/**
- * Obtiene configuración del tenant
- */
-export async function getTenantConfig(instituteId: string): Promise<any> {
-  const cacheKey = `${CACHE_PREFIX}config:${instituteId}`;
 
-  const cached = await RedisCache.get<any>(cacheKey);
-  if (cached) return cached;
-
-  const institute = await platformPrisma.institute.findUnique({
-    where: { id: instituteId },
-    select: {
-      primaryColor: true,
-      secondaryColor: true,
-      logo: true,
-      favicon: true,
-      subjectPalette: true,
-      timezone: true,
-    },
-  });
-
-  if (institute) {
-    await RedisCache.set(cacheKey, institute, TENANT_CACHE_TTL);
-  }
-
-  return institute || {};
-}
-
-/**
- * Limpia cache de un tenant específico
- */
-export async function clearTenantCache(instituteId: string): Promise<void> {
-  await RedisCache.clearPattern(`${CACHE_PREFIX}*${instituteId}*`);
-  logger.info('Tenant cache cleared', { instituteId });
-}

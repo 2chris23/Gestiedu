@@ -146,3 +146,41 @@ describe('Renovar la sesión no le gasta el cupo a los demás', () => {
         expect(frenados).toBeGreaterThan(0);
     }, 180000);
 });
+
+/**
+ * EL CUPO GENERAL TAMBIÉN (CUPO-REN-01, 2026-10-04)
+ *
+ * Además del contador de intentos, el cupo general de peticiones contaba
+ * renovar por DIRECCIÓN (no lleva credencial corta): cien por minuto para
+ * todo un liceo detrás de su wifi, y en producción para TODOS los liceos,
+ * porque la web renueva en nombre del teléfono y no decía desde dónde.
+ * Medido con `medir:vuelve-la-luz`: vuelve la luz y 150 de 200 teléfonos se
+ * quedan con 429 al renovar. Ahora renovar y `/health` tienen un cupo por
+ * dirección del tamaño de un liceo entero (`CUPO_DEL_LICEO_POR_DIRECCION`).
+ */
+describe('Renovar cuando vuelve la luz (CUPO-REN-01)', () => {
+    let server: FastifyInstance;
+
+    beforeAll(async () => {
+        server = await createTestServer();
+    }, 120000);
+
+    afterAll(async () => {
+        await server.close();
+    });
+
+    it('CUPO-REN-01: 150 renovaciones y 150 /health desde la misma dirección no chocan con el cupo general', async () => {
+        const estados: number[] = [];
+        for (let i = 0; i < 150; i++) {
+            const r = await request(server.server)
+                .post('/api/auth/refresh-token')
+                .set('X-Institute-Slug', SLUG)
+                .set('X-Forwarded-For', '10.200.0.1')
+                .send({ refreshToken: `llave-inventada-${i}-${'x'.repeat(40)}` });
+            estados.push(r.status);
+            const s = await request(server.server).get('/health').set('X-Forwarded-For', '10.200.0.1');
+            estados.push(s.status);
+        }
+        expect(estados.filter((s) => s === 429)).toHaveLength(0);
+    }, 120000);
+});

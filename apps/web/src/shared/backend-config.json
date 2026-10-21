@@ -1,9 +1,9 @@
 {
-  "port": 3001,
+  "port": 3010,
   "host": "localhost",
   "protocol": "http",
-  "apiUrl": "http://localhost:3001/api",
+  "apiUrl": "http://localhost:3010/api",
   "status": "running",
-  "lastStarted": "2026-09-20T23:31:15.337Z",
+  "lastStarted": "2026-10-20T01:06:59.751Z",
   "version": "1.0.0"
 }

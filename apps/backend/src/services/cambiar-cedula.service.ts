@@ -3,6 +3,7 @@ import { invalidateUserSession } from '../middleware/auth.middleware';
 import { invalidateUserCache } from '../utils/cache-invalidation';
 import { esCedulaEscolar } from '../utils/cedula-escolar';
 import { userIdSchema } from '../utils/validators';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
  * CAMBIAR LA CÉDULA DE UNA PERSONA
@@ -105,7 +106,7 @@ export async function cambiarLaCedula(
         invalidateUserSession(instituteId, vieja),
         invalidateUserCache(instituteId, vieja),
         invalidateUserCache(instituteId, nueva),
-    ]).catch(() => undefined);
+    ]).catch(avisarSiFalla('cambiar-cedula.service'));
 
     return { id: nueva, tipoDeCedula: tipo, cedulaEscolar };
 }

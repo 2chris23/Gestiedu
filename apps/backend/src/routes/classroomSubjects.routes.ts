@@ -1,17 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { authenticate } from '../middleware/auth.middleware';
 import { requireAdmin, requireTeacher } from '../middleware/auth.middleware';
-import {
-    getClassroomSubjects,
-    getClassroomSubjectDetail,
-    assignSubjectToClassroom,
-    updateClassroomSubject,
-    assignTeacherToSubject,
-    getTeacherHistory,
-    removeSubjectFromClassroom,
-    getAvailableSubjects,
-    getClassroomSubjectsStats,
-} from '../controllers/classroomSubjects.controller';
+import { getClassroomSubjects, getClassroomSubjectDetail, assignSubjectToClassroom, updateClassroomSubject, removeSubjectFromClassroom, getAvailableSubjects } from '../controllers/classroomSubjects.controller';
+import { assignTeacherToSubject, getTeacherHistory } from '../controllers/secciones/profesor-de-la-materia.controller';
+import { getClassroomSubjectsStats } from '../controllers/secciones/tarjetas-de-materias.controller';
 
 export async function classroomSubjectsRoutes(fastify: FastifyInstance) {
     // Rutas protegidas - requieren autenticación

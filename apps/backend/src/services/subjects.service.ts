@@ -1,11 +1,22 @@
+import { createError } from '../middleware/error.middleware';
 import { CreateSubjectInput, UpdateSubjectInput } from '../utils/validators';
-import { subjectSectionAverage, studentsWithNoteInSubject } from './aggregation.service';
-import { gradesService } from './grades.service';
-import * as closeCycleService from './promotion/close-cycle.service';
+import { promediosDeVariasSecciones } from './aggregation.service';
+import { getAcademicConfig } from './promotion/configuracion-academica';
 import { findTeacherAssignmentConflicts, ScheduleConflictError } from './schedule-conflicts.service';
 import { borrarGuardandoCopia, QuienBorra } from '../utils/papelera';
 import { NotFoundError } from '../utils/errors';
 import { olvidarMateriasCualitativas } from './apreciaciones.service';
+import { noQuitarConTrabajo } from './secciones-de-la-materia.service';
+
+/**
+ * UNA MATERIA «POR GRUPOS» SE EVALÚA CON APRECIACIÓN: el profesor de cada
+ * grupo pone la apreciación de sus miembros (los grupos estables / GCRP).
+ */
+function porGruposSoloConApreciacion(porGrupos: boolean | undefined, evaluacion: string | undefined) {
+    if (porGrupos && evaluacion !== 'CUALITATIVA') {
+        throw createError(400, 'Una materia por grupos se evalúa con apreciación', 'GRUPOS_SOLO_APRECIACION');
+    }
+}
 
 export class SubjectsService {
     async getAllSubjects(filters: any = {}, prisma: any) {
@@ -135,7 +146,7 @@ export class SubjectsService {
         let minPassing = 10;
         if (instituteId) {
             try {
-                const config = await closeCycleService.getAcademicConfig(instituteId);
+                const config = await getAcademicConfig(instituteId);
                 minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
             } catch {
                 minPassing = 10;
@@ -157,6 +168,7 @@ export class SubjectsService {
                                 name: true,
                                 slug: true,
                                 grade: true,
+                                shift: true,
                                 capacity: true,
                                 academicYearId: true,
                                 academicYear: {
@@ -282,10 +294,19 @@ export class SubjectsService {
         });
 
         let allSubjectScores: number[] = [];
+        // Las notas de cada sección: con ellas sale el promedio de cada profesor.
+        const notasPorSeccion = new Map<string, number[]>();
         let totalSubjectRisk = 0;
         let totalSubjectCapacity = 0;
 
         // Transform data for frontend with real calculated averages and risk
+        // Todas las secciones de la materia con las mismas consultas.
+        const promediosDe = await promediosDeVariasSecciones(
+            prisma,
+            subject.classroomSubjects.map((cs: any) => cs.classroom.id),
+            periodId,
+            [subject.id]
+        );
         const sections = await Promise.all(
             subject.classroomSubjects.map(async (cs: any) => {
                 const classroomId = cs.classroom.id;
@@ -325,15 +346,17 @@ export class SubjectsService {
                 const secScores: number[] = [];
 
                 try {
-                    const withData = await studentsWithNoteInSubject(prisma, classroomId, subject.id, periodId);
-                    for (const studentId of withData) {
-                        const stuAvg = await gradesService.calculateWeightedSubjectAverage(
-                            prisma,
-                            studentId,
-                            subject.id,
-                            periodId
-                        );
-                        if (stuAvg > 0) {
+                    // EN BLOQUE (Cristian, 18-oct-2026: «tarda demasiado» al abrir una
+                    // materia del catálogo). Antes, alumno por alumno: con 20
+                    // secciones, ~600 cálculos de unas 30 consultas cada uno. Las
+                    // mismas reglas, un puñado de consultas por sección
+                    // (`bulk-averages-parity.test.ts` vigila que dé lo mismo).
+                    // Las cifras oficiales (las de la boleta): solo trae a quien tiene nota,
+                    // y un 0 es una nota (CERO-*).
+                    const promedios = promediosDe.get(classroomId) ?? new Map();
+                    for (const porMateria of promedios.values()) {
+                        const stuAvg = porMateria.get(subject.id);
+                        if (typeof stuAvg === 'number') {
                             secScores.push(stuAvg);
                             allSubjectScores.push(stuAvg);
                             if (gradeStatsAccum[gradeNum]) {
@@ -349,6 +372,7 @@ export class SubjectsService {
                         }
                     }
 
+                    notasPorSeccion.set(classroomId, secScores);
                     if (secScores.length > 0) {
                         secMin = Math.min(...secScores);
                         secMax = Math.max(...secScores);
@@ -363,6 +387,7 @@ export class SubjectsService {
                     name: cs.classroom.name,
                     slug: cs.classroom.slug,
                     grade: cs.classroom.grade,
+                    shift: cs.classroom.shift,
                     capacity,
                     studentCount,
                     weeklyBlocks: cs.weeklyBlocks,
@@ -463,6 +488,25 @@ export class SubjectsService {
             }
         });
 
+        // EL PROFESOR EN ESTA MATERIA (Cristian, 18-oct-2026): su promedio es
+        // el de todos los alumnos con nota de las secciones donde la da (la
+        // misma regla que el promedio de la materia: quien no tiene nota no
+        // cuenta), y su asistencia, la de esas secciones (presente o tarde
+        // sobre lo pasado). MAPA_DE_CALCULOS §1d.
+        subject.classroomSubjects.forEach((cs: any) => {
+            if (!cs.teacher) return;
+            const t = teachersMap.get(cs.teacher.id);
+            t._notas = (t._notas || []).concat(notasPorSeccion.get(cs.classroom.id) || []);
+            const a = attMap.get(cs.classroom.id);
+            t._asistio = (t._asistio || 0) + (a?.attended || 0);
+            t._pasadas = (t._pasadas || 0) + (a?.total || 0);
+        });
+        const teachers = Array.from(teachersMap.values()).map(({ _notas = [], _asistio = 0, _pasadas = 0, ...t }: any) => ({
+            ...t,
+            average: _notas.length > 0 ? Math.round((_notas.reduce((x: number, y: number) => x + y, 0) / _notas.length) * 10) / 10 : 0,
+            attendance: _pasadas > 0 ? Math.round((_asistio / _pasadas) * 100) : null,
+        }));
+
         const { classroomSubjects, ...subjectData } = subject;
 
         return {
@@ -471,7 +515,7 @@ export class SubjectsService {
             stats,
             gradeStats,
             sections,
-            teachers: Array.from(teachersMap.values()),
+            teachers,
             sectionCount: sections.length,
             teacherCount: teachersMap.size,
             totalStudents: totalEnrolledStudents
@@ -480,6 +524,7 @@ export class SubjectsService {
 
     async createSubject(data: CreateSubjectInput, prisma: any) {
         const { generateSlug } = await import('../utils/slug');
+        porGruposSoloConApreciacion((data as any).porGrupos, data.evaluacion);
 
         const materia = await prisma.subject.create({
             data: {
@@ -492,6 +537,10 @@ export class SubjectsService {
     }
 
     async updateSubject(id: string, data: UpdateSubjectInput, prisma: any) {
+        if ((data as any).porGrupos !== undefined || data.evaluacion !== undefined) {
+            const actual = await prisma.subject.findUnique({ where: { id }, select: { porGrupos: true, evaluacion: true } });
+            porGruposSoloConApreciacion((data as any).porGrupos ?? actual?.porGrupos, data.evaluacion ?? actual?.evaluacion);
+        }
         const materia = await prisma.subject.update({
             where: { id },
             data
@@ -627,16 +676,14 @@ export class SubjectsService {
 
         // 3. Crear (o actualizar) la relación ClassroomSubject para CADA aula
         const results = [];
+        // Las asignaciones que ya existen, de una vez (antes, una consulta por aula).
+        const yaExisten = new Map<string, any>(
+            (await prisma.classroomSubject.findMany({
+                where: { subjectId, classroomId: { in: classrooms.map((c: any) => c.id) } }
+            })).map((cs: any) => [cs.classroomId, cs])
+        );
         for (const classroom of classrooms) {
-            // Verificar si ya existe la asignación
-            const existing = await prisma.classroomSubject.findUnique({
-                where: {
-                    classroomId_subjectId: {
-                        classroomId: classroom.id,
-                        subjectId: subjectId
-                    }
-                }
-            });
+            const existing = yaExisten.get(classroom.id);
 
             if (existing) {
                 // Si ya existe, actualizamos el profesor si se proporcionó uno
@@ -679,6 +726,8 @@ export class SubjectsService {
             yearId = activeYear.id;
         }
 
+        const secciones = await prisma.classroomSubject.findMany({ where: { subjectId, classroom: { grade, academicYearId: yearId } }, select: { classroomId: true } });
+        await noQuitarConTrabajo(prisma, subjectId, secciones.map((s: any) => s.classroomId));
         // Con copia en la papelera: quitar la materia de un año se lleva la
         // asignación de cada sección con su profesor y su historial. Esto era
         // un `deleteMany` a pelo, uno de los dos borrados que se saltaban la regla.

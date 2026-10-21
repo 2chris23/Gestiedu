@@ -21,7 +21,7 @@ export function getAcademicRisk(average: number | null | undefined, passingGrade
     if (average === null || average === undefined || average <= 0) {
         return {
             level: 'SIN_CALIFICAR',
-            label: 'Sin Calificar',
+            label: 'Sin notas',
             className: 'bg-gray-100 text-gray-600',
             textColor: 'text-gray-600',
             bgColor: 'bg-gray-100'

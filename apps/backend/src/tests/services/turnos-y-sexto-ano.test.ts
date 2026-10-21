@@ -1,4 +1,4 @@
-import { AcademicConfig } from '../../services/promotion/close-cycle.service';
+import { AcademicConfig } from '../../services/promotion/configuracion-academica';
 
 describe('Doble Turno y 6to Año (Educación Media Técnica)', () => {
     describe('Reglas de Promoción según Modalidad', () => {

@@ -10,7 +10,7 @@ import { instituteTimezone, todayInTimezone } from '../utils/school-time';
  * (`puedeVerLaBoleta`). Solo lectura. Ver `services/boleta.service.ts`.
  */
 export async function obtenerBoleta(
-    request: FastifyRequest<{ Params: { id: string }; Querystring: { academicYearId?: string } }>,
+    request: FastifyRequest<{ Params: { id: string }; Querystring: { academicYearId?: string; ciclo?: string; lapso?: string } }>,
     reply: FastifyReply
 ) {
     const prisma = request.tenantPrisma;
@@ -23,8 +23,9 @@ export async function obtenerBoleta(
         return reply.status(400).send({ error: 'No se pudo determinar el liceo', code: 'INSTITUTE_REQUIRED' });
     }
     const hoy = todayInTimezone(await instituteTimezone(prisma));
+    const cycleParam = request.query?.ciclo || request.query?.academicYearId;
     const data = await boletaDelAlumno(prisma, instituteId, id, {
-        academicYearId: request.query?.academicYearId || undefined,
+        academicYearId: cycleParam || undefined,
         hoy,
     });
     return reply.status(200).send({ success: true, data });

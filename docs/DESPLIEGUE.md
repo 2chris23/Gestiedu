@@ -206,6 +206,18 @@ Lo de arriba se escribió para 50 liceos. Para 200, lo que cambió (septiembre
   Redis (`CUPO-01…04`, `DOBLE-01…04`), y los logos a la base de la plataforma
   (`LOGO-01…05`). nginx manda la API al proceso menos ocupado y el tiempo real
   siempre al mismo proceso por dirección (ver `docker/nginx/nginx.conf`).
+- **Los cubos de la descarga, en un proceso aparte** (19-oct-2026). En los
+  procesos que atienden a la gente, `PRECARGA_TRABAJADORES=0`; uno más, sin
+  tráfico, con `PRECARGA_TRABAJADORES=2`. Medido en el mismo proceso: el
+  armado de los cubos de 50 liceos nuevos llevó el p95 de todo a 6 s con 200
+  personas. Aunque ahora se aparta de la gente (`utils/la-gente-esperando.ts`),
+  sigue gastando las conexiones del liceo.
+- **Cuántos procesos** (medido por escalones el 19-oct-2026, `LISTO-PARA-EL-PILOTO.md`
+  puerta 3): uno aguanta unas 400–500 personas a la vez con p99 ≤ 100 ms; para
+  10.000, unos 10–12. Solo con PgBouncer: sin él, 4 procesos × 50 liceos no caben
+  en las 100 conexiones de PostgreSQL. Las tareas que recorren todos los liceos
+  (estado de los años, almacenamiento, cuadro de honor, mantenimiento) corren
+  una vez entre todos (`utils/turno-de-la-tarea.ts`).
 
 ### El puerto, cuando lo asigna el hospedaje
 
@@ -286,6 +298,12 @@ docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
 Ponlo en el calendario **cada dos meses**. Un certificado caducado deja el liceo
 entero fuera, y el aviso llega por correo a una dirección que igual nadie mira.
 
+**Y que lo vigile el panel.** Con `CERTIFICADO_TLS` apuntando al certificado
+que sirve nginx (montado de solo lectura en el contenedor del servidor, p. ej.
+`/etc/letsencrypt/live/<dominio>/fullchain.pem`), la Salud del sistema del
+superadmin dice cuántos días le quedan: **menos de 14, aviso; menos de 3,
+grave** (LATIDO-04). Sin la variable, el panel dice «sin vigilar».
+
 ### De quién se fía el servidor cuando le dicen desde dónde llaman
 
 La dirección de quien llama la escribe **quien llama**, en una cabecera. El
@@ -320,6 +338,24 @@ espera todo lo de aquí. Para los primeros 2 o 3 liceos basta una máquina. Al
 crecer: otra para PostgreSQL y más procesos del servidor de datos (§5, «200
 liceos, y más de un proceso»), sin cambiar código. La copia de los respaldos
 fuera del servidor, a Cloudflare R2 (§8), que no cobra por descargar.
+
+### Desde Venezuela: lo que un proveedor puede cortar (octubre 2026)
+
+Las sanciones de EE. UU. a Venezuela son **selectivas**, no un embargo total,
+pero algunas empresas cierran cuentas venezolanas por precaución (Adobe lo hizo
+en 2019). Nada de esto se puede probar desde aquí: se confirma al contratar, y
+cada pieza tiene que tener su alternativa **antes** de necesitarla.
+
+| Pieza | Riesgo | Si se corta |
+|---|---|---|
+| Servidor (Hetzner u otro VPS) | Pide verificar identidad y pago; una tarjeta o dirección venezolana puede no pasar | El sistema es `docker-compose` puro: se levanta igual en cualquier VPS (OVH, DigitalOcean, Contabo) con el respaldo de anoche (§8, §10). Contratar a nombre de quien pueda pagar desde fuera |
+| Respaldos fuera (R2) | Cuenta de Cloudflare cerrada | Cualquier almacén que hable S3 (Backblaze B2, Wasabi, otro VPS con MinIO): son las mismas variables `BACKUP_S3_*`. Y van cifrados (§8): el proveedor no los lee |
+| Google Play | Venezuela figura como país admitido para registrar desarrolladores (ver la [lista de Google](https://support.google.com/googleplay/android-developer/answer/9306917)) | La APK se instala y se actualiza sola **sin Play** (`docs/APP-MOVIL.md`), y la app instalada desde el navegador no necesita tienda |
+| Firebase (avisos a la APK) | Proyecto suspendido | Los avisos siguen por la campana y el tiempo real; la PWA usa Web Push, que no depende de Firebase |
+| Correo (SMTP) | Cuenta cerrada | Cualquier SMTP: son variables (`SMTP_*`); el sistema no depende del correo para entrar |
+
+Regla: **ningún dato del liceo vive solo en un proveedor**. Lo de la base está
+en el respaldo cifrado, y el respaldo, en dos sitios.
 
 ## 7. El modo de la aplicación: comprobarlo, no suponerlo
 
@@ -362,6 +398,36 @@ npm run restore:tenant -- --slug=liceo-bolivar --confirmar
 Restaurar **borra lo que el liceo tenga ahora**: todo lo trabajado desde ese
 respaldo se pierde. Por eso, sin `--confirmar`, el comando solo explica qué haría.
 
+Al terminar, el comando:
+- **apunta la restauración en los cambios del liceo**, de modo que cada teléfono lo baja todo otra vez (CAMBIOS-06). Si no lo hiciera:
+  - los teléfonos seguirían enseñando lo que se acaba de deshacer;
+  - la numeración de los cambios volvería atrás, y los teléfonos no pedirían los cambios nuevos;
+- **vacía la memoria rápida de ese liceo**, y solo la de ese liceo.
+
+**Después, reinicia la API** (`docker compose restart backend`): ningún proceso debe seguir con lo de antes en su memoria.
+
+Restaura también un liceo suspendido.
+
+**Simulacro del 2026-10-11**, con los cuatro liceos de este PC:
+
+| Paso | Resultado |
+|---|---|
+| Respaldo de todos | 8 s, 43 MB |
+| Plataforma, recuperada en una base nueva | 8 tablas idénticas |
+| `instituto-testing`, recuperado en una base nueva | 48.018 filas idénticas, 2,6 s |
+| `test-load-5k`, recuperado en una base nueva | 2,5 millones de filas idénticas, 55 s |
+| `test-institute-b`, recuperado en una base nueva | idéntico |
+| Copia dañada (sin notas, sin asistencia, 635 nombres cambiados) y restaurada encima | 78 tablas idénticas al original |
+| Copia de fuera: cifrada con una llave de prueba y descifrada con `respaldo:descifrar` | byte por byte igual |
+
+**El simulacro destapó un fallo:** en un servidor nuevo, el respaldo de un liceo de la base compartida **no se podía devolver**.
+- Las extensiones de búsqueda (`pg_trgm`, `unaccent`) no son de ningún esquema, así que no van en el archivo.
+- `pg_restore` fallaba en los índices de búsqueda.
+- Restaurar en la misma base lo tapaba, porque ahí las extensiones ya estaban.
+- Ahora `restaurarLiceo` las crea antes (BASE-COMP-06).
+
+**Repite el simulacro antes de cada piloto y cada pocos meses.** Un respaldo que nadie ha devuelto no es un respaldo.
+
 **La base de la plataforma también se guarda**, cada noche y la primera, en
 `_plataforma__<fecha>.dump` (ningún liceo puede llamarse así). Es la que dice
 qué base es de qué liceo y con qué llave se entra: sin ella, los archivos de los
@@ -382,6 +448,43 @@ pg_restore --clean --if-exists --no-owner --dbname=gestion_escolar_platform back
 | `PG_BIN_DIR` | Dónde está `pg_dump` si no está en el PATH (en Windows no suele estarlo). | — |
 | `HORA_DE_RESPALDO` | A qué hora del país (`TZ`) corre el respaldo de cada noche (servicio `respaldos`). | `02:00` |
 | `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`, `BACKUP_S3_REGION` | La copia **fuera** del servidor, en R2 o cualquier S3. Vacío = desactivada. | desactivada |
+| `RESPALDO_LLAVE_PUBLICA` | La llave **pública** con la que sale cifrada la copia de fuera (el PEM, o la ruta al archivo). **Sin ella no sale nada** y el panel lo marca como fallo: lleva datos de menores. | — |
+
+### La copia de fuera va cifrada (datos de menores, octubre 2026)
+
+Un respaldo lleva cédulas, notas, direcciones y fotos de niños, y la copia de
+fuera vive en una empresa ajena. Sale cifrada (AES-256-GCM, con la llave AES
+cifrada para la llave pública del dueño; `utils/cifrar-respaldo.ts`,
+CIFRA-01…03). **El servidor puede cifrar pero no descifrar**: la llave privada
+la guarda el dueño fuera del servidor (si alguien entra al servidor, tampoco
+abre las copias). El par se crea en el ordenador del dueño:
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out respaldos-privada.pem
+```
+
+```bash
+openssl pkey -in respaldos-privada.pem -pubout -out respaldos-publica.pem
+```
+
+La pública va a `RESPALDO_LLAVE_PUBLICA`. La privada, en dos sitios seguros
+(una memoria USB guardada y el gestor de contraseñas del dueño): **perderla es
+perder todas las copias de fuera**. Para devolver una:
+
+```bash
+npm run respaldo:descifrar -- liceo__2026-10-05T02-00-00.dump.cifrado respaldos-privada.pem
+```
+
+Y sale el `.dump` de siempre, para `pg_restore`. Los respaldos del disco del
+servidor no se cifran: la restauración del día a día (BASE-COMP-04) los usa
+tal cual, y ese disco ya es del servidor.
+
+**Lo demás de los menores:** los registros no guardan cédulas, correos ni
+contraseñas (solo las 3 últimas cifras; `utils/datos-en-registros.ts`,
+REGISTRO-01…03). El expediente de un alumno retirado **no se borra**: el liceo
+está obligado a conservarlo (certificaciones, prosecución); lo borrado va a la
+papelera 90 días (§9) y los respaldos viejos se tiran a los
+`BACKUP_RETENTION_DAYS`.
 
 ### Avisos al teléfono y traslados (septiembre 2026)
 
@@ -429,16 +532,21 @@ con quién la borró y desde dónde.
 
 Si la copia no se puede guardar, **el borrado no ocurre**.
 
-### Tarea diaria
+### Tarea diaria (sola, desde octubre 2026)
 
-```bash
-npm run papelera:limpiar
-```
+El servidor la hace solo, una vez al día (`jobs/mantenimiento.job.ts`, MANT-*),
+junto con lo demás que crecía sin límite:
 
-Tira lo que lleva más de `PAPELERA_DIAS` días (90 por defecto). Sin esto la
-papelera crece para siempre.
+| Qué | Cuánto se guarda | Variable |
+|---|---|---|
+| Papelera (`registros_borrados`) | 90 días | `PAPELERA_DIAS` |
+| Avisos leídos o caducados (los `persistent`, nunca) | 180 días | `AVISOS_DIAS` |
+| Llaves de sesión caducadas | 7 días después de caducar | — |
+| Cambios recibidos (`X-Cambio`) | 90 días | `CAMBIOS_DIAS` |
 
-Va junto al respaldo diario, después: primero se guarda, luego se limpia.
+**No se tira nunca:** notas, asistencia, el rastro del QR (es la prueba de
+quién firmó) ni nada del liceo. Lo de antes de esos plazos está en el respaldo.
+A mano sigue valiendo `npm run papelera:limpiar`.
 
 ### Borrar un liceo entero
 
@@ -491,6 +599,105 @@ Si el servidor arranca sin Redis sigue funcionando, pero:
 
 Comprobar `"redis":"connected"` en `GET /health` después de cada despliegue.
 
+### Lo que falla callado: el panel de salud del superadmin
+
+Una tarea que deja de correr no da error en ninguna pantalla (así se quedó una
+vez el recordatorio de cuotas). Cada tarea apunta su **latido**
+(`utils/latido-de-tareas.ts`) y el inicio del superadmin enseña **Salud del
+sistema** (`GET /api/superadmin/monitoring/health`): cada tarea «bien»,
+«atrasada» (dos vueltas sin ir bien) o «fallando»; el último respaldo bueno; y
+el **disco** (por debajo del 10 % libre, crítico). Mirarlo después de cada
+despliegue y una vez por semana. LATIDO-01…03.
+
+También dice **cuánto tarda el proceso en atender** (el p99 del retraso del
+bucle de Node, del último minuto): por encima de 200 ms, algo largo está
+bloqueando a todos —un reporte enorme, un cálculo sin trocear— y se marca
+«algo no va bien». Y los días del certificado (§5-bis). LATIDO-04.
+
+Los `.catch(() => undefined)` del servidor (avisos, contadores, la memoria
+rápida) ya no se tragan el error: `avisarSiFalla` lo apunta, una vez por minuto
+como mucho (`utils/sin-callar.ts`).
+
+### Los registros tienen tope
+
+Docker guardaba los registros de cada contenedor sin límite (`json-file`): un
+error que se repite llenaba el disco y tumbaba a TODOS los liceos.
+`docker-compose.prod.yml` les pone 5 archivos de 20 MB por contenedor
+(`x-registros`). Si el servidor no usa Docker, lo mismo con `logrotate`.
+
+### Lo que se revisó en la cuarta tanda (octubre 2026)
+
+| Fenómeno | Medido | Hecho |
+|---|---|---|
+| Fuga de memoria | `medir:aguante` 20 min, 30 personas: 36.804 peticiones, 0 fallos, memoria 237 → 148 MB, p95 19 → 6 ms | Nada que arreglar |
+| Consultas que crecen por alumno (N+1) | 16 pantallas con 3 y con 15 alumnos. Estadísticas de sección/año/ciclo: **~30 consultas por alumno** (471, 555 y 644 con 15); resumen final ~6 por alumno | En bloque: 35, 51, 72 y 20, **con los mismos números** (N1-01…16) |
+| Asistencia del año y del ciclo | El ciclo se dividía siempre entre 5 (un liceo con solo 1.º, todos presentes: 20 %); el año contaba como 0 % la sección que no había pasado lista | Media de lo que tiene datos (ASIS-CICLO-01/02, `MAPA` §4) |
+| Tablas que engordan | Autovacuum al 20 %: en `grades` con 1,8 M de notas, 360.000 filas muertas antes de limpiar | Al 5 % en las 7 tablas que cambian todo el día (migración `20261005010000`) |
+| Descriptores de archivo | Docker hereda a menudo 1024: con un par de liceos grandes conectados, `EMFILE` | `ulimits` 65535 al servidor y a nginx; `worker_rlimit_nofile` |
+| El que llega despacio (Slowloris) | nginx esperaba 60 s por cada cabecera | 15–20 s y un tope de conexiones por dirección pensado para un liceo entero (600) |
+| Reinicios en bucle | `/health` responde siempre 200 (con lo que falla dentro) y el servidor no tiene sonda de Docker que lo reinicie | Nada que arreglar: no hay bucle posible |
+| Login que dice quién existe por el tiempo | Ya cubierto (ENUM-02) | — |
+| Hidratación y oyentes vivos | Web compilada: 0 errores de hidratación en las pantallas de los 4 roles; 5 vueltas por las pantallas y la clase en vivo: 174 oyentes antes y después | Vigilado: HIDRA-01 (en `dashboard.spec`) y OYENTES-01 |
+| Reconversión monetaria | Montos en bolívares del cono viejo y del nuevo se habrían sumado | `npm run reconvertir` (RECONV-01…03, `MAPA` §8b) |
+| Datos de menores | Copia de fuera sin cifrar; cédulas y correos en los registros | Cifrada (§8) y registros tapados (REGISTRO-*) |
+
+### Cuando vuelve la luz (y a las 7:00)
+
+Medido con `npm run medir:vuelve-la-luz` (200 teléfonos del mismo liceo, todos
+por su wifi, en este PC):
+
+| | p95 | fallos |
+|---|---|---|
+| Todos en el mismo instante (como era) | 5,8–7,1 s | 0–1 (un 500, ya es 503) |
+| Con azar de 0 a 4 s (como es ahora) | 60 ms | 0 |
+| Las 7:00: 21 profesores pasando lista en el mismo minuto | 25 ms | 0 |
+
+Lo que se arregló al medirlo:
+
+- **Las esperas llevan azar** (`lib/azar.ts`): reintentos de lo pendiente,
+  la pregunta a `/health`, la reconexión del tiempo real y la descarga de lo
+  de cada rol. Sin azar, todos reintentaban en el mismo segundo.
+- **Renovar la sesión compartía un cupo de 100 por minuto por dirección**: un
+  liceo entero sale por una sola, y en producción la web renovaba sin decir
+  desde dónde, así que eran **todos los liceos** en un cupo. Al volver la luz,
+  150 de 200 teléfonos se quedaban con 429. Ahora renovar y `/health` tienen el
+  cupo de un liceo (`CUPO_DEL_LICEO_POR_DIRECCION`, 3000) y la web reenvía la
+  dirección (CUPO-REN-01).
+- **Un 429 no es «no se pudo»**: lo pendiente espera lo que pide el servidor
+  (`Retry-After`, ahora visible para el navegador) y se reintenta (SINCON-13).
+- **«Ahora no» de la base** (sin conexión libre, transacción que no abre a
+  tiempo, dos escrituras que chocan) responde 503 con `Retry-After`, no 500:
+  el teléfono lo deja pendiente en vez de darlo por perdido (AHORANO-01/02).
+
+### Si se cae algo: qué pasa y qué hacer
+
+Un solo servidor, un PostgreSQL y un Redis: cada uno es un punto de falla.
+
+| Se cae | Qué pasa | Qué hacer |
+|---|---|---|
+| **Redis** | Todo sigue: el cupo, el freno del doble clic y la memoria rápida pasan a la del proceso. Con varios procesos, el tiempo real deja de cruzar entre ellos y la lista de sesiones cerradas no se comparte (una sesión cerrada sigue valiendo hasta 15 min en otro proceso). | Levantarlo; nada que restaurar. |
+| **PostgreSQL** | Sin servidor de datos: los teléfonos trabajan sin conexión (lo pendiente sube al volver). | Levantarlo. Si el disco se perdió: restaurar (abajo). |
+| **El servidor entero / el disco** | Igual que arriba, hasta que vuelva. | Máquina nueva → `docker compose up` → restaurar la plataforma y cada liceo desde la copia fuera del servidor (R2). |
+
+**Restaurar** (probado: RESP-02 con una base por liceo y **BASE-COMP-04** con la
+base compartida: el liceo vuelve a como estaba y el de al lado no se toca):
+
+1. La plataforma primero (`_plataforma__…dump`): qué base y qué esquema es de
+   cada liceo, y con qué llave.
+2. Cada liceo con `restaurarLiceo(archivo, url)` o `pg_restore --clean
+   --if-exists --no-owner --no-acl -d <base> <archivo>`. Con la base
+   compartida, el archivo lleva **su esquema y nada más**.
+3. `npm run migrate:tenants:status`, y comprobar `GET /health` y el panel de salud.
+
+### El tamaño del servidor
+
+Medido aquí (todo en un PC, generador incluido): 500 personas en 50 liceos con
+p95 de 124 ms; 200 teléfonos volviendo a la vez, p95 de 60 ms con el azar. Para
+empezar: **4 vCPU y 8 GB** hasta unos 50 liceos, con PgBouncer; por encima,
+medir en el servidor de verdad (§10-bis) antes de crecer. El disco: la base,
+más 7 días de respaldos locales, más 100 MB de registros por contenedor; el
+panel avisa por debajo del 10 % libre.
+
 ### Compilar en cada cambio, no el día del despliegue
 
 ```bash
@@ -525,6 +732,25 @@ Una librería segura hoy no lo es dentro de tres meses. Si aparece algo
 
 Lo que sale con `--omit=dev` es lo que de verdad viaja al servidor. Sin esa
 opción también salen las herramientas de desarrollo, que no se instalan allí.
+
+**Ojo: `npm audit fix --omit=dev` QUITA de `node_modules` las herramientas de
+desarrollo** (los tipos de React, entre otras) aunque el `package-lock.json`
+no cambie: después, `npm install --legacy-peer-deps` para devolverlas, o
+`tsc` sale con cientos de errores que no son del código.
+
+**Cómo quedó el 4 de octubre de 2026** (`npm audit --omit=dev`): **0
+críticos**. Se subió Next a 16.3.8 (había otro fallo crítico de ejecución
+remota), Fastify, engine.io, undici, axios y nodemailer 10, y se quitaron
+`fastify-multer` y `multer`, que no usaba nadie. Quedan **9 altos, todos de
+herramientas**, no de lo que atiende peticiones:
+
+| Paquete | Por qué sale | Por qué no se toca ya |
+|---|---|---|
+| `prisma`, `@prisma/config`, `deepmerge-ts` | El CLI de Prisma (migraciones) | El arreglo es Prisma 7: cambio mayor, con su propia tanda de pruebas |
+| `tailwindcss`, `tailwindcss-animate`, `chokidar`, `fast-glob`, `micromatch`, `braces` | Compilan los estilos | Solo corren al compilar; `braces` no tiene arreglo aún. Tailwind 4 es otro cambio mayor |
+
+Dependabot (`.github/dependabot.yml`) abre cada semana la propuesta de
+subirlas; la CI falla con cualquier crítico (`librerias` en `ci.yml`).
 
 ---
 

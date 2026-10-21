@@ -5,9 +5,44 @@ import { Client } from 'pg';
 export const API_BASE = process.env.API_BASE || 'http://localhost:3001/api';
 export const WEB_BASE = process.env.WEB_BASE || 'http://localhost:3000';
 export const TENANT_SLUG = 'instituto-testing';
-export const DB_CONNECTION_STRING =
-  process.env.TEST_DB_URL ||
-  'postgresql://postgres:82nQKb95S7wNDmuxyvIG6dOYkZUo@localhost:5432/tenant_instituto_testing';
+/**
+ * DÓNDE VIVE EL LICEO DE PRUEBAS (2026-10-04)
+ *
+ * Antes: una dirección fija a su base propia, con la contraseña escrita aquí
+ * (y el repositorio es público). Desde que los liceos pueden vivir en un
+ * esquema de una base compartida, se le pregunta a la plataforma: su base,
+ * sus credenciales y su esquema. `TEST_DB_URL` sigue mandando si está puesta.
+ */
+function platformUrl(): string {
+  if (process.env.PLATFORM_DATABASE_URL) return process.env.PLATFORM_DATABASE_URL;
+  const env = fs.readFileSync(path.join(__dirname, '..', '..', 'apps', 'backend', '.env'), 'utf8');
+  const linea = env.split(/\r?\n/).find((l) => l.startsWith('PLATFORM_DATABASE_URL='));
+  if (!linea) throw new Error('Falta PLATFORM_DATABASE_URL (apps/backend/.env)');
+  return linea.slice('PLATFORM_DATABASE_URL='.length).trim().replace(/^"|"$/g, '').split('?')[0];
+}
+
+let dondeVive: Promise<{ url: string; schema: string | null }> | null = null;
+function liceoDePrueba() {
+  if (process.env.TEST_DB_URL) return Promise.resolve({ url: process.env.TEST_DB_URL, schema: null });
+  dondeVive ??= (async () => {
+    const plat = new Client({ connectionString: platformUrl() });
+    await plat.connect();
+    try {
+      const { rows } = await plat.query(
+        `SELECT "databaseName", "databaseSchema", "databaseHost", "databasePort", "databaseUser", "databasePassword"
+           FROM institutes WHERE slug = $1`,
+        [TENANT_SLUG]
+      );
+      const r = rows[0];
+      if (!r) throw new Error(`El liceo de pruebas (${TENANT_SLUG}) no está en la plataforma`);
+      const url = `postgresql://${encodeURIComponent(r.databaseUser)}:${encodeURIComponent(r.databasePassword)}@${r.databaseHost}:${r.databasePort ?? 5432}/${r.databaseName}`;
+      return { url, schema: r.databaseSchema as string | null };
+    } finally {
+      await plat.end();
+    }
+  })();
+  return dondeVive;
+}
 
 export interface LoginResult {
   user: any;
@@ -219,7 +254,7 @@ export async function loginViaUI(
 
   for (;;) {
     await page.goto(`${WEB_BASE}/login?slug=${slug}`);
-    await page.waitForSelector('input[type="email"], input[name="email"]');
+    await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 30000 });
 
     await page.fill('input[type="email"], input[name="email"]', email);
     await page.fill('input[type="password"], input[name="password"]', pwd);
@@ -247,7 +282,7 @@ export async function loginViaUI(
     const frenadoPorElLimite = respuesta?.status() === 429;
 
     if (!frenadoPorElLimite) {
-      await page.waitForURL('**/dashboard**', { timeout: 15000 });
+      await page.waitForURL('**/dashboard**', { timeout: 30000 });
       return;
     }
 
@@ -266,9 +301,14 @@ export async function loginViaUI(
  * Ejecuta una consulta SQL directa contra la base de datos del tenant de prueba.
  */
 export async function queryTenantDb<T = any>(sql: string, params: any[] = []): Promise<T[]> {
-  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  const { url, schema } = await liceoDePrueba();
+  const client = new Client({ connectionString: url });
   await client.connect();
   try {
+    if (schema) {
+      if (!/^[a-z0-9_]{1,63}$/.test(schema)) throw new Error(`Esquema no válido: ${schema}`);
+      await client.query(`SET search_path TO "${schema}"`);
+    }
     const res = await client.query(sql, params);
     return res.rows;
   } finally {
@@ -315,4 +355,30 @@ export async function captureEvidence(
     ),
     contentType: 'application/json',
   });
+}
+
+/**
+ * El representante de prueba con un representado (est0575): el de la base
+ * no tiene ninguno. Si hay que poner el vínculo, `quitar()` lo deja como estaba.
+ */
+export async function representanteConUnHijo(): Promise<{ correo: string; quitar: () => Promise<void> }> {
+  const correo = 'tutor.prueba@testing.edu.ve';
+  const [par] = await queryTenantDb<{ sid: string; tid: string; vinculado: boolean }>(
+    `SELECT s.id AS sid, t.id AS tid,
+            EXISTS (SELECT 1 FROM student_tutors st WHERE st."studentId" = s.id AND st."tutorId" = t.id) AS vinculado
+       FROM users s, users t
+      WHERE s.email = 'est0575@testing.edu.ve' AND t.email = $1`,
+    [correo]
+  );
+  if (!par || par.vinculado) return { correo, quitar: async () => {} };
+  await queryTenantDb(
+    `INSERT INTO student_tutors (id, "studentId", "tutorId", relationship, "createdAt", "updatedAt") VALUES ($1, $2, $3, 'Madre', now(), now())`,
+    [`c${Date.now()}vinculo`, par.sid, par.tid]
+  );
+  return {
+    correo,
+    quitar: async () => {
+      await queryTenantDb(`DELETE FROM student_tutors WHERE "studentId" = $1 AND "tutorId" = $2`, [par.sid, par.tid]).catch(() => undefined);
+    },
+  };
 }

@@ -5,7 +5,7 @@ import request = require('supertest');
 import { PrismaClient } from '@prisma/client';
 import { createId } from '@paralleldrive/cuid2';
 import { UserRole } from '../../src/utils/prisma-enums';
-import { gradesService } from '../../src/services/grades.service';
+import { gradesService, redondearComoElMPPE } from '../../src/services/grades.service';
 import { consultasALaBase, invalidateTenantCache } from '../../src/config/database';
 import { createTestServer, createTestPrismaClient, createTestUser, createTestSubject, generateTestToken } from '../helpers';
 
@@ -103,7 +103,9 @@ describe('La lista de alumnos, en bloque', () => {
         expect(nuestros).toHaveLength(alumnos.length);
         for (const f of nuestros) {
             const deSiempre = await gradesService.calculateWeightedSubjectAverage(prisma as any, f.id, materia.id, undefined, [lapso.id]);
-            expect(f.average ?? f.promedio).toBeCloseTo(Math.round(deSiempre * 10) / 10, 5);
+            // La cifra oficial (la de la boleta): un lapso, con el redondeo del
+            // MPPE (0,50 sube), y la definitiva, redondeada otra vez.
+            expect(f.average ?? f.promedio).toBe(redondearComoElMPPE(redondearComoElMPPE(deSiempre)));
             expect(f.average ?? f.promedio).toBeGreaterThan(0);
         }
     }, 120000);
@@ -111,11 +113,12 @@ describe('La lista de alumnos, en bloque', () => {
     it('LISTA-02: con una materia y sin sección, las consultas no crecen con los alumnos', async () => {
         const pocos = await lista(`page=1&limit=3&subjectId=${materia.id}`);
         const muchos = await lista(`page=1&limit=12&subjectId=${materia.id}`);
-        // Como mucho, el bloque de una sección más (5 consultas a la vez: la 5.ª,
-        // las notas traídas de otro liceo, MAPA §1c; los 12 están en dos
-        // secciones y los 3 pueden estar en una). Nunca por alumno: antes eran
-        // 30 consultas más por 9 alumnos más.
-        expect(muchos.consultas - pocos.consultas).toBeLessThanOrEqual(5);
+        // Como mucho, una sección más (los 12 están en dos secciones y los 3
+        // pueden estar en una): su fila, sus lapsos, sus revisiones y el
+        // bloque de notas (5 a la vez; la 5.ª, las notas traídas de otro
+        // liceo, MAPA §1c). Nunca por alumno: antes eran 30 consultas más por
+        // 9 alumnos más.
+        expect(muchos.consultas - pocos.consultas).toBeLessThanOrEqual(8);
     }, 120000);
 
     it('LISTA-03: la asistencia es la del ciclo de su sección, no la de toda su vida escolar', async () => {

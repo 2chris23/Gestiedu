@@ -1,0 +1,54 @@
+import { FastifyInstance } from 'fastify';
+import { logger } from '../utils/logger';
+import { platformPrisma, getTenantPrisma } from '../config/database';
+import { conLiceo } from '../config/ambito-del-liceo';
+import { tirarLoQueNoSirve } from '../services/mantenimiento.service';
+import { laNocheDeLosCubos } from '../services/cubos-de-precarga.service';
+import { diasDeLaPapelera } from '../services/papelera.service';
+import { latido } from '../utils/latido-de-tareas';
+import { unaVezCada } from '../utils/turno-de-la-tarea';
+import { avisarSiFalla } from '../utils/sin-callar';
+
+/**
+ * TAREA: tirar lo que ya no sirve (`services/mantenimiento.service.ts`), una
+ * vez al día, liceo por liceo. Borrar lo ya borrado no hace nada: varios
+ * procesos a la vez no se estorban. Deja su latido (MANT-*, falla gris).
+ */
+const CADA = 24 * 60 * 60 * 1000;
+
+export async function setupMantenimientoJob(_server: FastifyInstance) {
+    if (process.env.NODE_ENV === 'test') return;
+    let corriendo = false;
+    const correr = async () => {
+        if (corriendo) return;
+        corriendo = true;
+        let fallo: unknown = null;
+        try {
+            const liceos = await platformPrisma.institute.findMany({ where: { status: 'ACTIVE' }, select: { id: true } });
+            for (const liceo of liceos) {
+                try {
+                    const prisma = await getTenantPrisma(liceo.id);
+                    const plazo = await diasDeLaPapelera(liceo.id);
+                    const r = await conLiceo(liceo.id, () => tirarLoQueNoSirve(prisma, new Date(), plazo));
+                    if (r.papelera + r.avisos + r.sesiones + r.cambios + r.paquetes > 0) logger.info('Mantenimiento: tirado lo viejo', { instituteId: liceo.id, ...r });
+                    // Todo el liceo al día para mañana, también quien nunca ha entrado
+                    // (la cola de los cubos lo arma de fondo).
+                    await conLiceo(liceo.id, () => laNocheDeLosCubos(liceo.id)).catch(avisarSiFalla('noche-de-los-cubos'));
+                } catch (error) {
+                    fallo = error;
+                    logger.warn('Mantenimiento: no se pudo con un liceo', {
+                        instituteId: liceo.id,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                }
+            }
+        } catch (error) {
+            fallo = error;
+        } finally {
+            corriendo = false;
+            await latido('mantenimiento', CADA, fallo ?? undefined);
+        }
+    };
+    setTimeout(() => void unaVezCada('mantenimiento', CADA, correr).catch(avisarSiFalla('mantenimiento.job')), 10 * 60_000).unref?.();
+    setInterval(() => void unaVezCada('mantenimiento', CADA, correr).catch(avisarSiFalla('mantenimiento.job')), CADA).unref?.();
+}

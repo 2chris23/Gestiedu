@@ -6,7 +6,8 @@ import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
  * `/diseno` es el muestrario del lenguaje visual: no enseña ni un dato del
  * liceo, solo tarjetas de ejemplo. Va aquí para poder abrirlo sin entrar.
  */
-const PUBLIC_ROUTES = ['/login', '/register', '/forgot-password', '/diseno'];
+// `/legal`: los términos, la privacidad… se leen antes de tener cuenta (19-oct-2026).
+const PUBLIC_ROUTES = ['/login', '/register', '/forgot-password', '/diseno', '/legal'];
 
 /**
  * EL PORTAL DE CADA LICEO SE ABRE SIN HABER ENTRADO
@@ -79,17 +80,23 @@ const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[]; patron?: RegExp 
     { prefijo: '/dashboard/plan-de-evaluacion', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/acta-de-socializacion', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/instrumentos-de-evaluacion', roles: ['ADMIN', 'TEACHER'] },
-    { prefijo: '/dashboard/configuracion', roles: ['ADMIN'] },
+    // Configuración es de todos desde el 14-oct-2026: lo de cada uno (la
+    // contraseña, la huella, el color) vive ahí. Lo del liceo solo lo ve el
+    // admin, y el servidor lo niega a los demás.
+    { prefijo: '/dashboard/configuracion', roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
     { prefijo: '/dashboard/eventos', roles: ['ADMIN'] },
     { prefijo: '/dashboard/pagos', roles: ['ADMIN'] },
     // Cada quien lo suyo: el servidor da solo los pagos de quien pregunta.
     { prefijo: '/dashboard/mis-pagos', roles: ['TEACHER', 'ADMIN'] },
     { prefijo: '/dashboard/comedor', roles: ['ADMIN'] },
-    { prefijo: '/dashboard/academico', roles: ['ADMIN', 'TEACHER'] },
-    { prefijo: '/dashboard/materias', roles: ['ADMIN', 'TEACHER'] },
+    { prefijo: '/dashboard/academico', roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
+    { prefijo: '/dashboard/materias', roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
+    { prefijo: '/dashboard/profesores', roles: ['ADMIN'] },
     { prefijo: '/dashboard/materias-pendientes', roles: ['ADMIN', 'TEACHER'] },
     { prefijo: '/dashboard/labor-social', roles: ['ADMIN', 'TEACHER'] },
-    { prefijo: '/dashboard/horarios', roles: ['ADMIN', 'TEACHER'] },
+    { prefijo: '/dashboard/pendientes', roles: ['ADMIN', 'TEACHER'] },
+    { prefijo: '/dashboard/horarios', roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
+    { prefijo: '/dashboard/actividades', roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
     { prefijo: '/dashboard/clase-en-vivo', roles: ['ADMIN', 'TEACHER'] },
     /**
      * ESTAS CUATRO FALTABAN
@@ -111,7 +118,7 @@ const PANTALLAS_POR_ROL: Array<{ prefijo: string; roles: Rol[]; patron?: RegExp 
     { prefijo: '/dashboard/horario', roles: ['ADMIN', 'TEACHER'] },
     // La materia vista por el alumno o su representante. El personal trabaja
     // la clase en la Clase en Vivo; esto es solo mirar lo de UN alumno.
-    { prefijo: '/dashboard/mi-clase', roles: ['STUDENT', 'TUTOR'] },
+    { prefijo: '/dashboard/mi-clase', roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'] },
 ];
 
 function rolDeLaSesion(request: NextRequest): Rol | null {

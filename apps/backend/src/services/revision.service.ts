@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { gradesService, redondearComoElMPPE } from './grades.service';
-import { getAcademicConfig } from './promotion/close-cycle.service';
+import { getAcademicConfig } from './promotion/configuracion-academica';
 import { createError } from '../middleware/error.middleware';
 
 /**
@@ -38,15 +38,6 @@ export const NOTA_MAXIMA = 20;
 
 const redondear = (n: number, redondeo: 'MPPE' | 'NINGUNO' | undefined) =>
     redondeo === 'NINGUNO' ? Math.round(n * 100) / 100 : redondearComoElMPPE(n);
-
-/** Las revisiones de un ciclo, por «alumno|materia». */
-export async function revisionesDelCiclo(prisma: any, academicYearId: string): Promise<Map<string, number>> {
-    const filas = await prisma.notaDeRevision.findMany({
-        where: { academicYearId },
-        select: { studentId: true, subjectId: true, score: true },
-    });
-    return new Map(filas.map((f: any) => [`${f.studentId}|${f.subjectId}`, f.score]));
-}
 
 export async function registrarRevision(
     prisma: PrismaClient,

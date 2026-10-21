@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Layers, Pencil, GraduationCap, MoreVertical, Users } from 'lucide-react';
+import { ArrowLeft, Pencil, GraduationCap, MoreVertical, Users } from 'lucide-react';
 import { academicYearService } from '@/services/academic-year.service';
 import { classroomService, Classroom } from '@/services/classroom.service';
 import { useAcademicYears } from '@/hooks/useAcademicYears';
@@ -23,11 +23,13 @@ import LapsoSelector from '@/components/academic/LapsoSelector';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
 import { useSchoolToday } from '@/hooks/useSchoolTime';
+import { useYaArranco } from '@/hooks/useYaArranco';
 import { diferido } from '@/components/common/Diferido';
 
 // Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
 const ClassroomModal = diferido(() => import('@/components/classrooms/ClassroomModal'), { sinEsqueleto: true });
 const AcademicYearModal = diferido(() => import('@/components/academic/AcademicYearModal'), { sinEsqueleto: true });
+import CargandoDetalleCiclo from './loading';
 
 export default function AcademicYearDashboard() {
     const confirmDialog = useConfirm();
@@ -59,6 +61,8 @@ export default function AcademicYearDashboard() {
     const ciclos = useAcademicYears();
     // El día del liceo decide si el ciclo está «en curso», no el del aparato.
     const hoyDelLiceo = useSchoolToday();
+    // Hasta arrancar, el esqueleto también en el navegador (ver `useYaArranco`).
+    const arranco = useYaArranco();
     const allCycles = ciclos.data ?? [];
     const year = allCycles.find((y) => y.id === cycleIdParam || y.name === cycleIdParam) ?? null;
 
@@ -166,8 +170,13 @@ export default function AcademicYearDashboard() {
         let totalStudents = 0;
         let totalCapacity = 0;
         let weightedSumAverage = 0;
+        let totalStudentsWithGrades = 0;
         let totalRisk = 0;
         let weightedSumAttendance = 0;
+        // Solo cuentan los años que tienen asistencia pasada: los que no,
+        // traen `null`, y contarlos como 0 bajaba el total (y un lapso sin
+        // ninguna salía «0%» en vez de vacío).
+        let studentsWithAttendance = 0;
         let totalObservations = 0;
         let globalMin = 20;
         let globalMax = 0;
@@ -176,50 +185,57 @@ export default function AcademicYearDashboard() {
         statsArray.forEach(item => {
             const s = item.stats;
             const [currentStr, capacityStr] = s.occupancy.split('/');
-            const current = parseInt(currentStr);
-            const capacity = parseInt(capacityStr);
+            const current = parseInt(currentStr) || 0;
+            const capacity = parseInt(capacityStr) || 0;
 
-            const avg = s.average;
-            const attendance = parseInt(s.attendance.replace('%', ''));
+            const avg = typeof s.average === 'number' && s.average > 0 ? s.average : null;
+            const hasAttendance = s.attendance !== null && s.attendance !== undefined && s.attendance !== '';
+            const attendance = hasAttendance ? parseInt(String(s.attendance).replace('%', '')) || 0 : 0;
 
             totalStudents += current;
             totalCapacity += capacity;
-            weightedSumAverage += avg * current;
+            if (avg !== null && current > 0) {
+                // El liceo es la media de sus años (MAPA §0), como el Inicio
+                // del admin: antes se pesaba por alumnos y salía otra cifra.
+                weightedSumAverage += avg;
+                totalStudentsWithGrades += 1;
+            }
             totalRisk += s.riskCount;
-            weightedSumAttendance += attendance * current;
+            if (hasAttendance) {
+                weightedSumAttendance += attendance * current;
+                studentsWithAttendance += current;
+            }
             totalObservations += s.observations;
 
             if (current > 0) {
                 hasStudentData = true;
-                if (s.minAverage !== undefined) {
+                if (s.minAverage !== undefined && s.minAverage !== null && s.minAverage > 0) {
                     if (s.minAverage < globalMin) globalMin = s.minAverage;
+                }
+                if (s.maxAverage !== undefined && s.maxAverage !== null && s.maxAverage > 0) {
                     if (s.maxAverage > globalMax) globalMax = s.maxAverage;
                 }
             }
         });
 
-        const finalAvg = totalStudents > 0 ? (weightedSumAverage / totalStudents).toFixed(1) : '0.0';
-        const finalAttendance = totalStudents > 0 ? Math.round(weightedSumAttendance / totalStudents) : 0;
+        const finalAvg = totalStudentsWithGrades > 0 ? Math.round((weightedSumAverage / totalStudentsWithGrades) * 100) / 100 : null;
+        const finalAttendance = studentsWithAttendance > 0 ? Math.round(weightedSumAttendance / studentsWithAttendance) : null;
 
         return {
-            average: Number(finalAvg),
-            minAverage: hasStudentData ? Number(globalMin.toFixed(1)) : 0,
-            maxAverage: hasStudentData ? Number(globalMax.toFixed(1)) : 0,
+            average: finalAvg,
+            minAverage: totalStudentsWithGrades > 0 && globalMin <= 20 ? globalMin : undefined,
+            maxAverage: totalStudentsWithGrades > 0 && globalMax > 0 ? globalMax : undefined,
             riskCount: totalRisk,
             occupancy: `${totalStudents}/${totalCapacity}`,
-            attendance: `${finalAttendance}%`,
+            attendance: finalAttendance !== null ? `${finalAttendance}%` : null,
             observations: totalObservations
         };
     }, [gradeStats]);
 
     // Solo se espera si no hay NADA que enseñar: con lo guardado en el
     // teléfono, se pinta al instante aunque no haya conexión.
-    if (ciclos.isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
-            </div>
-        );
+    if (!arranco || ciclos.isLoading) {
+        return <CargandoDetalleCiclo />;
     }
 
     if (!year) {
@@ -247,6 +263,7 @@ export default function AcademicYearDashboard() {
         if (hoyDelLiceo >= inicio) return 'ACTIVE';
         return 'UPCOMING';
     })();
+    const inicioDelLapso = (year.periods || []).find((p) => p.id === lapsoId)?.startDate;
     const ESTADOS = {
         ACTIVE: { texto: 'En curso', clase: 'sm:bg-emerald-50 text-emerald-700 ring-emerald-200' },
         UPCOMING: { texto: 'Próximo', clase: 'sm:bg-blue-50 text-blue-700 ring-blue-200' },
@@ -334,52 +351,43 @@ export default function AcademicYearDashboard() {
                         )}
                     </div>
 
-                    <AcademicStats stats={globalStats || undefined} className="mt-3" />
+                    <AcademicStats
+                        stats={globalStats || undefined}
+                        inicioDelLapso={inicioDelLapso}
+                        className="mt-3"
+                    />
                 </div>
             </header>
 
             <div>
                 <div className="space-y-6">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                <Layers className="w-5 h-5 text-indigo-600" aria-hidden />
-                                Secciones por año
-                            </h2>
-                            {/* Qué hay dentro, antes de tocar (escaneo UI/UX, 2026-10-01). */}
-                            <p className="mt-1 text-sm text-gray-600">
-                                Toca un año para ver sus secciones. Dentro de cada sección: sus estudiantes, sus materias y sus notas.
-                            </p>
-                        </div>
-
-                        {turnosQueHay.length > 1 && (
-                            <div className="flex items-center gap-1.5">
+                    {turnosQueHay.length > 1 && (
+                        <div className="flex items-center justify-end gap-1.5">
+                            <button
+                                type="button"
+                                onClick={() => setTurnoElegido('TODOS')}
+                                aria-pressed={turnoElegido === 'TODOS'}
+                                className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                                    turnoElegido === 'TODOS'
+                                        ? 'border-indigo-600 bg-indigo-600 text-white'
+                                        : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+                                }`}
+                            >
+                                Todos los turnos
+                            </button>
+                            {turnosQueHay.map((t) => (
                                 <button
+                                    key={t}
                                     type="button"
-                                    onClick={() => setTurnoElegido('TODOS')}
-                                    aria-pressed={turnoElegido === 'TODOS'}
-                                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                                        turnoElegido === 'TODOS'
-                                            ? 'border-indigo-600 bg-indigo-600 text-white'
-                                            : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
-                                    }`}
+                                    onClick={() => setTurnoElegido(t)}
+                                    aria-pressed={turnoElegido === t}
+                                    className={`rounded-full ${turnoElegido === t ? 'ring-2 ring-indigo-600' : ''}`}
                                 >
-                                    Todos los turnos
+                                    <TurnoBadge turno={t} tamano="md" />
                                 </button>
-                                {turnosQueHay.map((t) => (
-                                    <button
-                                        key={t}
-                                        type="button"
-                                        onClick={() => setTurnoElegido(t)}
-                                        aria-pressed={turnoElegido === t}
-                                        className={`rounded-full ${turnoElegido === t ? 'ring-2 ring-indigo-600' : ''}`}
-                                    >
-                                        <TurnoBadge turno={t} tamano="md" />
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                            ))}
+                        </div>
+                    )}
 
                     <div className="space-y-4">
                         {[1, 2, 3, 4, 5, 6].map((grade) => (
@@ -392,7 +400,9 @@ export default function AcademicYearDashboard() {
                                 onDeleteSection={handleDeleteSection}
                                 academicYearId={year.id}
                                 yearSlug={year.name}
+                                isAdmin={isAdmin}
                                 stats={gradeStats[grade]?.stats}
+                                inicioDelLapso={inicioDelLapso}
                             />
                         ))}
                     </div>

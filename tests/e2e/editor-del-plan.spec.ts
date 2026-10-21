@@ -19,8 +19,8 @@ test('PLAN-EDIT-01: una columna nueva se arrastra a su sitio, y con las flechas 
     await page.setViewportSize({ width: 1400, height: 900 });
     await injectSessionCookies(page, await loginApi(f.profe, '123456'));
     await page.goto(`${WEB_BASE}/dashboard/academico/${f.ciclo}/${f.seccion}/${f.materia}`);
-    await page.getByRole('tab', { name: /Plan de Evaluación/ }).or(page.getByRole('button', { name: /Plan de Evaluación/ })).first().click({ timeout: 60000 });
-    await page.getByRole('button', { name: /Editar Plan/ }).first().click({ timeout: 60000 });
+    await page.getByRole('button', { name: 'Plan de evaluación' }).click({ timeout: 60000 });
+    await page.getByRole('button', { name: 'Editar el plan' }).click({ timeout: 60000 });
     const editor = page.getByRole('dialog', { name: /Editor Inmersivo/ });
     await expect(editor).toBeVisible({ timeout: 30000 });
 

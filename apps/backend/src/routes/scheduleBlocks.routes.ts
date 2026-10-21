@@ -7,17 +7,15 @@ import {
     updateScheduleBlock,
     deleteScheduleBlock,
     bulkUpdateSchedule,
-    autoGenerateSchedule,
-    getScheduleSummary,
+} from '../controllers/horario/horario-de-la-seccion.controller';
+import { autoGenerateSchedule, autoFillTeacherSchedule } from '../controllers/horario/generar-horario.controller';
+import {
     getTeacherScheduleBlocks,
     getTeacherClassroomSubjects,
     bulkUpdateTeacherSchedule,
-    autoFillTeacherSchedule,
-    createPersonalBlock,
-    updatePersonalBlock,
-    deletePersonalBlock,
-    getClassSessionsByDate,
-} from '../controllers/scheduleBlocks.controller';
+} from '../controllers/horario/horario-del-profesor.controller';
+import { createPersonalBlock, updatePersonalBlock, deletePersonalBlock } from '../controllers/horario/bloques-personales.controller';
+import { getScheduleSummary, getClassSessionsByDate } from '../controllers/horario/clases-del-dia.controller';
 
 export async function scheduleBlocksRoutes(fastify: FastifyInstance) {
     // Rutas protegidas - requieren autenticación

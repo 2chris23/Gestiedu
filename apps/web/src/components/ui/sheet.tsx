@@ -67,7 +67,7 @@ const SheetContent = React.forwardRef<
       {/* La equis medía 16 px. Un dedo necesita 44: se falla el toque, se
           pulsa lo de detrás y la cortina no se cierra. El icono sigue
           pequeño; lo que crece es la zona que escucha el dedo. */}
-      <SheetPrimitive.Close className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full text-gray-500 opacity-80 ring-offset-background transition hover:bg-gray-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+      <SheetPrimitive.Close className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full text-gray-500 opacity-80 ring-offset-background transition hover:bg-gray-100 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none">
         <X className="h-5 w-5" />
         <span className="sr-only">Cerrar</span>
       </SheetPrimitive.Close>

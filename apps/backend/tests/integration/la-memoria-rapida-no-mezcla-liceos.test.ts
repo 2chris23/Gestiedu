@@ -11,6 +11,9 @@ import {
     createTestPrismaClient,
     cleanTestDatabase,
     createTestUser,
+    createTestAcademicYear,
+    createTestClassroom,
+    createTestSubject,
     generateTestToken,
 } from '../helpers';
 import { RedisCache } from '../../src/config/redis';
@@ -37,6 +40,9 @@ import { conLiceo, sinLiceo, liceoActual } from '../../src/config/ambito-del-lic
  * Y al guardar una nota se limpiaba `grades:list:*`, que tiraba lo guardado de
  * **todos** los liceos, no solo del suyo.
  *
+ * (Esas rutas ya no existen; la prueba usa hoy otra clave que es igual en
+ * todos los liceos, la de las materias con apreciación.)
+ *
  * ─── CÓMO SE COMPRUEBA AQUÍ ──────────────────────────────────────────────────
  *
  * Con dos liceos apuntando a la misma base. Eso es a propósito: si los datos
@@ -54,9 +60,13 @@ const SUFIJO = Date.now();
 const ID_B = `otro-liceo-${SUFIJO}`;
 const SLUG_B = `otro-liceo-${SUFIJO}`;
 
-/** La clave exacta que construye `getGrades` cuando no se le pasa ningún filtro. */
-const CLAVE_DE_TODAS_LAS_NOTAS =
-    'grades:list|stu:-|sub:-|per:-|act:-|tch:-|cls:-|min:-|max:-|typ:-|df:-|dt:-|pg:1|lm:10|sb:createdAt|so:desc|prof:-';
+/**
+ * Una clave que es LA MISMA en todos los liceos: las materias con apreciación
+ * (`apreciaciones.service.ts`), que se guardan un minuto porque se preguntan en
+ * cada promedio. (Antes se probaba con la lista de `/api/grades`, ruta que
+ * ninguna pantalla usaba y se quitó el 20-oct-2026.)
+ */
+const CLAVE_COMUN = 'materias:cualitativas';
 
 function datosDeConexion() {
     const url = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || '';
@@ -97,6 +107,8 @@ describe('La memoria rápida no mezcla liceos', () => {
     let prisma: PrismaClient;
     let tokenA: string;
     let tokenB: string;
+    let seccionA: string;
+    let seccionB: string;
     let baseDeB: string | undefined;
     let prismaB: PrismaClient | undefined;
 
@@ -167,6 +179,18 @@ describe('La memoria rápida no mezcla liceos', () => {
 
         tokenA = generateTestToken(admin.id, UserRole.ADMIN, ID_A);
         tokenB = generateTestToken(adminDeB.id, UserRole.ADMIN, ID_B);
+
+        // Una sección con una materia en cada liceo: al pedir su cuadro general,
+        // la cuenta pregunta cuáles materias son con apreciación.
+        const unaSeccion = async (db: PrismaClient, liceo: string) => {
+            const ano = await createTestAcademicYear(db, liceo);
+            const seccion = await createTestClassroom(db, ano.id, liceo);
+            const materia = await createTestSubject(db, liceo);
+            await db.classroomSubject.create({ data: { classroomId: seccion.id, subjectId: materia.id, weeklyBlocks: 2 } });
+            return seccion.id;
+        };
+        seccionA = await unaSeccion(prisma, ID_A);
+        seccionB = await unaSeccion(prismaB, ID_B);
     });
 
     afterAll(async () => {
@@ -189,31 +213,29 @@ describe('La memoria rápida no mezcla liceos', () => {
     // ═════════════════════════════════════════════════════════════════════════
 
     it('MEZCLA-01: lo que un liceo deja guardado NO se le sirve al siguiente', async () => {
-        // 1. El liceo A pide todas sus notas. Queda guardado.
-        const primera = await request(server.server)
-            .get('/api/grades')
-            .set(auth(tokenA, SLUG_A));
-        expect(primera.status).toBe(200);
+        const resumen = (token: string, slug: string, seccion: string) =>
+            request(server.server).get(`/api/classrooms/${seccion}/cuadro-general`).set(auth(token, slug));
+
+        // 1. El liceo A pide el cuadro general de una sección. Queda guardada la
+        //    lista de sus materias con apreciación.
+        expect((await resumen(tokenA, SLUG_A, seccionA)).status).toBe(200);
 
         // 2. Lo guardado está donde se cree que está. Si esta comprobación
-        //    fallara, la clave de abajo ya no sería la que usa el sistema y el
+        //    fallara, la clave de arriba ya no sería la que usa el sistema y el
         //    resto de la prueba no probaría nada.
-        const guardado = await conLiceo(ID_A, () => RedisCache.get(CLAVE_DE_TODAS_LAS_NOTAS));
-        expect(guardado).not.toBeNull();
+        expect(await conLiceo(ID_A, () => RedisCache.get(CLAVE_COMUN))).not.toBeNull();
 
         // 3. Se marca lo del liceo A para poder reconocerlo si sale por donde
         //    no debe.
-        const SENA = { grades: [{ id: 'ESTO-ES-DEL-LICEO-A' }], pagination: { page: 1, limit: 10, total: 1, pages: 1 } };
-        await conLiceo(ID_A, () => RedisCache.set(CLAVE_DE_TODAS_LAS_NOTAS, SENA, 300));
+        await conLiceo(ID_A, () => RedisCache.set(CLAVE_COMUN, ['ESTO-ES-DEL-LICEO-A'], 300));
 
-        // 4. El liceo A lo recibe: la copia guardada es lo que se sirve.
-        const suya = await request(server.server).get('/api/grades').set(auth(tokenA, SLUG_A));
-        expect(JSON.stringify(suya.body)).toContain('ESTO-ES-DEL-LICEO-A');
-
-        // 5. Y el liceo B pide lo mismo: NO puede recibir lo del A.
-        const ajena = await request(server.server).get('/api/grades').set(auth(tokenB, SLUG_B));
-        expect(ajena.status).toBe(200);
-        expect(JSON.stringify(ajena.body)).not.toContain('ESTO-ES-DEL-LICEO-A');
+        // 4. Y el liceo B pide lo mismo: hace SU cuenta y la guarda en lo suyo,
+        //    sin tocar lo del A.
+        expect((await resumen(tokenB, SLUG_B, seccionB)).status).toBe(200);
+        const deB = await conLiceo(ID_B, () => RedisCache.get<string[]>(CLAVE_COMUN));
+        expect(Array.isArray(deB)).toBe(true);
+        expect(deB).not.toContain('ESTO-ES-DEL-LICEO-A');
+        expect(await conLiceo(ID_A, () => RedisCache.get(CLAVE_COMUN))).toEqual(['ESTO-ES-DEL-LICEO-A']);
     });
 
     it('MEZCLA-02: guardar en un liceo no tira lo guardado del otro', async () => {
@@ -288,6 +310,18 @@ describe('La memoria rápida no mezcla liceos', () => {
         const MIRADAS: Record<string, string> = {
             'src/config/database.ts|tenantConnections':
                 'la clave es el liceo',
+            'src/services/precalentar-promedios.service.ts|PRECALENTADO':
+                'la clave empieza por el liceo; solo guarda cuándo se precalentó (una hora), nada de nadie',
+            'src/services/paquete-de-precarga.service.ts|candadosEnMemoria':
+                'la clave es «liceo|usuario»; solo dice que su paquete se está armando',
+            'src/services/paquete-de-precarga.service.ts|progresoEnMemoria':
+                'la clave es «liceo|usuario»; solo guarda cuántas lecturas van (dos números)',
+            'src/services/precarga.service.ts|PESOS':
+                'la clave es el liceo; solo guarda cuánto pesa de media cada tipo de lectura (un número), nada de nadie',
+            'src/services/avisos.service.ts|ultimoToque':
+                'la clave es el token de Firebase de UN teléfono y UNA app (cada liceo tiene su APK); solo guarda la hora del último toque, nada del liceo',
+            'src/services/avisos.service.ts|toqueEnEspera':
+                'la clave es el token de Firebase de UN teléfono y UNA app; solo dice que hay un toque pendiente',
             'src/config/database.ts|abriendo':
                 'la clave es el liceo: la conexión que se está abriendo para ESE liceo',
             'src/utils/fallos-del-servidor.ts|pendientes':
@@ -298,6 +332,18 @@ describe('La memoria rápida no mezcla liceos', () => {
                 'la clave lleva la credencial de quien pide, que es de un liceo y de una persona',
             'src/services/a-quien-afecta.service.ts|personalPorSeccion':
                 'la clave lleva el liceo delante (clavePorLiceo)',
+            'src/services/papelera.service.ts|MODELOS':
+                'el esquema de Prisma (qué columnas tiene cada tabla): igual para todos los liceos, nada de nadie',
+            'src/services/papelera.service.ts|PADRES':
+                'de qué tabla depende cada tabla, sacado del esquema: igual para todos los liceos',
+            'src/services/papelera.service.ts|profundidad':
+                'el orden de padres a hijos de cada tabla, sacado del esquema: igual para todos los liceos',
+            'src/services/cubos-de-precarga.service.ts|ROLES_CON_SECCION_COMPARTIDA':
+                'son los nombres de los roles que comparten el cubo de su sección, no datos de nadie',
+            'src/services/cubos-de-precarga.service.ts|conTrabajo':
+                'guarda solo ids de liceos con trabajo en la cola de los cubos; el trabajo se hace dentro de conLiceo(ese liceo)',
+            'src/services/cubos-de-precarga.service.ts|ultimoAviso':
+                'la clave es el liceo; solo guarda la hora del último aviso en el registro, nada de nadie',
             'src/middleware/smart-cache.middleware.ts|READ_ONLY_ROLES':
                 'son los nombres de los roles, no datos de nadie',
             'src/plugins/avisar-cambios.ts|METODOS_QUE_ESCRIBEN':
@@ -314,8 +360,18 @@ describe('La memoria rápida no mezcla liceos', () => {
                 'los envíos al teléfono que aún van en camino (promesas), para esperarlos en las pruebas: no guarda datos de nadie',
             'src/utils/lo-que-se-vio.ts|PROHIBIDOS':
                 'son tres nombres de propiedad (__proto__, prototype, constructor) que no se recorren, no datos de nadie',
+            'src/services/bulk-averages.service.ts|indicesDe':
+                'la clave es el objeto de UNA carga (las notas que esa petición acaba de leer de su liceo); WeakMap: se va con la carga, nadie más la ve',
             'src/scripts/medir-concurrencia.ts|credenciales':
                 'guion de medición, no corre en el servidor',
+            'src/config/esquema-del-liceo.ts|RAW':
+                'son los cuatro nombres de los métodos de SQL a mano ($queryRaw…), no datos de nadie',
+            'src/utils/latido-de-tareas.ts|enMemoria':
+                'la última vez que corrió cada tarea del servidor (mantenimiento, cuadro…): de la plataforma, no de un liceo',
+            'src/utils/latido-de-tareas.ts|conocidas':
+                'los nombres de las tareas que han latido, no datos de nadie',
+            'src/utils/sin-callar.ts|ultimaVez':
+                'cuándo se apuntó por última vez cada fallo (para no repetirlo): la clave es qué falló y el mensaje, no datos de un liceo',
         };
 
         const carpetas = ['src/config', 'src/controllers', 'src/middleware', 'src/plugins', 'src/services', 'src/utils', 'src/scripts'];
@@ -358,13 +414,14 @@ describe('La memoria rápida no mezcla liceos', () => {
         // Esto es lo que sostiene todo lo anterior, y es justo lo que falló al
         // primer intento: el liceo se apuntaba al empezar la petición y **no
         // llegaba** al servicio, que guardaba en el apartado «sin liceo».
-        await request(server.server).get('/api/grades').set(auth(tokenA, SLUG_A));
+        // `materiasCualitativas` no dice el liceo: lo pone el ambiente.
+        await request(server.server).get(`/api/classrooms/${seccionA}/cuadro-general`).set(auth(tokenA, SLUG_A));
 
         const claves: string[] = Array.from((RedisCache as never as { memoryStore: Map<string, unknown> }).memoryStore.keys());
-        const laDeLasNotas = claves.find((k) => k.includes('grades:list|'));
+        const laComun = claves.find((k) => k.endsWith(CLAVE_COMUN));
 
-        expect(laDeLasNotas).toBeDefined();
-        expect(laDeLasNotas).toContain(`liceo:${ID_A}:`);
-        expect(laDeLasNotas).not.toContain('sin-liceo:');
+        expect(laComun).toBeDefined();
+        expect(laComun).toContain(`liceo:${ID_A}:`);
+        expect(laComun).not.toContain('sin-liceo:');
     });
 });

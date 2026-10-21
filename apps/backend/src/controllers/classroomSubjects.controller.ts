@@ -1,11 +1,9 @@
 /// <reference path="../types/fastify.d.ts" />
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { logger } from '../utils/logger';
-import { subjectSectionAverage, studentsWithNoteInSubject } from '../services/aggregation.service';
-import { gradesService } from '../services/grades.service';
-import { getAcademicConfig } from '../services/promotion/close-cycle.service';
-import { findTeacherAssignmentConflicts } from '../services/schedule-conflicts.service';
 import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
+import { horasDeLosBloques } from '../services/personal.service';
+import { noQuitarConTrabajo } from '../services/secciones-de-la-materia.service';
 
 interface AssignSubjectToClassroomRequest {
     Params: {
@@ -47,24 +45,6 @@ interface RemoveSubjectFromClassroomRequest {
     };
 }
 
-interface AssignTeacherToSubjectRequest {
-    Params: {
-        classroomId: string;
-        subjectId: string;
-    };
-    Body: {
-        teacherId: string;
-        notes?: string;
-    };
-}
-
-interface GetTeacherHistoryRequest {
-    Params: {
-        classroomId: string;
-        subjectId: string;
-    };
-}
-
 /**
  * Obtener todas las materias asignadas a una sección
  */
@@ -79,15 +59,18 @@ export async function getClassroomSubjects(
         // Calcular skip para paginación
         const skip = (page - 1) * limit;
 
+        const where: any = { classroomId };
+        if (request.user?.role === 'TEACHER') {
+            where.teacherId = request.user.userId;
+        }
+
         // Obtener total de registros
         const total = await request.tenantPrisma.classroomSubject.count({
-            where: { classroomId },
+            where,
         });
 
         const subjects = await request.tenantPrisma.classroomSubject.findMany({
-            where: {
-                classroomId,
-            },
+            where,
             include: {
                 subject: {
                     select: {
@@ -235,6 +218,13 @@ export async function getClassroomSubjectDetail(
             });
         }
 
+        if (request.user?.role === 'TEACHER' && classroomSubject.teacherId !== request.user.userId) {
+            return reply.status(403).send({
+                error: 'No tienes permiso para ver esta materia',
+                code: 'FORBIDDEN',
+            });
+        }
+
         return reply.status(200).send({ classroomSubject });
     } catch (error) {
         logger.error('Error al obtener detalle de materia', {
@@ -319,8 +309,10 @@ export async function assignSubjectToClassroom(
             }
         }
 
-        // Calcular horas por semana (cada bloque = 0.75 horas = 45 minutos)
-        const hoursPerWeek = weeklyBlocks * 0.75;
+        // Las horas: bloques × la hora de clase del turno de la sección.
+        const liceo = (request as any).institute?.id ?? (request.user as any)?.instituteId ?? '';
+        const seccion = await request.tenantPrisma.classroom.findUnique({ where: { id: classroomId }, select: { shift: true } });
+        const hoursPerWeek = await horasDeLosBloques(liceo, seccion?.shift, weeklyBlocks ?? 0);
 
         // Crear la asignación
         const classroomSubject = await request.tenantPrisma.classroomSubject.create({
@@ -373,7 +365,7 @@ export async function assignSubjectToClassroom(
 }
 
 /** Helper: resolve slug or CUID to actual subject ID */
-async function resolveSubjectId(tenantPrisma: any, rawSubjectId: string): Promise<string | null> {
+export async function resolveSubjectId(tenantPrisma: any, rawSubjectId: string): Promise<string | null> {
     if (rawSubjectId.match(/^c[a-z0-9]{24}$/)) return rawSubjectId;
     const subject = await tenantPrisma.subject.findFirst({
         where: { slug: rawSubjectId },
@@ -415,7 +407,13 @@ export async function updateClassroomSubject(
         }
 
         // Calcular horas si se proporciona weeklyBlocks
-        const calculatedHours = weeklyBlocks !== undefined ? weeklyBlocks * 0.75 : hoursPerWeek;
+        // Con bloques, las horas salen de la hora de clase del turno de la sección.
+        let calculatedHours = hoursPerWeek;
+        if (weeklyBlocks !== undefined) {
+            const liceo = (request as any).institute?.id ?? (request.user as any)?.instituteId ?? '';
+            const seccion = await request.tenantPrisma.classroom.findUnique({ where: { id: classroomId }, select: { shift: true } });
+            calculatedHours = await horasDeLosBloques(liceo, seccion?.shift, weeklyBlocks);
+        }
 
         const updated = await request.tenantPrisma.classroomSubject.update({
             where: {
@@ -459,208 +457,6 @@ export async function updateClassroomSubject(
 }
 
 /**
- * Asignar o cambiar profesor de una materia
- */
-export async function assignTeacherToSubject(
-    request: FastifyRequest<AssignTeacherToSubjectRequest>,
-    reply: FastifyReply
-) {
-    try {
-        const { classroomId, subjectId: rawSubjectId } = request.params;
-        const { teacherId, notes } = request.body;
-
-        const subjectId = await resolveSubjectId(request.tenantPrisma, rawSubjectId);
-        if (!subjectId) {
-            return reply.status(404).send({ error: 'Materia no encontrada', code: 'SUBJECT_NOT_FOUND' });
-        }
-
-        // Verificar que el profesor existe y está activo
-        const teacher = await request.tenantPrisma.user.findFirst({
-            where: {
-                id: teacherId,
-                role: 'TEACHER',
-                isActive: true,
-            },
-        });
-
-        if (!teacher) {
-            return reply.status(404).send({
-                error: 'Profesor no encontrado o inactivo',
-                code: 'TEACHER_NOT_FOUND',
-            });
-        }
-
-        // Verificar que la materia está asignada a la sección
-        const classroomSubject = await request.tenantPrisma.classroomSubject.findUnique({
-            where: {
-                classroomId_subjectId: {
-                    classroomId,
-                    subjectId,
-                },
-            },
-        });
-
-        if (!classroomSubject) {
-            return reply.status(404).send({
-                error: 'Materia no encontrada en esta sección',
-                code: 'CLASSROOM_SUBJECT_NOT_FOUND',
-            });
-        }
-
-        // Asignar un profesor ocupa sus horas en los bloques YA colocados de esta
-        // materia. Antes no se miraba y el choque aparecía en el acto, sin pasar
-        // por ninguna validación (así entraron parte de los choques heredados).
-        if (classroomSubject.teacherId !== teacherId) {
-            const clashes = await findTeacherAssignmentConflicts(
-                request.tenantPrisma,
-                [classroomSubject.id],
-                teacherId
-            );
-            if (clashes.length > 0) {
-                return reply.status(409).send({
-                    error: `${teacher.firstName} ${teacher.lastName} ya tiene clase a esas horas: ${clashes[0].message}`,
-                    code: 'SCHEDULE_CONFLICT',
-                    conflicts: clashes,
-                });
-            }
-        }
-
-        // Usar transacción para actualizar profesor y crear historial
-        const result = await request.tenantPrisma.$transaction(async (prisma) => {
-            // Si había un profesor anterior, desactivar su registro en el historial
-            if (classroomSubject.teacherId) {
-                await prisma.subjectTeacherHistory.updateMany({
-                    where: {
-                        classroomSubjectId: classroomSubject.id,
-                        isActive: true,
-                    },
-                    data: {
-                        isActive: false,
-                        endDate: new Date(),
-                    },
-                });
-            }
-
-            // Actualizar el profesor actual
-            const updated = await prisma.classroomSubject.update({
-                where: {
-                    classroomId_subjectId: {
-                        classroomId,
-                        subjectId,
-                    },
-                },
-                data: {
-                    teacherId,
-                },
-                include: {
-                    subject: true,
-                    teacher: {
-                        select: {
-                            id: true,
-                            firstName: true,
-                            lastName: true,
-                            email: true,
-                            avatar: true,
-                        },
-                    },
-                },
-            });
-
-            // Crear nuevo registro en el historial
-            await prisma.subjectTeacherHistory.create({
-                data: {
-                    classroomSubjectId: classroomSubject.id,
-                    teacherId,
-                    isActive: true,
-                    notes,
-                },
-            });
-
-            return updated;
-        });
-
-        return reply.status(200).send({
-            message: 'Profesor asignado exitosamente',
-            classroomSubject: result,
-        });
-    } catch (error) {
-        logger.error('Error al asignar profesor a materia', {
-            error: error instanceof Error ? error.message : String(error),
-            classroomId: request.params.classroomId,
-            subjectId: request.params.subjectId,
-            teacherId: request.body.teacherId,
-        });
-        return reply.status(500).send({
-            error: 'Error al asignar profesor',
-            code: 'INTERNAL_SERVER_ERROR',
-        });
-    }
-}
-
-/**
- * Obtener historial de profesores de una materia
- */
-export async function getTeacherHistory(
-    request: FastifyRequest<GetTeacherHistoryRequest>,
-    reply: FastifyReply
-) {
-    try {
-        const { classroomId, subjectId } = request.params;
-
-        const classroomSubject = await request.tenantPrisma.classroomSubject.findUnique({
-            where: {
-                classroomId_subjectId: {
-                    classroomId,
-                    subjectId,
-                },
-            },
-        });
-
-        if (!classroomSubject) {
-            return reply.status(404).send({
-                error: 'Materia no encontrada en esta sección',
-                code: 'CLASSROOM_SUBJECT_NOT_FOUND',
-            });
-        }
-
-        const history = await request.tenantPrisma.subjectTeacherHistory.findMany({
-            where: {
-                classroomSubjectId: classroomSubject.id,
-            },
-            include: {
-                teacher: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        email: true,
-                        avatar: true,
-                    },
-                },
-            },
-            orderBy: {
-                startDate: 'desc',
-            },
-        });
-
-        return reply.status(200).send({
-            history,
-            total: history.length,
-        });
-    } catch (error) {
-        logger.error('Error al obtener historial de profesores', {
-            error: error instanceof Error ? error.message : String(error),
-            classroomId: request.params.classroomId,
-            subjectId: request.params.subjectId,
-        });
-        return reply.status(500).send({
-            error: 'Error al obtener historial',
-            code: 'INTERNAL_SERVER_ERROR',
-        });
-    }
-}
-
-/**
  * Remover una materia de una sección
  */
 export async function removeSubjectFromClassroom(
@@ -684,6 +480,12 @@ export async function removeSubjectFromClassroom(
                 error: 'Materia no encontrada en esta sección',
                 code: 'CLASSROOM_SUBJECT_NOT_FOUND',
             });
+        }
+
+        try {
+            await noQuitarConTrabajo(request.tenantPrisma, subjectId, [classroomId]);
+        } catch (e: any) {
+            return reply.status(409).send({ error: e.message, code: e.code });
         }
 
         // Eliminar (esto también eliminará en cascada el historial y bloques de horario)
@@ -777,179 +579,6 @@ export async function getAvailableSubjects(
         });
         return reply.status(500).send({
             error: 'Error al obtener materias disponibles',
-            code: 'INTERNAL_SERVER_ERROR',
-        });
-    }
-}
-
-interface GetClassroomSubjectsStatsRequest {
-    Params: {
-        classroomId: string;
-    };
-    Querystring: {
-        periodId?: string;
-    };
-}
-
-/**
- * Obtener estadísticas de todas las materias asignadas a una sección
- */
-export async function getClassroomSubjectsStats(
-    request: FastifyRequest<GetClassroomSubjectsStatsRequest>,
-    reply: FastifyReply
-) {
-    try {
-        const { classroomId } = request.params;
-        const periodId = request.query?.periodId || undefined;
-
-        // Obtener materias asignadas
-        const classroomSubjects = await request.tenantPrisma.classroomSubject.findMany({
-            where: { classroomId },
-            include: {
-                subject: {
-                    select: {
-                        id: true,
-                        name: true,
-                        color: true,
-                        code: true,
-                        slug: true,
-                        evaluacion: true,
-                    },
-                },
-                teacher: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        avatar: true,
-                    },
-                },
-            },
-        });
-
-        // Obtener estudiantes de la sección
-        const enrollments = await request.tenantPrisma.studentClassroom.findMany({
-            where: {
-                classroomId,
-                isActive: true,
-            },
-            select: {
-                studentId: true,
-            },
-        });
-
-        const studentIds = enrollments.map(e => e.studentId);
-
-        let minPassing = 10;
-        try {
-            const instId = (request.user as any)?.instituteId ?? (request as any).institute?.id;
-            if (instId) {
-                const config = await getAcademicConfig(instId);
-                minPassing = typeof config.notaMinimaAprobatoria === 'number' ? config.notaMinimaAprobatoria : 10;
-            }
-        } catch {
-            minPassing = 10;
-        }
-
-        // Filtrar por fechas del periodo/lapso si fue especificado
-        let periodDateFilter: any = {};
-        if (periodId) {
-            const period = await request.tenantPrisma.period.findUnique({
-                where: { id: periodId },
-                select: { startDate: true, endDate: true },
-            });
-            if (period) {
-                periodDateFilter = {
-                    gte: period.startDate,
-                    lte: period.endDate,
-                };
-            }
-        }
-
-        // Calcular estadísticas para cada materia
-        // CORRECCIÓN (jerarquía de agregación): el promedio de la materia es el
-        // NIVEL 3 — promedio de los promedios NIVEL 2 por estudiante, excluyendo
-        // a estudiantes sin notas (no cuentan como 0) e incluyendo notas de
-        // ClassActivity.scores. Antes: promedio simple de AVG sobre la tabla
-        // grades (ignoraba criterios ponderados y clases en vivo).
-        const subjectsWithStats = await Promise.all(
-            classroomSubjects.map(async (cs) => {
-                const n3 = await subjectSectionAverage(request.tenantPrisma, classroomId, cs.subjectId, periodId);
-                const average = n3.hasData ? Math.round(n3.average * 10) / 10 : null;
-
-                // Obtener asistencia
-                const attendanceRecords = await request.tenantPrisma.dailyAttendance.findMany({
-                    where: {
-                        studentId: { in: studentIds },
-                        classroomId,
-                        ...(periodDateFilter.gte ? { date: periodDateFilter } : {}),
-                    },
-                });
-
-                const presentCount = attendanceRecords.filter(a => a.status === 'PRESENT' || a.status === 'LATE').length;
-                const attendance = attendanceRecords.length > 0
-                    ? Math.round((presentCount / attendanceRecords.length) * 100)
-                    : 0;
-
-                // Obtener observaciones filtradas por materia y lapso
-                const observations = await request.tenantPrisma.observation.count({
-                    where: {
-                        studentId: { in: studentIds },
-                        subjectId: cs.subjectId,
-                        ...(periodDateFilter.gte ? { date: periodDateFilter } : {}),
-                    },
-                });
-
-                // Estudiantes en riesgo (promedio ponderado en la materia < minPassing)
-                const withData = await studentsWithNoteInSubject(request.tenantPrisma, classroomId, cs.subjectId, periodId);
-                let atRiskStudents = 0;
-                for (const studentId of withData) {
-                    const stuAvg = await gradesService.calculateWeightedSubjectAverage(
-                        request.tenantPrisma,
-                        studentId,
-                        cs.subjectId,
-                        periodId
-                    );
-                    if (stuAvg > 0 && stuAvg < minPassing) {
-                        atRiskStudents++;
-                    }
-                }
-
-                return {
-                    id: cs.subject.id,
-                    name: cs.subject.name,
-                    color: cs.subject.color,
-                    code: cs.subject.code,
-                    slug: cs.subject.slug,
-                    teacher: cs.teacher ? {
-                        id: cs.teacher.id,
-                        firstName: cs.teacher.firstName,
-                        lastName: cs.teacher.lastName,
-                        avatar: cs.teacher.avatar,
-                    } : null,
-                    hoursPerWeek: cs.hoursPerWeek || 0,
-                    weeklyBlocks: cs.weeklyBlocks || 0,
-                    stats: {
-                        average,
-                        attendance,
-                        observations,
-                        atRiskStudents,
-                    },
-                };
-            })
-        );
-
-        return reply.status(200).send({
-            subjects: subjectsWithStats,
-            total: subjectsWithStats.length,
-        });
-    } catch (error) {
-        logger.error('Error al obtener estadísticas de materias', {
-            error: error instanceof Error ? error.message : String(error),
-            classroomId: request.params.classroomId,
-        });
-        return reply.status(500).send({
-            error: 'Error al obtener estadísticas',
             code: 'INTERNAL_SERVER_ERROR',
         });
     }

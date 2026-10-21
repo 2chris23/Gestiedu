@@ -200,14 +200,15 @@ describe('Un cero es una nota (CERO-01…07)', () => {
     }, 60000);
 
     it('CERO-05: en las cifras de la sección, el alumno con 0 sale en riesgo en la materia', async () => {
+        // La pantalla de la materia: su fila de esta sección (antes
+        // `/api/statistics/section`, sin pantalla, quitada el 19-oct-2026).
         const res = await request(server.server)
-            .get(`/api/statistics/section/${seccion.id}`)
+            .get(`/api/subjects/${mate.id}`)
             .set(auth(tokenAdmin))
             .expect(200);
-        const datos = res.body.data ?? res.body;
-        const deMate = datos.subjectAverages.find((m: any) => m.subjectId === mate.id);
+        const fila = (res.body.data ?? res.body).sections.find((x: any) => x.id === seccion.id);
         // conCeros (0) y ceroYDieciseis (8): los dos por debajo de 10.
-        expect(deMate.studentsAtRisk).toBe(2);
+        expect(fila.riskCount).toBe(2);
     }, 60000);
 
     it('CERO-06: en la lista de la sección, el alumno con 0 tiene la materia reprobada y promedio 7.5', async () => {

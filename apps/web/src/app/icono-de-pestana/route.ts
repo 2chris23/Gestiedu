@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { BACKEND_URL } from '@/config/env';
 
 /**
  * EL ICONO DE LA PESTAÑA, DEL LICEO DESDE LA PRIMERA PINTADA
@@ -16,7 +17,8 @@ import { NextRequest, NextResponse } from 'next/server';
  * plataforma.
  */
 
-const API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '');
+// Lo pide ESTE servidor: la dirección interna (con el túnel, la pública se llamaría a sí misma).
+const API = BACKEND_URL;
 
 function elLiceoDeLaPeticion(request: NextRequest): string | null {
     const dePregunta = request.nextUrl.searchParams.get('liceo');

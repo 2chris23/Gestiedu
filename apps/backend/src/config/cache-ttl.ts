@@ -20,15 +20,7 @@ const TTL_CONFIG: Record<string, number> = {
 
     // Datos medianamente cacheables (5 minutos)
     '/api/dashboard': 300,
-    '/api/grades': 300,
-    '/api/activities': 300,
     '/api/students': 300,
-
-    // Datos poco cacheables (2 minutos)
-    '/api/attendance': 120,
-
-    // Datos en tiempo casi real (30 segundos)
-    '/api/notifications': 30,
 
     // Default para rutas no especificadas
     'default': 300, // 5 minutos
@@ -53,22 +45,6 @@ export function getCacheTTL(route: string): number {
     // Retornar TTL por defecto
     return TTL_CONFIG.default;
 }
-
-/**
- * Obtiene el TTL en formato legible
- */
-export function getCacheTTLReadable(route: string): string {
-    const ttl = getCacheTTL(route);
-
-    if (ttl >= 3600) {
-        return `${Math.floor(ttl / 3600)}h`;
-    } else if (ttl >= 60) {
-        return `${Math.floor(ttl / 60)}m`;
-    } else {
-        return `${ttl}s`;
-    }
-}
-
 /**
  * Configuración de TTL exportada para referencia
  */

@@ -19,7 +19,7 @@ import {
  * "se vea bien", porque un panel que enseña cero cuando debería enseñar treinta
  * no se distingue a simple vista de uno vacío de verdad.
  *
- * Así se descubrió que `GET /api/teachers/my-classrooms` devolvía 400 siempre:
+ * Así se descubrió que `GET /api/teachers/my-classrooms` (ya quitada) devolvía 400 siempre:
  * la pantalla del profesor cargaba, pero sin sus secciones.
  *
  * También se miran los errores de JavaScript. Una pantalla puede pintarse a
@@ -56,8 +56,21 @@ async function abrirYVigilar(page: any, ruta: string): Promise<Fallo[]> {
         fallos.push({ tipo: 'javascript', detalle: error.message });
     };
 
+    // La hidratación que no cuadra (lo que pinta el servidor ≠ lo que pinta el
+    // teléfono) no rompe la página: React la repinta entera, parpadea y gasta
+    // batería en teléfonos baratos. Compilado solo deja su número en la
+    // consola (#418, #423, #425): se vigila aquí (HIDRA-01).
+    const alEscribirEnConsola = (m: any) => {
+        if (m.type() !== 'error') return;
+        const texto = String(m.text());
+        if (/Minified React error #(418|423|425)|[Hh]ydrat/.test(texto)) {
+            fallos.push({ tipo: 'javascript', detalle: `hidratación: ${texto.slice(0, 160)}` });
+        }
+    };
+
     page.on('response', alResponder);
     page.on('pageerror', alFallarJs);
+    page.on('console', alEscribirEnConsola);
 
     try {
         await page.goto(`${WEB_BASE}${ruta}`, { waitUntil: 'domcontentloaded' });
@@ -73,6 +86,7 @@ async function abrirYVigilar(page: any, ruta: string): Promise<Fallo[]> {
     } finally {
         page.off('response', alResponder);
         page.off('pageerror', alFallarJs);
+        page.off('console', alEscribirEnConsola);
     }
 
     return fallos;

@@ -80,7 +80,7 @@ test.describe('Sin conexión', () => {
             await page.waitForURL('**/dashboard**');
 
             // Que llegue el panel: los cuatro números del liceo.
-            await expect(page.getByText('Estudiantes', { exact: false }).first()).toBeVisible({ timeout: 20000 });
+            await expect(page.getByText('Estudiantes', { exact: false }).filter({ visible: true }).first()).toBeVisible({ timeout: 20000 });
 
             const guardado = await expect
                 .poll(async () => await siSePuede(page), { timeout: 20000 })
@@ -105,7 +105,7 @@ test.describe('Sin conexión', () => {
         try {
             await loginViaUI(page, 'admin@testing.edu.ve');
             await page.waitForURL('**/dashboard**');
-            await expect(page.getByText('Estudiantes', { exact: false }).first()).toBeVisible({ timeout: 20000 });
+            await expect(page.getByText('Estudiantes', { exact: false }).filter({ visible: true }).first()).toBeVisible({ timeout: 20000 });
 
             const aviso = page.getByText('Estás viendo lo último que se descargó', { exact: false });
             await expect(aviso).toHaveCount(0);
@@ -113,9 +113,9 @@ test.describe('Sin conexión', () => {
             await context.setOffline(true);
 
             // El aviso escucha al navegador: sale sin recargar nada.
-            await expect(aviso.first()).toBeVisible({ timeout: 10000 });
+            await expect(aviso.filter({ visible: true }).first()).toBeVisible({ timeout: 10000 });
             // Y lo que ya estaba, sigue estando: no se vacía la pantalla.
-            await expect(page.getByText('Estudiantes', { exact: false }).first()).toBeVisible();
+            await expect(page.getByText('Estudiantes', { exact: false }).filter({ visible: true }).first()).toBeVisible();
 
             await context.setOffline(false);
             await expect(aviso).toHaveCount(0, { timeout: 10000 });

@@ -2,6 +2,8 @@ import { FastifyInstance } from 'fastify';
 import { syncAcademicYearStatuses } from '../utils/academic-year.utils';
 import { logger } from '../utils/logger';
 import { platformPrisma, getTenantPrisma } from '../config/database';
+import { latido } from '../utils/latido-de-tareas';
+import { unaVezCada } from '../utils/turno-de-la-tarea';
 
 /**
  * CRON JOB: Sincronización Automática de Status de Años Académicos
@@ -19,23 +21,22 @@ export async function setupAcademicYearCronJob(server: FastifyInstance) {
         return;
     }
 
-    // Sincronizar al inicio del servidor — todos los institutos
-    logger.info('Running initial academic year status sync for all institutes...');
-    await syncAllInstitutes();
-
-    // Programar ejecución diaria (24 horas en milisegundos)
-    const cronInterval = 24 * 60 * 60 * 1000;
-
-    setInterval(async () => {
+    // UNA vez entre todos los procesos (`unaVezCada`), y sin frenar el arranque.
+    // Antes cada proceso, al arrancar y esperándolo, abría una conexión a cada
+    // liceo: con 4 procesos y 60 liceos la base se quedaba sin clientes y nadie
+    // podía entrar. El estado de los años cambia por fecha: una vez cada 6 h sobra.
+    const cada = 6 * 60 * 60 * 1000;
+    const correr = async () => {
         try {
-            logger.info('Running scheduled academic year status sync...');
-            await syncAllInstitutes();
+            await unaVezCada('estado-de-los-anos', cada, syncAllInstitutes);
         } catch (error) {
             logger.error('Error in scheduled academic year sync', {
                 error: error instanceof Error ? error.message : 'Unknown error',
             });
         }
-    }, cronInterval);
+    };
+    setTimeout(() => void correr(), 30_000).unref?.();
+    setInterval(() => void correr(), cada).unref?.();
 
     logger.info('Academic year cron job scheduled (daily)');
 }
@@ -74,6 +75,7 @@ async function syncAllInstitutes() {
         totalUpdated,
         totalErrors,
     });
+    await latido('estado-de-los-anos', 24 * 60 * 60 * 1000, totalErrors ? `${totalErrors} error(es)` : undefined);
 }
 
 /**

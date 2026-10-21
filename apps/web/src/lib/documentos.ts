@@ -22,6 +22,8 @@ const RUTAS_DE_PAPEL: RegExp[] = [
     /^\/dashboard\/(plan-de-evaluacion|acta-de-socializacion|instrumentos-de-evaluacion)\/[^/]+\/[^/]+$/,
     /^\/dashboard\/comedor\/resumen$/,
     /^\/dashboard\/pagos\/reporte$/,
+    // Las actas de la materia pendiente (de calificaciones y de presentación).
+    /^\/dashboard\/pendientes\/(acta|presentacion)\/[^/]+$/,
 ];
 
 export function esDocumento(pathname: string | null | undefined): boolean {

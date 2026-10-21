@@ -1,5 +1,6 @@
 import {
     Home,
+    GraduationCap,
     Users,
     BookOpen,
     Library,
@@ -9,7 +10,6 @@ import {
     Wallet,
     FileText,
     ClipboardCheck,
-    HeartHandshake,
     MessageSquareText,
     UtensilsCrossed,
     type LucideIcon,
@@ -22,6 +22,11 @@ import {
  * barra de abajo del teléfono y los accesos del panel de inicio. Escrito tres
  * veces se desincroniza a la primera, y el que se queda viejo no da ningún
  * error: simplemente deja de ofrecer una pantalla.
+ *
+ * NOTA DE SINCRONIZACIÓN (Fase B):
+ * Esta lista está COPIADA en el servidor en `services/paquete-de-precarga.service.ts`
+ * (`elMenuDelRol`). Ambos archivos deben mantenerse idénticos para que el paquete
+ * preparado de antemano contenga exactamente las pantallas que el menú ofrece.
  *
  * Los roles tienen que coincidir con el enum `UserRole` del servidor
  * (ADMIN | TEACHER | STUDENT | TUTOR). Ponerlos en español rompe el filtro en
@@ -37,7 +42,7 @@ export interface DestinoDelMenu {
     pista?: string;
 }
 
-export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = false): DestinoDelMenu[] {
+export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = false, esGuia = false): DestinoDelMenu[] {
     const todos: DestinoDelMenu[] = [
         {
             name: 'Inicio',
@@ -49,22 +54,22 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = fa
             name: 'Académico',
             href: '/dashboard/academico',
             icon: BookOpen,
-            roles: ['ADMIN', 'TEACHER'],
+            roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'],
             pista: 'Ciclos, secciones y alumnos',
         },
         {
             name: 'Materias',
             href: '/dashboard/materias',
             icon: Library,
-            roles: ['ADMIN', 'TEACHER'],
+            roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'],
             pista: 'Las materias del liceo',
         },
         {
-            name: 'Pendientes',
-            href: '/dashboard/materias-pendientes',
-            icon: ClipboardCheck,
-            roles: ['ADMIN', 'TEACHER'],
-            pista: 'Materias pendientes, momento a momento',
+            name: 'Profesores',
+            href: '/dashboard/profesores',
+            icon: GraduationCap,
+            roles: ['ADMIN'],
+            pista: 'Sus horas, sus clases y su promedio',
         },
         {
             name: 'Observaciones',
@@ -74,18 +79,29 @@ export function elMenuDe(rol: string | undefined, conPagos: boolean, conPae = fa
             pista: 'Observaciones y citaciones a representantes',
         },
         {
-            name: 'Labor social',
-            href: '/dashboard/labor-social',
-            icon: HeartHandshake,
-            roles: ['ADMIN', 'TEACHER'],
-            pista: 'Las horas comunitarias de cada alumno',
-        },
-        {
             name: 'Horarios',
             href: '/dashboard/horarios',
             icon: Calendar,
-            roles: ['ADMIN', 'TEACHER'],
+            roles: ['ADMIN', 'TEACHER', 'STUDENT', 'TUTOR'],
             pista: 'Por sección y por profesor',
+        },
+        ...(esGuia
+            ? [
+                  {
+                      name: 'Mi sección guía',
+                      href: '/dashboard/mi-seccion-guia',
+                      icon: Users,
+                      roles: ['TEACHER'],
+                      pista: 'Cuadro general y notas de tus alumnos',
+                  },
+              ]
+            : []),
+        {
+            name: 'Actividades',
+            href: '/dashboard/actividades',
+            icon: ClipboardCheck,
+            roles: ['STUDENT', 'TUTOR'],
+            pista: 'Lo hecho y lo pendiente',
         },
         {
             name: 'Eventos',
@@ -198,6 +214,6 @@ export function losDeLaBarra(rol: string | undefined, conPagos: boolean): string
 }
 
 /** Lo que se ofrece como acceso en el panel: todo el menú menos Inicio. */
-export function losAccesosDe(rol: string | undefined, conPagos: boolean): DestinoDelMenu[] {
-    return elMenuDe(rol, conPagos).filter((d) => d.href !== '/dashboard');
+export function losAccesosDe(rol: string | undefined, conPagos: boolean, conPae = false, esGuia = false): DestinoDelMenu[] {
+    return elMenuDe(rol, conPagos, conPae, esGuia).filter((d) => d.href !== '/dashboard');
 }

@@ -1,5 +1,5 @@
 import { AppErrors, createError } from '../middleware/error.middleware';
-import { getAcademicConfig } from './promotion/close-cycle.service';
+import { getAcademicConfig } from './promotion/configuracion-academica';
 import { datosDelPlantel, mencionDelLiceo } from './constancias.service';
 
 /**

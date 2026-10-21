@@ -75,6 +75,30 @@ describe('Las secciones que me tocan', () => {
 
         tk.admin = generateTestToken(admin.id, UserRole.ADMIN, 'institute');
         tk.profe = generateTestToken(profe.id, UserRole.TEACHER, 'institute');
+
+        const alumno = (await createTestUser(prisma, UserRole.STUDENT)).user;
+        await prisma.studentClassroom.create({
+            data: {
+                id: `sc-${createId()}`,
+                studentId: alumno.id,
+                classroomId: laQueGuia.id,
+                academicYearId: year.id,
+                isActive: true,
+            },
+        });
+
+        const tutor = (await createTestUser(prisma, UserRole.TUTOR)).user;
+        await prisma.studentTutor.create({
+            data: {
+                id: `st-${createId()}`,
+                studentId: alumno.id,
+                tutorId: tutor.id,
+                relationship: 'PADRE',
+            },
+        });
+
+        tk.alumno = generateTestToken(alumno.id, UserRole.STUDENT, 'institute');
+        tk.tutor = generateTestToken(tutor.id, UserRole.TUTOR, 'institute');
     });
 
     afterAll(async () => {
@@ -101,5 +125,23 @@ describe('Las secciones que me tocan', () => {
         expect(ids).toContain(laQueGuia.id);
         expect(ids).toContain(dondeDaClase.id);
         expect(ids).toContain(ajena.id);
+    });
+
+    it('SECC-03: el alumno recibe solo su sección activa, y ninguna más', async () => {
+        const res = await lista(tk.alumno).expect(200);
+        const ids = (res.body as any[]).map((c) => c.id);
+
+        expect(ids).toContain(laQueGuia.id);
+        expect(ids).not.toContain(dondeDaClase.id);
+        expect(ids).not.toContain(ajena.id);
+    });
+
+    it('SECC-04: el representante recibe solo las secciones de sus representados, y ninguna más', async () => {
+        const res = await lista(tk.tutor).expect(200);
+        const ids = (res.body as any[]).map((c) => c.id);
+
+        expect(ids).toContain(laQueGuia.id);
+        expect(ids).not.toContain(dondeDaClase.id);
+        expect(ids).not.toContain(ajena.id);
     });
 });

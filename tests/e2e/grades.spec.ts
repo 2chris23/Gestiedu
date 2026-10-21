@@ -56,36 +56,41 @@ async function pedir(metodo: 'get' | 'post' | 'delete', ruta: string, token: str
     }
 }
 
+/**
+ * Las notas se ponen en la clase en vivo: en una actividad de la clase
+ * (`/sessions/activities/:id/grades`). Antes también por `/api/grades`, que
+ * ninguna pantalla usaba y se quitó el 20-oct-2026.
+ */
+const ponerNota = (actividadId: string, studentId: string, nota: number, token: string) =>
+    pedir('post', `/sessions/activities/${actividadId}/grades`, token, { scores: { [studentId]: nota }, maxScore: 20 });
+
 test.describe('Notas: permisos y borrado', () => {
     test.describe.configure({ mode: 'serial' });
 
     test('GR-01: un estudiante no puede ponerse una nota, ni llamando a la API', async () => {
         const alumno = await loginApi('est0575@testing.edu.ve', '123456', true, TENANT_SLUG, true);
+        const [yo] = await queryTenantDb<{ id: string }>(`SELECT id FROM users WHERE email = 'est0575@testing.edu.ve'`);
 
         const [fila] = await queryTenantDb<any>(
-            `SELECT a.id AS "activityId", a."periodId", a."subjectId", sc."studentId"
-             FROM activities a
+            `SELECT a.id AS "activityId", a.scores -> $1 AS "suNota"
+             FROM class_activities a
              JOIN student_classrooms sc ON sc."classroomId" = a."classroomId" AND sc."isActive" = true
-             LIMIT 1`
+             WHERE sc."studentId" = $1
+             LIMIT 1`,
+            [yo.id]
         );
-        expect(fila, 'hace falta al menos una actividad con alumnos').toBeTruthy();
+        expect(fila, 'hace falta al menos una actividad en la sección del alumno').toBeTruthy();
 
-        const r = await pedir('post', '/grades', alumno.accessToken, {
-            score: 20,
-            studentId: fila.studentId,
-            activityId: fila.activityId,
-            periodId: fila.periodId,
-            subjectId: fila.subjectId,
-        });
+        const r = await ponerNota(fila.activityId, yo.id, 20, alumno.accessToken);
 
         // Da igual si responde 400, 401 o 403: lo que no puede es guardar.
         expect(r.status, `la API dejó calificar a un estudiante (${r.status})`).toBeGreaterThanOrEqual(400);
 
-        const [nota] = await queryTenantDb<any>(
-            `SELECT id FROM grades WHERE "studentId" = $1 AND "activityId" = $2 AND score = 20`,
-            [fila.studentId, fila.activityId]
+        const [despues] = await queryTenantDb<any>(
+            `SELECT scores -> $2 AS "suNota" FROM class_activities WHERE id = $1`,
+            [fila.activityId, yo.id]
         );
-        expect(nota, 'se guardó una nota puesta por un estudiante').toBeFalsy();
+        expect(despues.suNota, 'se guardó una nota puesta por un estudiante').toEqual(fila.suNota);
     });
 
     test('GR-02: un profesor no puede calificar en una materia que no imparte', async () => {
@@ -97,8 +102,8 @@ test.describe('Notas: permisos y borrado', () => {
 
         // Una actividad de una materia que NO es suya
         const [ajena] = await queryTenantDb<any>(
-            `SELECT a.id AS "activityId", a."periodId", a."subjectId", sc."studentId"
-             FROM activities a
+            `SELECT a.id AS "activityId", sc."studentId"
+             FROM class_activities a
              JOIN classroom_subjects cs
                ON cs."classroomId" = a."classroomId" AND cs."subjectId" = a."subjectId"
              JOIN student_classrooms sc
@@ -110,102 +115,64 @@ test.describe('Notas: permisos y borrado', () => {
 
         test.skip(!ajena, 'el liceo de pruebas no tiene una materia ajena a este profesor');
 
-        const r = await pedir('post', '/grades', profesor.accessToken, {
-            score: 19,
-            studentId: ajena.studentId,
-            activityId: ajena.activityId,
-            periodId: ajena.periodId,
-            subjectId: ajena.subjectId,
-        });
-
+        const r = await ponerNota(ajena.activityId, ajena.studentId, 19, profesor.accessToken);
         expect(r.status, `dejó calificar en una materia ajena (${r.status})`).toBeGreaterThanOrEqual(400);
     });
 
     test('GR-03: un estudiante no ve las notas de otro', async () => {
         const alumno = await loginApi('est0575@testing.edu.ve', '123456', true, TENANT_SLUG, true);
-
         const [otro] = await queryTenantDb<{ id: string }>(
             `SELECT u.id FROM users u
-             WHERE u.role = 'STUDENT' AND u."isActive" = true
+             WHERE u.role = 'STUDENT'
                AND u.email <> 'est0575@testing.edu.ve'
              LIMIT 1`
         );
         expect(otro).toBeTruthy();
 
-        const r = await pedir('get', `/grades/student/${otro.id}`, alumno.accessToken);
-
-        // O lo niega, o no le devuelve notas. Lo que no puede es entregárselas.
-        if (r.status === 200) {
-            const notas = r.data?.grades ?? r.data?.data?.grades ?? [];
-            expect(
-                notas.length,
-                'un estudiante recibió las notas de otro estudiante'
-            ).toBe(0);
-        } else {
-            expect(r.status).toBeGreaterThanOrEqual(400);
-        }
+        // Su boleta: donde se ven las notas de un alumno.
+        const r = await pedir('get', `/students/${otro.id}/boleta`, alumno.accessToken);
+        expect(r.status, 'un estudiante recibió la boleta de otro estudiante').toBeGreaterThanOrEqual(400);
     });
 
-    test('GR-04: una nota borrada queda recuperable en la papelera', async () => {
+    test('GR-04: una actividad con notas borrada queda recuperable en la papelera', async () => {
         const admin = await loginApi('admin@testing.edu.ve', '123456', true, TENANT_SLUG, true);
 
-        // Una nota que exista de verdad
-        const [nota] = await queryTenantDb<any>(
-            `SELECT id, score, "studentId", "activityId" FROM grades WHERE score IS NOT NULL LIMIT 1`
+        // Una actividad nueva con una nota, para no tocar las del liceo
+        const [cs] = await queryTenantDb<any>(
+            `SELECT sc."classroomId", cs."subjectId", sc."studentId"
+             FROM classroom_subjects cs
+             JOIN student_classrooms sc ON sc."classroomId" = cs."classroomId" AND sc."isActive" = true
+             LIMIT 1`
         );
-        expect(nota, 'hace falta al menos una nota en el liceo de pruebas').toBeTruthy();
-
-        const antes = await queryTenantDb<any>(
-            `SELECT id FROM registros_borrados WHERE tabla = 'grade' AND "registroId" = $1`,
-            [nota.id]
+        expect(cs, 'hace falta una materia con alumnos en el liceo de pruebas').toBeTruthy();
+        const id = `cgr04${Date.now().toString(36)}`;
+        await queryTenantDb(
+            `INSERT INTO class_activities (id, title, type, target, "maxScore", scores, "classroomId", "subjectId", "createdAt", "updatedAt")
+             VALUES ($1, 'GR-04 prueba de la papelera', 'TAREA', 'CURRENT', 20, $2::jsonb, $3, $4, now(), now())`,
+            [id, JSON.stringify({ [cs.studentId]: 17 }), cs.classroomId, cs.subjectId]
         );
-        expect(antes.length, 'esta nota ya estaba en la papelera').toBe(0);
 
-        const r = await pedir('delete', `/grades/${nota.id}`, admin.accessToken);
-        expect(
-            [200, 204],
-            `el borrado respondió ${r.status}: ${JSON.stringify(r.data)}`
-        ).toContain(r.status);
+        const r = await pedir('delete', `/sessions/activities/${id}?decision=borrar`, admin.accessToken);
+        expect([200, 204], `el borrado respondió ${r.status}: ${JSON.stringify(r.data)}`).toContain(r.status);
 
         // Ya no está
-        const quedan = await queryTenantDb<any>(`SELECT id FROM grades WHERE id = $1`, [nota.id]);
-        expect(quedan.length).toBe(0);
+        expect((await queryTenantDb<any>(`SELECT id FROM class_activities WHERE id = $1`, [id])).length).toBe(0);
 
-        // Pero se puede recuperar
+        // Pero se puede recuperar, con su nota
         const [copia] = await queryTenantDb<any>(
-            `SELECT contenido, "borradoPor", motivo FROM registros_borrados
-             WHERE tabla = 'grade' AND "registroId" = $1`,
-            [nota.id]
+            `SELECT contenido, operacion FROM registros_borrados WHERE tabla = 'classActivity' AND "registroId" = $1`,
+            [id]
         );
-        expect(copia, 'la nota se borró sin dejar copia').toBeTruthy();
-        expect(Number(copia.contenido.score)).toBe(Number(nota.score));
-        expect(copia.contenido.studentId).toBe(nota.studentId);
-        expect(copia.motivo).toContain('/api/grades/');
+        expect(copia, 'la actividad se borró sin dejar copia').toBeTruthy();
+        expect(copia.contenido.scores[cs.studentId]).toBe(17);
 
-        // Se devuelve a su sitio desde la copia, que es de lo que sirve la papelera
-        await queryTenantDb(
-            `INSERT INTO grades (id, score, comments, "studentId", "activityId", "periodId",
-                                 "subjectId", "teacherId", "createdAt", "updatedAt")
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now())`,
-            [
-                copia.contenido.id,
-                copia.contenido.score,
-                copia.contenido.comments,
-                copia.contenido.studentId,
-                copia.contenido.activityId,
-                copia.contenido.periodId,
-                copia.contenido.subjectId,
-                copia.contenido.teacherId,
-            ]
-        );
-
-        const devuelta = await queryTenantDb<any>(`SELECT id, score FROM grades WHERE id = $1`, [nota.id]);
-        expect(devuelta.length, 'no se pudo devolver la nota desde la papelera').toBe(1);
-        expect(Number(devuelta[0].score)).toBe(Number(nota.score));
+        const devuelta = await pedir('post', `/papelera/${encodeURIComponent(copia.operacion)}/restaurar`, admin.accessToken, {});
+        expect(devuelta.status, `restaurar respondió ${devuelta.status}: ${JSON.stringify(devuelta.data)}`).toBe(200);
+        const [otraVez] = await queryTenantDb<any>(`SELECT scores FROM class_activities WHERE id = $1`, [id]);
+        expect(otraVez?.scores?.[cs.studentId], 'no se pudo devolver la actividad desde la papelera').toBe(17);
 
         // Se limpia el rastro de la prueba
-        await queryTenantDb(`DELETE FROM registros_borrados WHERE tabla = 'grade' AND "registroId" = $1`, [
-            nota.id,
-        ]);
+        await queryTenantDb(`DELETE FROM class_activities WHERE id = $1`, [id]);
+        await queryTenantDb(`DELETE FROM registros_borrados WHERE "registroId" = $1`, [id]);
     });
 });

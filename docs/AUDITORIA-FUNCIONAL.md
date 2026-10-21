@@ -972,7 +972,7 @@ en abrirse todas. El servidor se queda en unos 2 GB de memoria.
 
 Eso no lo medía ninguna prueba anterior: k6 cuenta peticiones, y el riesgo de un
 liceo grande a las 8 de la mañana es otro — miles de teléfonos conectados **sin
-pedir nada**, solo esperando. La prueba está en `load-tests/sockets-15k.ts`.
+pedir nada**, solo esperando. La prueba está en `apps/backend/src/scripts/medir-tiempo-real.ts` (`npm run medir:tiempo-real`).
 
 ### Lo que importaba de verdad: a cuánta gente llega un cambio
 
@@ -3660,3 +3660,120 @@ pantallas, 0 con algo que arreglar. Deriva del esquema: solo la vieja.
 
 **Sin conexión** en finanzas solo se anotan fondos y gastos (sin la foto de la
 factura): pagar al personal y confirmar pagos piden servidor.
+
+## 64. Lo de Antigravity, el cuadro de honor, el recorrido guiado y un sistema que no se cae (4 de octubre de 2026)
+
+Mientras Claude no estaba, **Antigravity** trabajó en el repositorio (117
+archivos sin guardar; su traspaso en `docs/antigravity/`). Su informe decía
+«100 % en verde»: **fallaban 10 pruebas**. Se revisó todo antes de guardar nada.
+
+**Lo de Antigravity, revisado (42b401f, 2a87695, febc49e):**
+
+- Se quedaron sus mejoras de velocidad y orden, y la **base compartida (un
+  esquema por liceo)**, pero solo después de blindarla. Con PgBouncer en modo
+  transacción **una consulta escrita a mano leía el esquema de OTRO liceo:
+  359 de 400** (medido). Ahora cada consulta a mano y cada transacción van
+  dentro de `SET LOCAL search_path` (`config/esquema-del-liceo.ts`): **0 de
+  6000** (`npm run probar:aislamiento`, AISLA-10…13).
+- Borrar un liceo de la base compartida hacía `DROP DATABASE` **de la base de
+  todos**; su respaldo era la base entera, con los datos de los demás. Ahora es
+  su esquema y nada más (BASE-COMP-01…03), y **devolverlo está probado**: el
+  liceo vuelve a como estaba y el de al lado no se toca (BASE-COMP-04).
+- Se deshizo: el recordatorio de cuotas con BullMQ (sin Redis al arrancar, no
+  se enviaba nunca), la migración vieja reescrita, la traba de `push-all-dbs`
+  borrada, el armazón que rompía la hidratación, y el fallo silencioso de
+  credenciales.
+
+**Seguridad (cce869a, 1fc8e79):** fuera del repositorio público los secretos
+que había (la contraseña de la base local y la del superadmin, escritas en
+claro). **Siguen en el historial de git**: hay que cambiar esas contraseñas y
+decidir si se reescribe el historial (necesita permiso del dueño). Un `.docx`
+bomba (zip que se infla) ya no revienta la memoria al importar el plan
+(ZIP-01…04); la configuración rechaza `__proto__` (PROTO-01/02).
+
+**Cuadro de honor (d6f7169):** por lapso y por ciclo, con la foto de cada
+sábado. El que había lo hizo Antigravity y enseñaba **cinco alumnos
+inventados** cuando no había datos, promediaba notas sueltas, contaba la
+asistencia de toda la vida y tenía los pesos fijos en el código. Ahora: el
+promedio de la boleta, solo el período, pesos del liceo, y el alumno ve solo su
+puntaje y cuántos puestos subió (CUADRO-01…09, CUADRO-UI-01/02). Una
+felicitación ya no resta: un alumno de pruebas con 74 observaciones salía con 0.
+
+**Recorrido guiado (13bb860):** como en la app rial, el «?» ilumina el botón de
+verdad y lo explica paso a paso (RECORRIDO-01…03, RECORRIDO-UI-01…04).
+
+**Robustez.** De la lista de fenómenos del dueño, los que de verdad pueden
+tumbar este sistema, cada uno medido o probado:
+
+| Fenómeno | Lo encontrado | Lo hecho |
+|---|---|---|
+| Vuelve la luz (estampida) | Todos los teléfonos reintentaban en el mismo segundo: p95 de 6–7 s | Azar en cada espera: p95 60 ms (`medir:vuelve-la-luz`) |
+| Cupo compartido | Renovar la sesión: 100 por minuto **por dirección**; un liceo entero sale por una; en producción, **todos los liceos** (la web no reenviaba la dirección). 150 de 200 teléfonos con 429 | Cupo de un liceo para renovar y `/health`; la web reenvía la dirección (CUPO-REN-01) |
+| Mensaje veneno / desfase de versiones | Un 429 se daba por «no se pudo» | 429/503 esperan y reintentan; un 400 no atasca la cola (SINCON-13) |
+| Base saturada | Un 500 al pasar lista en la avalancha | «Ahora no» de la base = 503 con `Retry-After` (AHORANO-01/02) |
+| Teléfono lleno | Lo pendiente se perdía callado: la pantalla decía «pendiente» y no había nada | Se hace sitio; si no cabe, se dice (GUARDA-01); se pide que el navegador no lo borre |
+| Falla gris | 50 `.catch` vacíos; tareas que podían dejar de correr sin que nadie lo viera | Se apuntan (`avisarSiFalla`); las tareas laten y el superadmin ve su salud, los respaldos y el disco (LATIDO-01…03) |
+| Crecimiento sin límite | Papelera (solo a mano), avisos, sesiones, cambios recibidos y registros de Docker, sin tope | Mantenimiento diario con plazos configurables (MANT-01…03); registros con tope |
+| Espacio de cada liceo | Con la base compartida, cada liceo medía la base ENTERA y salía «al 90 %» | Cada uno mide su esquema |
+| Hora del teléfono | Dos pantallas decían «hoy» con el reloj del aparato | La del liceo; HORA-01 vigila cada `new Date()` |
+| Un solo punto de falla | Ningún respaldo se había devuelto nunca con la base compartida | Simulacro BASE-COMP-04 y plan de recuperación (`DESPLIEGUE.md` §10) |
+
+Lo que **no aplica** a este sistema (consenso, réplicas, NoSQL, memoria de bajo
+nivel, hardware, red de bajo nivel, Kubernetes) está razonado en el plan de
+esta fase; vuelve a importar el día que haya alta disponibilidad.
+
+**Encontrado de paso:** las mediciones escribían en una fecha de 2027 y el
+servidor no deja guardar clases del futuro: cada guardado de `medir:estres`
+era un 400 contado como fallo de carga. Ahora escriben en un domingo pasado
+sin datos. Y `medir:estres` leía el esquema equivocado con la base compartida.
+La ficha del profesor enseñaba un promedio inventado (16.5) en las secciones
+sin notas.
+
+**Tercera tanda (10cc9c6): lo que tumba sin avisar.**
+
+| Fenómeno | Lo encontrado | Lo hecho |
+|---|---|---|
+| Librerías | Next con **otro fallo crítico de ejecución remota**; `fastify-multer` y `multer` instalados sin que nadie los usara | Next 16.3.8 y el resto al día: 0 críticos. Quedan 9 altos de herramientas de compilación (`DESPLIEGUE.md`, «Revisar las librerías») |
+| Hilo principal bloqueado | Nada medía si un cálculo largo dejaba a todos esperando | El panel enseña el p99 del retraso del proceso; >200 ms, aviso (LATIDO-04) |
+| Certificado vencido | Un certificado caducado apaga todos los liceos a la vez; se renovaba «poniéndolo en el calendario» | El panel cuenta los días (`CERTIFICADO_TLS`): <14 aviso, <3 grave (LATIDO-04) |
+| Migraciones que bloquean | Un `ALTER` sin tope espera su candado y cuelga al liceo entero | Toda migración nueva empieza con `SET lock_timeout` (MIGRA-01) |
+| SSRF por los avisos | El servidor mandaba un aviso a la dirección que dijera el navegador | Solo a servicios de avisos de verdad (SSRF-01) |
+| Datos personales en registros | El correo se apuntaba al pedir cambiar la contraseña | Se apunta el id |
+| Llave maestra | El superadmin abre todos los liceos con una contraseña | Propuesta de segundo factor en `SECURITY.md`, **pendiente de aprobar** |
+
+**Encontrado al cerrar (verificación final):** el alta de un liceo en la base
+compartida creaba sus tablas con `db push --accept-data-loss` —lo que este
+repositorio prohíbe—, sin `_prisma_migrations`: la primera migración siguiente
+le habría fallado para siempre. Ahora nace con `migrate deploy`, igual de
+rápido (3,6 s; BASE-COMP-05). Y `instituto-testing`, pasado a su esquema, no
+tenía los 5 índices de búsqueda de usuarios: los repone una migración que no
+toca a quien ya los tiene (`20261005000000`). El detector de deriva leía el
+esquema `public` para los liceos de la base compartida y daba las 76 tablas
+como deriva.
+
+**Números al cierre:** servidor **1258 de 1258** (166 archivos); web 120 de
+120; navegador **314 de 315** (la que falta se salta sola en fin de semana:
+no hay clases que suspender); teléfono 55 pantallas, 0 con algo que
+arreglar; aislamiento con PgBouncer 3 de 3; `npm audit --omit=dev` 0
+críticos.
+
+**Cuarta tanda (5 de octubre): lo que quedaba sin tocar.** Detalle y números
+en `DESPLIEGUE.md` («Lo que se revisó en la cuarta tanda»). Lo encontrado de
+verdad:
+
+- **Las estadísticas hacían ~30 consultas por alumno** (la del ciclo, 644 con
+  15 alumnos; con 600, decenas de miles). En bloque, con los mismos números:
+  35/51/72. El resumen final, de 116 a 20 (N1-01…16).
+- **La asistencia del ciclo se dividía siempre entre 5**: un liceo con solo
+  1.º y todos presentes salía con 20 %; y el año contaba como 0 % la sección
+  que no había pasado lista (ASIS-CICLO-01/02).
+- **La copia de fuera de los respaldos iba sin cifrar** con datos de menores;
+  ahora cifrada con la llave pública del dueño y, sin llave, no sale
+  (CIFRA-01…03). Los registros guardaban cédulas (el id del usuario) y correos
+  en claro: tapados (REGISTRO-01…03).
+- **`medir:aguante` no entraba con nadie** con la base compartida (leía el
+  esquema `public`): arreglado y medido, sin fuga (20 min, 0 fallos).
+- Nuevo: reconversión monetaria (`npm run reconvertir`, RECONV-01…03),
+  autovacuum por tabla, tope de descriptores y tiempos de nginx contra
+  Slowloris; vigilancia de hidratación (HIDRA-01) y de oyentes vivos
+  (OYENTES-01), los dos en verde.

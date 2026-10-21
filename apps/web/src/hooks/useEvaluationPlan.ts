@@ -257,36 +257,3 @@ export function useCopyPlan() {
         },
     });
 }
-
-// ============================================================
-// HOOKS — Calendar Data
-// ============================================================
-
-export function useCalendarData(params: { classroomId?: string; startDate?: string; endDate?: string }) {
-    return useQuery({
-        queryKey: ['calendarData', params],
-        queryFn: async () => {
-            if (!params.classroomId || !params.startDate || !params.endDate) return null;
-            const { data } = await api.get('/evaluation-plan/calendar-data', { params });
-            return data as { calendarData: CalendarClassData[] };
-        },
-        enabled: !!params.classroomId && !!params.startDate && !!params.endDate,
-    });
-}
-
-// ============================================================
-// LEGACY — mantener compatibilidad
-// ============================================================
-
-export function useBatchUpsertActivities() {
-    const queryClient = useQueryClient();
-    return useMutation({
-        mutationFn: async (data: { classroomId: string; subjectId: string; lapso: string; periodId?: string; activities: any[] }) => {
-            const res = await api.post('/evaluation-plan/activities/batch', data);
-            return res.data;
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['activities'] });
-        },
-    });
-}

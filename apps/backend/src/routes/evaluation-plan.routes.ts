@@ -1,15 +1,8 @@
 import { FastifyPluginAsync } from 'fastify';
-import {
-  getEvaluationPlanMetadata,
-  upsertEvaluationPlanMetadata,
-  getEvaluationPlanRows,
-  batchUpsertRows,
-  copyPlan,
-  getCopyTargets,
-  getCalendarData,
-  batchUpsertActivities,
-  parseWordFile,
-} from '../controllers/evaluation-plan.controller';
+import { getEvaluationPlanMetadata, upsertEvaluationPlanMetadata, getEvaluationPlanRows, batchUpsertRows, batchUpsertActivities } from '../controllers/evaluation-plan.controller';
+import { copyPlan, getCopyTargets } from '../controllers/plan/copiar-el-plan.controller';
+import { getCalendarData } from '../controllers/plan/calendario-del-plan.controller';
+import { parseWordFile } from '../controllers/plan/importar-el-plan.controller';
 import { authenticate, requireTeacher } from '../middleware/auth.middleware';
 import { instrumentoDeLaFila, guardarInstrumento, borrarInstrumento } from '../services/instrumentos.service';
 import { responderErrorClaro } from '../utils/error-claro';

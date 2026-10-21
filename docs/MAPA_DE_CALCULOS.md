@@ -4,6 +4,46 @@ Este documento es la **única fuente de verdad documental** sobre todas las fór
 
 ---
 
+## 0. La cifra oficial: una sola cuenta en todas las pantallas (2026-10-19)
+
+**Manda sobre lo de abajo donde choque.** Cristian: «nada de que un usuario
+tenga un promedio y en otra parte otro». El barrido sobre el liceo de pruebas
+(`apps/backend/src/scripts/barrido-de-cifras.ts`) encontró, con 40 alumnos,
+**246 diferencias**:
+- en las materias, la boleta decía 14 y la ficha y el Inicio 14,2;
+- el promedio general, 13,33 en la boleta, 13,3 en la ficha y 13,4 en la lista;
+- el resumen de la sección daba de máximo 13,7 con un alumno en 17,47 (era la media a pelo de la tabla `grades`, sin Clase en Vivo ni el plan);
+- el Inicio del admin contaba 257 alumnos en riesgo donde los años sumaban 149.
+
+Ahora todo sale de `services/cifras-oficiales.service.ts`, la cuenta de la boleta, calculada **en bloque por sección** y con una sola pasada para todos los lapsos (`bulkNotasPorLapso`):
+
+| Qué | Cuenta |
+| :--- | :--- |
+| Nota del lapso de una materia | El nivel 2 del lapso con el redondeo del liceo (`redondeoDeDefinitivas`; MPPE: 0,50 sube) |
+| Definitiva de la materia | Media de los lapsos con nota, redondeada otra vez; si reprobó y presentó revisión, cuenta la revisión (`queCuenta`) |
+| Promedio del lapso del alumno | Media de las notas del lapso de sus materias, a 2 decimales |
+| Promedio general del alumno | Media de lo que cuenta de cada materia, a 2 decimales (= `promedios.definitivo` de la boleta) |
+| Materia en la sección (N3) | Media de las notas oficiales de sus alumnos con nota |
+| Sección (N4) | **Media del promedio oficial de sus alumnos** (antes: media de sus N3); mínimo y máximo, de esos mismos |
+| Año (N5) y liceo (N6) | Media de sus secciones, y de sus años |
+| En riesgo | Alguna materia o el promedio por debajo de la mínima, con la cifra oficial (`estaEnRiesgo`): la sección, el año y el Inicio del admin cuentan igual |
+| Profesor | Media de las notas oficiales de sus alumnos en sus clases: su Inicio = su fila en Profesores |
+| Asistencia de la ventana | (presentes + tardanzas) / registros, en una consulta para muchos (`asistenciaEnBloque`); la ficha usa ya el ciclo, como la lista y el Inicio |
+
+**Lo que se quitó (19-oct-2026):** `cycle-statistics.service`, `reports.service`, `/api/statistics/*`, `/api/reports/*` y los servicios viejos de asistencia, actividades y horario no los usaba ninguna pantalla y se borraron. Las filas de abajo que todavía los citan cuentan la historia de una regla; dónde se calcula hoy lo dice esta tabla.
+
+**Lo que se sumó el 20-oct-2026:**
+- **el cuadro general del guía** (`cuadro-general.service.ts`) hacía su propia cuenta —sin el redondeo por lapso, a una décima y el promedio como media de sus materias—: con los mismos 62 alumnos daba **2.641 diferencias** con la boleta (Biología 15,8 donde la boleta dice 16). Ahora usa `cifrasOficialesDeLaSeccion`;
+- **las tarjetas de la pestaña Materias de la sección** (`?stats=true`) calculaban materia por materia y, para el riesgo, alumno por alumno con la cuenta vieja: ahora una carga para todas, el riesgo es una nota oficial de esa materia por debajo de la mínima y la asistencia es la del resumen de la sección;
+- **la ficha del profesor** daba por materia la media cruda de la tabla vieja de notas (sin las de la clase en vivo): ahora el promedio de cada clase es el de Profesores;
+- el barrido compara también el cuadro general, el resumen final del MPPE y las tarjetas de la sección.
+
+**Consecuencia del redondeo:** un 9,5 del lapso sale **10, aprobado**, en todas partes, también en el riesgo, como en la boleta. Las materias con apreciación siguen fuera.
+
+Lo vigilan:
+- `la-misma-cifra-en-todas-partes.test.ts` (CIFRAS-01…03): boleta = ficha = Inicio del alumno = Inicio del representante = lista; la sección y el año cuadran con las boletas; el profesor cuadra con Profesores;
+- el barrido sobre datos reales: con 62 alumnos y 19 secciones, **0 diferencias** (`npx tsx src/scripts/barrido-de-cifras.ts --exigir`).
+
 ## 1. Jerarquía de Agregación de Calificaciones (Niveles 0 → 6)
 
 Principio arquitectural: **Todo promedio superior es una agregación recursiva del nivel inmediatamente inferior**. Ningún nivel recalcula fórmulas desde cero; todos consumen la función del nivel precedente con exclusión estricta de entidades sin calificaciones registradas (no cuentan como 0).
@@ -68,7 +108,7 @@ el liceo en `academicConfig.apreciaciones`).
 | Dónde | Regla | Función / Archivo |
 | :--- | :--- | :--- |
 | **Nivel 2** (promedio del alumno en la materia) | Una materia cualitativa sale **«sin notas»** (`conNotas: false`), tenga o no notas de antes. Como todo lo de encima (niveles 3-6, riesgo, cierre, boleta, resumen) ya deja fuera lo que no tiene notas, **el filtro está en un solo sitio**. | `gradesService.promedioDelLapso`, `bulkSubjectAveragesConDatos`, `aggregation.studentsWithNoteInSubject` → `apreciaciones.service.esCualitativa` |
-| Consultas que promedian notas de varias materias a la vez (`grade.groupBy`, `grade.aggregate`) | Solo notas de materias `NUMERICA`: `...NOTAS_QUE_CUENTAN` en el `where`. | `cycle-statistics.service`, `dashboard.service`, `students.service`, `reports.service`, `academic-years.controller`, `classrooms.controller`, `users.controller` |
+| Consultas que promedian notas de varias materias a la vez (`grade.groupBy`, `grade.aggregate`) | Solo notas de materias `NUMERICA`: `...NOTAS_QUE_CUENTAN` en el `where`. | `cycle-statistics.service`, `dashboard.service`, `students.service`, `reports.service`, `academic-years.controller`, `classrooms.controller`, `usuarios/ver-usuarios.controller` |
 | Cierre del ciclo | La materia cualitativa no es reprobada ni pendiente y no entra en `finalAverage`; el expediente la guarda como `{ cualitativa: true, apreciacion }` (la **final**). | `prepareClose` (`close-cycle.service.ts`) |
 | Boleta y resumen final | Sale su apreciación (por lapso y final en la boleta; la final en el resumen), aparte y sin contar en los promedios ni en aprobados/reprobados. | `boleta.service.ts`, `resumen-final.service.ts` |
 
@@ -90,7 +130,41 @@ lapso que cursó allá, emparejada con una materia de aquí.
 Los años anteriores del archivo van a la certificación como «de otro plantel»
 (`calificaciones_externas`). Pruebas: TRAS-05…07.
 
+### 1d. La materia en el catálogo: cada sección y cada profesor
+
+**2026-10-18** (`subjectsService.getSubjectById`, `GET /subjects/:id`). La
+pantalla de una materia (Materias → una) enseña su promedio por sección y por
+profesor.
+
+| Qué | Regla |
+| :--- | :--- |
+| Promedio de una sección | La media del **nivel 2** de sus alumnos **con nota** en la materia (quien no tiene, no cuenta). Ahora en bloque (`promediosDeLaSeccion`); antes, alumno por alumno: el mismo resultado, medido materia por materia y lapso por lapso (21 materias, 0 diferencias), de ~300 a ~80 ms. |
+| Promedio del profesor | La media del nivel 2 de **todos** los alumnos con nota de las secciones donde la da (no la media de las secciones: una sección de 35 pesa más que una de 12). |
+| Asistencia del profesor | Presente o tarde sobre lo pasado, en la asistencia diaria de esas secciones (la misma cuenta que la de cada sección). |
+
 ---
+
+### 1e. La carga horaria de un profesor (2026-10-18)
+
+Una sola cuenta, `personal.service.ts → cargaDeLosProfesores` (todos en una
+consulta; `cargaHoraria` la usa para uno):
+
+- Cuentan las clases (`classroom_subjects` con su `teacherId`) de las secciones
+  del **año ACTIVO**. Las de años pasados no.
+- Horas de una clase: `hoursPerWeek` si es > 0; si no, `weeklyBlocks ×` la
+  duración de la hora de clase **del turno de la sección** (Configuración →
+  Académica); sin nada, «sin horas» (no suma). Poner bloques a una clase
+  guarda sus horas igual (`horasDeLosBloques`). Antes: 0,75 h por bloque y 45
+  min en la lista de usuarios y en el modal, con los años pasados sumados.
+- **Contra qué se mide**: las horas del cargo del profesor
+  (`users.horasDelCargo`, las fija el admin) o, sin ellas, el rango del liceo
+  (`academicConfig.cargaHoraria`, 30–40 por defecto).
+  - Con las suyas: **SOBRECARGA** si las pasa; **EN_RANGO** si le falta menos
+    de una hora; **POR_DEBAJO** si le falta más.
+  - Sin ellas: SOBRECARGA > máximo; EN_RANGO entre mínimo y máximo;
+    POR_DEBAJO bajo el mínimo.
+- Copiada en `apps/web/src/lib/carga-horaria.tsx` solo para la proyección en
+  vivo al asignar. PROF-01…04.
 
 ## 2. Plan de Evaluación y Ponderaciones
 
@@ -108,6 +182,7 @@ Los años anteriores del archivo van a la certificación como «de otro plantel�
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Dashboard de Sección / Año / Ciclo** | Estudiantes en Riesgo Académico (Conteo y Lista) | Sea `minPassing` = `notaMinimaAprobatoria` de la configuración del instituto (default 10 si no está definida). Un estudiante s está en riesgo si cumple cualquiera de las 2 condiciones:<br>1. Tiene al menos una materia con promedio de lapso/ciclo < `minPassing` (Nivel2(s, m) < minPassing).<br>2. Su promedio global de todas las materias es < `minPassing`. | `getAcademicYearStats`, `getGradeAcademicStats`, `sectionStudentAverages` (`apps/backend/src/controllers/academic-years.controller.ts`), `dashboard.service.ts` | `Grade`, `StudentClassroom`, `ClassroomSubject`, `Institute.academicConfig` | El umbral **es configurable por instituto**, nunca hardcodeado. La escala venezolana MPPE (01-09 reprobado / 10-20 aprobado) es solo el **default**: un liceo puede fijar `notaMinimaAprobatoria` en otro valor y todos los cálculos de riesgo deben respetarlo. |
 | **Promedios jerárquicos (materia / sección / grado / ciclo)** | Estudiantes en Riesgo en `/api/statistics/*` | La misma regla de la fila anterior: `minPassing` = `notaMinimaAprobatoria` del instituto (default 10). | `cycleStatisticsService.getSubjectAverage`, `getSectionGlobalAverage`, `getGradeAverage`, `getCycleGlobalAverage` (`apps/backend/src/services/cycle-statistics.service.ts`) | `Grade`, `StudentClassroom`, `Institute.academicConfig` | **Corregido el 2026-09-14.** Este servicio usaba una constante fija `PASSING_GRADE = 9.5` escrita en el código. El mismo alumno con 9,7 salía **aprobado** aquí y **reprobado** en su perfil, en el panel y en la promoción, que sí usan la nota del instituto. Y un liceo con la mínima en 12 no cambiaba nada. La nota mínima resuelta va ahora también **en la clave del caché** (`…:min<valor>`): si el liceo la cambia, lo guardado con la anterior no puede seguir contestando. Tests: `auditoria-numeros-que-no-cuadran.test.ts` (CAL-01 a CAL-04). |
+| **Dashboard del Profesor** | Promedio general y alumnos en riesgo | Promedio = media de los promedios alumno-materia con notas de las parejas (sección, materia) del ciclo activo donde imparte clase, evaluadas en bloque con `bulkSubjectAveragesConDatos` sin materias cualitativas (`NOTAS_QUE_CUENTAN`), a 1 decimal. En riesgo = alumnos distintos con alguna de sus materias con promedio < `notaMinimaAprobatoria`. Guardado en Redis (`stats:teacher:<id>:cycle:<ciclo>:min<min>`). | `getTeacherDashboard` (`dashboard.service.ts`) | `ClassroomSubject`, `StudentClassroom`, `Grade`, `ClassActivity`, `EvaluationPlanRow`, `Institute.academicConfig` | **Añadido en Fase C (2026-10-07).** Una sola llamada por sección a `bulkSubjectAveragesConDatos`. No genera N+1 (N1-06). |
 | **Dashboard de Sección / Año / Ciclo** | Rango Min / Max de Promedios | Min = min(PromedioEstudiante(s)), Max = max(PromedioEstudiante(s)) | `getAcademicYearStats`, `yearGradeStudentDetails` (`apps/backend/src/services/aggregation.service.ts`) | `Grade`, `StudentClassroom` | Se calcula sobre el promedio global por estudiante (Nivel 2 consolidado), no sobre notas aisladas de actividades ni sobre promedios de sección. |
 
 ---
@@ -116,14 +191,14 @@ Los años anteriores del archivo van a la certificación como «de otro plantel�
 
 | Pantalla / Componente | Dato Mostrado | Fórmula Exacta | Función / Archivo | Fuente de Datos (Tablas) | Reglas / Umbrales |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Perfil de Estudiante** | Asistencia (%) de Estudiante | AsistenciaEstudiante = ((Presentes + Tardanzas) / TotalRegistros) * 100 | `dashboardService`, `cycleStatisticsService`, `reports.service.ts` | `DailyAttendance` (`status in {PRESENT, LATE, ABSENT, EXCUSED}`) | Justificadas (`EXCUSED`) pueden excluirse del denominador según configuración del instituto. **Ojo con el nombre:** la función `getStudentAttendanceStats` que citaba esta fila **no existe**; el detalle por alumno lo sirve `getStudentAttendance` (`attendance.controller.ts`). |
-| **Resumen de asistencia de un alumno** (`GET /api/attendance/summary/student/:id` y `/api/attendance/student/:id`) | Conteo y porcentajes del alumno | `presentPercentage = Presentes / TotalRegistros * 100` — **solo PRESENT**, las tardanzas van aparte en `late`. No es la "asistencia" de las demás pantallas, que sí suma las tardanzas. | `getStudentAttendance` (`apps/backend/src/controllers/attendance.controller.ts`) | `DailyAttendance` | **Corregido el 2026-09-14.** `/summary/student/:id` declaraba una plantilla de respuesta con campos que el código no envía, y Fastify descarta lo no declarado: la ruta respondía **200 con `{}`**. Se quitó la plantilla, como en la ruta hermana. Test: CAL-06. |
+| **Perfil de Estudiante** | Asistencia (%) de Estudiante | AsistenciaEstudiante = ((Presentes + Tardanzas) / TotalRegistros) * 100 | `asistenciaEnBloque` (`cifras-oficiales.service.ts`, la de la boleta) | `DailyAttendance` (`status in {PRESENT, LATE, ABSENT, EXCUSED}`) | Justificadas (`EXCUSED`) pueden excluirse del denominador según configuración del instituto. Las rutas viejas `/api/attendance/*` (con su propio porcentaje, solo PRESENT) se quitaron el 20-oct-2026: ninguna pantalla las usaba. |
 | **Lista de alumnos** (`GET /api/students`) | Asistencia (%) de cada alumno en la lista | `((Presentes + Tardanzas) / TotalRegistros) * 100`, **solo con los registros del ciclo de su sección** (fechas del año escolar). | `getStudents` (`apps/backend/src/controllers/students.controller.ts`) | `DailyAttendance`, `AcademicYear` | **Corregido el 2026-09-23.** Antes contaba toda la vida escolar del alumno: un alumno de 5º arrastraba sus cinco años, y el número no decía nada del momento (el panel del alumno ya usaba el ciclo). Con el mismo cambio, el **promedio** de la lista sin sección elegida dejó de salir 0 para todos: se calcula en bloque por la sección de cada alumno, con las mismas reglas. Tests: LISTA-01…03. |
 | **Sección / Aula** | Asistencia Global de Sección | Media de las asistencias individuales de los estudiantes inscritos activos en el período: AsistSeccion = suma(Asist(s)) / TotalEstudiantes | `getClassroomAttendanceStats` (`apps/backend/src/controllers/attendance.controller.ts`) | `DailyAttendance`, `StudentClassroom` | Días sin toma de asistencia no penalizan el porcentaje. |
 | **Sección** | Alumnos con asistencia baja (conteo) | Un alumno cuenta si `(Presentes + Tardanzas) / TotalRegistros * 100 < asistenciaMinima` del liceo (80% por defecto). Un alumno **sin ningún registro** de asistencia **no cuenta**: no hay dato que juzgar. | `getSectionGlobalAverage` (`apps/backend/src/services/cycle-statistics.service.ts`) | `DailyAttendance`, `StudentClassroom` | **Corregido el 2026-09-14.** Antes, cero registros contaba como asistencia baja (el propio comentario del código dudaba: *"Assuming 0 records is bad or neutral?"*), así que el primer día del curso la sección salía con todos sus alumnos "con asistencia baja". Contradecía la fila de arriba. **Resuelto el 2026-09-14.** El 80% ya **no** es fijo: es `asistenciaMinima` en la configuración del liceo (`AcademicConfig`), con 80 como valor de partida. El mismo número manda en el aviso del representante, así que el liceo no tiene dos criterios según la pantalla. Tests: CAL-05, ASI-08. |
 | **Panel del representante** | Aviso "Asistencia baja" | Se enciende si `AsistenciaEstudiante < asistenciaMinima` del liceo (80 por defecto), medida **solo sobre el lapso en curso**. **No reprueba, no entra en el promedio y no decide la promoción** — eso es `notaMinimaAprobatoria`, que es otra cosa. | `getTutorDashboard` (`apps/backend/src/services/dashboard.service.ts`) | `DailyAttendance`, `AcademicConfig.asistenciaMinima` | **Añadido el 2026-09-14.** Antes era un `80` escrito a mano en el filtro de alertas. Tests: ASI-01 a ASI-08. |
-| **Ciclo Escolar** | Asistencia del Ciclo Escolar | Media ponderada o simple de la asistencia de las secciones activas. | `getAcademicYearStats` (`apps/backend/src/controllers/academic-years.controller.ts`) | `DailyAttendance`, `Classroom` | |
-| **Asistencia por QR** (pase de lista del profesor) | Presente o tarde de quien escanea; ausente de quien no escaneó | **Escribe la misma fila que la asistencia a mano** (`DailyAttendance`, una por alumno y día): un alumno registrado por QR y uno marcado a mano cuentan igual en todos los porcentajes de arriba. `PRESENT` si escanea antes de `aTiempoHasta`; `LATE` después. `aTiempoHasta` = apertura del PRIMER pase de esa clase ese día + `asistenciaQr.minutosATiempo` (2 por defecto): cerrar y volver a abrir no da más tiempo. Al cerrar un pase de HOY, quien no quedó aceptado en ningún pase de esa clase y día pasa a `ABSENT`, salvo los que el profesor marque «estaba». Un «por confirmar» no escribe nada hasta que el profesor lo aprueba. | `services/asistencia-qr.service.ts` (`escanearComoAlumno`, `cerrarPase`) | `DailyAttendance`, `pases_de_lista`, `registros_asistencia_qr` | **Añadido el 2026-09-24.** Todo configurable por liceo (`AcademicConfig.asistenciaQr`): radio, fuera del radio (confirmar/bloquear), minutos a tiempo, días para corregir, un teléfono por alumno. En una **corrección** (día pasado) todo es `PRESENT`, no se toca a nadie más al cerrar, y no se pasa del cierre del lapso. Tests: QR-01…14, QRE-01/02. |
+| **Año y Ciclo Escolar** (estadísticas) | Asistencia del año y del ciclo | **Año** = media simple de sus secciones **que ya pasaron lista** (una sin registros no cuenta como 0 %). **Ciclo** = media de sus años con registros, **pesada por los alumnos** de las secciones con registros. | `getGradeAverage` / `getCycleGlobalAverage` (`cycle-statistics.service.ts`). `getAcademicYearStats` (la tabla por año del ciclo) ya hacía la media solo de las secciones con registros. | `DailyAttendance`, `Classroom` | **Corregido el 2026-10-05.** El ciclo se dividía SIEMPRE entre 5 (un liceo con solo 1.º, todos presentes, salía con 20 %) y daba 0 si aún no había notas; el año contaba como 0 % la sección que no había pasado lista. Tests: ASIS-CICLO-01/02. |
+| **Dashboard del Profesor** | Asistencia de sus secciones (últimos 30 días) | `((Presentes + Tardanzas) / TotalRegistros) * 100` de las filas de `DailyAttendance` donde `classroomId` pertenece a las secciones del ciclo activo donde es guía o imparte materias (`classroom_subjects.teacherId`) y `date >= hoy - 30 días` calculados en la zona horaria del liceo (`todayInTimezone(instituteTimezone)`). Agrupado por estado (`dailyAttendance.groupBy`). | `getTeacherDashboard` (`apps/backend/src/services/dashboard.service.ts`) | `DailyAttendance`, `Classroom`, `ClassroomSubject` | **Añadido en Fase C, corregido en revisión (2026-10-07).** |
+| **Estadísticas por Lapso (Ciclo y Sección)** | Asistencia por lapso | Al enviar `periodId`, la asistencia se acota al rango de fechas del lapso (`date >= startDate AND date <= endDate`). Si no hay registros en ese lapso, es 0%. | `getAcademicYearStats` (`academic-years.controller.ts`), `getClassroomStats` (`classrooms.controller.ts`) | `DailyAttendance`, `Period` | **Corregido en revisión de Fase C (2026-10-07).** |
 | **Clases suspendidas (evento del liceo o profesor)** | Efecto de una clase suspendida en la asistencia | Ninguno. Una `ClassSession` con `status = 'SUSPENDED'` no genera filas de `DailyAttendance`, y todos los porcentajes de asistencia se calculan sobre `DailyAttendance`, nunca contando sesiones. | `applyEventSuspensions` (`apps/backend/src/services/school-events.service.ts`); consumidores: `attendance.service.ts`, `dashboard.service.ts`, `reports.service.ts` | `ClassSession.status`, `DailyAttendance` | **Invariante:** si algún cálculo futuro usa el número de sesiones como denominador ("clases dadas"), debe excluir las `SUSPENDED`; si no, cada evento de todo el liceo hundiría la asistencia. Verificado el 2026-09-10. |
 
 ---
@@ -169,20 +244,26 @@ Durante la auditoría y construcción de este mapa, se contrastaron las fórmula
    - *Regla incumplida:* el principio de la sección 1 — cada nivel es la media aritmética de las **entidades** del nivel inferior (una materia, una vez), no de sus filas.
    - *Solución aplicada:* se agrupa por par único (materia, lapso) antes de calcular, y se piden solo las notas del año en curso. Vigilado por `NUM-01` en `tests/integration/decia-hacerlo-y-no-lo-hacia.test.ts`, que comprueba los dos números: que sale 15 y que **no** sale 17,5.
 
+6. **Un solo promedio general del estudiante: el de la boleta oficial (15,5 para `est0575`):**
+   - *Discrepancia detectada:* La alumna `est0575` (Daniela Díaz, 5.º D) tiene 15 materias evaluadas en el 1.er Lapso. Anteriormente, la tarjeta de Inicio indicaba 15,3 (calculado como media decimal continua sin redondeo oficial MPPE) mientras que la pantalla de Académico y la Boleta indicaban 15,5 (con el redondeo del liceo, `redondeoDeDefinitivas: 'MPPE'`).
+   - *Decisión y unificación:* La misma pregunta tiene que dar **un solo número**. Vale **el de la boleta** (15,5: cada materia con el redondeo del liceo, `redondeoDeDefinitivas`). Es el número oficial, el que sale en papel oficial del liceo y el mismo que ya utiliza el cuadro de honor («el promedio es el de la boleta», `CLAUDE.md`).
+   - *Solución aplicada:* El Inicio del alumno (`/api/dashboard/student`), el del representante (`/api/dashboard/tutor`, tanto por hijo como el global) y la pantalla de Académico utilizan la misma cuenta oficial de la boleta (`calcularPromedioBoletaDesdeLapsos` / `boletaDelAlumno` en `boleta.service.ts`), garantizando que dan exactamente el mismo número sin desvíos y respetando el límite estricto de consultas en bloque (`< 42` en el servidor).
+   - *Cálculo exacto para `est0575`:* En el 1.er Lapso, las 15 materias redondeadas al entero oficial (0,50 o más sube al entero) dan 8 materias con 15 y 7 materias con 16: (8 × 15 + 7 × 16) / 15 = (120 + 112) / 15 = 232 / 15 = 15,466... La boleta redondea a centésimas (15,47) y mostrada a una décima da **15,5** en todas las vistas: Inicio del alumno, Inicio del representante y Académico del alumno.
+
 ---
 
 ## 8. Horarios y Eventos del Liceo
 
 | Vista | Métrica | Fórmula / Regla | Implementación | Modelos | Notas |
 |---|---|---|---|---|---|
-| **Cualquier vista que cruce fechas con horario** | Día de la semana de una fecha | Una fecha `"YYYY-MM-DD"` se interpreta como **medianoche UTC**, así que su día de la semana se obtiene con `getUTCDay()` (1 = lunes, igual que `ScheduleBlock.dayOfWeek`). En el cliente, "hoy" se forma con la fecha **local** (`getFullYear/getMonth/getDate`), nunca con `toISOString()`. | `dayOfWeekOf` (`school-events.service.ts`), `getClassSessionsByDate` (`scheduleBlocks.controller.ts`), `toYMD` (`apps/web/src/hooks/useSchoolEvents.ts`) | `ScheduleBlock.dayOfWeek`, `ClassSession.date` | **Invariante.** Mezclar `getDay()` (hora local) con fechas UTC desplaza un día en America/Caracas (UTC-4): el historial de Clase en Vivo mostraba el horario del día anterior (corregido el 2026-09-10). También corregidos `getCalendarData` (`evaluation-plan.controller.ts`) y el "hoy" de Clase en Vivo (`toLocalYMD`, `apps/web/src/utils/date.utils.ts`). Quedan por revisar usos de `toISOString().split('T')[0]` en `SubjectScheduleSection.tsx`, `StudentScheduleSection.tsx:134` y `AcademicYearModal.tsx`. |
+| **Cualquier vista que cruce fechas con horario** | Día de la semana de una fecha | Una fecha `"YYYY-MM-DD"` se interpreta como **medianoche UTC**, así que su día de la semana se obtiene con `getUTCDay()` (1 = lunes, igual que `ScheduleBlock.dayOfWeek`). En el cliente, "hoy" se forma con la fecha **local** (`getFullYear/getMonth/getDate`), nunca con `toISOString()`. | `dayOfWeekOf` (`school-events.service.ts`), `getClassSessionsByDate` (`controllers/horario/clases-del-dia.controller.ts`), `toYMD` (`apps/web/src/hooks/useSchoolEvents.ts`) | `ScheduleBlock.dayOfWeek`, `ClassSession.date` | **Invariante.** Mezclar `getDay()` (hora local) con fechas UTC desplaza un día en America/Caracas (UTC-4): el historial de Clase en Vivo mostraba el horario del día anterior (corregido el 2026-09-10). También corregidos `getCalendarData` (`evaluation-plan.controller.ts`) y el "hoy" de Clase en Vivo (`toLocalYMD`, `apps/web/src/utils/date.utils.ts`). Quedan por revisar usos de `toISOString().split('T')[0]` en `SubjectScheduleSection.tsx`, `StudentScheduleSection.tsx:134` y `AcademicYearModal.tsx`. |
 | **Calendario de Eventos (vista de día)** | Clases por bloque | N(bloque) = número de `ScheduleBlock` tipo `CLASS` con materia asignada, del día de la semana de la fecha, cuya franja se solapa con la del bloque (inicio < fin_bloque y fin > inicio_bloque). | `findClassesInSlot` (`apps/backend/src/services/school-events.service.ts`) | `ScheduleBlock`, `ClassroomSubject`, `Classroom` | **Fuente única:** la misma función alimenta la vista de día, la vista previa del evento ("se suspenderán N clases") y la suspensión real. Las horas `PERSONAL` de los profesores no cuentan como clase. |
 | **Evento del liceo** | Clases suspendidas | Por cada par (sección, materia) con al menos una clase en la franja y el alcance → la `ClassSession` de ese día pasa a `SUSPENDED` con `suspendedByEventId`. Borrar o mover el evento revierte exactamente esas sesiones. | `applyEventSuspensions`, `revertEventSuspensions` (`school-events.service.ts`) | `ClassSession`, `SchoolEvent` | La sesión es por sección + materia + **día** (`@@unique`): si una materia tiene dos bloques ese día y el evento cubre uno, se suspende la sesión del día entero. Una clase que un profesor suspendió a mano se respeta y no se revierte al borrar el evento. El evento **no** fusiona el tema generador del plan de evaluación (a diferencia de `suspendClassSession`). |
 | **Horario (sección y profesor)** | Bloques restantes por asignación | Restantes(asignación) = `ClassroomSubject.weeklyBlocks` − número de `ScheduleBlock` de esa asignación. | Barra lateral de `ClassroomScheduleEditor` y `TeacherScheduleEditor`; el tope se comprueba también en el servidor (`bulkUpdateTeacherSchedule`). | `ClassroomSubject`, `ScheduleBlock` | El horario de la sección y el del profesor son la misma tabla vista desde dos lados; ambas vistas validan choques con `findScheduleConflicts` dentro de la transacción. |
-| **Clase en Vivo** | Dónde se muestra cada actividad | **Clase de hoy**: las de `target: CURRENT` creadas en esa misma clase, y cualquiera cuya fecha de entrega sea la de esa clase. **Próxima clase**: las de `target: NEXT` creadas EN esa clase y con fecha posterior. Una actividad para la próxima clase **no** se anuncia en las clases anteriores. | `getLiveClassDetail` (`classSessions.controller.ts`) | `ClassActivity`, `ClassSession` | **Regla del producto, deliberada.** Anunciarla en todas las clases anteriores llenaría "Próxima clase" de actividades acumuladas, y se perdería el dato de en qué clase se mandó. El día de entrega aparece igual como "Clase de hoy" por su fecha. Un estudiante que faltó ve, al abrir esa clase, lo que se mandó para la siguiente. Tests: `live-class-activities.test.ts`, `auditoria-dia-del-profesor.test.ts`. |
+| **Clase en Vivo** | Dónde se muestra cada actividad | **Clase de hoy**: las de `target: CURRENT` creadas en esa misma clase, y cualquiera cuya fecha de entrega sea la de esa clase. **Próxima clase**: las de `target: NEXT` creadas EN esa clase y con fecha posterior. Una actividad para la próxima clase **no** se anuncia en las clases anteriores. | `getLiveClassDetail` (`controllers/clase-en-vivo/detalle-de-la-clase.controller.ts`) | `ClassActivity`, `ClassSession` | **Regla del producto, deliberada.** Anunciarla en todas las clases anteriores llenaría "Próxima clase" de actividades acumuladas, y se perdería el dato de en qué clase se mandó. El día de entrega aparece igual como "Clase de hoy" por su fecha. Un estudiante que faltó ve, al abrir esa clase, lo que se mandó para la siguiente. Tests: `live-class-activities.test.ts`, `auditoria-dia-del-profesor.test.ts`. |
 | **Horario (todas las vías de escritura)** | Profesor en un solo sitio | Un profesor no puede tener dos bloques que se solapen el mismo día. Su profesor en un bloque = `ScheduleBlock.teacherId` (hora `PERSONAL`) o, si es clase, `ClassroomSubject.teacherId`. Al guardar solo **bloquea (409)** el choque que el guardado crea o empeora; los choques heredados en bloques no tocados vuelven como avisos. | `analyzeScheduleConflicts` (`schedule-conflicts.service.ts`). Vías que la aplican: guardar horario de sección y de profesor; asignar profesor a una materia (`assignTeacherToSubject`) y a todo un año (`assignSubjectToGrade`, comprueba todas las secciones antes de tocar ninguna) vía `findTeacherAssignmentConflicts`; generador automático (`autoGenerateSchedule`). | `ScheduleBlock`, `ClassroomSubject` | **Invariante.** Corregido el 2026-09-10: asignar profesor no miraba sus bloques ya colocados, y el generador no veía las horas personales y, si no encontraba hueco, colocaba la clase igual (`pool.pop()`). Así entraron los 50 choques del ciclo 2026-2027 del instituto de pruebas. Ahora el generador deja la franja vacía y devuelve `unplaced`. Tests: `schedule-conflict-doors.test.ts`. |
 
-| **Clase en Vivo (calificar)** | Alumno evaluado de otra forma | Por actividad y alumno, `ClassActivity.evaluadoDeOtraForma[studentId] = { metodo, motivo? }` (p. ej. «Cuaderno» para quien no puede hacer deporte). **No cambia ningún cálculo**: su nota va en `scores` como la de los demás y cuenta con el mismo peso; lo que queda es el método. Se escribe en una sola sentencia jsonb (como las notas). | `evaluarDeOtraForma` (`classSessions.controller.ts`), `PUT/DELETE /sessions/activities/:id/otra-forma/:studentId`; lo ven el alumno y su representante en `miClase` y `actividadesDelAlumno` (solo lo suyo) | `ClassActivity.evaluadoDeOtraForma` | Añadido el 2026-09-25. Solo el profesor de esa clase o el admin; solo alumnos de la sección. Tests: OTRA-01…05, OTRA-UI-01. |
+| **Clase en Vivo (calificar)** | Alumno evaluado de otra forma | Por actividad y alumno, `ClassActivity.evaluadoDeOtraForma[studentId] = { metodo, motivo? }` (p. ej. «Cuaderno» para quien no puede hacer deporte). **No cambia ningún cálculo**: su nota va en `scores` como la de los demás y cuenta con el mismo peso; lo que queda es el método. Se escribe en una sola sentencia jsonb (como las notas). | `evaluarDeOtraForma` (`classActivities.controller.ts`), `PUT/DELETE /sessions/activities/:id/otra-forma/:studentId`; lo ven el alumno y su representante en `miClase` y `actividadesDelAlumno` (solo lo suyo) | `ClassActivity.evaluadoDeOtraForma` | Añadido el 2026-09-25. Solo el profesor de esa clase o el admin; solo alumnos de la sección. Tests: OTRA-01…05, OTRA-UI-01. |
 | **Plan, Clase en Vivo, Horario en vivo, Calendario, Mi clase** | Semana del plan de una fecha | Lapso = el de la fecha (`lapsoDeLaFecha`); su plan = `EvaluationPlanMetadata` de ESE lapso. Inicio del plan = `fechaDesde` del plan, si no `Period.inicioDelPlan`, si no el inicio del lapso, si no (año sin lapsos) el inicio del año. Antes del inicio → **semana 0** (`antesDelPlan`, se llama `nombreAntesDelPlan` o «Diagnóstico»); desde él, semanas alineadas a lunes (`planWeekNumberFromRange`). Semanas del lapso = ⌈(fin del lapso − inicio del plan) / 7 días⌉. | `semanaDelPlanCon` / `semanaDelPlan` (`services/semana-del-plan.service.ts`); la usan `getLiveClassDetail`, `getLiveOverview`, `getPlanWeekNumber` (guardar fila de la semana, fusionar tema al suspender), `getCalendarData`, `getEvaluationPlanMetadata` y `miClase` | `Period.inicioDelPlan`, `Period.nombreAntesDelPlan`, `EvaluationPlanMetadata`, `EvaluationPlanRow` | Añadido el 2026-09-25. Antes cada vista contaba a su manera: la rejilla desde el lapso, la clase en vivo desde el AÑO (en el 2º y 3er lapso la «Semana N» no coincidía) y buscaban el plan sin lapso. En semana 0 no se puede guardar la fila de la semana (400 `ANTES_DEL_PLAN`). Tests: SEMANA-01…05, PLANINI-01…06, PLANINI-UI-01. |
 | **Configuración → Horario / todo el horario** | Franjas del día (horas y recreos) por turno | Por turno (MANANA, TARDE) el admin pone **inicio**, **fin**, **duración** de la hora de clase y sus **recreos** (después de qué hora, cuántos min). Horas = ⌊(fin − inicio − Σ recreos) / duración⌋; **se guarda solo si sobra 0** (si no, 400 con cuánto sobra y a qué hora acabar), si hay entre 1 y 15 horas, si ningún recreo va después de la última hora, y si la tarde no empieza antes de que acabe la mañana. Si al cambiarlo alguna clase puesta deja de caer en una hora del día, 409 y se confirma. INTEGRAL usa la mañana. | `calcularTurno`, `erroresDelHorario`, `franjasDelTurno` (`apps/backend/src/utils/franjas-del-horario.ts`, copia en `apps/web/src/lib/`); `updateInstituteConfig`; `useSchedulePeriods`; `autoGenerateSchedule` | `Institute.academicConfig.schedule` (plataforma) | Añadido el 2026-09-25. Antes el fin no se podía poner (salía de la cuenta), la tarde empezaba a las 13:00 fijas y el generador automático tenía las horas de la mañana escritas a mano. Lo guardado a la vieja (solo la mañana) se lee igual: la tarde, 13:00 con las mismas horas. Tests: FRANJA-01…07 (servidor y web), HORARIO-API-01…06, HORARIO-CFG-01. |
 | **Clase en Vivo / Horario en vivo** | Reemplazo de una clase suspendida | El admin pone otra materia M de la sección en el hueco de una clase **suspendida** ese día. Se crea un `ClassReplacement` por cada bloque de la materia suspendida ese día de la semana. Solo si: M tiene profesor activo; ese profesor no tiene a esa hora ese día un bloque `CLASS` (salvo que esa clase también esté suspendida ese día), ni una hora `PERSONAL`, ni otro reemplazo; y el hueco no está cubierto. Suspender + reemplazar es todo o nada. | `crearReemplazo` (`class-replacements.service.ts`); se muestra en `StudentScheduleSection.tsx` | `ClassReplacement`, `ClassSession`, `ScheduleBlock` | Añadido el 2026-09-16. El horario semanal no cambia. La clase que se da es la `ClassSession` normal de M ese día. Borrar el evento que suspendió la clase borra el reemplazo. Tests: `reemplazar-clase-suspendida.test.ts`. |
@@ -211,6 +292,11 @@ Todo el dinero se cuenta en **céntimos enteros**. Implementación: `apps/backen
 
 ---
 
+
+### Reconversión monetaria (2026-10-05)
+
+Cuando el bolívar pierde ceros, `npm run reconvertir -- --liceo=<slug> --factor=<10^n> [--aplicar]` (`reconversion.service.ts`) pasa todo lo guardado al cono nuevo en una transacción: monto en VES ÷ factor (a 2 decimales), toda tasa Bs/USD ÷ factor (mínimo 0,0001), monto en la base cuando la base de la fila es VES ÷ factor (sin tasa, la base es su moneda; con tasa, la otra). Configuración (cuota, inscripción, mora **FIJA**) y nómina, si la base del liceo es VES. Lo que está en dólares no se toca; la mora en % tampoco. Sin `--aplicar` solo cuenta. Tests: RECONV-01…03.
+
 ## 8g. Las finanzas del liceo (fondos, gastos y nómina)
 
 Implementación: `apps/backend/src/services/finanzas.service.ts` (cuentas puras) y `controllers/finanzas.controller.ts`. Tests: `src/tests/services/finanzas.service.test.ts` (NOMINA-C-01…06), `tests/integration/finanzas.test.ts` (FIN-01…04, NOMINA-01…06), `tests/e2e/finanzas.spec.ts`. Todo en céntimos y en la moneda base del liceo; nada se borra: se anula con motivo.
@@ -225,7 +311,41 @@ Implementación: `apps/backend/src/services/finanzas.service.ts` (cuentas puras)
 | Pagar | Se reparte de lo más viejo a lo más nuevo; lo que no completa el último queda como abono. Rechaza: pagado ya, monto de más, sin acuerdo, fecha futura, ciclo cerrado. Candado por persona (`pg_advisory_xact_lock`). | Cambiar la frecuencia con pagos hechos en el ciclo: 409. |
 | Ciclo nuevo | Al abrir su nómina sin acuerdos, se copian los del ciclo anterior de quien tiene «guardar para los próximos ciclos» (menos los pagos únicos y las fechas de bono). Sin duplicar. | Los profesores con cuenta aparecen solos, sin sueldo. |
 | Mes a mes | Entra = cuotas cobradas (por `paidAt`) + fondos (por fecha); sale = pagos al personal + gastos (por fecha). | |
+| Ingreso o egreso desde el «+» (2026-10-14) | Cobrar a un estudiante o pagar a una persona desde «Nuevo movimiento» elige solo QUÉ se paga: lo que se debe, de lo más viejo a lo más nuevo, hasta cubrir el monto (en la moneda del liceo, con la tasa si es otra). Si el monto pasa de lo que se debe, no se guarda. El servidor reparte y valida como siempre. | `loQueCubre` en `components/finanzas/NuevoMovimiento.tsx`. |
+| Mensualidad de cada alumno | La cuota menor del ciclo que no está exonerada, con su beca o descuento (la que no lleva mora). | `GET /payments/overview`, `mensualidad` (MENSUALIDAD-01). |
 | Reporte del mes (2026-10-01) | Saldo al empezar = fondos disponibles contando solo lo fechado **antes** del día 1; final = inicial + entró − salió. «Deben» = la deuda de los estudiantes del ciclo al último día del mes (o a hoy, si el mes no acabó). | El final del mes en curso = fondos disponibles de hoy; el final de un mes = el inicial del siguiente (REPORTE-01). |
+
+---
+
+## 8h. El cuadro de honor (2026-10-04)
+
+Implementación: `services/reglas-del-cuadro.ts` (cuenta pura), `services/cuadro-de-honor.service.ts` (la foto) y `jobs/cuadro-de-honor.job.ts`. Tests: `src/tests/reglas-del-cuadro.test.ts` (CUADRO-01…03), `tests/integration/cuadro-de-honor.test.ts` (CUADRO-04…08).
+
+| Métrica | Regla | Notas |
+|---|---|---|
+| Promedio | El **de la boleta** (`boletaDelAlumno`): por lapso, la media de las materias del lapso; del ciclo, el definitivo. Sin apreciaciones (`NOTAS_QUE_CUENTAN`), con el redondeo del liceo. | Sin notas en el período, el alumno no entra en el cuadro de ese período. |
+| Asistencia | Presentes + retardos / días con asistencia registrada, **entre las fechas del período** (lapso o ciclo). Sin registros, 100 %. | Antes se contaba toda la vida. |
+| Observaciones | Las del período (por su `date`), menos las felicitaciones (`TIPOS_QUE_NO_RESTAN`: `POSITIVE`, `FELICITACION`…; CUADRO-09). | El tipo es libre; si el liceo no las usa como llamados de atención, pone la resta en 0. |
+| Puntaje | `pesoNotas × promedio/20 + pesoAsistencia × asistencia/100 − restaPorObservacion × observaciones`, a una décima, nunca menos de 0. | Pesos del liceo (`AcademicConfig.cuadroDeHonor`), 80 / 20 / 5 por defecto. |
+| Puesto | Por puntaje; empate → mejor promedio → mejor asistencia; empate en las tres → **mismo puesto** (1, 2, 2, 4). En el liceo y dentro de su año. | No se desempata por el nombre. **Fase C (2026-10-07):** al alumno y al tutor se les devuelve `puestoAno` y `puestoLiceo` **solo si es ≤ 10**; si es el 11.º o más, no se les envía. |
+| La foto | Una por sábado (el último sábado según la hora del liceo), única por alumno, ciclo, alcance y fecha. La tarea mira al arrancar y cada 6 h; si falta la del último sábado, la saca. | Lapsos que no han empezado, fuera. |
+| «Subió N» | Puesto **en su año** en la foto anterior − puesto en la última. | Al alumno y al representante: su puntaje y esto. El puesto solo si es ≤ 10, y nunca los puestos de los demás. |
+
+---
+
+## 8i. Los grupos estables (2026-10-18)
+
+`services/grupos-estables.service.ts`; reglas del liceo en
+`academicConfig.gruposEstables` (`reglas-de-grupos.ts`). Pruebas GRUPO-01…07.
+
+| Qué | Regla |
+| :--- | :--- |
+| El momento | «ANUAL» si el liceo elige una vez al año; si elige en cada lapso, el lapso de HOY (fecha del liceo, `lapsoDeLaFecha`). Cada momento es una elección aparte. |
+| El cupo | Cuentan solo las solicitudes **ACEPTADAS** del grupo en ese momento; las pendientes no ocupan lugar. Aceptar (o asignar) bloquea la fila del grupo y cuenta dentro de la misma transacción: dos a la vez no pasan del cupo. El cupo no se baja por debajo de los aceptados. |
+| Una solicitud viva | Por alumno, materia y momento, una sola PENDIENTE o ACEPTADA (índice parcial `solicitudes_de_grupo_una_viva_key`). Rechazada o retirada, puede pedir otra, también al mismo grupo. |
+| El turno | Un grupo con turno solo recibe a alumnos de secciones de ese turno; la sección INTEGRAL, a cualquiera; un grupo sin turno, a todos. |
+| Sin grupo | Alumno activo de una sección que tiene la materia y **sin solicitud aceptada** en el momento (si tiene una pendiente, se dice en cuál). |
+| La apreciación | La del grupo se guarda como la de la materia (`Apreciacion`, con la sección del alumno): la boleta y el resumen final no cambian. |
 
 ---
 
@@ -244,13 +364,40 @@ liceo (`academicConfig`, `reglas-del-fin-de-ano.ts`); lo del MPPE es el valor po
 | **Decisión del admin** | Puede ser otra que la sugerida **solo con motivo** (400 `FALTA_EL_MOTIVO`); queda en el expediente junto a la sugerida (`condicionSugerida`, `motivo`, `decididaPor`). | — |
 | **Destino** | NO_PROMOVIDO → repite su grado (también 5to: antes egresaba igual); último año que no repite → no va a sección: `egreso = EGRESADO`, o `PENDIENTE` si SOLO_PENDIENTES; los demás → grado + 1. | — |
 | **Materias pendientes** | Con PROMOVIDO_CON_PENDIENTES, una `MateriaPendiente` por reprobada, en el año siguiente, con la nota de origen y el profesor que da esa materia en ese grado ese año. Las de antes sin aprobar quedan NO_APROBADA y nacen otra vez en el siguiente. | `pendientes.momentos` (4) |
-| **Aprobar una materia pendiente** | La evalúa el profesor asignado (o el admin), momento a momento y en orden, con notas de 0 a 20 redondeadas como las definitivas. MOMENTO_APROBADO: aprobada en el primer momento con la mínima, esa es su nota final y no hay más momentos; con todos los momentos sin llegar: NO_APROBADA con la mejor. PROMEDIO: con todos los momentos, la media (redondeada) decide. Corregir o quitar el último momento recalcula el estado. | `pendientes.momentos` (4), `pendientes.formaDeCalificar` (MOMENTO_APROBADO) |
+| **Aprobar una materia pendiente** | Ver §8c-bis: cada momento con su 1ª y su 2ª opción, y la forma de aprobar del liceo. | `pendientes.*` |
 | **Año siguiente** | Ya no se inventa al cerrar (antes: un mes después, un solo lapso de 90 días): sin él, 409 `SIN_ANO_SIGUIENTE`. Se crea en el paso 5 con el calendario del MPPE (`calendario-mppe.ts`) y copiando secciones (capacidad), materias (horas) y, si se pide, profesores y horarios. Una sección de destino que falte se crea copiando la del mismo grado de este año, no con valores fijos. | — |
 | **Corregir tras cerrar** | Rehace expediente (con motivo, quién y cuándo), matrícula del año siguiente y pendientes nacidas de este año (las ya evaluadas se quedan); queda en `audit_logs`. | — |
 
-Pruebas: CIERRE-01…10, academic-close 1…9, CIERRE-UI-01/02; la pendiente: PEND-01…08, PEND-UI-01 (`materias-pendientes.service.ts`).
+Pruebas: CIERRE-01…10, academic-close 1…9, CIERRE-UI-01/02; la pendiente: PEND-01…16, PEND-UI-01 (`materias-pendientes.service.ts`).
+
+**La definitiva, en bloque (2026-10-06).** `prepareClose` ya no pide el promedio alumno por
+alumno, materia por materia y lapso por lapso (`promedioDeLaMateria`: unas 18.000 cuentas con
+600 alumnos, 47 s en frío). Saca el de cada lapso por sección con `bulkSubjectAveragesConDatos`
+(las mismas reglas: niveles 0-2, notas traídas, alumnos que cambiaron de sección) y aplica la
+misma definitiva: cada lapso con notas redondeado según `redondeoDeDefinitivas`, su media a dos
+decimales y otra vez el redondeo (`definitivaDeLaMateria`). **Ninguna regla cambia.** Paridad
+medida con los datos del instituto de pruebas: 0 diferencias en 8.985 materias de 599 alumnos;
+1,8 s en vez de 61 s. Sin lapsos en el año, la cuenta de siempre.
 
 ---
+
+## 8c-bis. La materia pendiente, como una clase (2026-10-12)
+
+`services/materias-pendientes.service.ts`. Circulares 0007 (2010), 006696 (2012) y 000004 (2009)
+del MPPE y la práctica de los liceos; todo del liceo en `academicConfig.pendientes`.
+
+| Qué | Regla | Configurable |
+| :--- | :--- | :--- |
+| **Dónde se trabaja** | En una CLASE: la materia de una sección del grado de origen, en el año en que se cursa (`claseId`). La evalúa su profesor (o uno puesto a mano por el admin, la forma de antes). Sin clase al nacer, se le busca: la del profesor que la tenía, la de la misma letra que su sección del año en que la reprobó, o la primera. | El admin la pasa a otra clase de la misma materia y grado |
+| **Momentos** | En orden: un momento se abre con el anterior decidido. Cada uno tiene 1ª opción y, según el liceo, 2ª (una semana después). | `momentos` (4) |
+| **2ª opción** | Solo para quien reprobó la 1ª. SIEMPRE: a todos esos; SI_REPRUEBA_30: si de los que presentaron la 1ª en esa clase, el 30 % o más la reprobó (art. 112 del Reglamento); NO: la 1ª decide. Un momento ya seguido por el siguiente queda como estaba. | `segundaOpcion` (SIEMPRE) |
+| **Faltar** | Sin justificar: cuenta como presentada sin nota («IN»). Justificada: no cuenta; la opción sigue abierta. | `faltarPierdeElMomento` (sí) |
+| **Nota del momento** | Decidido el momento: la mejor nota de sus opciones (vacía si no se presentó a ninguna). Abierto, no tiene nota. A mano (sin opciones) se pone directa. | — |
+| **Aprobar** | MOMENTO_APROBADO: en el primer momento con la mínima (esa es la final); con todos los momentos sin llegar, NO_APROBADA con la mejor. PROMEDIO: con todos, la media. PONDERADO: con todos, Σ nota × peso ÷ 100. En el promedio y el ponderado, el momento sin nota cuenta 0. Redondeo como las definitivas. | `formaDeCalificar` (MOMENTO_APROBADO), `pesos` (suman 100) |
+| **Asistencia** | A qué encuentros se les pasa lista: SOLO_EVALUACIONES (lo del Reglamento: no está obligado a ir a las clases), OBLIGATORIA (también a las tutorías) o NO. | `asistencia` (SOLO_EVALUACIONES) |
+| **Cronograma** | Por año: cada momento con la ventana de su 1ª y su 2ª opción. Sin guardar, el de la circular 0007: la semana del 1er lunes de octubre, del 1er lunes de diciembre, del 4º lunes de enero y del 1er lunes de junio; la 2ª, la semana siguiente. | Configuración → Académica |
+
+Pruebas: PEND-01…08 (`materias-pendientes.test.ts`) y PEND-09…16 (`pendientes-con-opciones.test.ts`).
 
 ## 8d. La labor social (horas comunitarias)
 
@@ -260,12 +407,14 @@ Pruebas: CIERRE-01…10, academic-close 1…9, CIERRE-UI-01/02; la pendiente: PE
 | Qué | Regla | Configurable |
 | :--- | :--- | :--- |
 | **A quién le toca** | Alumnos inscritos este año en los grados del liceo, con la labor social activa. | `grados` ([último año]), `activa` (sí) |
-| **Avance** | Suma de las horas de TODAS sus actividades (de cualquier año). Con horas: cumplida si la suma ≥ las requeridas. Con 0 horas (por proyecto): cumplida si alguna actividad culmina el proyecto. Una actividad va de más de 0 a 24 h. | `horasRequeridas` (60; 0 = por proyecto) |
+| **Avance** | Suma de las horas de TODAS sus actividades (de cualquier año: lo de 4to cuenta en 5to). Con horas: cumplida si la suma ≥ las requeridas. Con 0 horas (por proyecto): cumplida si alguna actividad culmina el proyecto. Una actividad va de más de 0 a 24 h. | `horasRequeridas` (60; 0 = por proyecto) |
 | **Para egresar** | En el cierre del último año, al que egresaría: BLOQUEA → `egreso = PENDIENTE` sin ella; AVISA → egresa, con aviso en la sugerencia (lo del MPPE: un retraso no niega el título); NO → no cuenta. También al corregir tras cerrar. | `paraEgresar` (AVISA) |
 | **Constancia** | Solo con la labor social cumplida (409 `LABOR_SOCIAL_NO_CUMPLIDA`), con sus horas y su proyecto. | — |
 
-La anotan el admin y el profesor guía de la sección del alumno (una actividad a varios a la vez);
-el alumno y su representante solo la ven. Pruebas: LABOR-01…07, LABOR-UI-01.
+La anotan el admin y el profesor guía de la sección del alumno (una actividad a varios a la vez), o
+solo el admin si el liceo lo dice (`quienAnota`: ADMIN_Y_GUIA por defecto, o SOLO_ADMIN); el alumno y
+su representante solo la ven. Se lleva dentro de cada sección (su pestaña «Labor social»).
+Pruebas: LABOR-01…10, LABOR-UI-01.
 
 ## 8e. Los documentos oficiales (resumen final y certificación)
 

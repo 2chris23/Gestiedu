@@ -47,6 +47,7 @@ export function DescargarHorario({
             const blob = formato === 'png' ? await m.horarioComoPng(datos) : await m.horarioComoPdf(datos);
             const r = await m.entregarArchivo(blob, m.nombreDeArchivo(titulo, formato));
             if (r === 'descargado') toast.success(formato === 'png' ? 'Imagen descargada' : 'PDF descargado');
+            if (r === 'actualizar') toast.error('Para compartir, actualiza la app');
         } catch (error) {
             toast.error(error instanceof Error ? error.message : 'No se pudo generar el horario');
         } finally {

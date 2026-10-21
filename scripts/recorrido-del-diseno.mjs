@@ -100,7 +100,7 @@ async function losRecorridos() {
         },
         {
             rol: 'superadmin',
-            entrar: { ruta: '/superadmin/login', email: 'admin@tuapp.com', clave: 'SuperAdmin2026!', espera: '**/superadmin/**' },
+            entrar: { ruta: '/superadmin/login', email: 'admin@tuapp.com', clave: process.env.SUPERADMIN_PASSWORD ?? '', espera: '**/superadmin/**' },
             pantallas: [
                 ['Panel', '/superadmin/dashboard'],
                 ['Liceos', '/superadmin/institutes'],
@@ -170,7 +170,7 @@ async function sigueCargando(page) {
             const t = document.body?.innerText || '';
             if (/\bCargando\b|\bLoading\b/i.test(t)) return true;
             if (document.querySelector('[aria-busy="true"]')) return true;
-            return [...document.querySelectorAll('.animate-pulse, .animate-latir')].some((el) => {
+            return [...document.querySelectorAll('.animate-pulse, .animate-latir, .animate-latir-suave, .skeleton-shimmer')].some((el) => {
                 if (el.textContent && el.textContent.trim()) return false;
                 const r = el.getBoundingClientRect();
                 return r.width >= 60 && r.height >= 12;

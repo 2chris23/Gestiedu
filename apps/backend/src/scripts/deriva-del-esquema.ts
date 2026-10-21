@@ -29,7 +29,11 @@ async function main(): Promise<number> {
         const salida = execFileSync(
             process.execPath,
             [require.resolve('prisma/build/index.js'), 'migrate', 'diff', '--from-url', url, '--to-schema-datamodel', esquema, '--script'],
-            { encoding: 'utf-8' }
+            // El esquema de Prisma toma su `schema=` de DATABASE_URL. Con la del
+            // liceo, los dos lados hablan del mismo esquema; con la de la
+            // plataforma (`public`), un liceo de la base compartida salía con
+            // TODO como deriva: «borrar sus 76 tablas y crearlas en public».
+            { encoding: 'utf-8', env: { ...process.env, DATABASE_URL: url } }
         );
         const sql = salida.split('\n').filter((l) => l.trim() && !l.startsWith('--')).join('\n');
         console.log(sql ? `Deriva en ${slug}:\n${salida}` : `${slug}: la base y el esquema coinciden.`);

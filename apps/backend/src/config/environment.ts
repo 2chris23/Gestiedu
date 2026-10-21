@@ -160,7 +160,16 @@ export const config = {
       const redDeCasaRegex =
         /^https?:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/;
       const enDesarrollo = (process.env.NODE_ENV || 'development') !== 'production';
-      const deSiempre = enDesarrollo ? [localhostRegex, redDeCasaRegex] : [localhostRegex];
+      /**
+       * EL TÚNEL DE PRUEBAS (`npm run tunel`, Tailscale Funnel)
+       *
+       * La dirección `https://<pc>.ts.net` llega por una variable propia que
+       * ningún `.env` trae, así que la del entorno no la pisa ningún archivo.
+       * Una sola dirección exacta: el túnel no abre la puerta a nadie más.
+       */
+      const delTunel = (process.env.ORIGEN_DEL_TUNEL || '').trim();
+      const deSiempre: (string | RegExp)[] = enDesarrollo ? [localhostRegex, redDeCasaRegex] : [localhostRegex];
+      if (/^https:\/\/[a-z0-9.-]+$/i.test(delTunel)) deSiempre.push(delTunel);
 
       if (raw === '*') {
         // En vez de true (que no funciona con credentials), refleja el Origin del request

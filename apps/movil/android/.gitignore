@@ -99,3 +99,6 @@ app/src/main/assets/public
 app/src/main/assets/capacitor.config.json
 app/src/main/assets/capacitor.plugins.json
 app/src/main/res/xml/config.xml
+
+# El diseño de la web dentro de la APK: lo copia scripts/publicar-apk.mjs
+app/src/main/assets/cascara/

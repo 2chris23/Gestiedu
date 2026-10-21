@@ -20,18 +20,26 @@ import { registerRoutes } from './routes/index';
 import { redis, redisPub, redisSub, connectRedis, disconnectRedis } from './config/redis';
 import { setupAcademicYearCronJob } from './jobs/academic-year-sync.job';
 import { setupRecordatorioDeCuotasJob } from './jobs/recordatorio-de-cuotas.job';
+import { setupCuadroDeHonorJob } from './jobs/cuadro-de-honor.job';
+import { setupMantenimientoJob } from './jobs/mantenimiento.job';
+import { setupRobotDeSalud } from './jobs/robot-de-salud.job';
+import { empezarLosTrabajadores, pararLosTrabajadores } from './services/cubos-de-precarga.service';
 import { identifyTenant } from './middleware/tenant.middleware';
 import { conLiceo } from './config/ambito-del-liceo';
 import { smartCacheMiddleware, cacheOnSendHook } from './middleware/smart-cache.middleware';
 import { ponerLosGuardiasPrimero } from './middleware/guardias';
 import cambiosSinConexion from './plugins/cambios-sin-conexion';
 import antiDobleEnvio from './plugins/anti-doble-envio';
-import { CupoCompartido } from './plugins/cupo-compartido';
+import { CupoCompartido, CUPO_DEL_LICEO_POR_DIRECCION } from './plugins/cupo-compartido';
 import { leerArchivoDelLiceo } from './services/archivos-del-liceo.service';
 import { createHash } from 'crypto';
 import { deQuienNosFiamos, comoSeExplicaLaConfianza } from './config/de-quien-nos-fiamos';
 import avisarCambios from './plugins/avisar-cambios';
+import medidorDeRutas from './plugins/medidor-de-rutas';
 import { apuntarFallo } from './utils/fallos-del-servidor';
+import { avisarSiFalla } from './utils/sin-callar';
+import { taparEnTexto } from './utils/datos-en-registros';
+import { CABECERA_INTERNA, MARCA_INTERNA } from './services/precarga.service';
 
 export async function buildServer(): Promise<FastifyInstance> {
   /**
@@ -42,7 +50,18 @@ export async function buildServer(): Promise<FastifyInstance> {
   const confianza = deQuienNosFiamos();
 
   const server = Fastify({
-    logger: true,
+    // Cada petición queda en el registro con su ruta, y la ruta lleva cédulas
+    // (`/students/12345678/boleta`) y lo buscado: se tapan (REGISTRO-03).
+    logger: {
+      serializers: {
+        req: (req: any) => ({
+          method: req.method,
+          url: taparEnTexto(String(req.url ?? '')),
+          host: req.host ?? req.hostname,
+          remoteAddress: req.ip,
+        }),
+      },
+    },
     trustProxy: confianza,
     bodyLimit: config.upload.maxFileSize,
   });
@@ -55,8 +74,22 @@ export async function buildServer(): Promise<FastifyInstance> {
     origin: config.cors.origin,
     credentials: true,
     methods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Origin', 'Accept', 'X-Institute-ID', 'X-Institute-Slug', 'X-Cambio', 'X-Hecho-En'],
-    exposedHeaders: ['Content-Length', 'Content-Type', 'X-Cache-Status', 'X-Cambio'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Origin', 'Accept', 'X-Institute-ID', 'X-Institute-Slug', 'X-Cambio', 'X-Hecho-En', 'Cache-Control', 'Range'],
+    // `Retry-After`: el teléfono la lee para no reintentar antes de tiempo
+    // (sin exponerla, el navegador la esconde y todos volvían a la vez).
+    exposedHeaders: [
+      'Content-Length',
+      'Content-Type',
+      'X-Cache-Status',
+      'X-Cambio',
+      'Retry-After',
+      'Accept-Ranges',
+      'Content-Range',
+      'X-Paquete-Marca',
+      'X-Paquete-Version',
+      'X-Paquete-Lecturas',
+      'X-Paquete-Paginas',
+    ],
   });
 
   // ✅ SECURITY: Registrar plugin de seguridad con Helmet (AFTER CORS)
@@ -121,6 +154,10 @@ export async function buildServer(): Promise<FastifyInstance> {
     max: config.isDevelopment ? 10000 : config.rateLimit.max,
     timeWindow: config.rateLimit.timeWindow,
     keyGenerator: cupoDeLaPeticion,
+    // Las lecturas de dentro de un bloque de la precarga (`routes/precarga.routes.ts`):
+    // el bloque ya contó; sus 150 lecturas no gastan el cupo de la persona.
+    // La marca solo la conoce este proceso.
+    allowList: (request: FastifyRequest) => request.headers[CABECERA_INTERNA] === MARCA_INTERNA,
     // La cuenta en Redis, compartida por todos los procesos; si Redis no
     // contesta, en la memoria de este. Ver `plugins/cupo-compartido.ts`.
     store: CupoCompartido as any,
@@ -275,12 +312,24 @@ export async function buildServer(): Promise<FastifyInstance> {
   // Cerrar Redis en cierre del servidor
   server.addHook('onClose', async () => {
     if (redisConnected) {
-      await disconnectRedis().catch(() => { });
+      await disconnectRedis().catch(avisarSiFalla('server'));
     }
   });
 
   // Middleware global para manejo de errores
   server.setErrorHandler(errorHandler);
+
+  // Cada petición medida (tiempo, errores, por ruta y por liceo) para el
+  // panel de salud del superadmin. Ver `plugins/medidor-de-rutas.ts`.
+  await server.register(medidorDeRutas);
+
+  // Solo para medir la puerta 4 (`docs/LISTO-PARA-EL-PILOTO.md`): con
+  // RUTAS_PROBADAS=<carpeta>, apunta cada ruta que las pruebas pidieron de
+  // verdad, con su código. Lo lee `scripts/acciones-sin-prueba.ts --probadas`.
+  if (process.env.RUTAS_PROBADAS) {
+    const { apuntarRutasProbadas } = await import('./utils/rutas-probadas');
+    apuntarRutasProbadas(server, process.env.RUTAS_PROBADAS);
+  }
 
   // Todo 500, venga de donde venga (del manejador central o de un controlador
   // que responde el suyo), se apunta para el panel del superadmin: ver
@@ -356,6 +405,12 @@ export async function buildServer(): Promise<FastifyInstance> {
   await setupAcademicYearCronJob(server);
   logger.info('Academic year auto-sync job configured');
   await setupRecordatorioDeCuotasJob(server);
+  await setupCuadroDeHonorJob(server);
+  await setupMantenimientoJob(server);
+  await setupRobotDeSalud(server);
+  // La descarga en cubos se arma de fondo, nunca al entrar alguien.
+  empezarLosTrabajadores(server);
+  server.addHook('onClose', async () => pararLosTrabajadores());
 
   // Caché de comprobación profunda de salud para evitar agotar el pool de conexiones (dos-health-check-db-pool-exhaustion)
   let estadoSaludCache: { db: boolean; redis: boolean; timestamp: number } | null = null;
@@ -387,7 +442,9 @@ export async function buildServer(): Promise<FastifyInstance> {
   };
 
   // Ruta de salud extendida (con estado de infraestructura protegido por caché)
-  server.get('/health', async () => {
+  // Todos los teléfonos sin conexión preguntan aquí cada ~15 s: el cupo por
+  // dirección es el de un liceo entero (CUPO-REN-01).
+  server.get('/health', { config: { rateLimit: { max: CUPO_DEL_LICEO_POR_DIRECCION } } } as any, async () => {
     const infra = await verificarSaludInfraestructura();
     return {
       status: 'ok',

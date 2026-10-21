@@ -8,8 +8,10 @@ export default function SuperAdminLoginPage() {
     const router = useRouter();
     const setSuperAdmin = useSuperAdminAuthStore((state) => state.setSuperAdmin);
 
-    const [email, setEmail] = useState('admin@tuapp.com');
-    const [password, setPassword] = useState('SuperAdmin2026!');
+    // Vacíos: antes venían escritos el correo y la CONTRASEÑA del superadmin, y
+    // cualquiera que abriera esta página los tenía en el código (2026-10-04).
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 

@@ -234,12 +234,21 @@ export function Pie() {
                     <span className="text-sm text-slate-600">Gestión escolar para liceos de Venezuela</span>
                 </div>
                 <nav aria-label="Pie de página" className="flex flex-wrap items-center justify-center gap-x-2 text-sm text-slate-600">
-                    <a href="#funciones" className="inline-flex min-h-[44px] items-center px-2 hover:text-indigo-700">
+                    <a href="/#funciones" className="inline-flex min-h-[44px] items-center px-2 hover:text-indigo-700">
                         Qué resuelve
                     </a>
-                    <a href="#preguntas" className="inline-flex min-h-[44px] items-center px-2 hover:text-indigo-700">
+                    <a href="/#preguntas" className="inline-flex min-h-[44px] items-center px-2 hover:text-indigo-700">
                         Preguntas
                     </a>
+                    <Link href="/legal/terminos" className="inline-flex min-h-[44px] items-center px-2 hover:text-indigo-700">
+                        Términos
+                    </Link>
+                    <Link href="/legal/privacidad" className="inline-flex min-h-[44px] items-center px-2 hover:text-indigo-700">
+                        Privacidad
+                    </Link>
+                    <Link href="/legal" className="inline-flex min-h-[44px] items-center px-2 hover:text-indigo-700">
+                        Información legal
+                    </Link>
                     <Link href="/superadmin/login" className="inline-flex min-h-[44px] items-center gap-1.5 px-2 hover:text-indigo-700">
                         <UserRound className="h-4 w-4" aria-hidden />
                         Acceso de la plataforma

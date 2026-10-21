@@ -11,16 +11,29 @@ import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import { esQueNoContesta } from '@/lib/estado-del-servidor';
 import { diferido } from '@/components/common/Diferido';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
+import AcademicoDelAlumno from '@/components/academic/AcademicoDelAlumno';
+import CargandoAcademico from './loading';
 
 // Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
 const AcademicYearModal = diferido(() => import('@/components/academic/AcademicYearModal'), { sinEsqueleto: true });
 
 export default function AcademicPage() {
+    const { yo, cargando } = useQuienSoy();
+
+    if (cargando) {
+        return <CargandoAcademico />;
+    }
+
+    if (yo?.role === 'STUDENT' || yo?.role === 'TUTOR') {
+        return <AcademicoDelAlumno />;
+    }
+
+    return <AcademicAdminOrTeacherPage esAdmin={yo?.role === 'ADMIN'} />;
+}
+
+function AcademicAdminOrTeacherPage({ esAdmin }: { esAdmin: boolean }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const queryClient = useQueryClient();
-    // Crear un ciclo es del admin: al profesor el botón solo le daba un error.
-    const { yo } = useQuienSoy();
-    const esAdmin = yo?.role === 'ADMIN';
 
     // Con caché: al volver a esta pantalla los ciclos aparecen al instante y se
     // refrescan por detrás. Antes se pedían a mano en cada entrada y había que
@@ -35,6 +48,10 @@ export default function AcademicPage() {
     }, [error]);
 
     const loadYears = () => queryClient.invalidateQueries({ queryKey: ['academicYears'] });
+
+    if (loading && years.length === 0) {
+        return <CargandoAcademico />;
+    }
 
     return (
         <div className="space-y-6">
@@ -54,7 +71,9 @@ export default function AcademicPage() {
             />
 
             {/* Timeline View */}
-            <AcademicTimeline years={years} loading={loading} onRefresh={loadYears} />
+            <div data-recorrido="academico-ciclos">
+                <AcademicTimeline years={years} loading={loading} onRefresh={loadYears} />
+            </div>
 
             {isModalOpen && (
             <AcademicYearModal

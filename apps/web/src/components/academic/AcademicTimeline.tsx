@@ -8,6 +8,8 @@ import { useRouter } from 'next/navigation';
 import SecureDeleteModal from './SecureDeleteModal';
 import { useState } from 'react';
 import { useQuienSoy } from '@/hooks/useQuienSoy';
+import { useSchoolToday } from '@/hooks/useSchoolTime';
+import { SkeletonCard } from '@/components/ui/skeleton';
 
 interface AcademicTimelineProps {
     years: AcademicYear[];
@@ -20,6 +22,8 @@ export default function AcademicTimeline({ years, loading, onRefresh }: Academic
     // papelera solo le daba un error: ni se le enseña.
     const { yo } = useQuienSoy();
     const esAdmin = yo?.role === 'ADMIN';
+    // El día lo dice el liceo, no el reloj del teléfono (HORA-01).
+    const hoy = useSchoolToday();
     const router = useRouter();
     const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; yearId: string | null; yearName: string }>({
         isOpen: false,
@@ -34,10 +38,8 @@ export default function AcademicTimeline({ years, loading, onRefresh }: Academic
 
     if (loading) {
         return (
-            <div className="space-y-4 animate-pulse max-w-2xl mx-auto">
-                {[1, 2, 3].map(i => (
-                    <div key={i} className="h-24 bg-gray-100 rounded-lg"></div>
-                ))}
+            <div className="space-y-4 max-w-2xl mx-auto">
+                <SkeletonCard count={3} cardClassName="rounded-2xl" hasBottomPills={true} shimmer={true} />
             </div>
         );
     }
@@ -80,16 +82,18 @@ export default function AcademicTimeline({ years, loading, onRefresh }: Academic
 
             <div className="space-y-8">
                 {sortedYears.map((year) => {
-                    const now = new Date();
                     const startDate = new Date(year.startDate);
                     const endDate = new Date(year.endDate);
+                    const inicio = String(year.startDate).slice(0, 10);
+                    const fin = String(year.endDate).slice(0, 10);
 
                     const isActiveDb = year.status === 'ACTIVE';
 
-                    // Lógica temporal estricta
-                    const isPast = endDate < now; // Ya terminó
-                    const isFuture = startDate > now; // Aún no empieza
-                    const isCurrentDate = !isPast && !isFuture; // Estamos dentro del rango (start <= now <= end)
+                    // Lógica temporal estricta, con el día del liceo (sin él
+                    // todavía, solo lo que dice la base).
+                    const isPast = Boolean(hoy) && fin < hoy; // Ya terminó
+                    const isFuture = Boolean(hoy) && inicio > hoy; // Aún no empieza
+                    const isCurrentDate = Boolean(hoy) && !isPast && !isFuture; // Estamos dentro del rango
 
                     // Flags finales para UI
                     const showActive = isActiveDb || isCurrentDate; // Mostramos como activo si la BD lo dice O si estamos en fechas

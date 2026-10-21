@@ -2,8 +2,11 @@
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/axios';
-import { elEstadoDelServidor, escucharElServidor } from '@/lib/estado-del-servidor';
+import { API_URL } from '@/config/env';
+import { elEstadoDelServidor, escucharElServidor, elServidorContesto, elServidorNoContesta } from '@/lib/estado-del-servidor';
+import { conAzar } from '@/lib/azar';
+
+const API_BASE_URL = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
 
 /** Cada cuánto se vuelve a preguntar, mientras el servidor no contesta. */
 const CADA = 15_000;
@@ -17,9 +20,60 @@ export interface Conexion {
     ultimaRespuesta: number | null;
 }
 
-/** Pregunta mínima al servidor: si contesta, las interceptoras lo apuntan solas. */
+/**
+ * Pregunta periódica al liceo: comprueba los DOS caminos en paralelo.
+ * 1. La API de datos (/health).
+ * 2. El propio servidor de la web (/api/estoy, GET sin datos, no-store).
+ *
+ * Solo marca «contesta» si responden los dos caminos.
+ * Si cualquiera de los dos falla o no llega a tiempo (4 s), marca «no contesta».
+ */
 export async function preguntarAlServidor(): Promise<void> {
-    await api.get('/health', { timeout: 4000 }).catch(() => undefined);
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const controlador = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    if (controlador) {
+        timeoutId = setTimeout(() => {
+            controlador.abort();
+        }, 8000);
+    }
+    const signal = controlador?.signal;
+
+    try {
+        const rutaWeb = typeof window !== 'undefined' ? '/api/estoy' : 'http://localhost:3000/api/estoy';
+
+        const consultarApi = fetch(`${API_BASE_URL}/health`, {
+            method: 'GET',
+            cache: 'no-store',
+            signal,
+        })
+            .then((r) => r.ok)
+            .catch(() => false);
+
+        const consultarWeb = fetch(rutaWeb, {
+            method: 'GET',
+            cache: 'no-store',
+            signal,
+        })
+            .then((r) => r.ok)
+            .catch(() => false);
+
+        const [apiOk, webOk] = await Promise.all([consultarApi, consultarWeb]);
+
+        // Si fue abortado (por navegación, desmontaje o tiempo de espera local), no alterar el estado a caído
+        if (signal?.aborted) return;
+
+        if (apiOk && webOk) {
+            elServidorContesto();
+        } else {
+            elServidorNoContesta();
+        }
+    } catch {
+        // En caso de excepción no controlada si la señal fue abortada, no marcar caído
+        if (signal?.aborted) return;
+        elServidorNoContesta();
+    } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+    }
 }
 
 /**
@@ -56,13 +110,22 @@ export function useConexion(): Conexion {
     // Mientras no contesta: preguntar de vez en cuando, y al volver a la app.
     React.useEffect(() => {
         if (servidor.contesta) return;
-        const reloj = setInterval(() => void preguntarAlServidor(), CADA);
+        // Cada 15 s, con azar (de 10,5 a 19,5): si todos preguntan al mismo
+        // ritmo, al volver el servidor le llegan todos juntos.
+        let reloj = 0;
+        const otraVez = () => {
+            reloj = window.setTimeout(() => {
+                void preguntarAlServidor();
+                otraVez();
+            }, conAzar(CADA));
+        };
+        otraVez();
         const alVolver = () => {
             if (document.visibilityState === 'visible') void preguntarAlServidor();
         };
         document.addEventListener('visibilitychange', alVolver);
         return () => {
-            clearInterval(reloj);
+            window.clearTimeout(reloj);
             document.removeEventListener('visibilitychange', alVolver);
         };
     }, [servidor.contesta]);

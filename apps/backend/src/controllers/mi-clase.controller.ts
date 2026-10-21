@@ -86,7 +86,7 @@ export async function miClase(
         const pedido = request.query.lapso;
         const lapso = pedido && /^[1-9]$/.test(pedido) && Number(pedido) <= Math.max(lapsos.length, 1) ? pedido : numeroDeHoy;
 
-        const [meta, filas, actividades, observaciones] = await Promise.all([
+        const [meta, filas, actividades, observaciones, scheduleBlocks] = await Promise.all([
             prisma.evaluationPlanMetadata.findUnique({
                 where: { classroomId_subjectId_lapso: { classroomId: seccion.id, subjectId, lapso } },
                 select: {
@@ -160,7 +160,41 @@ export async function miClase(
                 },
                 orderBy: { date: 'desc' },
             }),
+            prisma.scheduleBlock.findMany({
+                where: {
+                    classroomId: seccion.id,
+                    classroomSubject: { subjectId },
+                    blockType: 'CLASS',
+                },
+                select: {
+                    id: true,
+                    dayOfWeek: true,
+                    startTime: true,
+                    endTime: true,
+                    location: true,
+                },
+                orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+            }),
         ]);
+
+        const DIAS_SEMANA_TEXTO: Record<number, string> = {
+            1: 'Lunes',
+            2: 'Martes',
+            3: 'Miércoles',
+            4: 'Jueves',
+            5: 'Viernes',
+            6: 'Sábado',
+            7: 'Domingo',
+        };
+
+        const bloquesHorario = scheduleBlocks.map((b) => ({
+            id: b.id,
+            dia: b.dayOfWeek,
+            diaTexto: DIAS_SEMANA_TEXTO[b.dayOfWeek] || `Día ${b.dayOfWeek}`,
+            horaInicio: b.startTime,
+            horaFin: b.endTime,
+            aula: b.location || null,
+        }));
 
         const lista = actividades.map((a) => {
             const notas = (a.scores ?? {}) as Record<string, number | null>;
@@ -207,6 +241,7 @@ export async function miClase(
             profesor: materiaDeLaSeccion.teacher
                 ? `${materiaDeLaSeccion.teacher.firstName} ${materiaDeLaSeccion.teacher.lastName}`
                 : null,
+            horario: bloquesHorario,
             lapso,
             lapsoDeHoy: numeroDeHoy,
             lapsos: lapsos.map((l, i) => ({ numero: String(i + 1), name: l.name })),

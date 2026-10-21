@@ -1,9 +1,10 @@
 'use client';
 
+import { EnlacesLegales } from '@/components/legal/EnlacesLegales';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Button, Input, Card } from '@/components/ui';
+import { Button, Input, Card, SkeletonAuth } from '@/components/ui';
 import { useAuthStore } from '@/store/auth.store';
 import { guardarCredencial } from '@/lib/credencial-en-memoria';
 import { useRouter } from 'next/navigation';
@@ -13,6 +14,10 @@ import { BookOpen, Eye, EyeOff, Fingerprint } from 'lucide-react';
 import { BACKEND_URL, getAssetUrl } from '@/config/env';
 import NotFound from '@/app/not-found';
 import { elLiceoDelHost } from '@/lib/el-liceo-de-la-direccion';
+import { quitarLaCortina } from '@/lib/cortina-del-arranque';
+import { esconderElIconoDeArranque } from '@/lib/el-candado';
+import { elDuenoDeAhora } from '@/lib/el-dueno';
+import { estaCompleta, seEnsenaLaPrecarga } from '@/lib/precarga';
 import { abrirConLaHuella, guardarLaLlave, hayHuella, hayLlaveGuardada, olvidarLaLlave } from '@/lib/la-huella';
 
 const loginSchema = z.object({
@@ -32,6 +37,30 @@ const getSubdomainFromBrowser = () =>
 export default function LoginPage() {
     const router = useRouter();
     const setAuth = useAuthStore((state) => state.login);
+
+    /**
+     * CON SESIÓN, AQUÍ NO SE QUEDA NADIE
+     *
+     * La APK abre siempre en `/login`. Con la llave corta viva, el guardián
+     * (`proxy.ts`) manda al Inicio; pero pasados sus 15 minutos ya no existe,
+     * el guardián deja pasar al login, la app renueva la sesión por detrás… y
+     * el login se quedaba en pantalla. Cristian lo vio así: la huella abría el
+     * candado y debajo aparecía el formulario, como si hubiera que entrar otra
+     * vez (la sesión seguía viva). Medido en el emulador, 2026-10-11.
+     *
+     * Salvo con la descarga de la primera vez a medias: esa sesión la cierra el
+     * candado al abrir (decidido por Cristian) y no hay que ir al Inicio.
+     */
+    const hayAlguien = useAuthStore((s) => Boolean(s.user?.id));
+    const sesionLeida = useAuthStore((s) => s.isHydrated);
+    useEffect(() => {
+        if (!sesionLeida || !hayAlguien) return;
+        if (seEnsenaLaPrecarga()) {
+            const dueno = elDuenoDeAhora();
+            if (dueno && !estaCompleta(dueno)) return;
+        }
+        router.replace('/dashboard');
+    }, [sesionLeida, hayAlguien, router]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -47,69 +76,118 @@ export default function LoginPage() {
         status?: string;
     } | null>(null);
     const [instituteNotFound, setInstituteNotFound] = useState(false);
+    /**
+     * Sin conexión NO es «el liceo no existe». Antes, un teléfono sin señal
+     * que abría la app por primera vez leía «Instituto No Encontrado».
+     */
+    const [sinConexion, setSinConexion] = useState(false);
     const [validatingInstitute, setValidatingInstitute] = useState(false);
     const [logoError, setLogoError] = useState(false);
 
     useEffect(() => {
+        let isMounted = true;
         const sub = getSubdomainFromBrowser();
-        if (sub) {
-            setDetectedSlug(sub);
-            setIsCheckingScope(false);
-        } else if (typeof window !== 'undefined') {
+        let slug = sub;
+        if (!slug && typeof window !== 'undefined') {
             const params = new URLSearchParams(window.location.search);
-            const slugParam = params.get('slug') || params.get('instituto') || params.get('institute');
-            if (slugParam) {
-                setDetectedSlug(slugParam);
-                setIsCheckingScope(false);
-            } else {
-                // Sin subdominio ni parámetro: se prohíbe el acceso directo y se muestra 404
-                setDirectAccessForbidden(true);
-                setIsCheckingScope(false);
-            }
+            slug = params.get('slug') || params.get('instituto') || params.get('institute');
         }
-    }, []);
 
-    // Validar instituto contra la base de datos de la plataforma si viene de subdominio o parámetro
-    useEffect(() => {
-        if (!detectedSlug) {
-            setInstituteData(null);
-            setInstituteNotFound(false);
+        if (!slug) {
+            setDirectAccessForbidden(true);
+            setIsCheckingScope(false);
             return;
         }
 
-        let isMounted = true;
-        setValidatingInstitute(true);
+        setDetectedSlug(slug);
         setInstituteNotFound(false);
         setLogoError(false);
 
-        fetch(`/api/instituto/${detectedSlug}/info`)
+        /**
+         * EL LICEO, YA SABIDO: sin esqueleto
+         *
+         * Al abrir la app se veía el esqueleto del login mientras se preguntaba
+         * el nombre y el logo del liceo (lo vio Cristian). Lo de la última vez
+         * se enseña al momento y se pone al día por detrás.
+         */
+        const llaveDelLiceo = `gestiedu:info-del-liceo:${slug}`;
+        let yaSabido: typeof instituteData = null;
+        try {
+            yaSabido = JSON.parse(localStorage.getItem(llaveDelLiceo) || 'null');
+        } catch {
+            yaSabido = null;
+        }
+        if (yaSabido?.name) {
+            setInstituteData(yaSabido);
+            setIsCheckingScope(false);
+        } else {
+            setValidatingInstitute(true);
+        }
+
+        fetch(`/api/instituto/${encodeURIComponent(slug)}/info`)
             .then(async (res) => {
                 if (!isMounted) return;
                 if (res.ok) {
                     const data = await res.json();
                     setInstituteData(data);
                     setInstituteNotFound(false);
+                    try {
+                        localStorage.setItem(llaveDelLiceo, JSON.stringify(data));
+                    } catch {
+                        /* sin almacenamiento: la próxima vez, con esqueleto */
+                    }
                 } else if (res.status === 404) {
                     setInstituteNotFound(true);
                     setInstituteData(null);
+                } else if (res.status >= 502 && res.status <= 504) {
+                    setSinConexion(true);
                 } else {
                     const err = await res.json().catch(() => ({}));
                     setError(err.error || 'Error al validar el instituto');
                 }
             })
             .catch(() => {
+                // Un error de red: no se llegó al servidor.
                 if (isMounted) {
-                    setInstituteNotFound(true);
+                    setSinConexion(true);
                 }
             })
             .finally(() => {
-                if (isMounted) setValidatingInstitute(false);
+                if (isMounted) {
+                    setValidatingInstitute(false);
+                    setIsCheckingScope(false);
+                }
             });
 
         return () => {
             isMounted = false;
         };
-    }, [detectedSlug]);
+    }, []);
+
+    // En la app, el icono de Android se queda hasta que el login está entero:
+    // nada de pantallas a medias por el camino (`ArranqueYCandado`).
+    const listo = !isCheckingScope && !validatingInstitute;
+    useEffect(() => {
+        if (!listo) return;
+        quitarLaCortina();
+        esconderElIconoDeArranque();
+    }, [listo]);
+
+    // Al volver la conexión, se vuelve a intentar sola.
+    useEffect(() => {
+        if (!sinConexion) return;
+        const alVolver = () => window.location.reload();
+        window.addEventListener('online', alVolver);
+        const cada = window.setInterval(() => {
+            fetch('/api/health', { cache: 'no-store' })
+                .then((r) => r.ok && alVolver())
+                .catch(() => undefined);
+        }, 15_000);
+        return () => {
+            window.removeEventListener('online', alVolver);
+            window.clearInterval(cada);
+        };
+    }, [sinConexion]);
 
     /**
      * EL ICONITO DE LA PESTAÑA, EL DEL LICEO — Y SOLO EL NUESTRO
@@ -228,6 +306,18 @@ export default function LoginPage() {
 
             // Store user data in Zustand for UI
             setAuth(user, accessToken || '', result.keepSession);
+            /**
+             * LO QUE EL ENRUTADOR GUARDÓ SIN SESIÓN YA NO VALE
+             *
+             * Sin cookies pero con la sesión vieja en el almacén, esta pantalla
+             * manda al Inicio (arriba); el guardián lo devuelve a
+             * `/login?redirect=/dashboard`, y el enrutador del navegador se
+             * guarda esa vuelta. Al entrar, `push('/dashboard')` la reutilizaba
+             * sin preguntar al servidor: la contraseña era buena, las cookies
+             * quedaban puestas y la pantalla seguía en el login (PAGOS-UI-04,
+             * medido 2026-10-14). `refresh()` lo tira antes de ir.
+             */
+            router.refresh();
             router.push('/dashboard');
 
         } catch (err) {
@@ -302,6 +392,7 @@ export default function LoginPage() {
 
             guardarCredencial(resultado.tokens?.accessToken || resultado.accessToken);
             setAuth(resultado.user, resultado.accessToken || '', true);
+            router.refresh();
             router.push('/dashboard');
         } catch {
             setError('No se pudo entrar con la huella. Prueba con tu contraseña.');
@@ -310,8 +401,8 @@ export default function LoginPage() {
         }
     };
 
-    if (isCheckingScope) {
-        return <div className="min-h-screen bg-slate-50" />;
+    if (isCheckingScope || validatingInstitute) {
+        return <SkeletonAuth />;
     }
 
     if (directAccessForbidden || !detectedSlug) {
@@ -324,30 +415,30 @@ export default function LoginPage() {
                 {/* El liceo: su escudo y su nombre. Quien entra tiene que
                     reconocer el sitio antes de escribir su contraseña. */}
                 <div className="mb-6 flex flex-col items-center text-center">
-                    {instituteData?.logo && !logoError ? (
-                        <Image
-                            src={getAssetUrl(instituteData.logo)}
-                            alt={displayName || 'Logo del Instituto'}
-                            width={84}
-                            height={84}
-                            className="max-h-20 w-auto object-contain drop-shadow-sm"
-                            unoptimized
-                            priority
-                            onError={() => setLogoError(true)}
-                        />
-                    ) : (
-                        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-primary-600">
-                            <BookOpen size={32} />
-                        </span>
-                    )}
+                    <div className="flex h-20 w-full items-center justify-center">
+                        {instituteData?.logo && !logoError ? (
+                            <Image
+                                src={getAssetUrl(instituteData.logo)}
+                                alt={displayName || 'Logo del Instituto'}
+                                width={80}
+                                height={80}
+                                className="max-h-20 w-auto object-contain drop-shadow-sm"
+                                unoptimized
+                                priority
+                                onError={() => setLogoError(true)}
+                            />
+                        ) : (
+                            <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-primary-600">
+                                <BookOpen size={32} />
+                            </span>
+                        )}
+                    </div>
 
                     <h1 className="mt-4 text-2xl font-extrabold leading-tight text-gray-900 sm:text-3xl">
                         {hasAutoSlug
-                            ? validatingInstitute
-                                ? 'Cargando...'
-                                : instituteNotFound
-                                  ? 'Instituto No Encontrado'
-                                  : displayName
+                            ? instituteNotFound
+                                ? 'Instituto No Encontrado'
+                                : displayName
                             : 'Gestión Escolar'}
                     </h1>
                     <p className="mt-1 text-sm text-gray-600">
@@ -357,7 +448,21 @@ export default function LoginPage() {
                     </p>
                 </div>
 
-                {instituteNotFound ? (
+                {sinConexion && !instituteNotFound ? (
+                    <Card className="rounded-2xl px-5 py-8 text-center shadow-sm" data-login-sin-conexion>
+                        <h2 className="mb-2 text-lg font-bold text-gray-900">Sin conexión con el liceo</h2>
+                        <p className="mb-6 text-sm text-gray-600">
+                            Para entrar la primera vez hace falta internet. Cuando vuelva la conexión, esta pantalla se abre sola.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => window.location.reload()}
+                            className="min-h-[48px] rounded-xl bg-primary-600 px-6 text-sm font-bold text-white active:bg-primary-700"
+                        >
+                            Volver a intentar
+                        </button>
+                    </Card>
+                ) : instituteNotFound ? (
                     <Card className="rounded-2xl px-5 py-8 text-center shadow-sm">
                         <div className="mb-3 flex justify-center text-amber-500">
                             <svg className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -504,6 +609,7 @@ export default function LoginPage() {
                 <p className="mt-6 text-center text-xs text-gray-500">
                     Powered by <span className="font-medium text-primary-600">GestiEdu</span>
                 </p>
+                <EnlacesLegales />
             </div>
         </div>
     );

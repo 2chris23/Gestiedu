@@ -57,6 +57,8 @@ export interface Subject {
     code?: string;
     color: string;
     evaluacion?: EvaluacionDeMateria;
+    /** Los estudiantes eligen grupo (los grupos estables). */
+    porGrupos?: boolean;
     createdAt: string;
     updatedAt: string;
     teacherCount?: number;
@@ -92,12 +94,14 @@ export interface CreateSubjectData {
     name: string;
     color?: string;
     evaluacion?: EvaluacionDeMateria;
+    porGrupos?: boolean;
 }
 
 export interface UpdateSubjectData {
     name?: string;
     color?: string;
     evaluacion?: EvaluacionDeMateria;
+    porGrupos?: boolean;
 }
 
 class SubjectsService {
@@ -192,50 +196,6 @@ class SubjectsService {
             return response.data;
         } catch (error) {
             throw new Error(getApiErrorMessage(error, 'Error al obtener estadísticas'));
-        }
-    }
-
-    /**
-     * Obtener materias de un grado específico
-     */
-    async getSubjectsByGrade(grade: number, academicYearId?: string): Promise<Subject[]> {
-        try {
-            const response = await api.get(`/subjects/grade/${grade}`, {
-                params: { academicYearId }
-            });
-            return response.data.data;
-        } catch (error) {
-            throw new Error(getApiErrorMessage(error, 'Error al obtener materias del grado'));
-        }
-    }
-
-    /**
-     * Asignar materia a un grado (y profesor)
-     */
-    async assignSubjectToGrade(grade: number, subjectId: string, teacherId: string, academicYearId?: string): Promise<any> {
-        try {
-            const response = await api.post(`/subjects/grade/${grade}/assign`, {
-                subjectId,
-                teacherId,
-                academicYearId
-            });
-            return response.data;
-        } catch (error) {
-            throw new Error(getApiErrorMessage(error, 'Error al asignar materia'));
-        }
-    }
-
-    /**
-     * Remover materia de un grado
-     */
-    async removeSubjectFromGrade(grade: number, subjectId: string, academicYearId?: string): Promise<any> {
-        try {
-            const response = await api.delete(`/subjects/grade/${grade}/${subjectId}`, {
-                params: { academicYearId }
-            });
-            return response.data;
-        } catch (error) {
-            throw new Error(getApiErrorMessage(error, 'Error al remover materia del grado'));
         }
     }
 

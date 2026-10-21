@@ -89,7 +89,9 @@ async function main() {
         process.exit(1);
     }
 
-    const admin = await entrar('admin@testing.edu.ve', '123456');
+    // Otro liceo (el de 15.000 personas, `seed-load-test`): ADMIN y CLAVE.
+    const CLAVE = process.env.CLAVE || '123456';
+    const admin = await entrar(process.env.ADMIN || 'admin@testing.edu.ve', CLAVE);
 
     // Datos reales para armar las rutas que llevan identificadores.
     const { getTenantPrisma } = await import('../config/database');
@@ -110,11 +112,12 @@ async function main() {
      */
     const materia: any = await db.classroomSubject.findFirst({
         where: { classroomId: seccion?.id, teacherId: { not: null } },
-        select: { subjectId: true, teacher: { select: { email: true } } },
+        select: { subjectId: true, teacherId: true, teacher: { select: { email: true } } },
     });
     const alumno: any = await db.user.findFirst({ where: { role: 'STUDENT' as any }, select: { id: true } });
 
-    const profe = await entrar(materia?.teacher?.email ?? 'profesor3@testing.edu.ve', '123456');
+    const unProfe: any = materia ? null : await db.user.findFirst({ where: { role: 'TEACHER' as any, isActive: true }, select: { email: true } });
+    const profe = await entrar(materia?.teacher?.email ?? unProfe?.email ?? 'profesor3@testing.edu.ve', CLAVE);
 
     const pruebas: Array<[string, { token: string }, string]> = [
         ['panel del admin', admin, '/dashboard/admin'],
@@ -124,16 +127,18 @@ async function main() {
         ['buscar usuario por texto', admin, '/users?search=ana&page=1&limit=20'],
         ['alumnos de una sección', admin, `/students?classroomId=${seccion?.id}&page=1&limit=30`],
         ['resumen de la sección', admin, `/classrooms/${seccion?.id}/stats`],
-        ['medidores de la sección', admin, `/statistics/section/${seccion?.id}`],
-        ['materias del profesor', profe, '/teachers/my-subjects'],
-        ['secciones del profesor', profe, '/teachers/my-classrooms'],
         ['ficha de un alumno', admin, `/students/${alumno?.id}`],
         ['materias del liceo', admin, '/subjects'],
         ['secciones del ciclo', admin, `/classrooms?academicYearId=${anio?.id}`],
         ['plan de evaluación', profe, `/evaluation-plan/rows?classroomId=${seccion?.id}&subjectId=${materia?.subjectId}&lapso=1`],
-        ['notas de una materia', profe, `/grades?classroomId=${seccion?.id}&subjectId=${materia?.subjectId}`],
-        ['estadísticas del grado', admin, `/statistics/grade/${anio?.id}/${seccion?.grade}`],
-        ['estadísticas del ciclo', admin, `/statistics/cycle/${anio?.id}`],
+        ['la clase en vivo', profe, `/sessions/live-detail?classroomId=${seccion?.id}&subjectId=${materia?.subjectId}&date=${new Date().toISOString().slice(0, 10)}`],
+        ['resumen del ciclo', admin, `/academic-years/${anio?.id}/stats`],
+        // Las más pedidas según Salud (20-oct-2026): la boleta, el Inicio del
+        // alumno visto por el admin y el horario del profesor. Como admin, que
+        // no tiene copia guardada: lo medido es el cálculo de verdad.
+        ['boleta de un alumno', admin, `/students/${alumno?.id}/boleta`],
+        ['inicio del alumno', admin, `/students/${alumno?.id}/dashboard?academicYearId=${anio?.id}`],
+        ['horario del profesor', admin, `/schedules/teacher/${materia?.teacherId}/blocks`],
     ];
 
     console.log(`\n  Liceo: ${SLUG} · ${VECES} llamadas por pantalla · sin carga en paralelo\n`);

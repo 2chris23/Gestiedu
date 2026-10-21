@@ -3,314 +3,167 @@ import request = require('supertest');
 import { PrismaClient } from '@prisma/client';
 import { createId } from '@paralleldrive/cuid2';
 import { UserRole } from '../../src/utils/prisma-enums';
-import {
-    createTestServer,
-    createTestPrismaClient,
-    createTestUser,
-    createTestAcademicYear,
-    createTestSubject,
-    generateTestToken,
-} from '../helpers';
+import { platformPrisma } from '../../src/config/database';
+import { createTestServer, createTestPrismaClient, createTestUser, generateTestToken, createTestClassroom, createTestSubject } from '../helpers';
+import { tirarLoQueNoSirve } from '../../src/services/mantenimiento.service';
 
 /**
- * LA PAPELERA — NADA SE BORRA DE VERDAD
+ * LA PAPELERA DEL ADMIN (19-oct-2026; `services/papelera.service.ts`)
  *
- * Lo que se comprueba aquí no es que el borrado funcione (eso ya se prueba en
- * otro sitio), sino que **antes de borrar queda una copia completa**.
+ * Cristian: «imagina que eres el admin y borraste sin querer un estudiante y
+ * lo quieres recuperar… claro, esto tendría un límite». Y: lo borrado no se
+ * queda en la base para siempre.
  *
- * El caso que duele: un admin borra a un estudiante por error. Eso se lleva sus
- * notas, sus asistencias, sus observaciones y su historial académico. Sin copia,
- * lo único que queda es el respaldo de anoche — y restaurarlo borra todo lo que
- * el liceo hizo hoy.
- *
- * También se comprueba lo contrario: que las sesiones NO se guarden. Una llave
- * de casa guardada "por si acaso" es una llave de casa perdida.
+ *   PAPELERA-01 borrar un alumno y restaurarlo lo devuelve igual, tabla por tabla
+ *               (sus notas, su asistencia, su sección, su representante)
+ *   PAPELERA-02 la lista: de 20 en 20, qué se borró, quién y cuándo se va para siempre; solo el admin
+ *   PAPELERA-03 si se volvió a crear con la misma cédula, 409 YA_EXISTE y no se toca nada;
+ *               si se borró lo de arriba (su sección), 409 FALTA_LO_DE_ARRIBA
+ *   PAPELERA-04 «Borrar para siempre» lo quita ya; pasado el plazo del liceo, la tarea
+ *               diaria lo borra de la base; el plazo va de 7 a 90 y no borra el resto de la configuración
  */
 
 const SLUG = 'test-institute';
-const gId = () => {
-    // Siempre la 'c' delante: ver la nota de `tests/helpers.ts`.
-    return `c${createId()}`;
-};
+const gId = () => `c${createId()}`;
 
-describe('La papelera — nada se borra de verdad', () => {
+describe('La papelera del admin', () => {
     let server: FastifyInstance;
     let prisma: PrismaClient;
+    let admin: any, profe: any;
+    const tk: Record<string, string> = {};
+    let ano: any, seccion: any, materia: any, lapso: any;
+    const api = (t: string) => (r: request.Test) => r.set('Authorization', `Bearer ${t}`).set('X-Institute-Slug', SLUG);
+    const papelera = (t = tk.admin, pagina = 1) => api(t)(request(server.server).get(`/api/papelera?pagina=${pagina}`));
+    const restaurar = (op: string) => api(tk.admin)(request(server.server).post(`/api/papelera/${encodeURIComponent(op)}/restaurar`));
 
-    let admin: any;
-    let profesor: any;
-    let alumno: any;
-    const tokens: Record<string, string> = {};
-
-    let year: any;
-    let period: any;
-    let classroom: any;
-    let subject: any;
-    let actividad: any;
-
-    const auth = (token: string) => (req: request.Test) =>
-        req.set('Authorization', `Bearer ${token}`).set('X-Institute-Slug', SLUG);
-    const como = (quien: string) => (req: request.Test) => auth(tokens[quien])(req);
+    /** Un alumno con todo lo suyo: sección, nota, asistencia, representante. */
+    async function unAlumnoConTodo(nombre: string) {
+        const alumno = (await createTestUser(prisma, UserRole.STUDENT, { firstName: nombre, lastName: 'Prueba' })).user;
+        const madre = (await createTestUser(prisma, UserRole.TUTOR)).user;
+        await prisma.studentClassroom.create({ data: { studentId: alumno.id, classroomId: seccion.id, academicYearId: ano.id } });
+        await prisma.studentTutor.create({ data: { studentId: alumno.id, tutorId: madre.id, relationship: 'Madre' } as any });
+        const act = await prisma.activity.create({
+            data: { title: `Prueba ${nombre}`, type: 'SUMATIVA', scope: 'CLASSROOM', startDate: new Date('2026-10-01'), maxGrade: 20, weight: 1, classroomId: seccion.id, subjectId: materia.id, periodId: lapso.id, lapso: '1', createdBy: profe.id, instituteId: 'institute' } as any,
+        });
+        await prisma.grade.create({ data: { studentId: alumno.id, activityId: act.id, periodId: lapso.id, subjectId: materia.id, teacherId: profe.id, score: 17 } });
+        await prisma.dailyAttendance.create({ data: { studentId: alumno.id, classroomId: seccion.id, teacherId: profe.id, date: new Date('2026-10-02'), status: 'PRESENT' } as any });
+        return alumno;
+    }
+    const loDe = async (id: string) => ({
+        user: await prisma.user.findUnique({ where: { id } }),
+        notas: await prisma.grade.findMany({ where: { studentId: id }, orderBy: { id: 'asc' } }),
+        asistencia: await prisma.dailyAttendance.findMany({ where: { studentId: id }, orderBy: { id: 'asc' } }),
+        seccion: await prisma.studentClassroom.findMany({ where: { studentId: id }, orderBy: { id: 'asc' } }),
+        representante: await prisma.studentTutor.findMany({ where: { studentId: id }, orderBy: { id: 'asc' } }),
+    });
 
     beforeAll(async () => {
         server = await createTestServer();
         prisma = await createTestPrismaClient();
-
-        admin = (await createTestUser(prisma, UserRole.ADMIN)).user;
-        profesor = (await createTestUser(prisma, UserRole.TEACHER)).user;
-        alumno = (await createTestUser(prisma, UserRole.STUDENT)).user;
-
-        tokens.admin = generateTestToken(admin.id, UserRole.ADMIN, 'institute');
-        tokens.profesor = generateTestToken(profesor.id, UserRole.TEACHER, 'institute');
-
-        year = await createTestAcademicYear(prisma, 'institute');
-        period = await prisma.period.create({
-            data: {
-                id: gId(),
-                name: 'Primer Lapso',
-                academicYearId: year.id,
-                startDate: new Date('2026-09-01'),
-                endDate: new Date('2026-12-15'),
-                isActive: true,
-            },
-        });
-
-        classroom = await prisma.classroom.create({
-            data: {
-                id: gId(),
-                name: 'Papelera A',
-                slug: `pap-a-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                grade: 1,
-                section: 'A',
-                capacity: 30,
-                academicYearId: year.id,
-                instituteId: 'institute',
-                teacherId: profesor.id,
-            },
-        });
-
-        subject = await createTestSubject(prisma, 'institute');
-        await prisma.classroomSubject.create({
-            data: { classroomId: classroom.id, subjectId: subject.id, teacherId: profesor.id, weeklyBlocks: 3 },
-        });
-        await prisma.studentClassroom.create({
-            data: { studentId: alumno.id, classroomId: classroom.id, academicYearId: year.id, isActive: true },
-        });
-
-        actividad = await prisma.activity.create({
-            data: {
-                title: 'Evaluación de papelera',
-                type: 'SUMATIVA',
-                scope: 'CLASSROOM',
-                startDate: new Date('2026-09-10'),
-                maxGrade: 20,
-                weight: 1,
-                classroomId: classroom.id,
-                subjectId: subject.id,
-                periodId: period.id,
-                lapso: '1',
-                createdBy: profesor.id,
-                instituteId: 'institute',
-            },
-        });
-    });
+        admin = (await createTestUser(prisma, UserRole.ADMIN, { firstName: 'Directora', lastName: 'Admin' })).user;
+        profe = (await createTestUser(prisma, UserRole.TEACHER)).user;
+        tk.admin = generateTestToken(admin.id, UserRole.ADMIN, 'institute');
+        tk.profe = generateTestToken(profe.id, UserRole.TEACHER, 'institute');
+        ano = await prisma.academicYear.create({ data: { id: gId(), name: `Pap-${gId().slice(0, 5)}`, startDate: new Date('2026-09-15'), endDate: new Date('2027-07-15'), isActive: true, status: 'ACTIVE' as any, instituteId: 'institute' } });
+        lapso = await prisma.period.create({ data: { id: gId(), name: 'Primer Lapso', startDate: new Date('2026-09-15'), endDate: new Date('2026-12-15'), academicYearId: ano.id } });
+        seccion = await createTestClassroom(prisma, ano.id, 'institute');
+        materia = await createTestSubject(prisma, 'institute');
+    }, 120000);
 
     afterAll(async () => {
-        await prisma.$disconnect();
-        await server.close();
+        await platformPrisma.institute.update({ where: { id: 'institute' }, data: { academicConfig: {} } }).catch(() => undefined);
+        await prisma?.$disconnect();
+        await server?.close();
     });
 
-    /** Cada estudiante solo puede tener una nota por actividad: cada prueba usa la suya. */
-    const nuevaActividad = (titulo: string) =>
-        prisma.activity.create({
-            data: {
-                title: titulo,
-                type: 'SUMATIVA',
-                scope: 'CLASSROOM',
-                startDate: new Date('2026-09-10'),
-                maxGrade: 20,
-                weight: 1,
-                classroomId: classroom.id,
-                subjectId: subject.id,
-                periodId: period.id,
-                lapso: '1',
-                createdBy: profesor.id,
-                instituteId: 'institute',
-            },
-        });
+    it('PAPELERA-01: borrar un alumno y restaurarlo lo devuelve igual, tabla por tabla', async () => {
+        const ana = await unAlumnoConTodo('Ana');
+        const antes = await loDe(ana.id);
+        expect(antes.notas).toHaveLength(1);
 
-    const nuevaNota = async (score: number, studentId = alumno.id, activityId?: string) => {
-        const sobre = activityId ?? (await nuevaActividad(`Actividad ${gId()}`)).id;
-        return prisma.grade.create({
-            data: {
-                id: gId(),
-                score,
-                comments: 'nota de prueba',
-                studentId,
-                activityId: sobre,
-                periodId: period.id,
-                subjectId: subject.id,
-                teacherId: profesor.id,
-            } as any,
-        });
-    };
+        expect((await api(tk.admin)(request(server.server).delete(`/api/users/${ana.id}`))).status).toBe(200);
+        expect((await loDe(ana.id)).user).toBeNull();
 
-    const enPapelera = (tabla: string, registroId: string) =>
-        (prisma as any).registroBorrado.findFirst({ where: { tabla, registroId } });
+        const lista = (await papelera()).body.data;
+        const suyo = lista.borrados.find((b: any) => b.que === 'Estudiante Ana Prueba');
+        expect(suyo).toBeTruthy();
+        // Un solo borrado: el alumno y lo que arrastró (nota, asistencia, sección, representante).
+        expect(suyo.masCosas).toBeGreaterThanOrEqual(4);
+        expect(suyo.borradoPor).toBe('Directora Admin');
 
-    /**
-     * MIRAR LA RESPUESTA DEL BORRADO, SIEMPRE
-     *
-     * PAP-01 y PAP-02 fallaban una de cada tres tandas completas y pasaban
-     * siempre a solas. El motivo de fondo era invisible porque la prueba
-     * llamaba a borrar y **no miraba lo que el servidor contestaba**: cuando el
-     * borrado fallaba, lo único que se veía era "no hay copia en la papelera",
-     * que apunta a la papelera cuando el problema estaba antes.
-     *
-     * Esta ayuda exige que el borrado haya salido bien y, si no, enseña el
-     * código y el cuerpo de la respuesta. Una prueba que no mira la respuesta de
-     * lo que pidió no puede decir por qué falló.
-     */
-    const borrarYComprobar = async (url: string, quien = 'admin') => {
-        const res = await como(quien)(request(server.server).delete(url));
-        if (![200, 204].includes(res.status)) {
-            throw new Error(
-                `DELETE ${url} respondió ${res.status}: ${JSON.stringify(res.body)}`
-            );
+        const r = await restaurar(suyo.operacion);
+        expect(r.status).toBe(200);
+        expect(r.body.data.que).toBe('Estudiante Ana Prueba');
+        expect(await loDe(ana.id)).toEqual(antes);
+        // Ya no está en la papelera, y restaurar dos veces no hace nada.
+        expect((await papelera()).body.data.borrados.find((b: any) => b.operacion === suyo.operacion)).toBeUndefined();
+        expect((await restaurar(suyo.operacion)).status).toBe(404);
+    }, 90000);
+
+    it('PAPELERA-02: la lista va de 20 en 20, dice cuándo se va para siempre, y solo la ve el admin', async () => {
+        for (let i = 0; i < 22; i++) {
+            const m = await prisma.subject.create({ data: { id: gId(), name: `Borrable ${i}`, code: `B${i}-${gId().slice(0, 4)}`, slug: `b-${gId()}`, instituteId: 'institute' } as any });
+            expect((await api(tk.admin)(request(server.server).delete(`/api/subjects/${m.id}`))).status).toBeLessThan(300);
         }
-        return res;
-    };
+        const p1 = (await papelera()).body.data;
+        expect(p1.borrados).toHaveLength(20);
+        expect(p1.total).toBeGreaterThanOrEqual(22);
+        expect(p1.dias).toBe(30);
+        const b = p1.borrados[0];
+        expect(b.que).toMatch(/^Materia «Borrable \d+»$/);
+        expect(new Date(b.seBorraEl).getTime() - new Date(b.cuando).getTime()).toBe(30 * 86_400_000);
+        expect((await papelera(tk.admin, 2)).body.data.borrados.length).toBeGreaterThanOrEqual(2);
+        expect((await papelera(tk.profe)).status).toBe(403);
+        expect((await api(tk.profe)(request(server.server).post(`/api/papelera/${encodeURIComponent(b.operacion)}/restaurar`))).status).toBe(403);
+    }, 120000);
 
-    it('PAP-01: borrar una nota deja una copia completa', async () => {
-        const nota = await nuevaNota(17);
+    it('PAPELERA-03: lo que ya existe otra vez o lo que perdió a su padre no se restaura, y no se toca nada', async () => {
+        // Se volvió a crear con la misma cédula.
+        const beto = await unAlumnoConTodo('Beto');
+        await api(tk.admin)(request(server.server).delete(`/api/users/${beto.id}`)).expect(200);
+        const op = (await papelera()).body.data.borrados.find((x: any) => x.que === 'Estudiante Beto Prueba').operacion;
+        await createTestUser(prisma, UserRole.STUDENT, { id: beto.id, firstName: 'Beto', lastName: 'Nuevo' });
+        const r = await restaurar(op);
+        expect([r.status, r.body.code]).toEqual([409, 'YA_EXISTE']);
+        expect(await prisma.grade.count({ where: { studentId: beto.id } })).toBe(0); // no entró nada a medias
+        expect((await papelera()).body.data.borrados.some((x: any) => x.operacion === op)).toBe(true); // sigue en la papelera
 
-        await borrarYComprobar(`/api/grades/${nota.id}`);
+        // Se borró su sección después.
+        const otra = await prisma.classroom.create({ data: { id: gId(), name: '1er Grado B', slug: `aula-${gId()}`, grade: 1, section: 'B', capacity: 30, academicYearId: ano.id, instituteId: 'institute' } as any });
+        const caro = (await createTestUser(prisma, UserRole.STUDENT, { firstName: 'Caro', lastName: 'Prueba' })).user;
+        await prisma.studentClassroom.create({ data: { studentId: caro.id, classroomId: otra.id, academicYearId: ano.id } });
+        await api(tk.admin)(request(server.server).delete(`/api/users/${caro.id}`)).expect(200);
+        const opCaro = (await papelera()).body.data.borrados.find((x: any) => x.que === 'Estudiante Caro Prueba').operacion;
+        await prisma.classroom.delete({ where: { id: otra.id } });
+        const r2 = await restaurar(opCaro);
+        expect([r2.status, r2.body.code]).toEqual([409, 'FALTA_LO_DE_ARRIBA']);
+        expect(await prisma.user.findUnique({ where: { id: caro.id } })).toBeNull();
+    }, 90000);
 
-        // Ya no está donde estaba
-        expect(await prisma.grade.findUnique({ where: { id: nota.id } })).toBeNull();
+    it('PAPELERA-04: borrar para siempre, el plazo del liceo y la tarea diaria', async () => {
+        const dani = await unAlumnoConTodo('Dani');
+        await api(tk.admin)(request(server.server).delete(`/api/users/${dani.id}`)).expect(200);
+        const op = (await papelera()).body.data.borrados.find((x: any) => x.que === 'Estudiante Dani Prueba').operacion;
+        expect((await api(tk.admin)(request(server.server).delete(`/api/papelera/${encodeURIComponent(op)}`))).status).toBe(200);
+        expect(await prisma.$queryRawUnsafe<any[]>(`SELECT 1 FROM registros_borrados WHERE operacion = $1`, op)).toHaveLength(0);
+        expect((await restaurar(op)).status).toBe(404);
 
-        // Pero está guardada, entera
-        const copia = await enPapelera('grade', nota.id);
-        expect(copia).toBeTruthy();
-        expect(copia.contenido.id).toBe(nota.id);
-        expect(Number(copia.contenido.score)).toBe(17);
-        expect(copia.contenido.studentId).toBe(alumno.id);
-        expect(copia.contenido.activityId).toBe(nota.activityId);
-        expect(copia.contenido.comments).toBe('nota de prueba');
-    });
+        // El plazo: de 7 a 90, y guardarlo no borra el resto de la configuración.
+        await platformPrisma.institute.update({ where: { id: 'institute' }, data: { academicConfig: { notaMinimaAprobatoria: 12 } as any } });
+        const poner = (dias: number) => api(tk.admin)(request(server.server).put('/api/papelera/ajustes')).send({ dias });
+        expect((await poner(3)).body.code).toBe('PLAZO_INVALIDO');
+        expect((await poner(120)).body.code).toBe('PLAZO_INVALIDO');
+        expect((await poner(7)).status).toBe(200);
+        expect((await api(tk.admin)(request(server.server).get('/api/papelera/ajustes'))).body.data.dias).toBe(7);
+        const cfg = (await platformPrisma.institute.findUnique({ where: { id: 'institute' }, select: { academicConfig: true } }))!.academicConfig as any;
+        expect(cfg).toMatchObject({ notaMinimaAprobatoria: 12, papelera: { dias: 7 } });
 
-    it('PAP-02: la copia alcanza para volver a crear la fila tal cual', async () => {
-        const nota = await nuevaNota(11);
-        const antes = { ...nota } as any;
-
-        await borrarYComprobar(`/api/grades/${nota.id}`);
-        const copia = await enPapelera('grade', nota.id);
-        expect(copia).toBeTruthy();
-
-        // Se restaura desde lo guardado, sin inventar nada
-        const c = copia.contenido;
-        const restaurada = await prisma.grade.create({
-            data: {
-                id: c.id,
-                score: c.score,
-                comments: c.comments,
-                studentId: c.studentId,
-                activityId: c.activityId,
-                periodId: c.periodId,
-                subjectId: c.subjectId,
-                teacherId: c.teacherId,
-            } as any,
-        });
-
-        expect(restaurada.id).toBe(antes.id);
-        expect(Number((restaurada as any).score)).toBe(Number(antes.score));
-        expect(restaurada.studentId).toBe(antes.studentId);
-    });
-
-    it('PAP-03: queda anotado quién borró y desde dónde', async () => {
-        const nota = await nuevaNota(9);
-        await borrarYComprobar(`/api/grades/${nota.id}`);
-
-        const copia = await enPapelera('grade', nota.id);
-        expect(copia.borradoPor).toBe(admin.id);
-        expect(copia.motivo).toContain('/api/grades/');
-    });
-
-    it('PAP-04: borrar un estudiante guarda todo lo suyo, no solo su ficha', async () => {
-        const victima = (await createTestUser(prisma, UserRole.STUDENT)).user;
-        await prisma.studentClassroom.create({
-            data: { studentId: victima.id, classroomId: classroom.id, academicYearId: year.id, isActive: true },
-        });
-
-        const suNota = await nuevaNota(19, victima.id);
-        const suAsistencia = await prisma.dailyAttendance.create({
-            data: {
-                id: gId(),
-                studentId: victima.id,
-                date: new Date('2026-09-11'),
-                status: 'PRESENT',
-                classroomId: classroom.id,
-                teacherId: profesor.id,
-            } as any,
-        });
-        const suObservacion = await prisma.observation.create({
-            data: {
-                id: gId(),
-                studentId: victima.id,
-                title: 'Observación de prueba',
-                description: 'texto',
-                createdById: profesor.id,
-                instituteId: 'institute',
-            } as any,
-        });
-
-        const res = await como('admin')(request(server.server).delete(`/api/users/${victima.id}`));
-        expect([200, 204]).toContain(res.status);
-
-        // El estudiante ya no está
-        expect(await prisma.user.findUnique({ where: { id: victima.id } })).toBeNull();
-
-        // Y todo lo suyo quedó guardado
-        expect(await enPapelera('user', victima.id)).toBeTruthy();
-        expect(await enPapelera('grade', suNota.id)).toBeTruthy();
-        expect(await enPapelera('dailyAttendance', suAsistencia.id)).toBeTruthy();
-        expect(await enPapelera('observation', suObservacion.id)).toBeTruthy();
-
-        // La nota guardada conserva el valor, no solo el id
-        const copiaNota = await enPapelera('grade', suNota.id);
-        expect(Number(copiaNota.contenido.score)).toBe(19);
-    });
-
-    it('PAP-05: las sesiones NO se guardan en la papelera', async () => {
-        const victima = (await createTestUser(prisma, UserRole.STUDENT)).user;
-        const sesion = await prisma.refreshToken.create({
-            data: {
-                id: gId(),
-                token: `tk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                userId: victima.id,
-                expiresAt: new Date(Date.now() + 86400000),
-            } as any,
-        });
-
-        await como('admin')(request(server.server).delete(`/api/users/${victima.id}`));
-
-        // Guardar llaves de casa "por si acaso" es perderlas.
-        expect(await enPapelera('refreshToken', sesion.id)).toBeNull();
-        // Pero la persona sí se guarda
-        expect(await enPapelera('user', victima.id)).toBeTruthy();
-    });
-
-    it('PAP-06: borrar una actividad guarda también las notas que se lleva por delante', async () => {
-        const otraActividad = await nuevaActividad('Actividad que se borra');
-
-        const notaCondenada = await nuevaNota(15, alumno.id, otraActividad.id);
-
-        const res = await como('admin')(
-            request(server.server).delete(`/api/activities/${otraActividad.id}`)
-        );
-        expect([200, 204]).toContain(res.status);
-
-        expect(await enPapelera('activity', otraActividad.id)).toBeTruthy();
-        expect(await enPapelera('grade', notaCondenada.id)).toBeTruthy();
-    });
+        // Pasado el plazo, la tarea diaria lo borra de la base para siempre.
+        const eli = await unAlumnoConTodo('Eli');
+        await api(tk.admin)(request(server.server).delete(`/api/users/${eli.id}`)).expect(200);
+        await prisma.$executeRawUnsafe(`UPDATE registros_borrados SET "createdAt" = now() - interval '8 days' WHERE "registroId" = $1 OR "contenido"->>'studentId' = $1`, eli.id);
+        const tirado = await tirarLoQueNoSirve(prisma, new Date(), 7);
+        expect(tirado.papelera).toBeGreaterThanOrEqual(5);
+        expect(await prisma.$queryRawUnsafe<any[]>(`SELECT 1 FROM registros_borrados WHERE "registroId" = $1 OR "contenido"->>'studentId' = $1`, eli.id)).toHaveLength(0);
+    }, 90000);
 });

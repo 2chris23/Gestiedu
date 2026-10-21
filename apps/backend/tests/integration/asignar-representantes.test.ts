@@ -48,8 +48,9 @@ describe('Asignar representantes a un alumno', () => {
     const quitar = (token: string, studentId: string, tutorId: string) =>
         auth(token)(request(server.server).delete(`/api/users/${studentId}/tutors/${tutorId}`));
 
-    const verAsistenciaDe = (token: string, studentId: string) =>
-        auth(token)(request(server.server).get(`/api/attendance/student/${studentId}`));
+    /** Lo que abre el representante al tocar a su representado: sus actividades. */
+    const verAlAlumno = (token: string, studentId: string) =>
+        auth(token)(request(server.server).get(`/api/students/${studentId}/actividades`));
 
     beforeAll(async () => {
         server = await createTestServer();
@@ -74,7 +75,7 @@ describe('Asignar representantes a un alumno', () => {
     });
 
     it('REPR-01: sin asignar, la madre NO ve a Ana', async () => {
-        const res = await verAsistenciaDe(tk.madre, ana.id);
+        const res = await verAlAlumno(tk.madre, ana.id);
         expect([401, 403]).toContain(res.status);
     }, 60000);
 
@@ -84,7 +85,7 @@ describe('Asignar representantes a un alumno', () => {
         expect(res.body.tutor.tutor.id).toBe(madre.id);
         expect(res.body.tutor.relationship).toBe('Madre');
 
-        const ver = await verAsistenciaDe(tk.madre, ana.id);
+        const ver = await verAlAlumno(tk.madre, ana.id);
         expect(ver.status).toBe(200);
     }, 60000);
 
@@ -144,12 +145,12 @@ describe('Asignar representantes a un alumno', () => {
 
     it('REPR-09: al quitarla deja de ver a Ana, y el vínculo queda en la papelera', async () => {
         // Primero la ve (y queda guardada en memoria rápida esa respuesta).
-        expect((await verAsistenciaDe(tk.madre, ana.id)).status).toBe(200);
+        expect((await verAlAlumno(tk.madre, ana.id)).status).toBe(200);
 
         const res = await quitar(tk.admin, ana.id, madre.id);
         expect(res.status).toBe(200);
 
-        const ver = await verAsistenciaDe(tk.madre, ana.id);
+        const ver = await verAlAlumno(tk.madre, ana.id);
         expect([401, 403]).toContain(ver.status);
 
         const copia = await prisma.registroBorrado.findFirst({

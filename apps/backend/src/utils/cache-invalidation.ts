@@ -66,7 +66,6 @@ export async function invalidateStudentsGradesCache(
 
     try {
         const patterns = unicos.flatMap((studentId) => [
-            `cache:${instituteId}:/api/grades:${studentId}:*`,
             `cache:${instituteId}:/api/dashboard:${studentId}:*`,
             `cache:${instituteId}:/api/students/me:${studentId}:*`,
         ]);
@@ -93,7 +92,6 @@ export async function invalidateStudentGradesCache(
 ): Promise<void> {
     try {
         const patterns = [
-            `cache:${instituteId}:/api/grades:${studentId}:*`,
             `cache:${instituteId}:/api/dashboard:${studentId}:*`,
             `cache:${instituteId}:/api/students/me:${studentId}:*`,
         ];
@@ -117,58 +115,7 @@ export async function invalidateStudentGradesCache(
     }
 }
 
-/**
- * Invalida cache de asistencias de un aula
- */
-export async function invalidateClassroomAttendanceCache(
-    instituteId: string,
-    classroomId: string
-): Promise<void> {
-    try {
-        // Invalidar para todos los estudiantes del aula
-        const pattern = `cache:${instituteId}:/api/attendance:*:*classroomId=${classroomId}*`;
-        await conLiceo(instituteId, () => RedisCache.clearPattern(pattern));
 
-        cacheMetrics.incrementInvalidations();
-
-        logger.debug('Cache de asistencias invalidado', {
-            instituteId,
-            classroomId,
-        });
-    } catch (error) {
-        logger.error('Error invalidando cache de asistencias', {
-            error: error instanceof Error ? error.message : 'Unknown',
-            instituteId,
-            classroomId,
-        });
-    }
-}
-
-/**
- * Invalida cache de actividades de una materia
- */
-export async function invalidateSubjectActivitiesCache(
-    instituteId: string,
-    subjectId: string
-): Promise<void> {
-    try {
-        const pattern = `cache:${instituteId}:/api/activities:*:*subjectId=${subjectId}*`;
-        await conLiceo(instituteId, () => RedisCache.clearPattern(pattern));
-
-        cacheMetrics.incrementInvalidations();
-
-        logger.debug('Cache de actividades invalidado', {
-            instituteId,
-            subjectId,
-        });
-    } catch (error) {
-        logger.error('Error invalidando cache de actividades', {
-            error: error instanceof Error ? error.message : 'Unknown',
-            instituteId,
-            subjectId,
-        });
-    }
-}
 
 /**
  * Invalida cache de dashboard de todos los usuarios
@@ -193,74 +140,5 @@ export async function invalidateDashboardCache(
     }
 }
 
-/**
- * Invalida cache de horarios
- */
-export async function invalidateSchedulesCache(
-    instituteId: string
-): Promise<void> {
-    try {
-        const pattern = `cache:${instituteId}:/api/schedules:*`;
-        await conLiceo(instituteId, () => RedisCache.clearPattern(pattern));
 
-        cacheMetrics.incrementInvalidations();
 
-        logger.debug('Cache de horarios invalidado', {
-            instituteId,
-        });
-    } catch (error) {
-        logger.error('Error invalidando cache de horarios', {
-            error: error instanceof Error ? error.message : 'Unknown',
-            instituteId,
-        });
-    }
-}
-
-/**
- * Invalida cache de un instituto completo (usar con precaución)
- */
-export async function invalidateInstituteCache(
-    instituteId: string
-): Promise<void> {
-    try {
-        const pattern = `cache:${instituteId}:*`;
-        await conLiceo(instituteId, () => RedisCache.clearPattern(pattern));
-
-        cacheMetrics.incrementInvalidations();
-
-        logger.warn('Cache completo del instituto invalidado', {
-            instituteId,
-        });
-    } catch (error) {
-        logger.error('Error invalidando cache del instituto', {
-            error: error instanceof Error ? error.message : 'Unknown',
-            instituteId,
-        });
-    }
-}
-
-/**
- * Invalida cache por ruta específica
- */
-export async function invalidateCacheByRoute(
-    instituteId: string,
-    route: string
-): Promise<void> {
-    try {
-        const pattern = `cache:${instituteId}:${route}:*`;
-        await conLiceo(instituteId, () => RedisCache.clearPattern(pattern));
-
-        cacheMetrics.incrementInvalidations();
-
-        logger.debug('Cache invalidado por ruta', {
-            instituteId,
-            route,
-        });
-    } catch (error) {
-        logger.error('Error invalidando cache por ruta', {
-            error: error instanceof Error ? error.message : 'Unknown',
-            instituteId,
-            route,
-        });
-    }
-}

@@ -1,5 +1,6 @@
 'use client';
 
+import { BACKEND_URL } from '@/config/env';
 import { useParams, useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState, ReactNode } from 'react';
 import Link from 'next/link';
@@ -22,7 +23,8 @@ interface NavItem {
     roles: string[];
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3001';
+// La misma dirección que el resto de la app (`config/env.ts`; con el túnel, la de la página).
+const API_URL = BACKEND_URL;
 
 /**
  * La llave corta ya no está en las cookies: vive en la memoria de la pestaña
@@ -172,9 +174,10 @@ export default function InstituteLayout({ children }: { children: ReactNode; par
         );
     }
 
-    // Login page: render children directly without nav
+    // Login page: render children directly without nav. Siempre clara: es
+    // la puerta del liceo, con su color (el modo oscuro es de quien entra).
     if (isLoginPage) {
-        return <>{children}</>;
+        return <div className="modo-claro">{children}</div>;
     }
 
     const navItems = [

@@ -58,7 +58,8 @@ export async function getTeacherDashboard(request: FastifyRequest, reply: Fastif
     const userId = user?.userId;
     if (!userId) throw createError(400, ERROR_MESSAGES.TENANT_NOT_FOUND);
     const db = getTenantDb(request);
-    const dashboard = await dashboardService.getTeacherDashboard(userId, db);
+    const instituteId = (request as any).institute?.id ?? user.instituteId;
+    const dashboard = await dashboardService.getTeacherDashboard(userId, db, instituteId);
     return reply.status(200).send({ success: true, message: SUCCESS_MESSAGES.FETCH_SUCCESS, data: dashboard });
   } catch (error) {
     throw error;
@@ -93,65 +94,7 @@ export async function getTutorDashboard(request: FastifyRequest, reply: FastifyR
   }
 }
 
-export async function getSystemStats(request: FastifyRequest, reply: FastifyReply) {
-  try {
-    const user = request.user as RequestUser;
-    if (!user) throw createError(400, ERROR_MESSAGES.TENANT_NOT_FOUND);
-    const db = getTenantDb(request);
-    const stats = await dashboardService.getSystemStats(db);
-    return reply.status(200).send({ success: true, message: SUCCESS_MESSAGES.FETCH_SUCCESS, data: stats });
-  } catch (error) {
-    throw error;
-  }
-}
 
-export async function getInstituteStats(request: FastifyRequest, reply: FastifyReply) {
-  try {
-    const user = request.user as RequestUser;
-    if (!user) throw createError(400, ERROR_MESSAGES.TENANT_NOT_FOUND);
-    const db = getTenantDb(request);
-    const stats = await dashboardService.getInstituteStats(db);
-    return reply.status(200).send({ success: true, message: SUCCESS_MESSAGES.FETCH_SUCCESS, data: stats });
-  } catch (error) {
-    throw error;
-  }
-}
 
-export async function getRecentActivity(request: FastifyRequest, reply: FastifyReply) {
-  try {
-    const user = request.user as RequestUser;
-    const userId = user?.userId;
-    if (!userId) throw createError(400, ERROR_MESSAGES.TENANT_NOT_FOUND);
-    const db = getTenantDb(request);
-    const activities = await dashboardService.getRecentActivity(userId, db);
-    return reply.status(200).send({ success: true, message: SUCCESS_MESSAGES.FETCH_SUCCESS, data: activities });
-  } catch (error) {
-    throw error;
-  }
-}
 
-export async function getUpcomingEvents(request: FastifyRequest, reply: FastifyReply) {
-  try {
-    const user = request.user as RequestUser;
-    const userId = user?.userId;
-    if (!userId) throw createError(400, ERROR_MESSAGES.TENANT_NOT_FOUND);
-    const db = getTenantDb(request);
-    const events = await dashboardService.getUpcomingEvents(userId, db);
-    return reply.status(200).send({ success: true, message: SUCCESS_MESSAGES.FETCH_SUCCESS, data: events });
-  } catch (error) {
-    throw error;
-  }
-}
 
-export async function getPerformanceMetrics(request: FastifyRequest, reply: FastifyReply) {
-  try {
-    const user = request.user as RequestUser;
-    const userId = user?.userId;
-    if (!userId) throw createError(400, ERROR_MESSAGES.TENANT_NOT_FOUND);
-    const db = getTenantDb(request);
-    const metrics = await dashboardService.getPerformanceMetrics(userId, db);
-    return reply.status(200).send({ success: true, message: SUCCESS_MESSAGES.FETCH_SUCCESS, data: metrics });
-  } catch (error) {
-    throw error;
-  }
-}

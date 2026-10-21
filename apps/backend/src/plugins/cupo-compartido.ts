@@ -56,6 +56,21 @@ function contarEnRedis(cliente: ConContar, clave: string, ventana: number): Prom
     return cliente.contarCupo!(clave, ventana);
 }
 
+/**
+ * EL CUPO DE UN LICEO ENTERO DETRÁS DE SU WIFI (CUPO-REN-01, 2026-10-04)
+ *
+ * Renovar la sesión y `/health` no llevan credencial corta, así que el cupo
+ * general los cuenta por DIRECCIÓN. Un liceo sale a internet por una sola: con
+ * el cupo de una persona (100 por minuto), al volver la luz 150 de 200
+ * teléfonos se quedaban con 429 al renovar (medido, `medir:vuelve-la-luz`).
+ * Estas dos rutas tienen el cupo de un liceo; renovar sigue con su límite por
+ * llave (`userRateLimit`, 60 por minuto) contra quien machaque una concreta.
+ */
+export const CUPO_DEL_LICEO_POR_DIRECCION = (() => {
+    const v = Number(process.env.CUPO_DEL_LICEO_POR_DIRECCION);
+    return Number.isFinite(v) && v > 0 ? Math.floor(v) : 3000;
+})();
+
 export class CupoCompartido {
     private readonly enMemoria: any;
     private readonly prefijo: string;

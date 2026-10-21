@@ -1,13 +1,19 @@
 'use client';
 
-import { useState } from 'react';
-import { Clock, User, Search, CheckCircle, X, Loader2, BookOpen, AlertCircle } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Check, Loader2, Minus, Plus, Search } from 'lucide-react';
+import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import UserAvatar from '@/components/ui/UserAvatar';
 import { useTeachers } from '@/hooks/useTeachers';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { useAssignTeacherToSubject, useUpdateClassroomSubject } from '@/hooks/useClassroomSubjects';
-import { useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { useAcademicConfig } from '@/hooks/useAcademicConfig';
+import { classroomSubjectsService } from '@/services/classroomSubjects.service';
+import { turnosDeLaConfig } from '@/lib/franjas-del-horario';
+import { BarraDeCarga, colorDeLaCarga, estadoDeLaCarga, horas, type EstadoDeLaCarga } from '@/lib/carga-horaria';
+import api from '@/lib/axios';
+import { cn, getApiErrorMessage } from '@/lib/utils';
 
 interface AssignModalProps {
     sectionId: string;
@@ -15,278 +21,215 @@ interface AssignModalProps {
     subjectSlug: string;
     currentTeacherId?: string;
     initialWeeklyBlocks?: number;
+    /** El turno de la sección: la hora de clase de la tarde puede durar otra cosa. */
+    turno?: string;
+    /** Desde la ficha de un profesor: solo él, sin buscar. */
+    soloEste?: { id: string; nombre: string; avatar: string | null; total: number; cargo: number; horasDelCargo: number | null; estado: EstadoDeLaCarga };
     onClose: () => void;
 }
 
-export function AssignSubjectTeacherModal({ sectionId, sectionName, subjectSlug, currentTeacherId, initialWeeklyBlocks, onClose }: AssignModalProps) {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [selectedTeacherId, setSelectedTeacherId] = useState(currentTeacherId || '');
-    const [weeklyBlocks, setWeeklyBlocks] = useState(initialWeeklyBlocks || 4); // Default to 4 blocks
-    const BLOCK_DURATION_MINUTES = 45;
+interface CargaDelProfesor {
+    total: number;
+    cargo: number;
+    horasDelCargo: number | null;
+    estado: EstadoDeLaCarga;
+}
 
-    const totalMinutes = weeklyBlocks * BLOCK_DURATION_MINUTES;
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    const formattedDuration = `${hours > 0 ? `${hours}h ` : ''}${minutes > 0 ? `${minutes}m` : ''}`;
+/**
+ * ASIGNAR EL PROFESOR DE UNA CLASE (y sus bloques)
+ *
+ * Cada profesor dice cuánto lleva ya y contra qué se mide: sus horas del
+ * cargo o, sin ellas, el máximo del liceo (`personal.service`, una sola
+ * cuenta). Antes: 45 min por bloque y «30 – 40 h» fijos para todos.
+ */
+export function AssignSubjectTeacherModal({ sectionId, sectionName, subjectSlug, currentTeacherId, initialWeeklyBlocks, turno, soloEste, onClose }: AssignModalProps) {
+    const [buscar, setBuscar] = useState('');
+    const [elegido, setElegido] = useState(soloEste?.id || currentTeacherId || '');
+    const [bloques, setBloques] = useState(initialWeeklyBlocks || 4);
 
-    const debouncedSearch = useDebouncedValue(searchTerm, 300);
-    const { data: teachersData, isLoading: loadingTeachers } = useTeachers(debouncedSearch);
-    const assignTeacher = useAssignTeacherToSubject();
-    const updateConfig = useUpdateClassroomSubject();
-    const queryClient = useQueryClient();
+    const { data: config } = useAcademicConfig();
+    const duracion = useMemo(() => {
+        const turnos = turnosDeLaConfig(config?.schedule);
+        return (turno === 'TARDE' ? turnos.TARDE : turnos.MANANA).duracion;
+    }, [config, turno]);
+    const horasDeEsta = Math.round(((bloques * duracion) / 60) * 100) / 100;
 
-    const teachers: any[] = Array.isArray(teachersData) ? teachersData : [];
+    const { data: reglas } = useQuery({
+        queryKey: ['reglas-carga-horaria'],
+        queryFn: async () => (await api.get('/institutes/current/carga-horaria')).data.data as { minimo: number; maximo: number },
+    });
 
-    const handleSave = async () => {
-        if (!selectedTeacherId) {
-            toast.error('Selecciona un profesor');
-            return;
-        }
+    const debounced = useDebouncedValue(buscar, 300);
+    const { data: teachersData, isLoading: cargandoProfes } = useTeachers(debounced, { enabled: !soloEste });
+    const profes: any[] = soloEste
+        ? [{ id: soloEste.id, firstName: soloEste.nombre, lastName: '', avatar: soloEste.avatar, cargaHoraria: soloEste }]
+        : Array.isArray(teachersData) ? teachersData : [];
+    const isLoading = !soloEste && cargandoProfes;
+    const [guardando, setGuardando] = useState(false);
+    const qc = useQueryClient();
 
+    const cargaDe = (t: any): CargaDelProfesor => {
+        const total = Number(t.cargaHoraria?.total ?? t.totalWeeklyHours ?? 0);
+        const cargo = Number(t.cargaHoraria?.cargo ?? reglas?.maximo ?? 40);
+        return { total, cargo, horasDelCargo: t.cargaHoraria?.horasDelCargo ?? null, estado: t.cargaHoraria?.estado ?? 'POR_DEBAJO' };
+    };
+
+    const elProfe = profes.find((t) => t.id === elegido);
+    // Si ya es suyo, sus horas de hoy ya cuentan esta clase: no se suman dos veces.
+    const proyeccion = elProfe
+        ? (() => {
+              const c = cargaDe(elProfe);
+              const base = elegido === currentTeacherId ? Math.max(0, c.total - ((initialWeeklyBlocks || 0) * duracion) / 60) : c.total;
+              const total = Math.round((base + horasDeEsta) * 100) / 100;
+              return { ...c, antes: c.total, total, estado: estadoDeLaCarga(total, reglas ?? { minimo: 30, maximo: 40 }, c.horasDelCargo) };
+          })()
+        : null;
+
+    // Un solo aviso: los ganchos de antes avisaban cada uno por su lado (tres a la vez).
+    const guardar = async () => {
+        if (!elegido) return toast.error('Elige un profesor');
+        setGuardando(true);
         try {
-            // Assign teacher to this classroom-subject pair
-            await assignTeacher.mutateAsync({
-                classroomId: sectionId,
-                subjectId: subjectSlug,
-                data: { teacherId: selectedTeacherId },
-            });
-
-            // Update weekly hours (converting blocks to hours conceptually, backend expects hoursPerWeek for now)
-            await updateConfig.mutateAsync({
-                classroomId: sectionId,
-                subjectId: subjectSlug,
-                data: { 
-                    hoursPerWeek: totalMinutes / 60, // Store actual hours in hoursPerWeek
-                    weeklyBlocks: weeklyBlocks       // Ensure backend schema can accept this or handle it
-                },
-            });
-
-            // Invalidate queries so parent page refreshes
-            queryClient.invalidateQueries({ queryKey: ['subject'] });
-            queryClient.invalidateQueries({ queryKey: ['subjects'] });
-            queryClient.invalidateQueries({ queryKey: ['classroomSubject'] });
-
-            toast.success('Profesor y bloques asignados correctamente');
+            await classroomSubjectsService.assignTeacherToSubject(sectionId, subjectSlug, { teacherId: elegido });
+            // Las horas las pone el servidor: los bloques por la hora de clase del turno.
+            await classroomSubjectsService.updateClassroomSubject(sectionId, subjectSlug, { weeklyBlocks: bloques });
+            for (const k of ['subject', 'subjects', 'classroomSubject', 'classroomSubjects', 'teachers', 'profesores']) qc.invalidateQueries({ queryKey: [k] });
+            toast.success('Profesor asignado');
             onClose();
-        } catch (err) {
-            // errors are handled by the mutation hooks
+        } catch (e) {
+            toast.error(getApiErrorMessage(e, 'No se pudo asignar'));
+        } finally {
+            setGuardando(false);
         }
     };
 
-    const isSaving = assignTeacher.isPending || updateConfig.isPending;
-
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Asignar Profesor">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-                {/* Header */}
-                <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 py-4 flex items-center justify-between">
-                    <div>
-                        <h2 className="text-white font-bold text-lg">Asignar Profesor</h2>
-                        <p className="text-indigo-200 text-sm mt-0.5">Sección: <span className="font-semibold text-white">{sectionName}</span></p>
-                    </div>
-                    <button aria-label="Cerrar" onClick={onClose} className="p-2 rounded-lg hover:bg-indigo-500 text-white transition-colors">
-                        <X size={18} />
-                    </button>
-                </div>
+        <Dialog open onOpenChange={(v) => !v && onClose()}>
+            <DialogContent
+                aria-label="Asignar Profesor"
+                className="flex max-h-[calc(100dvh-2rem)] max-w-lg flex-col gap-0 overflow-hidden rounded-[28px] bg-gray-50 p-0 sm:rounded-[28px]"
+            >
+                <DialogHeader className="shrink-0 px-5 pb-3 pr-14 pt-5 text-left">
+                    <DialogTitle className="text-lg font-bold text-gray-900">Asignar profesor</DialogTitle>
+                    <DialogDescription className="text-sm text-gray-600">{sectionName}</DialogDescription>
+                </DialogHeader>
 
-                <div className="p-6 space-y-5">
-                    {/* Bloques semanales */}
-                    <div>
-                        <label htmlFor="weeklyBlocks" className="block text-sm font-semibold text-gray-700 mb-2">
-                            <Clock size={14} className="inline mr-1 text-indigo-500" />
-                            Bloques de clase semanales
-                        </label>
-                        <div className="flex items-center gap-3">
-                            <input
-                                type="range"
-                                id="weeklyBlocks"
-                                min={1}
-                                max={20}
-                                value={weeklyBlocks}
-                                onChange={(e) => setWeeklyBlocks(Number(e.target.value))}
-                                className="flex-1 accent-indigo-600"
-                            />
-                            <div className="w-20 text-center">
-                                <span className="text-2xl font-bold text-indigo-600">{weeklyBlocks}</span>
-                                <span className="text-xs text-gray-500 block">bloques</span>
-                            </div>
-                        </div>
-                        <div className="flex justify-between items-center text-xs mt-1">
-                            <div className="flex justify-between w-full text-gray-400">
-                                <span>1 bloque</span>
-                                <span>20 bloques</span>
-                            </div>
-                        </div>
-                        <p className="text-sm font-medium text-indigo-700 bg-indigo-50 px-3 py-2 rounded-lg mt-3 flex items-center justify-between">
-                            <span>Tiempo total asignado:</span>
-                            <span className="font-bold">{formattedDuration}</span>
-                        </p>
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-4">
+                    {/* Los bloques: menos y más, con lo que suman. */}
+                    <div className="flex items-center gap-3 rounded-[22px] bg-white px-4 py-3 ring-1 ring-gray-200">
+                        <span className="min-w-0 flex-1">
+                            <span className="block text-[15px] font-medium text-gray-900">Bloques a la semana</span>
+                            <span className="block text-sm text-gray-600">
+                                {horas(horasDeEsta)} h · clases de {duracion} min
+                            </span>
+                        </span>
+                        <button
+                            type="button"
+                            aria-label="Un bloque menos"
+                            disabled={bloques <= 1}
+                            onClick={() => setBloques((b) => Math.max(1, b - 1))}
+                            className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-40"
+                        >
+                            <Minus className="h-4 w-4" aria-hidden />
+                        </button>
+                        <span className="w-8 text-center text-2xl font-bold tabular-nums text-gray-900" aria-live="polite" aria-label={`${bloques} bloques`}>
+                            {bloques}
+                        </span>
+                        <button
+                            type="button"
+                            aria-label="Un bloque más"
+                            disabled={bloques >= 20}
+                            onClick={() => setBloques((b) => Math.min(20, b + 1))}
+                            className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-40"
+                        >
+                            <Plus className="h-4 w-4" aria-hidden />
+                        </button>
                     </div>
 
-                    {/* Búsqueda de profesores */}
-                    <div>
-                        <label htmlFor="teacherSearch" className="block text-sm font-semibold text-gray-700 mb-2">
-                            <User size={14} className="inline mr-1 text-indigo-500" />
-                            Seleccionar Profesor
-                        </label>
-                        <div className="relative mb-3">
-                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                                type="text"
-                                id="teacherSearch"
-                                placeholder="Buscar profesor..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                            />
-                        </div>
+                    {!soloEste && (
+                    <label className="relative block">
+                        <span className="sr-only">Buscar profesor</span>
+                        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" aria-hidden />
+                        <input
+                            value={buscar}
+                            onChange={(e) => setBuscar(e.target.value)}
+                            placeholder="Buscar profesor"
+                            className="!h-12 w-full !rounded-full !border-0 !bg-white pl-11 pr-4 text-[15px] !ring-1 !ring-gray-200 focus:!ring-2 focus:!ring-indigo-500"
+                        />
+                    </label>
+                    )}
 
-                        <div className="border border-gray-200 rounded-xl overflow-hidden max-h-52 overflow-y-auto">
-                            {loadingTeachers ? (
-                                <div className="flex items-center justify-center py-8 text-gray-400 gap-2">
-                                    <Loader2 size={18} className="animate-spin" />
-                                    <span className="text-sm">Cargando profesores...</span>
-                                </div>
-                            ) : !Array.isArray(teachers) || teachers.length === 0 ? (
-                                <div className="text-center py-8 text-gray-400">
-                                    <BookOpen size={32} className="mx-auto mb-2 opacity-40" />
-                                    <p className="text-sm">No hay profesores disponibles</p>
-                                </div>
-                            ) : (
-                                teachers.map((teacher: any) => {
-                                    const teacherId = teacher.id;
-                                    const fullName = teacher.firstName
-                                        ? `${teacher.firstName} ${teacher.lastName}`
-                                        : teacher.name || 'Sin nombre';
-                                    const isSelected = selectedTeacherId === teacherId;
-
-                                    return (
-                                        <button
-                                            key={teacherId}
-                                            onClick={() => setSelectedTeacherId(teacherId)}
-                                            className={cn(
-                                                'w-full flex items-center gap-3 px-4 py-3 text-left transition-colors border-b border-gray-50 last:border-b-0',
-                                                isSelected
-                                                    ? 'bg-indigo-50 border-l-2 border-l-indigo-500'
-                                                    : 'hover:bg-gray-50'
-                                            )}
-                                        >
-                                            <div className={cn(
-                                                'w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0',
-                                                isSelected ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'
-                                            )}>
-                                                {fullName.charAt(0).toUpperCase()}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className={cn(
-                                                    'text-sm font-semibold truncate',
-                                                    isSelected ? 'text-indigo-700' : 'text-gray-900'
-                                                )}>
-                                                    {fullName}
-                                                </p>
-                                                <p className="text-xs text-gray-400 truncate">{teacher.email}</p>
-                                                <div className="text-right flex-shrink-0">
-                                                    <span className="text-xs font-semibold text-gray-600 block">
-                                                        {(teacher.totalWeeklyHours || 0).toFixed(1)}h actuales
-                                                    </span>
-                                                    <span className="text-[10px] text-gray-400">
-                                                        {teacher.totalWeeklyBlocks || 0} bloques
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            {isSelected && (
-                                                <CheckCircle size={18} className="text-indigo-600 flex-shrink-0 ml-2" />
-                                            )}
-                                        </button>
-                                    );
-                                })
-                            )}
-                        </div>
-
-                        {/* Panel Predictivo de Carga Horaria */}
-                        {(() => {
-                            const selectedTeacher = teachers.find((t: any) => t.id === selectedTeacherId);
-                            if (!selectedTeacher) return null;
-
-                            const currentHours = selectedTeacher.totalWeeklyHours || 0;
-                            const additionalHours = totalMinutes / 60;
-                            const projectedTotalHours = currentHours + additionalHours;
-                            const isNearLimit = projectedTotalHours >= 30 && projectedTotalHours <= 40;
-                            const isOverLimit = projectedTotalHours > 40;
-
-                            return (
-                                <div className={cn(
-                                    "mt-4 p-4 rounded-xl border transition-all",
-                                    isOverLimit
-                                        ? "bg-rose-50 border-rose-200 text-rose-900"
-                                        : isNearLimit
-                                            ? "bg-amber-50 border-amber-200 text-amber-900"
-                                            : "bg-indigo-50/70 border-indigo-100 text-indigo-950"
-                                )}>
-                                    <div className="flex items-center justify-between text-xs font-bold mb-2">
-                                        <span>Proyección de Carga Horaria Docente</span>
-                                        <span className={cn(
-                                            "px-2 py-0.5 rounded-full text-[11px]",
-                                            isOverLimit ? "bg-rose-200 text-rose-800" : isNearLimit ? "bg-amber-200 text-amber-800" : "bg-indigo-200 text-indigo-800"
-                                        )}>
-                                            Límite recomendado: 30 - 40h
-                                        </span>
-                                    </div>
-
-                                    <div className="grid grid-cols-3 gap-2 text-center py-2 bg-white/80 rounded-lg border border-gray-100">
-                                        <div>
-                                            <p className="text-[11px] text-gray-500 font-medium">Horas Actuales</p>
-                                            <p className="text-sm font-bold text-gray-800">{currentHours.toFixed(1)}h</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[11px] text-indigo-600 font-medium">+ Suma Esta Clase</p>
-                                            <p className="text-sm font-bold text-indigo-600">+{additionalHours.toFixed(1)}h</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[11px] text-gray-500 font-medium">Total Resultante</p>
-                                            <p className={cn(
-                                                "text-sm font-black",
-                                                isOverLimit ? "text-rose-600" : isNearLimit ? "text-amber-600" : "text-indigo-700"
-                                            )}>
-                                                {projectedTotalHours.toFixed(1)}h / sem
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    {isOverLimit && (
-                                        <p className="text-xs text-rose-700 font-medium mt-2 flex items-center gap-1.5">
-                                            <AlertCircle size={14} className="shrink-0" />
-                                            Atención: El docente superará el límite máximo pedagógico de 40 horas semanales.
-                                        </p>
-                                    )}
-                                </div>
-                            );
-                        })()}
-                    </div>
-                </div>
-
-                {/* Footer */}
-                <div className="px-6 pb-6 flex gap-3 justify-end">
-                    <button
-                        onClick={onClose}
-                        disabled={isSaving}
-                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-                    >
-                        Cancelar
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={isSaving || !selectedTeacherId}
-                        className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-                    >
-                        {isSaving ? (
-                            <><Loader2 size={16} className="animate-spin" /> Guardando...</>
+                    <ul className="divide-y divide-gray-100 overflow-hidden rounded-[22px] bg-white ring-1 ring-gray-200" aria-label="Profesores">
+                        {isLoading ? (
+                            <li className="flex items-center justify-center gap-2 py-8 text-sm text-gray-600">
+                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Cargando profesores
+                            </li>
+                        ) : profes.length === 0 ? (
+                            <li className="py-8 text-center text-sm text-gray-600">No hay profesores con ese nombre</li>
                         ) : (
-                            'Confirmar Asignación'
+                            profes.map((t) => {
+                                const c = cargaDe(t);
+                                const esta = t.id === elegido;
+                                const nombre = `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim() || 'Sin nombre';
+                                return (
+                                    <li key={t.id}>
+                                        <button
+                                            type="button"
+                                            aria-pressed={esta}
+                                            onClick={() => setElegido(t.id)}
+                                            className={cn('flex w-full items-center gap-3 px-4 py-3 text-left transition-colors', esta ? 'bg-indigo-50' : 'hover:bg-gray-50')}
+                                        >
+                                            <UserAvatar name={nombre} src={t.avatar} className="h-10 w-10 shrink-0" initialsClassName="text-xs" />
+                                            <span className="min-w-0 flex-1">
+                                                <span className="flex items-baseline justify-between gap-2">
+                                                    <span className="truncate text-[15px] font-medium text-gray-900">{nombre}</span>
+                                                    <span className={cn('shrink-0 text-sm font-semibold tabular-nums', colorDeLaCarga(c.estado).texto)}>
+                                                        {horas(c.total)} / {c.cargo} h
+                                                    </span>
+                                                </span>
+                                                <BarraDeCarga total={c.total} cargo={c.cargo} estado={c.estado} className="mt-1.5" />
+                                            </span>
+                                            {esta && <Check className="h-5 w-5 shrink-0 text-indigo-600" aria-hidden />}
+                                        </button>
+                                    </li>
+                                );
+                            })
                         )}
-                    </button>
+                    </ul>
                 </div>
-            </div>
-        </div>
+
+                {/* Lo que quedaría: sus horas de hoy → con esta clase. */}
+                <div className="zona-segura-abajo shrink-0 space-y-3 border-t border-gray-200 bg-gray-50 px-5 pb-5 pt-3">
+                    {proyeccion && (
+                        <p className={cn('rounded-[18px] px-4 py-2.5 text-sm', colorDeLaCarga(proyeccion.estado).fondo)} aria-live="polite">
+                            <span className="font-semibold">
+                                {horas(proyeccion.antes)} → {horas(proyeccion.total)} h
+                            </span>{' '}
+                            de {proyeccion.cargo} h{proyeccion.horasDelCargo ? ' de su cargo' : ' (el máximo del liceo)'}
+                            {proyeccion.estado === 'SOBRECARGA' && ' · se pasa'}
+                        </p>
+                    )}
+                    <div className="flex gap-3">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            disabled={guardando}
+                            className="min-h-[48px] flex-1 rounded-full bg-white px-4 text-sm font-semibold text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 disabled:opacity-60"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            type="button"
+                            onClick={guardar}
+                            disabled={guardando || !elegido}
+                            className="flex min-h-[48px] flex-[2] items-center justify-center gap-2 rounded-full bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                        >
+                            {guardando && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+                            Asignar
+                        </button>
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
     );
 }

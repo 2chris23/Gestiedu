@@ -1,6 +1,5 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { registrarRevision } from '../services/revision.service';
-import { borrarGuardandoCopia, quienBorra } from '../utils/papelera';
 import { instituteTimezone, todayInTimezone } from '../utils/school-time';
 
 /**
@@ -68,23 +67,3 @@ export async function guardarRevision(
     }
 }
 
-/** DELETE /api/academic-years/:id/revisiones/:revisionId — con copia en la papelera. */
-export async function borrarRevision(
-    request: FastifyRequest<{ Params: { id: string; revisionId: string } }>,
-    reply: FastifyReply
-) {
-    const prisma: any = request.tenantPrisma;
-    const ciclo = await prisma.academicYear.findUnique({ where: { id: request.params.id }, select: { status: true } });
-    if (!ciclo) return reply.status(404).send({ error: 'Año escolar no encontrado', code: 'NOT_FOUND' });
-    if (ciclo.status === 'COMPLETED') {
-        return reply.status(409).send({ error: 'El año escolar ya se cerró', code: 'CICLO_CERRADO' });
-    }
-    const n = await borrarGuardandoCopia(
-        prisma,
-        'notaDeRevision',
-        { id: request.params.revisionId, academicYearId: request.params.id },
-        quienBorra(request as any)
-    );
-    if (n === 0) return reply.status(404).send({ error: 'Nota de revisión no encontrada', code: 'NOT_FOUND' });
-    return reply.send({ success: true });
-}

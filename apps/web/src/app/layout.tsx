@@ -10,8 +10,15 @@ import { DynamicTitle } from '@/components/common/DynamicTitle';
 import { DynamicColors } from '@/components/common/DynamicColors';
 import { FichaDeLaApp } from '@/components/common/FichaDeLaApp';
 import { AyudanteDeLaApp } from '@/components/common/AyudanteDeLaApp';
+import { ArranqueYCandado } from '@/components/arranque/ArranqueYCandado';
 import { MarcaDeArranque } from '@/components/common/MarcaDeArranque';
 import { GUARDIAN_DEL_ARRANQUE } from '@/lib/guardian-del-arranque';
+import { CORTINA_DEL_ARRANQUE } from '@/lib/cortina-del-arranque';
+import { COLOR_ANTES_DE_PINTAR } from '@/lib/tema-de-la-app';
+import { MODO_ANTES_DE_PINTAR } from '@/lib/modo-de-la-app';
+import { SeguirElModo } from '@/components/layout/SeguirElModo';
+import { DePie } from '@/components/common/DePie';
+import { LATERAL_ANTES_DE_PINTAR } from '@/lib/barra-lateral';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -84,9 +91,19 @@ export default function RootLayout({
             <head>
                 {/* Nunca en blanco: corre aunque no llegue ningún archivo de la app. */}
                 <script dangerouslySetInnerHTML={{ __html: GUARDIAN_DEL_ARRANQUE }} />
+                {/* En la app: nada a la vista hasta que salga el libro. */}
+                <script dangerouslySetInnerHTML={{ __html: CORTINA_DEL_ARRANQUE }} />
+                {/* El color que eligió quien usa este teléfono, antes de pintar. */}
+                <script dangerouslySetInnerHTML={{ __html: COLOR_ANTES_DE_PINTAR }} />
+                {/* Claro u oscuro, antes de pintar: sin fogonazo blanco. */}
+                <script dangerouslySetInnerHTML={{ __html: MODO_ANTES_DE_PINTAR }} />
+                {/* La barra lateral del ordenador, recogida o no, antes de pintar. */}
+                <script dangerouslySetInnerHTML={{ __html: LATERAL_ANTES_DE_PINTAR }} />
             </head>
             <body className={inter.className} suppressHydrationWarning={true}>
                 <MarcaDeArranque />
+                <SeguirElModo />
+                <DePie />
                 <QueryProvider>
                     <ConfirmProvider>
                         <DynamicFavicon />
@@ -96,6 +113,8 @@ export default function RootLayout({
                             <FichaDeLaApp />
                         </Suspense>
                         <AyudanteDeLaApp />
+                        {/* En la app: el libro, el logo y la pantalla de bloqueo. */}
+                        <ArranqueYCandado />
                         {children}
                     </ConfirmProvider>
                 </QueryProvider>

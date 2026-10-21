@@ -1,5 +1,17 @@
 import winston from 'winston';
 import { config } from '../config/environment';
+import { taparDatos, taparEnTexto } from './datos-en-registros';
+
+/** Antes que nada: ni cédulas, ni correos, ni contraseñas al registro (REGISTRO-*). */
+const tapar = winston.format((info) => {
+  // Con su nombre: `password`, `token`… se reconocen por la clave.
+  const claves = Object.keys(info).filter((k) => k !== 'level' && k !== 'timestamp' && k !== 'message' && k !== 'stack');
+  const tapado = taparDatos(Object.fromEntries(claves.map((k) => [k, (info as any)[k]]))) as Record<string, unknown>;
+  for (const k of claves) (info as any)[k] = tapado[k];
+  if (typeof info.message === 'string') info.message = taparEnTexto(info.message);
+  if (typeof (info as any).stack === 'string') (info as any).stack = taparEnTexto((info as any).stack);
+  return info;
+});
 
 /**
  * EN PRODUCCIÓN NO SE ESCRIBE UN RENGLÓN POR CONSULTA.
@@ -31,6 +43,8 @@ function nivelSeguro(): string {
 const loggerConfig: winston.LoggerOptions = {
   level: nivelSeguro(),
   format: winston.format.combine(
+    winston.format.errors({ stack: true }),
+    tapar(),
     winston.format.timestamp({
       format: 'YYYY-MM-DD HH:mm:ss',
     }),
@@ -101,22 +115,7 @@ const loggerConfig: winston.LoggerOptions = {
 // Crear la instancia del logger
 export const logger = winston.createLogger(loggerConfig);
 
-// Función para crear un logger específico para un módulo
-export const createModuleLogger = (module: string) => {
-  return logger.child({ module });
-};
 
-// Función para loggear errores con contexto
-export const logErrorWithContext = (error: Error, context?: Record<string, any>) => {
-  logger.error('Error occurred', {
-    error: {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-    },
-    ...context,
-  });
-};
 
 // Función para loggear eventos de auditoría
 export const logAudit = (
@@ -135,118 +134,10 @@ export const logAudit = (
   });
 };
 
-// Función para loggear eventos de performance
-export const logPerformance = (
-  operation: string,
-  duration: number,
-  metadata?: Record<string, any>
-) => {
-  const level = duration > 1000 ? 'warn' : 'info'; // Advertir si toma más de 1 segundo
-  logger[level](`Performance: ${operation} took ${duration}ms`, {
-    performance: true,
-    operation,
-    duration,
-    ...metadata,
-  });
-};
 
-// Función para crear un timer de performance
-export const createPerformanceTimer = (operation: string) => {
-  const start = Date.now();
 
-  return {
-    end: (metadata?: Record<string, any>) => {
-      const duration = Date.now() - start;
-      logPerformance(operation, duration, metadata);
-      return duration;
-    },
-  };
-};
 
-// Función para loggear eventos de base de datos
-export const logDatabase = (
-  operation: string,
-  table: string,
-  duration?: number,
-  metadata?: Record<string, any>
-) => {
-  logger.debug(`Database: ${operation} on ${table}`, {
-    database: true,
-    operation,
-    table,
-    duration,
-    ...metadata,
-  });
-};
 
-// Función para loggear eventos de caché
-export const logCache = (
-  operation: 'HIT' | 'MISS' | 'SET' | 'DELETE',
-  key: string,
-  metadata?: Record<string, any>
-) => {
-  logger.debug(`Cache: ${operation} for key ${key}`, {
-    cache: true,
-    operation,
-    key,
-    ...metadata,
-  });
-};
-
-// Función para loggear eventos de autenticación
-export const logAuth = (
-  event: 'LOGIN' | 'LOGOUT' | 'REGISTER' | 'PASSWORD_CHANGE' | 'TOKEN_REFRESH',
-  userId: string,
-  metadata?: Record<string, any>
-) => {
-  logger.info(`Auth: ${event} for user ${userId}`, {
-    auth: true,
-    event,
-    userId,
-    timestamp: new Date().toISOString(),
-    ...metadata,
-  });
-};
-
-// Middleware para loggear requests HTTP
-export const logRequest = (
-  method: string,
-  url: string,
-  statusCode: number,
-  duration: number,
-  userId?: string
-) => {
-  const level = statusCode >= 400 ? 'warn' : 'info';
-  logger[level](`${method} ${url} ${statusCode} - ${duration}ms`, {
-    http: true,
-    method,
-    url,
-    statusCode,
-    duration,
-    userId,
-  });
-};
-
-// Función para loggear eventos de seguridad
-export const logSecurity = (
-  event: string,
-  severity: 'low' | 'medium' | 'high' | 'critical',
-  metadata?: Record<string, any>
-) => {
-  const levelMap: Record<string, 'info' | 'warn' | 'error'> = {
-    low: 'info',
-    medium: 'warn',
-    high: 'error',
-    critical: 'error',
-  };
-
-  logger[levelMap[severity]](`Security: ${event}`, {
-    security: true,
-    event,
-    severity,
-    ...metadata,
-  });
-};
 
 // Función para loggear eventos de negocio
 export const logBusiness = (
@@ -264,14 +155,6 @@ export const logBusiness = (
   });
 };
 
-// Funciones helper para logging con metadata (para compatibilidad con el código existente)
-export const logInfo = (message: string | object, metadata?: Record<string, any>) => {
-  if (typeof message === 'object') {
-    logger.info('Info', { ...message, ...metadata });
-  } else {
-    logger.info(message, metadata);
-  }
-};
 
 export const logError = (message: string | object, metadata?: Record<string, any>) => {
   if (typeof message === 'object') {
@@ -281,20 +164,6 @@ export const logError = (message: string | object, metadata?: Record<string, any
   }
 };
 
-export const logWarn = (message: string | object, metadata?: Record<string, any>) => {
-  if (typeof message === 'object') {
-    logger.warn('Warning', { ...message, ...metadata });
-  } else {
-    logger.warn(message, metadata);
-  }
-};
 
-export const logDebug = (message: string | object, metadata?: Record<string, any>) => {
-  if (typeof message === 'object') {
-    logger.debug('Debug', { ...message, ...metadata });
-  } else {
-    logger.debug(message, metadata);
-  }
-};
 
 export default logger;

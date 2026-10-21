@@ -1,9 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import { platformPrisma } from '../config/database';
-import { gradesService } from './grades.service';
-import { getAcademicConfig } from './promotion/close-cycle.service';
+import { getAcademicConfig } from './promotion/configuracion-academica';
 import { AppErrors } from '../middleware/error.middleware';
 import { apreciacionesDelAlumno, MOMENTO_FINAL } from './apreciaciones.service';
+import { cifrasOficialesDeLaSeccion } from './cifras-oficiales.service';
 
 /**
  * LA BOLETA DEL ALUMNO
@@ -12,7 +12,7 @@ import { apreciacionesDelAlumno, MOMENTO_FINAL } from './apreciaciones.service';
  * en cada lapso, las inasistencias y, al final del año, la definitiva. Aquí se
  * junta todo con las MISMAS reglas que el resto del sistema:
  *
- *   - la nota de un lapso es `gradesService.promedioDeLaMateria` de ese lapso,
+ *   - la nota de un lapso es su promedio (`cifras-oficiales.service`, en bloque),
  *     con el redondeo del liceo (`redondeoDeDefinitivas`, MPPE por defecto:
  *     0,50 o más sube al entero);
  *   - la definitiva es la de todo el ciclo, igual que al cerrarlo;
@@ -68,9 +68,6 @@ export interface BoletaDelAlumno {
     emitidaEl: string;
 }
 
-const media = (valores: number[]): number | null =>
-    valores.length === 0 ? null : Math.round((valores.reduce((a, b) => a + b, 0) / valores.length) * 100) / 100;
-
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
 export async function boletaDelAlumno(
@@ -123,64 +120,47 @@ export async function boletaDelAlumno(
         }),
     ]);
     const redondeo = config.redondeoDeDefinitivas ?? 'MPPE';
-    const idsDeLapsos = lapsos.map((l) => l.id);
 
     const materiasDeLaSeccion = inscripcion.classroom.subjects
         .map((s) => s.subject)
         .sort((a, b) => a.name.localeCompare(b.name, 'es'));
 
-    const revisiones = new Map<string, number>(
-        (
-            await (prisma as any).notaDeRevision.findMany({
-                where: { studentId, academicYearId: inscripcion.academicYearId },
-                select: { subjectId: true, score: true },
-            })
-        ).map((r: any) => [r.subjectId, r.score])
-    );
-
     const apreciaciones = await apreciacionesDelAlumno(prisma, studentId, inscripcion.academicYearId);
+    // Las notas, con la cuenta oficial compartida (`cifras-oficiales.service`):
+    // la misma que la ficha, el Inicio, la lista y el resumen de la sección.
+    const oficiales = (await cifrasOficialesDeLaSeccion(prisma, instituteId, inscripcion.classroom.id, [studentId])).get(studentId);
 
-    const materias = await Promise.all(
-        materiasDeLaSeccion.map(async (m) => {
-            if (m.evaluacion === 'CUALITATIVA') {
-                const suyas = apreciaciones.get(m.id) ?? {};
-                const porMomento: Record<string, string | null> = {};
-                for (const l of lapsos) porMomento[l.id] = suyas[l.id] ?? null;
-                porMomento[MOMENTO_FINAL] = suyas[MOMENTO_FINAL] ?? null;
-                return {
-                    id: m.id,
-                    nombre: m.name,
-                    notas: Object.fromEntries(lapsos.map((l) => [l.id, null])) as Record<string, number | null>,
-                    definitiva: null,
-                    revision: null,
-                    aprobada: null,
-                    cualitativa: true,
-                    apreciaciones: porMomento,
-                };
-            }
-            const notas: Record<string, number | null> = {};
-            for (const l of lapsos) {
-                const d = await gradesService.promedioDeLaMateria(prisma, studentId, m.id, l.id, undefined, redondeo);
-                notas[l.id] = d.conNotas ? d.promedio : null;
-            }
-            const def = await gradesService.promedioDeLaMateria(prisma, studentId, m.id, undefined, idsDeLapsos, redondeo);
-            const definitiva = def.conNotas ? def.promedio : null;
-            // La revisión solo cuenta sobre una materia reprobada (como al cerrar).
-            const revision =
-                definitiva !== null && definitiva < config.notaMinimaAprobatoria ? (revisiones.get(m.id) ?? null) : null;
-            const queCuenta = revision ?? definitiva;
+    const materias = materiasDeLaSeccion.map((m) => {
+        if (m.evaluacion === 'CUALITATIVA') {
+            const suyas = apreciaciones.get(m.id) ?? {};
+            const porMomento: Record<string, string | null> = {};
+            for (const l of lapsos) porMomento[l.id] = suyas[l.id] ?? null;
+            porMomento[MOMENTO_FINAL] = suyas[MOMENTO_FINAL] ?? null;
             return {
                 id: m.id,
                 nombre: m.name,
-                notas,
-                definitiva,
-                revision,
-                aprobada: queCuenta === null ? null : queCuenta >= config.notaMinimaAprobatoria,
-                cualitativa: false,
-                apreciaciones: {},
+                notas: Object.fromEntries(lapsos.map((l) => [l.id, null])) as Record<string, number | null>,
+                definitiva: null,
+                revision: null,
+                aprobada: null,
+                cualitativa: true,
+                apreciaciones: porMomento,
             };
-        })
-    );
+        }
+        const o = oficiales?.materias.get(m.id);
+        const notas: Record<string, number | null> = Object.fromEntries(lapsos.map((l) => [l.id, o?.notas[l.id] ?? null]));
+        const queCuenta = o?.queCuenta ?? null;
+        return {
+            id: m.id,
+            nombre: m.name,
+            notas,
+            definitiva: o?.definitiva ?? null,
+            revision: o?.revision ?? null,
+            aprobada: queCuenta === null ? null : queCuenta >= config.notaMinimaAprobatoria,
+            cualitativa: false,
+            apreciaciones: {},
+        };
+    });
 
     const asistencia = lapsos.length === 0 ? [] : await prisma.dailyAttendance.findMany({
         where: {
@@ -202,10 +182,8 @@ export async function boletaDelAlumno(
         };
     }
 
-    const promedios = { definitivo: media(materias.map((m) => m.revision ?? m.definitiva).filter((n): n is number => n !== null)) } as BoletaDelAlumno['promedios'];
-    for (const l of lapsos) {
-        promedios[l.id] = media(materias.map((m) => m.notas[l.id]).filter((n): n is number => n !== null));
-    }
+    const promedios = { definitivo: oficiales?.definitivo ?? null } as BoletaDelAlumno['promedios'];
+    for (const l of lapsos) promedios[l.id] = oficiales?.porLapso[l.id] ?? null;
 
     const pendientes = await (prisma as any).materiaPendiente.findMany({
         where: { studentId, cicloId: inscripcion.academicYearId },

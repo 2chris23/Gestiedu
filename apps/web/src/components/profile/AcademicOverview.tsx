@@ -206,7 +206,7 @@ export default function AcademicOverview({ grade, section, guideTeacher, student
                                             ></div>
                                         </div>
                                         <p className="text-[11px] text-gray-400 mt-1.5">
-                                            {hasNote ? (sub.score >= 10 ? 'Aprobada' : 'Reprobada') : 'Sin calificar'}
+                                            {hasNote ? (sub.score >= 10 ? 'Aprobada' : 'Reprobada') : 'Sin notas'}
                                         </p>
                                     </div>
                                 );

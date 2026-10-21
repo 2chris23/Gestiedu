@@ -1,7 +1,9 @@
 'use client';
 
+import { BACKEND_URL } from '@/config/env';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useSchoolToday } from '@/hooks/useSchoolTime';
 import { olvidarCredencial } from '@/lib/credencial-en-memoria';
 import { conseguirCredencial } from '@/lib/credencial-en-memoria';
 
@@ -28,7 +30,8 @@ interface DashboardData {
     }>;
 }
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '');
+// La misma dirección que el resto de la app (`config/env.ts`; con el túnel, la de la página).
+const API_URL = BACKEND_URL;
 
 /**
  * La llave corta ya no está en las cookies: vive en la memoria de la pestaña
@@ -81,6 +84,8 @@ function StatCard({ icon, label, value, color }: { icon: string; label: string; 
 }
 
 export default function DashboardPage() {
+    // El día del liceo, no el del reloj del teléfono (HORA-01).
+    const hoy = useSchoolToday();
     const params = useParams();
     const router = useRouter();
     const slug = params.slug as string;
@@ -192,7 +197,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-gray-800/60 border border-gray-700/60 rounded-xl text-sm text-gray-300">
                     <span>📅</span>
-                    <span>{new Date().toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+                    <span>{hoy ? new Date(`${hoy}T12:00:00`).toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' }) : ''}</span>
                 </div>
             </div>
 

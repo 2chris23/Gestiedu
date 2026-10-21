@@ -46,6 +46,9 @@ export async function POST(request: NextRequest) {
                     llaveDelTelefono: cuerpo?.llaveDelTelefono ?? undefined,
                 }),
                 cache: 'no-store',
+                // Sin tope, un servidor colgado dejaba a la persona cinco
+                // minutos sin poder salir (visto en el túnel).
+                signal: AbortSignal.timeout(5000),
             });
         }
     } catch (error) {

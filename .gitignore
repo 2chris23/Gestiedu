@@ -71,9 +71,8 @@ tmp/
 temp/
 scratch*
 *.tmp
-load-tests/reports/
-load-tests/*.csv
-load-tests/*.json
+# Las cuentas que suelta `seed-load-test.ts` (usuarios y claves de prueba).
+**/load-tests/
 # (.github/ estaba aquí: por eso la integración continua y el despliegue
 # automático no llegaron nunca a GitHub. Los flujos van al repositorio.)
 

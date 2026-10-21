@@ -63,7 +63,8 @@ model Institute {
   status           InstituteStatus       @default(PENDING)
   trialEndsAt      DateTime?
   notes            String?
-  databaseName     String?               @unique
+  databaseName     String?
+  databaseSchema   String?
   databaseHost     String?
   databasePort     Int?                  @default(5432)
   databaseUser     String?
@@ -98,6 +99,8 @@ model Institute {
   @@index([slug])
   @@index([subdomain])
   @@index([environment])
+  @@index([databaseSchema])
+  @@unique([databaseName, databaseSchema])
   @@map("institutes")
 }
 
@@ -165,4 +168,89 @@ model ArchivoDeLiceo {
 
   @@unique([instituteId, nombre])
   @@map("archivos_de_liceo")
+}
+
+/// LA SALUD DEL SISTEMA (18-oct-2026). Cada ruta por ventana de 5 min con su
+/// histograma (`utils/medidor-de-rutas.ts`, `CUBETAS_MS`); cada proceso suma
+/// su parte. Se leen con SQL a mano (`services/salud-de-rutas.service.ts`).
+model MetricaDeRuta {
+  ventana  DateTime
+  ruta     String
+  rol      String
+  total    Int      @default(0)
+  e4xx     Int      @default(0)
+  e5xx     Int      @default(0)
+  e429     Int      @default(0)
+  e503     Int      @default(0)
+  sumaMs   BigInt   @default(0)
+  maxMs    Int      @default(0)
+  cubetas  Int[]
+  codigos  Json     @default("{}")
+  personas Int      @default(0)
+
+  @@id([ventana, ruta, rol])
+  @@map("metricas_de_rutas")
+}
+
+model MetricaDeLiceo {
+  ventana     DateTime
+  instituteId String
+  total       Int      @default(0)
+  e4xx        Int      @default(0)
+  e5xx        Int      @default(0)
+  e429        Int      @default(0)
+  e503        Int      @default(0)
+  sumaMs      BigInt   @default(0)
+  maxMs       Int      @default(0)
+  cubetas     Int[]
+  codigos     Json     @default("{}")
+  personas    Int      @default(0)
+
+  @@id([ventana, instituteId])
+  @@map("metricas_de_liceos")
+}
+
+/// Los errores agrupados por huella, como Sentry (`utils/errores-agrupados.ts`).
+model ErrorAgrupado {
+  huella     String    @id
+  origen     String
+  tipo       String
+  mensaje    String
+  donde      String    @default("")
+  ruta       String?
+  version    String?
+  veces      BigInt    @default(0)
+  liceos     Json      @default("{}")
+  primera    DateTime
+  ultima     DateTime
+  muestra    String    @default("")
+  estado     String    @default("abierto")
+  resueltoEn DateTime?
+
+  @@index([ultima])
+  @@map("errores_agrupados")
+}
+
+/// Lo que mide el robot que recorre el liceo de muestra cada 5 min.
+model PasoDelRobot {
+  id      String   @id
+  vuelta  String
+  en      DateTime @default(now())
+  paso    String
+  ms      Int
+  ok      Boolean
+  estado  Int?
+  detalle String?
+
+  @@index([en])
+  @@map("pasos_del_robot")
+}
+
+/// Cada tarea programada, una sola dueña entre todos los procesos (`utils/turno-de-la-tarea.ts`).
+model TurnoDeTarea {
+  nombre String   @id
+  quien  String
+  hasta  DateTime
+
+  @@map("turnos_de_tareas")
 }

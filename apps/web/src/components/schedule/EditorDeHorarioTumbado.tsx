@@ -1,8 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { useDraggable, useDroppable } from '@dnd-kit/core';
-import { ArrowLeft, Coffee, Loader2, RotateCw, Save, Shuffle, Smartphone, X } from 'lucide-react';
+import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core';
+import { ArrowLeft, Coffee, GripVertical, Loader2, RotateCw, Save, Shuffle, Smartphone, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { aHorizontal, sePuedeGirar, soltarLaPantalla } from '@/lib/girar-la-pantalla';
 
@@ -30,8 +30,24 @@ import { aHorizontal, sePuedeGirar, soltarLaPantalla } from '@/lib/girar-la-pant
  *      se confunde con coger una materia).
  *   2. **Tocar** la materia (queda marcada) y **tocar** el hueco.
  *
- * Para quitar una clase del horario: tocarla y pulsar la ✕, o arrastrarla de
- * vuelta a la columna de la izquierda.
+ * Para quitar una clase del horario: tocarla y pulsar «Quitar», o arrastrarla
+ * de vuelta a la columna de la izquierda.
+ *
+ * ─── OCTUBRE 2026: QUE SE SIENTA COMO COGER UNA FICHA ───────────────────────
+ *
+ * Un amigo de Cristian lo probó y no le pareció intuitivo, y los botones de
+ * Android (atrás, inicio) tapaban la semana: tumbado, Android los pone en el
+ * borde y el editor no les dejaba sitio.
+ *
+ *   · El editor se aparta de los botones (`env(safe-area-inset-left/right)`).
+ *   · Llevar una materia o una clase DE LADO la coge al instante; mantenerla
+ *     pulsada, también (`ClassroomScheduleEditor`, el sensor del dedo). Cada
+ *     materia lleva su asa (⋮⋮) para que se vea que se puede coger.
+ *   · Mientras se arrastra, los huecos libres se marcan y el que está debajo
+ *     se ilumina; si lo que se lleva es una clase, la columna de la izquierda
+ *     dice «Suelta aquí para quitarla».
+ *   · Tocar una clase la marca y saca un botón «Quitar» grande, de la clase
+ *     entera, no una ✕ en una esquina.
  */
 
 export interface MateriaPorColocar {
@@ -106,12 +122,14 @@ function MateriaArrastrable({
             onClick={alTocar}
             aria-pressed={marcada}
             className={cn(
-                'flex min-h-[44px] w-full select-none items-center gap-2 rounded-lg border bg-white px-2 py-1.5 text-left transition-shadow',
+                'flex min-h-[48px] w-full cursor-grab select-none items-center gap-1.5 rounded-xl border bg-white py-1.5 pl-1 pr-2 text-left shadow-sm transition-shadow active:cursor-grabbing',
                 marcada ? 'border-indigo-500 ring-2 ring-indigo-300' : 'border-gray-200',
                 isDragging && 'opacity-40'
             )}
-            style={{ touchAction: 'manipulation' }}
+            // De arriba abajo, el dedo desplaza la lista; de lado, coge la materia.
+            style={{ touchAction: 'pan-y' }}
         >
+            <GripVertical className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
             <span className="h-7 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: materia.color || '#6366f1' }} aria-hidden />
             <span className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-800">{materia.nombre}</span>
             <span className="shrink-0 text-xs font-bold tabular-nums text-amber-700">
@@ -147,14 +165,15 @@ function BloqueArrastrable({
                 alTocar();
             }}
             className={cn(
-                'relative flex h-full min-h-[40px] w-full select-none flex-col justify-center overflow-hidden rounded-md px-1.5 py-1 text-left',
+                'relative flex h-full min-h-[40px] w-full cursor-grab select-none flex-col justify-center overflow-hidden rounded-md px-1.5 py-1 text-left active:cursor-grabbing',
                 isDragging && 'opacity-40',
-                tocado && 'ring-2 ring-indigo-400'
+                tocado && 'ring-2 ring-red-400'
             )}
             style={{
                 backgroundColor: bloque.color ? `${bloque.color}22` : '#f3f4f6',
                 borderLeft: `3px solid ${bloque.color || '#6366f1'}`,
-                touchAction: 'manipulation',
+                // Como la lista: de lado (o pulsada un momento) se coge; de arriba abajo, baja la semana.
+                touchAction: 'pan-y',
             }}
         >
             <span className="truncate text-xs font-bold leading-4 text-gray-800">{bloque.subjectName}</span>
@@ -169,9 +188,9 @@ function BloqueArrastrable({
                         alQuitar();
                     }}
                     aria-label={`Quitar ${bloque.subjectName} de esta hora`}
-                    className="absolute right-0 top-0 flex h-full w-11 items-center justify-center bg-white/70 text-red-600"
+                    className="absolute inset-0 flex items-center justify-center gap-1 bg-red-600 text-xs font-bold text-white"
                 >
-                    <X className="h-5 w-5" />
+                    <Trash2 className="h-4 w-4" aria-hidden /> Quitar
                 </button>
             )}
         </div>
@@ -190,13 +209,19 @@ function Hueco({
     esperando: boolean;
 }) {
     const { isOver, setNodeRef } = useDroppable({ id });
+    // Mientras se arrastra algo, los huecos libres se marcan: se ve dónde cabe.
+    const arrastrando = Boolean(useDndContext().active);
     return (
         <div
             ref={setNodeRef}
             onClick={alTocar}
             className={cn(
                 'min-h-[44px] border-l border-gray-100 p-0.5 transition-colors',
-                isOver ? 'bg-indigo-100' : esperando && !children ? 'bg-indigo-50/60' : 'bg-white'
+                isOver
+                    ? 'bg-indigo-100 ring-2 ring-inset ring-indigo-500'
+                    : (esperando || arrastrando) && !children
+                      ? 'bg-indigo-50/60 outline-dashed outline-1 -outline-offset-4 outline-indigo-300'
+                      : 'bg-white'
             )}
         >
             {children}
@@ -207,9 +232,22 @@ function Hueco({
 /** La columna de la izquierda también recibe: soltar ahí una clase la quita. */
 function ColumnaDeMaterias({ children }: { children: React.ReactNode }) {
     const { isOver, setNodeRef } = useDroppable({ id: 'restantes' });
+    // Si lo que se lleva es una clase de la semana, aquí se quita: se dice.
+    const llevaUnaClase = useDndContext().active?.data.current?.type === 'grid-block';
     return (
-        <div ref={setNodeRef} className={cn('min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2', isOver && 'bg-red-50')}>
+        <div ref={setNodeRef} className={cn('relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2', isOver && 'bg-red-50')}>
             {children}
+            {llevaUnaClase && (
+                <div
+                    className={cn(
+                        'pointer-events-none absolute inset-2 flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed text-center text-sm font-bold',
+                        isOver ? 'border-red-500 bg-red-100 text-red-700' : 'border-red-300 bg-white/95 text-red-600'
+                    )}
+                >
+                    <Trash2 className="h-6 w-6" aria-hidden />
+                    Suelta aquí para quitarla
+                </div>
+            )}
         </div>
     );
 }
@@ -265,7 +303,12 @@ export default function EditorDeHorarioTumbado({
     };
 
     return (
-        <div className="fixed inset-0 !m-0 z-[60] flex flex-col bg-white" role="dialog" aria-modal="true" aria-label="Editar el horario" style={{ paddingBottom: 'var(--zona-segura-abajo)' }}>
+        <div className="fixed inset-0 !m-0 z-[60] flex flex-col bg-white" role="dialog" aria-modal="true" aria-label="Editar el horario" style={{
+                paddingBottom: 'var(--zona-segura-abajo)',
+                // Tumbado, Android pone sus botones en un lado: que no tapen la semana.
+                paddingLeft: 'env(safe-area-inset-left, 0px)',
+                paddingRight: 'env(safe-area-inset-right, 0px)',
+            }}>
             {!tumbado ? (
                 /* De pie todavía: la app lo gira sola; en un navegador, se pide. */
                 <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
@@ -327,7 +370,7 @@ export default function EditorDeHorarioTumbado({
                                     Toca un hueco para poner <b className="text-indigo-700">{marcada.nombre}</b>
                                 </>
                             ) : porColocar.length > 0 ? (
-                                'Mantén pulsada y arrastra, o toca y elige el hueco'
+                                'Arrastra una materia a la semana, o tócala y toca el hueco. Toca una clase para quitarla.'
                             ) : (
                                 'Todo está colocado'
                             )}

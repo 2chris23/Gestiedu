@@ -8,6 +8,7 @@ import { WEB_BASE } from './helpers';
  *               las tenía; las pantallas, ninguna);
  *   SEG-WEB-02  una página ajena que pone el login dentro de un marco no ve
  *               el formulario: el navegador se niega a pintarlo.
+ *   SEG-WEB-03  el panel tampoco (la precarga ya no usa marcos: baja un paquete).
  */
 
 const CABECERAS: Record<string, RegExp> = {
@@ -37,5 +38,14 @@ test.describe('Seguridad de las pantallas', () => {
         expect(marco).toBeTruthy();
         // El navegador pone su página de error en vez del login: no hay campo de clave.
         await expect(marco!.locator('input[type="password"]')).toHaveCount(0);
+    });
+
+    test('SEG-WEB-03: el panel en un marco de otra página no se pinta', async ({ page }) => {
+        await page.setContent(`<iframe id="trampa" src="${WEB_BASE}/dashboard" width="800" height="600"></iframe>`);
+        await page.waitForTimeout(3000);
+        const marco = page.frames().find((f) => f !== page.mainFrame());
+        expect(marco).toBeTruthy();
+        // Ni el panel ni el login al que llevaría: el navegador no pinta nada de la app.
+        await expect(marco!.locator('input[type="password"], main')).toHaveCount(0);
     });
 });

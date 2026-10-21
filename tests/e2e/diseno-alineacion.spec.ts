@@ -20,8 +20,8 @@ import { MEDIR_DISENO, QUE_SIGNIFICA_DISENO } from '../../scripts/reglas-del-dis
  *  DISENO-02  El título de pantalla mide lo mismo en todas.
  *  DISENO-03  Ni botones partidos, ni textos pisándose, ni ventanas torcidas en
  *             las pantallas de todos los días (reglas de `reglas-del-diseno.mjs`).
- *  DISENO-04  En el Panel, las baldosas de una fila empiezan a la misma altura
- *             y la que queda sola ocupa la fila.
+ *  DISENO-04  En el ordenador el Panel ya no lleva «Ir a» (repetía la barra
+ *             lateral); en el teléfono, los accesos van en su carrusel.
  *  DISENO-05  El representante ve cómo va cada hijo SIN TOCAR NADA.
  *  DISENO-06  Las ventanas, en el teléfono: centradas, dentro de la pantalla y
  *             con una X de 44 px que se llama «Cerrar».
@@ -116,10 +116,21 @@ async function lasPantallas() {
  */
 function medirElTitulo() {
     const main = document.querySelector('main')!;
-    const marco = main.firstElementChild as HTMLElement;
+    // La columna es la del contenido (`data-marco`); en el ordenador, en el
+    // Inicio, delante va la caja del promedio.
+    const marco = (main.querySelector('[data-marco]') ?? main.firstElementChild) as HTMLElement;
     const m = getComputedStyle(marco);
     const columna = marco.getBoundingClientRect().left + parseFloat(m.paddingLeft);
-    const h1 = main.querySelector('h1');
+    // El que se VE: el Inicio del admin trae dos (el del ordenador, escondido
+    // en el teléfono, y uno solo para lectores de pantalla).
+    const h1 = [...main.querySelectorAll('h1')].find((h) => h.getBoundingClientRect().width > 1) ?? null;
+    // El Inicio del admin en el teléfono no lleva título a la vista, a
+    // propósito: su cabecera es el bloque azul del diseño (InicioDelAdminMovil).
+    const conCabeceraAzul = [...main.querySelectorAll<HTMLElement>('[data-diseno="cabecera-azul"]')].some((e) => e.getBoundingClientRect().width > 0);
+    // Finanzas tampoco, por decisión de Cristian (2026-10-14): «si tocó en
+    // Finanzas sabe qué es». La pantalla lo declara con `data-sin-titulo`.
+    const sinTituloAProposito = !!main.querySelector('[data-sin-titulo]');
+    if (!h1 && (conCabeceraAzul || sinTituloAProposito)) return { columna, izquierda: null, letra: null, mains: document.querySelectorAll('main').length, aProposito: true };
     if (!h1) return { columna, izquierda: null, letra: null, mains: document.querySelectorAll('main').length };
     const rango = document.createRange();
     rango.selectNodeContents(h1);
@@ -167,6 +178,7 @@ for (const tam of ['telefono', 'portatil'] as const) {
             const t = await page.evaluate(medirElTitulo);
             if (t.mains !== 1) fallos.push(`${titulo}: ${t.mains} <main> (uno dentro de otro)`);
             if (t.izquierda === null) {
+                if ((t as { aProposito?: boolean }).aProposito) continue;
                 fallos.push(`${titulo}: sin título <h1>`);
                 continue;
             }
@@ -200,46 +212,22 @@ test('DISENO-03: en el teléfono, nada partido, pisado ni torcido en las pantall
     expect(fallos, fallos.join('\n')).toEqual([]);
 });
 
-test('DISENO-04: en el Panel, las baldosas de una fila empiezan a la misma altura y ninguna queda descolgada', async ({ browser }) => {
-    for (const [rol, tam] of [
-        [ADMIN, 'telefono'],
-        [ADMIN, 'portatil'],
-        [REPRESENTANTE, 'telefono'],
-    ] as const) {
+test('DISENO-04: «Ir a» ya no está en el Panel del ordenador; en el teléfono, los accesos van en su carrusel', async ({ browser }) => {
+    // En el ordenador repetía la barra lateral, que siempre está a la vista
+    // (lo pidió Cristian, octubre 2026). En el teléfono no hay barra lateral:
+    // allí el Inicio trae el carrusel de accesos.
+    for (const tam of ['portatil', 'telefono'] as const) {
         const ctx = await contexto(browser, tam);
         const page = await ctx.newPage();
-        await entrar(page, rol);
+        await entrar(page, ADMIN);
         await esperarAQueCargue(page);
-        const medida = await page.evaluate(() => {
-            const seccion = document.querySelector('section[aria-labelledby="accesos-del-liceo"]');
-            const rejilla = seccion?.querySelector('div');
-            if (!rejilla) return null;
-            const baldosas = [...rejilla.children] as HTMLElement[];
-            const filas = new Map<number, { titulos: number[]; anchos: number[] }>();
-            for (const b of baldosas) {
-                const r = b.getBoundingClientRect();
-                const nombre = b.querySelector('span.block span, span > span.font-semibold') || b;
-                const fila = filas.get(Math.round(r.top)) || { titulos: [], anchos: [] };
-                fila.titulos.push(Math.round(nombre.getBoundingClientRect().top - r.top));
-                fila.anchos.push(Math.round(r.width));
-                filas.set(Math.round(r.top), fila);
-            }
-            return { ancho: Math.round(rejilla.getBoundingClientRect().width), filas: [...filas.values()] };
-        });
+        const visibles = await page.evaluate(() => ({
+            irA: [...document.querySelectorAll('h2')].some((h) => h.textContent?.trim() === 'Ir a' && h.getClientRects().length > 0),
+            carrusel: [...document.querySelectorAll('nav[aria-label="Accesos rápidos"]')].some((n) => n.getClientRects().length > 0),
+        }));
         await ctx.close();
-        // El representante no tiene accesos desde que se quitó el calendario
-        // (era el único): su Panel no lleva «Ir a», y está bien.
-        if (medida === null && rol === REPRESENTANTE) continue;
-        expect(medida, 'el Panel no tiene la sección «Ir a»').not.toBeNull();
-        for (const fila of medida!.filas) {
-            expect(new Set(fila.titulos).size, `títulos a distinta altura en una fila: ${fila.titulos}`).toBe(1);
-        }
-        const ultima = medida!.filas[medida!.filas.length - 1];
-        const primera = medida!.filas[0];
-        if (ultima.anchos.length < primera.anchos.length && tam === 'telefono') {
-            // La que queda sola en el teléfono ocupa la fila entera.
-            expect(ultima.anchos[0], 'la última baldosa quedó descolgada, a media fila').toBeGreaterThan(medida!.ancho - 2);
-        }
+        expect(visibles.irA, `${tam}: el Panel no lleva «Ir a»`).toBe(false);
+        expect(visibles.carrusel, `${tam}: el carrusel de accesos`).toBe(tam === 'telefono');
     }
 });
 
@@ -267,14 +255,6 @@ test('DISENO-05: el representante ve el promedio y la asistencia de cada hijo si
         }
         // El parentesco se lee como se dice, no como se guarda.
         await expect(page.getByText(/· MADRE\b/)).toHaveCount(0);
-        // Y lo que el representante vino a ver va antes que los accesos.
-        const orden = await page.evaluate(() => {
-            const rep = [...document.querySelectorAll('h2')].find((h) => h.textContent?.trim() === 'Mis representados');
-            const ir = document.getElementById('accesos-del-liceo');
-            return rep && ir ? rep.getBoundingClientRect().top < ir.getBoundingClientRect().top : null;
-        });
-        // Sin «Ir a» (el representante ya no tiene accesos) no hay orden que mirar.
-        expect(orden, '«Ir a» va delante de «Mis representados»').not.toBe(false);
     } finally {
         await ctx.close();
         if (alta.status === 201) await axios.delete(`${API_BASE}/users/${encodeURIComponent(hijo.id)}/tutors/${encodeURIComponent(rep.id)}`, admin);

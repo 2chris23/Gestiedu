@@ -174,18 +174,21 @@ export function UserForm({ onSubmit, isLoading, onCancel, initialData }: UserFor
                 )}
             </div>
 
-            <div>
-                <label className="block text-sm font-medium text-gray-700">
-                    {initialData ? 'Nueva Contraseña (Opcional)' : 'Contraseña'}
-                </label>
-                <Input
-                    type="password"
-                    {...register('password')}
-                    className="mt-1"
-                    placeholder={initialData ? "Dejar en blanco para mantener actual" : AVISO_DE_CONTRASENA}
-                />
-                {errors.password && <p className="text-xs text-red-500">{errors.password.message as string}</p>}
-            </div>
+            {/* Al editar no hay campo de contraseña: el servidor la descartaba
+                callado y el admin creía que la había cambiado. Se cambia en la
+                ficha del usuario, «Cambiar contraseña», que además cierra sus
+                sesiones (ContrasenaDelUsuario). */}
+            {initialData ? (
+                <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                    La contraseña se cambia en la ficha del usuario, con «Cambiar contraseña».
+                </p>
+            ) : (
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">Contraseña</label>
+                    <Input type="password" {...register('password')} className="mt-1" placeholder={AVISO_DE_CONTRASENA} />
+                    {errors.password && <p className="text-xs text-red-500">{errors.password.message as string}</p>}
+                </div>
+            )}
 
             {initialData && (
                 <div>

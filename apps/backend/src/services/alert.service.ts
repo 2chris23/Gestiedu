@@ -70,48 +70,6 @@ class AlertService {
         });
     }
 
-    // Obtener todas las alertas (incluso resueltas)
-    async getAllAlerts(options?: { limit?: number; type?: string; severity?: string }) {
-        const where: any = {};
-
-        if (options?.type) where.type = options.type;
-        if (options?.severity) where.severity = options.severity;
-
-        return await prisma.systemAlert.findMany({
-            where,
-            orderBy: { createdAt: 'desc' },
-            take: options?.limit || 100
-        });
-    }
-
-    // Resolver alertas por tipo
-    async resolveAlerts(type: AlertType | string) {
-        const result = await prisma.systemAlert.updateMany({
-            where: {
-                type,
-                resolved: false
-            },
-            data: {
-                resolved: true,
-                resolvedAt: new Date()
-            }
-        });
-
-        logger.info(`Resolved ${result.count} alerts of type ${type}`);
-        return result;
-    }
-
-    // Resolver una alerta específica
-    async resolveAlert(alertId: string) {
-        return await prisma.systemAlert.update({
-            where: { id: alertId },
-            data: {
-                resolved: true,
-                resolvedAt: new Date()
-            }
-        });
-    }
-
     // Limpiar alertas antiguas resueltas
     async cleanupOldAlerts(daysOld = 30) {
         const cutoffDate = new Date();
@@ -165,37 +123,6 @@ class AlertService {
         }
 
         return alerts;
-    }
-
-    // Obtener estadísticas de alertas
-    async getAlertStats() {
-        const [total, active, byType, bySeverity] = await Promise.all([
-            prisma.systemAlert.count(),
-            prisma.systemAlert.count({ where: { resolved: false } }),
-            prisma.systemAlert.groupBy({
-                by: ['type'],
-                _count: { id: true }
-            }),
-            prisma.systemAlert.groupBy({
-                by: ['severity'],
-                where: { resolved: false },
-                _count: { id: true }
-            })
-        ]);
-
-        return {
-            total,
-            active,
-            resolved: total - active,
-            byType: byType.reduce((acc, item) => {
-                acc[item.type] = item._count.id;
-                return acc;
-            }, {} as Record<string, number>),
-            bySeverity: bySeverity.reduce((acc, item) => {
-                acc[item.severity] = item._count.id;
-                return acc;
-            }, {} as Record<string, number>)
-        };
     }
 }
 

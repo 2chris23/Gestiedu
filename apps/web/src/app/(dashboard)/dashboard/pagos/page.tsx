@@ -4,21 +4,23 @@ import { Button } from '@/components/ui/button';
 import { EncabezadoDePantalla } from '@/components/ui/encabezado-de-pantalla';
 import * as React from 'react';
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle2, ChevronDown, GraduationCap, Loader2, Lock, Search, ShoppingCart, Users, Wallet } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, ChevronRight, Loader2, Lock, Search, Wallet } from 'lucide-react';
 import { VistaResumen } from '@/components/finanzas/VistaResumen';
 import { VistaDelPersonal } from '@/components/finanzas/VistaDelPersonal';
 import { VistaDeGastosYFondos } from '@/components/finanzas/GastosYFondos';
+import { NuevoMovimiento, type FuenteDelMovimiento, type TipoDeMovimiento } from '@/components/finanzas/NuevoMovimiento';
+import { BotonAnadir, PartesDeFinanzas, SaldoDisponible, VISTAS, type Vista } from '@/components/finanzas/CabezaDeFinanzas';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AyudaDeLaPantalla } from '@/components/common/AyudaDeLaPantalla';
-import { CalendarioDelCiclo } from '@/components/pagos/CalendarioDelCiclo';
-import { MesEnDias, type DeudorDelMes } from '@/components/pagos/MesEnDias';
-import { SelectorDeCiclo } from '@/components/pagos/SelectorDeCiclo';
-import { mesesDelCiclo, mesDe } from '@/lib/calendario-del-ciclo';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import UserAvatar from '@/components/ui/UserAvatar';
-import { FichaDePagos } from '@/components/pagos/FichaDePagos';
+import { useYaArranco } from '@/hooks/useYaArranco';
+import { GraficoDeMeses } from '@/components/pagos/GraficoDeMeses';
+import { MesAbierto, type DeudorDelMes } from '@/components/pagos/MesAbierto';
+import { FilaDeAlumno, FilaDeGrupo, VerMas } from '@/components/pagos/listas-de-finanzas';
+import { mesesDelCiclo, mesDe, porcentaje } from '@/lib/calendario-del-ciclo';
+
+import { FichaDelAlumno } from '@/components/pagos/FichaDelAlumno';
+import { alAbrirMovimiento } from '@/lib/abrir-movimiento';
 import { PagosPorConfirmar } from '@/components/pagos/PagosPorConfirmar';
-import { AlumnoEnResumen, dinero, ESTADO_DEL_ALUMNO, EstadoDelAlumno, useCiclosDePagos, useFichaDePagos, usePagosActivos, useResumenDePagos, type Moneda } from '@/hooks/usePagos';
+import { dinero, ESTADO_DEL_ALUMNO, EstadoDelAlumno, useCiclosDePagos, usePagosActivos, useResumenDePagos, type Moneda } from '@/hooks/usePagos';
 import { cn } from '@/lib/utils';
 
 /**
@@ -33,7 +35,20 @@ import { cn } from '@/lib/utils';
  */
 
 const ANOS = ['1er Año', '2do Año', '3er Año', '4to Año', '5to Año', '6to Año'];
-type Filtro = 'TODOS' | EstadoDelAlumno;
+/** «Al día» junta al que va al día y al que pagó el año entero. */
+type Filtro = 'TODOS' | 'DEBE' | 'AL_DIA' | 'EXONERADO';
+const ENTRA_EN: Record<Filtro, (e: EstadoDelAlumno) => boolean> = {
+    TODOS: () => true,
+    DEBE: (e) => e === 'DEBE',
+    AL_DIA: (e) => e === 'AL_DIA' || e === 'ANO_PAGADO',
+    EXONERADO: (e) => e === 'EXONERADO',
+};
+const FILTROS: Array<[Filtro, string]> = [
+    ['TODOS', 'Todos'],
+    ['DEBE', 'Deben'],
+    ['AL_DIA', 'Al día'],
+    ['EXONERADO', 'Exonerados'],
+];
 
 function VistaDeEstudiantes({ ciclo }: { ciclo: string | null }) {
     const { data, isLoading, error } = useResumenDePagos(true, ciclo);
@@ -41,7 +56,18 @@ function VistaDeEstudiantes({ ciclo }: { ciclo: string | null }) {
     const [filtro, setFiltro] = React.useState<Filtro>('TODOS');
     const [abierto, setAbierto] = React.useState<string | null>(null);
     const [mes, setMes] = React.useState<string | null>(null);
+    // Dónde se está en la lista: todos los años, un año o una sección.
+    const [ano, setAno] = React.useState<number | null>(null);
+    const [seccion, setSeccion] = React.useState<string | null>(null);
     React.useEffect(() => setMes(null), [ciclo]);
+
+    const todos = React.useMemo(
+        () =>
+            (data?.classrooms ?? []).flatMap((c) =>
+                c.students.map((a) => ({ ...a, seccion: c.name, seccionId: c.id, grado: c.grade, nombre: `${a.lastName}, ${a.firstName}` }))
+            ),
+        [data]
+    );
 
     if (isLoading) {
         return (
@@ -56,20 +82,6 @@ function VistaDeEstudiantes({ ciclo }: { ciclo: string | null }) {
         return <p className="p-8 text-center text-gray-800">{mensaje}</p>;
     }
 
-    const texto = busqueda.trim().toLowerCase();
-    const pasa = (a: AlumnoEnResumen) =>
-        (filtro === 'TODOS' || a.state === filtro) &&
-        (!texto || `${a.firstName} ${a.lastName} ${a.id}`.toLowerCase().includes(texto));
-
-    const porAno = ANOS.map((nombre, i) => ({
-        nombre,
-        grado: i + 1,
-        secciones: data.classrooms
-            .filter((c) => c.grade === i + 1)
-            .map((c) => ({ ...c, visibles: c.students.filter(pasa) }))
-            .filter((c) => c.visibles.length > 0),
-    })).filter((a) => a.secciones.length > 0);
-
     const { summary } = data;
     const moneda = data.currency;
     const fmt = (n: number | string) => dinero(n, moneda);
@@ -80,193 +92,194 @@ function VistaDeEstudiantes({ ciclo }: { ciclo: string | null }) {
         const x = porMesDelServidor.get(m);
         return { mes: m, esperado: Number(x?.expected ?? 0), cobrado: Number(x?.collected ?? 0), deben: x?.debtors ?? 0 };
     });
+    const esperadoDelCiclo = meses.reduce((t, m) => t + m.esperado, 0);
+    const elMes = mes ? meses.find((m) => m.mes === mes) : undefined;
 
     // Quién debe del mes elegido: los que tienen vencida una cuota que vence ese mes.
     const deudoresDelMes: DeudorDelMes[] = [];
     if (mes) {
         const claves = new Set((data.installments ?? []).filter((c) => mesDe(c.dueDate) === mes).map((c) => c.key));
-        for (const s of data.classrooms) {
-            for (const a of s.students) {
-                if (Object.entries(a.cuotas ?? {}).some(([k, e]) => claves.has(k) && e === 'VENCIDA')) {
-                    deudoresDelMes.push({ id: a.id, nombre: `${a.lastName}, ${a.firstName}`, seccion: s.name });
-                }
+        for (const a of todos) {
+            if (Object.entries(a.cuotas ?? {}).some(([k, e]) => claves.has(k) && e === 'VENCIDA')) {
+                deudoresDelMes.push({ id: a.id, nombre: a.nombre, seccion: a.seccion, seccionId: a.seccionId, avatar: a.avatar });
             }
         }
         deudoresDelMes.sort((x, y) => x.nombre.localeCompare(y.nombre, 'es'));
     }
 
+    const texto = busqueda.trim().toLowerCase();
+    const plana = filtro !== 'TODOS' || !!texto;
+    const visibles = plana
+        ? todos
+              .filter((a) => ENTRA_EN[filtro](a.state) && (!texto || `${a.firstName} ${a.lastName} ${a.id}`.toLowerCase().includes(texto)))
+              .sort((x, y) => x.nombre.localeCompare(y.nombre, 'es'))
+        : [];
+
+    const fila = (a: (typeof todos)[number], conSeccion: boolean) => (
+        <FilaDeAlumno
+            key={a.id}
+            nombre={a.nombre}
+            detalle={conSeccion ? a.seccion : undefined}
+            avatar={a.avatar}
+            monto={a.state === 'DEBE' ? fmt(a.owed) : undefined}
+            alDia={a.state === 'DEBE' ? undefined : ESTADO_DEL_ALUMNO[a.state].texto}
+            alTocar={() => setAbierto(a.id)}
+        />
+    );
+
+    const elAno = ano ? ANOS[ano - 1] : null;
+    const secciones = ano ? data.classrooms.filter((c) => c.grade === ano).sort((x, y) => x.name.localeCompare(y.name, 'es')) : [];
+    const laSeccion = seccion ? data.classrooms.find((c) => c.id === seccion) : undefined;
+
     return (
-        // Era una página suelta metida dentro de otra: su propio fondo, su propia
-        // franja blanca y su propio margen encima del margen del marco (el título
-        // empezaba 32 px más adentro que en las demás pantallas) y un segundo
-        // `<main>` dentro del primero, que confunde al lector de pantalla.
+        // Como Rial (2026-10-14): una tarjeta con lo que importa, los meses en un
+        // carril y la lista por años → secciones → alumnos. Nunca los 599 de golpe.
         <div className="space-y-6">
             {!data.closed && <PagosPorConfirmar />}
-            <div>
-                <div>
-                    {data.closed && (
-                        <p className="mt-3 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800">
-                            <Lock className="h-4 w-4 shrink-0 text-gray-600" aria-hidden />
-                            Este ciclo está cerrado: sus pagos se ven, ya no se cambian.
-                        </p>
-                    )}
 
-                    {summary.debtors > 0 ? (
-                        <button
-                            type="button"
-                            onClick={() => setFiltro('DEBE')}
-                            className="mt-1 flex w-full items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-left hover:bg-red-100"
-                        >
-                            <AlertTriangle className="h-6 w-6 shrink-0 text-red-700" />
-                            <span className="text-red-900">
-                                <strong className="text-lg">
-                                    {summary.debtors} {summary.debtors === 1 ? 'estudiante debe' : 'estudiantes deben'}
-                                </strong>
-                                <span className="block text-sm">En total {dinero(summary.owed, moneda)} vencidos · tocar para verlos</span>
-                            </span>
-                        </button>
-                    ) : (
-                        <div className="mt-1 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900">
-                            <CheckCircle2 className="h-6 w-6 text-emerald-700" />
-                            <strong>Nadie tiene cuotas vencidas</strong>
-                        </div>
-                    )}
-
-                    <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                        {[
-                            ['Estudiantes', String(summary.students)],
-                            ['Deben', String(summary.debtors)],
-                            ['Cobrado', dinero(summary.collected, moneda)],
-                            ['Deuda vencida', dinero(summary.owed, moneda)],
-                        ].map(([k, v]) => (
-                            <div key={k} className="rounded-xl border border-gray-200 bg-white p-3">
-                                <dt className="text-xs font-semibold uppercase tracking-wide text-gray-600">{k}</dt>
-                                <dd className="mt-1 text-xl font-bold text-gray-900">{v}</dd>
-                            </div>
-                        ))}
-                    </dl>
+            <section aria-label="Las cuotas del ciclo" className="rounded-[24px] bg-white p-4 ring-1 ring-gray-200">
+                {data.closed && (
+                    <p className="mb-3 flex items-center gap-2 text-sm text-gray-700">
+                        <Lock className="h-4 w-4 shrink-0" aria-hidden /> Ciclo cerrado: solo se mira.
+                    </p>
+                )}
+                <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                        <p className="text-sm text-gray-600">Cobrado</p>
+                        <p className="text-2xl font-bold tabular-nums text-gray-900">{fmt(summary.collected)}</p>
+                    </div>
+                    <div className="min-w-0 text-right">
+                        <p className="text-sm text-gray-600">Vencido</p>
+                        <p className={cn('text-2xl font-bold tabular-nums', Number(summary.owed) > 0 ? 'text-red-700' : 'text-gray-900')}>{fmt(summary.owed)}</p>
+                    </div>
                 </div>
-            </div>
-
-            <section aria-labelledby="titulo-del-calendario" className="space-y-3">
-                <h2 id="titulo-del-calendario" className="text-lg font-bold text-gray-900">
-                    El ciclo, mes a mes
-                </h2>
-                <CalendarioDelCiclo meses={meses} hoy={data.today} elegido={mes} alElegir={(m) => setMes(m === mes ? null : m)} dinero={fmt} />
-                {mes && (
-                    <MesEnDias ciclo={ciclo} mes={mes} dinero={fmt} deudores={deudoresDelMes} alAbrirAlumno={setAbierto} alCerrar={() => setMes(null)} />
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100" aria-hidden>
+                    <div className="h-full rounded-full bg-indigo-500" style={{ width: `${porcentaje(Number(summary.collected), esperadoDelCiclo)}%` }} />
+                </div>
+                {summary.debtors > 0 ? (
+                    <button
+                        type="button"
+                        onClick={() => setFiltro('DEBE')}
+                        className="-mx-2 mt-2 flex min-h-[44px] w-[calc(100%+1rem)] items-center gap-2 rounded-xl px-2 text-left text-sm text-gray-700 active:bg-gray-50"
+                    >
+                        <span className="flex-1">
+                            <strong className="font-semibold text-red-700">{summary.debtors}</strong> de {summary.students}{' '}
+                            {summary.debtors === 1 ? 'estudiante debe' : 'estudiantes deben'}
+                        </span>
+                        <ChevronRight className="h-4 w-4 text-gray-500" aria-hidden />
+                    </button>
+                ) : (
+                    <p className="mt-3 flex items-center gap-2 text-sm font-medium text-emerald-700">
+                        <CheckCircle2 className="h-4 w-4" aria-hidden /> Nadie tiene cuotas vencidas
+                    </p>
                 )}
             </section>
 
-            <div className="space-y-4">
-                <div className="flex flex-wrap items-center gap-2">
-                    <div className="relative min-w-[14rem] flex-1">
-                        <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                        <input
-                            type="search"
-                            aria-label="Buscar estudiante"
-                            value={busqueda}
-                            onChange={(e) => setBusqueda(e.target.value)}
-                            placeholder="Buscar estudiante o cédula"
-                            className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                        />
-                    </div>
-                    {(['TODOS', 'DEBE', 'AL_DIA', 'ANO_PAGADO', 'EXONERADO'] as Filtro[]).map((f) => (
+            <section aria-labelledby="titulo-meses" className="space-y-3">
+                <h2 id="titulo-meses" className="flex items-baseline gap-2 text-lg font-bold text-gray-900">
+                    Meses <span className="text-sm font-normal text-gray-500">{data.academicYear.name}</span>
+                </h2>
+                <GraficoDeMeses meses={meses} hoy={data.today} elegido={mes} alElegir={(m) => setMes(m === mes ? null : m)} />
+                {mes && elMes && (
+                    <MesAbierto
+                        ciclo={ciclo}
+                        mes={mes}
+                        esperado={elMes.esperado}
+                        cobrado={elMes.cobrado}
+                        deudores={deudoresDelMes}
+                        dinero={fmt}
+                        alAbrirAlumno={setAbierto}
+                        alCerrar={() => setMes(null)}
+                    />
+                )}
+            </section>
+
+            <section aria-labelledby="titulo-estudiantes" className="space-y-3">
+                <h2 id="titulo-estudiantes" className="text-lg font-bold text-gray-900">
+                    Estudiantes
+                </h2>
+                <label className="flex min-h-[48px] items-center gap-3 rounded-full bg-white px-4 ring-1 ring-gray-200 focus-within:ring-2 focus-within:ring-indigo-500">
+                    <Search className="h-5 w-5 shrink-0 text-gray-500" aria-hidden />
+                    <input
+                        type="search"
+                        aria-label="Buscar estudiante"
+                        value={busqueda}
+                        onChange={(e) => setBusqueda(e.target.value)}
+                        placeholder="Buscar estudiante o cédula"
+                        className="min-h-[44px] min-w-0 flex-1 bg-transparent text-[15px] text-gray-900 outline-none placeholder:text-gray-500"
+                    />
+                </label>
+                {/* Una barra segmentada, como las de iOS: los cuatro caben, sin arrastrar. */}
+                <div className="flex rounded-full bg-gray-200/70 p-1" role="group" aria-label="Filtrar por estado">
+                    {FILTROS.map(([f, texto]) => (
                         <button
                             key={f}
                             type="button"
                             onClick={() => setFiltro(f)}
                             aria-pressed={filtro === f}
                             className={cn(
-                                'min-h-[44px] rounded-full border px-3 text-sm font-medium',
-                                filtro === f ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+                                'min-h-[44px] min-w-0 flex-1 rounded-full px-1 text-[13px] font-semibold transition-colors',
+                                filtro === f ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'
                             )}
                         >
-                            {f === 'TODOS' ? 'Todos' : ESTADO_DEL_ALUMNO[f].texto}
+                            {texto}
                         </button>
                     ))}
                 </div>
 
-                {porAno.length === 0 && <p className="py-10 text-center text-gray-700">No hay estudiantes que coincidan.</p>}
+                <div className="overflow-hidden rounded-[24px] bg-white ring-1 ring-gray-200">
+                    {plana ? (
+                        <VerMas cosas={visibles} etiqueta="Estudiantes" vacio="No hay estudiantes que coincidan.">
+                            {(a) => fila(a, true)}
+                        </VerMas>
+                    ) : laSeccion ? (
+                        <>
+                            <Volver texto={`${elAno} · ${laSeccion.name}`} alTocar={() => setSeccion(null)} />
+                            <VerMas cosas={todos.filter((a) => a.seccionId === laSeccion.id).sort((x, y) => x.nombre.localeCompare(y.nombre, 'es'))} etiqueta={laSeccion.name}>
+                                {(a) => fila(a, false)}
+                            </VerMas>
+                        </>
+                    ) : ano ? (
+                        <>
+                            <Volver texto={elAno ?? ''} alTocar={() => setAno(null)} />
+                            <ul aria-label={`Secciones de ${elAno}`} className="divide-y divide-gray-100">
+                                {secciones.map((c) => (
+                                    <FilaDeGrupo key={c.id} nombre={c.name} cuantos={c.students.length} deben={c.debtors} alTocar={() => setSeccion(c.id)} />
+                                ))}
+                            </ul>
+                        </>
+                    ) : (
+                        <ul aria-label="Años" className="divide-y divide-gray-100">
+                            {ANOS.map((nombre, i) => {
+                                const del = data.classrooms.filter((c) => c.grade === i + 1);
+                                if (!del.length) return null;
+                                return (
+                                    <FilaDeGrupo
+                                        key={nombre}
+                                        nombre={nombre}
+                                        cuantos={del.reduce((t, c) => t + c.students.length, 0)}
+                                        deben={del.reduce((t, c) => t + c.debtors, 0)}
+                                        alTocar={() => setAno(i + 1)}
+                                    />
+                                );
+                            })}
+                        </ul>
+                    )}
+                </div>
+            </section>
 
-                {porAno.map((ano) => (
-                    <AcordeonDeAno key={ano.grado} nombre={ano.nombre} deudores={ano.secciones.reduce((s, c) => s + c.debtors, 0)} abiertoAlEmpezar={filtro !== 'TODOS' || !!texto}>
-                        <div className="grid gap-4 lg:grid-cols-2">
-                            {ano.secciones.map((s) => (
-                                <section key={s.id} className="rounded-xl border border-gray-200 bg-white">
-                                    <h3 className="flex items-center justify-between border-b border-gray-100 px-4 py-3 text-sm font-bold text-gray-900">
-                                        {s.name}
-                                        {s.debtors > 0 && <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-800">{s.debtors} deben</span>}
-                                    </h3>
-                                    <ul className="divide-y divide-gray-100">
-                                        {s.visibles.map((a) => {
-                                            const e = ESTADO_DEL_ALUMNO[a.state];
-                                            return (
-                                                <li key={a.id}>
-                                                    <button type="button" onClick={() => setAbierto(a.id)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-50">
-                                                        <UserAvatar name={`${a.firstName} ${a.lastName}`} src={a.avatar} className="h-8 w-8" initialsClassName="text-xs" />
-                                                        {/* Sin cortar: «González, Cristóbal» salía «González, Cr…» y no había forma de leerlo. */}
-                                                        <span className="min-w-0 flex-1 break-words text-sm font-medium text-gray-900">
-                                                            {a.lastName}, {a.firstName}
-                                                        </span>
-                                                        <span className={cn('shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold', e.clases)}>
-                                                            {e.texto}
-                                                            {a.state === 'DEBE' && ` · ${dinero(a.owed, moneda)}`}
-                                                        </span>
-                                                    </button>
-                                                </li>
-                                            );
-                                        })}
-                                    </ul>
-                                </section>
-                            ))}
-                        </div>
-                    </AcordeonDeAno>
-                ))}
-            </div>
-
-            <DialogoDeFicha studentId={abierto} ciclo={ciclo} alCerrar={() => setAbierto(null)} />
+            {abierto && <FichaDelAlumno studentId={abierto} ciclo={ciclo} alCerrar={() => setAbierto(null)} />}
         </div>
     );
 }
 
-function AcordeonDeAno({ nombre, deudores, abiertoAlEmpezar, children }: { nombre: string; deudores: number; abiertoAlEmpezar: boolean; children: React.ReactNode }) {
-    const [abierto, setAbierto] = React.useState(true);
-    React.useEffect(() => {
-        if (abiertoAlEmpezar) setAbierto(true);
-    }, [abiertoAlEmpezar]);
+/** «‹ 1er Año»: volver un nivel en la lista. */
+function Volver({ texto, alTocar }: { texto: string; alTocar: () => void }) {
     return (
-        <section className="rounded-2xl border border-gray-200 bg-gray-100/60">
-            <button type="button" onClick={() => setAbierto((v) => !v)} aria-expanded={abierto} className="flex w-full items-center justify-between px-5 py-4 text-left">
-                <span className="text-lg font-bold text-gray-900">{nombre}</span>
-                <span className="flex items-center gap-3">
-                    {deudores > 0 && <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-800">{deudores} deben</span>}
-                    <ChevronDown size={20} className={cn('text-gray-600 transition-transform', abierto && 'rotate-180')} />
-                </span>
-            </button>
-            {abierto && <div className="px-4 pb-4">{children}</div>}
-        </section>
-    );
-}
-
-function DialogoDeFicha({ studentId, ciclo, alCerrar }: { studentId: string | null; ciclo: string | null; alCerrar: () => void }) {
-    const { data, isLoading } = useFichaDePagos(studentId, ciclo);
-    return (
-        <Dialog open={!!studentId} onOpenChange={(v) => !v && alCerrar()}>
-            <DialogContent className="max-h-[92dvh] max-w-2xl overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>{data ? `${data.student.firstName} ${data.student.lastName}` : 'Pagos'}</DialogTitle>
-                    <DialogDescription>{data?.student.classroom?.name ?? ''}</DialogDescription>
-                </DialogHeader>
-                {isLoading || !data ? (
-                    <div className="flex justify-center py-10">
-                        <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
-                    </div>
-                ) : (
-                    <FichaDePagos ficha={data} editable />
-                )}
-            </DialogContent>
-        </Dialog>
+        <button type="button" onClick={alTocar} className="flex min-h-[52px] w-full items-center gap-2 border-b border-gray-100 px-3 text-left text-[15px] font-semibold text-gray-900 active:bg-gray-50">
+            <ChevronLeft className="h-5 w-5 text-gray-600" aria-hidden />
+            {texto}
+        </button>
     );
 }
 
@@ -274,21 +287,13 @@ function DialogoDeFicha({ studentId, ciclo, alCerrar }: { studentId: string | nu
 // FINANZAS: la página (2026-10-01)
 // ════════════════════════════════════════════════════════════════════════════
 
-type Vista = 'resumen' | 'estudiantes' | 'personal' | 'gastos';
-const VISTAS: Array<{ id: Vista; nombre: string; pista: string; icono: typeof Wallet }> = [
-    { id: 'resumen', nombre: 'Resumen', pista: 'Fondos y el ciclo mes a mes', icono: Wallet },
-    { id: 'estudiantes', nombre: 'Estudiantes', pista: 'Cuotas, cobros y quién debe', icono: GraduationCap },
-    { id: 'personal', nombre: 'Personal', pista: 'Sueldos, vacaciones y recibos', icono: Users },
-    { id: 'gastos', nombre: 'Gastos y fondos', pista: 'Compras, reparaciones, ingresos', icono: ShoppingCart },
-];
-
 /**
  * FINANZAS DEL LICEO
  *
  * Cristian: «hacer aquí en pagos controlar también los pagos a los profesores,
  * al personal y gastos extras… que sea para manejar sus finanzas». La misma
- * dirección de siempre (`/dashboard/pagos`), con cuatro pestañas y el ciclo
- * que se mira arriba; los dos van en la dirección (`?vista=&ciclo=`), así que
+ * dirección de siempre (`/dashboard/pagos`): arriba el saldo, debajo sus
+ * cuatro partes en círculos y el «+» para añadir (como Rial, 2026-10-14); los dos van en la dirección (`?vista=&ciclo=`), así que
  * volver atrás y compartir el enlace llevan al mismo sitio.
  */
 export default function FinanzasPage() {
@@ -299,6 +304,21 @@ export default function FinanzasPage() {
     const ciclo = buscar.get('ciclo');
     const vista = (VISTAS.some((v) => v.id === buscar.get('vista')) ? buscar.get('vista') : 'resumen') as Vista;
     const { data: ciclos = [] } = useCiclosDePagos(activo);
+    // El panel del «+» (y el saldo inicial del Resumen) vive aquí: se abre
+    // desde cualquier parte de las finanzas.
+    const [movimiento, setMovimiento] = React.useState<null | {
+        tipo: TipoDeMovimiento;
+        fuente?: FuenteDelMovimiento;
+        estudiante?: { id: string; nombre: string; seccion: string };
+        persona?: { id: string; nombre: string };
+    }>(null);
+    React.useEffect(
+        () =>
+            alAbrirMovimiento((p) =>
+                setMovimiento({ tipo: p.tipo, fuente: p.estudiante ? 'ESTUDIANTE' : p.persona ? 'PERSONAL' : undefined, estudiante: p.estudiante, persona: p.persona })
+            ),
+        []
+    );
     const ir = (cambios: { ciclo?: string | null; vista?: Vista }) => {
         const q = new URLSearchParams();
         const c = cambios.ciclo !== undefined ? cambios.ciclo : ciclo;
@@ -308,7 +328,10 @@ export default function FinanzasPage() {
         router.replace(`/dashboard/pagos${q.size ? `?${q}` : ''}`, { scroll: false });
     };
 
-    if (cargandoAjustes) {
+    // Hasta arrancar, la rueda también en el navegador (ver `useYaArranco`).
+    const arranco = useYaArranco();
+
+    if (!arranco || cargandoAjustes) {
         return (
             <div className="flex min-h-[60vh] items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-indigo-600" aria-label="Cargando" />
@@ -338,72 +361,37 @@ export default function FinanzasPage() {
     const monedas = { base, aceptadas: (ajustes?.acceptedCurrencies === 'BOTH' || !ajustes?.acceptedCurrencies ? ['USD', 'VES'] : [ajustes.acceptedCurrencies]) as Moneda[] };
 
     return (
-        <div className="space-y-5">
-            <EncabezadoDePantalla
-                titulo="Finanzas"
-                descripcion="Lo que tiene el liceo, lo que le deben, lo que paga y lo que gasta. Elige una pestaña; los meses se tocan para verlos por días."
-                acciones={
-                    <>
-                        {ciclos.length > 0 && <SelectorDeCiclo ciclos={ciclos} valor={ciclo} alCambiar={(c) => ir({ ciclo: c })} />}
-                        <AyudaDeLaPantalla
-                            titulo="Cómo funcionan las finanzas"
-                            pasos={[
-                                {
-                                    titulo: 'Empieza por el saldo',
-                                    texto: 'En «Resumen», «Poner el saldo inicial»: lo que el liceo tiene hoy. Desde ahí, los fondos disponibles se calculan solos: entra lo cobrado y lo agregado; sale lo pagado al personal y lo gastado.',
-                                },
-                                {
-                                    titulo: 'Cobra a los estudiantes',
-                                    texto: 'En «Estudiantes»: el ciclo mes a mes y la lista. Toca a un estudiante, toca las cuotas que paga y «Registrar pago».',
-                                },
-                                {
-                                    titulo: 'Paga al personal',
-                                    texto: 'En «Personal»: los profesores aparecen solos; agrega al resto. Ponle a cada uno su sueldo (o a varios de una vez), su día de pago y sus vacaciones. Para pagar, toca a la persona y los pagos que le haces: sale su recibo.',
-                                },
-                                {
-                                    titulo: 'Anota gastos y fondos',
-                                    texto: 'En «Gastos y fondos»: lo que se compra o se repara, con la foto de la factura, y lo que entra que no es cuota (una donación).',
-                                },
-                            ]}
-                            nota="Nada se borra: lo que se anotó mal se anula con un motivo, y queda a la vista. Elige otro ciclo arriba para ver los anteriores."
-                        />
-                    </>
-                }
-            />
-            {elCiclo && ciclos.length === 0 && <p className="-mt-2 text-sm font-semibold text-gray-700">Ciclo escolar {elCiclo.name}{elCiclo.closed ? ' · cerrado' : ''}</p>}
+        <div className="space-y-5 pb-20" data-sin-titulo>
+            {/* Sin título ni explicación (Cristian: «si tocó en Finanzas sabe qué es»;
+                las dudas, en el «?» de arriba). El ciclo irá en otro sitio: por ahora
+                se elige con `?ciclo=`. */}
+            <h1 className="sr-only">Finanzas</h1>
 
-            <nav className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Partes de las finanzas">
-                {VISTAS.map((v) => {
-                    const Icono = v.icono;
-                    const activa = vista === v.id;
-                    return (
-                        <button
-                            key={v.id}
-                            type="button"
-                            onClick={() => ir({ vista: v.id })}
-                            aria-current={activa ? 'page' : undefined}
-                            aria-describedby={`pista-${v.id}`}
-                            className={cn(
-                                'flex min-h-[44px] items-start gap-2 rounded-xl border p-3 text-left transition-colors',
-                                activa ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-gray-200 bg-white text-gray-800 hover:bg-gray-50'
-                            )}
-                        >
-                            <Icono className={cn('mt-0.5 h-5 w-5 shrink-0', activa ? 'text-indigo-600' : 'text-gray-500')} aria-hidden />
-                            <span className="min-w-0">
-                                <span className="block text-sm font-semibold leading-tight">{v.nombre}</span>
-                                <span id={`pista-${v.id}`} className={cn('mt-0.5 block text-xs leading-snug', activa ? 'text-indigo-700' : 'text-gray-600')}>
-                                    {v.pista}
-                                </span>
-                            </span>
-                        </button>
-                    );
-                })}
-            </nav>
+            <SaldoDisponible ciclo={ciclo} />
+            {/* Las cuatro partes, en círculos debajo del saldo (los accesos de Rial). */}
+            <PartesDeFinanzas vista={vista} alElegir={(v) => ir({ vista: v })} />
 
-            {vista === 'resumen' && <VistaResumen ciclo={ciclo} monedas={monedas} irA={(v) => ir({ vista: v })} />}
+            {vista === 'resumen' && <VistaResumen ciclo={ciclo} irA={(v) => ir({ vista: v })} alPonerSaldo={() => setMovimiento({ tipo: 'entra', fuente: 'SALDO_INICIAL' })} />}
             {vista === 'estudiantes' && <VistaDeEstudiantes ciclo={ciclo} />}
             {vista === 'personal' && <VistaDelPersonal ciclo={ciclo} />}
             {vista === 'gastos' && <VistaDeGastosYFondos ciclo={ciclo} monedas={monedas} cerrado={Boolean(elCiclo?.closed)} />}
+
+            {/* Un ciclo cerrado se ve, no se toca: sin «+». */}
+            {!elCiclo?.closed && (
+                <BotonAnadir alIngreso={() => setMovimiento({ tipo: 'entra' })} alEgreso={() => setMovimiento({ tipo: 'sale' })} />
+            )}
+            {movimiento && (
+                <NuevoMovimiento
+                    tipoInicial={movimiento.tipo}
+                    fuenteInicial={movimiento.fuente}
+                    estudianteInicial={movimiento.estudiante}
+                    personaInicial={movimiento.persona}
+                    ciclo={ciclo}
+                    monedas={monedas}
+                    metodos={ajustes?.methods ?? []}
+                    alCerrar={() => setMovimiento(null)}
+                />
+            )}
         </div>
     );
 }

@@ -83,6 +83,8 @@ export interface ListaDelPersonal {
     nomina: Nomina;
     traidos: { traidos: number; desde: string | null };
     personas: PersonaDelPersonal[];
+    /** «Profesor» primero, siempre; luego las que creó el admin (Cocina…). El área de cada persona es su `cargo`. */
+    areas: string[];
 }
 
 export interface PagoDebido {
@@ -305,8 +307,47 @@ export const useCrearGasto = () =>
             datos: d,
         })
     );
-export const useAnularGasto = () => useCambio(({ id, motivo }: { id: string; motivo: string }) => api.post(`/finanzas/gastos/${id}/anular`, { motivo }).then((r) => r.data));
-export const useGuardarCategorias = () => useCambio((categorias: string[]) => api.put('/finanzas/categorias', { categorias }).then((r) => r.data));
+export const useAnularGasto = () => useCambio(({ id, motivo }: { id: string; motivo: string }) => api.post(`/finanzas/gastos/${id}/anular`, { motivo }).then((r) => r.data));/** La tasa del BCV de hoy (`GET /finanzas/tasa`): null si ninguna fuente contestó nunca. */
+export interface TasaDelDia {
+    usd: number;
+    eur: number | null;
+    fecha: string;
+    fuente: string;
+    vieja: boolean;
+}
+export function useTasaDelDia(activo: boolean) {
+    return useQuery({
+        queryKey: ['finanzas', 'tasa'],
+        queryFn: async () => (await api.get('/finanzas/tasa')).data.tasa as TasaDelDia | null,
+        enabled: activo,
+        staleTime: 30 * 60_000,
+    });
+}
+
+/** Un movimiento que se repite (el internet, el sueldo de la cocinera): se anota de un toque. */
+export interface Recurrente {
+    id: string;
+    nombre: string;
+    tipo: 'entra' | 'sale';
+    fuente: string;
+    monto: string;
+    moneda: Moneda;
+    descripcion: string | null;
+    metodo: string | null;
+    personaId: string | null;
+    personaNombre: string | null;
+}
+export function useRecurrentes(activo: boolean) {
+    return useQuery({
+        queryKey: ['finanzas', 'recurrentes'],
+        queryFn: async () => (await api.get('/finanzas/recurrentes')).data.recurrentes as Recurrente[],
+        enabled: activo,
+    });
+}
+export const useGuardarRecurrentes = () =>
+    useCambio((recurrentes: Array<Partial<Recurrente>>) => api.put('/finanzas/recurrentes', { recurrentes }).then((r) => r.data.recurrentes as Recurrente[]));
+
+export const useGuardarAreas = () => useCambio((areas: string[]) => api.put('/finanzas/areas', { areas }).then((r) => r.data as { areas: string[] }));
 export const useCrearPersona = () => useCambio((d: Record<string, unknown>) => api.post('/finanzas/personal', d).then((r) => r.data));
 export const useEditarPersona = () => useCambio(({ id, ...d }: { id: string } & Record<string, unknown>) => api.put(`/finanzas/personal/${id}`, d).then((r) => r.data));
 export const useGuardarAcuerdo = (ciclo: string | null) =>

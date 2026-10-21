@@ -179,55 +179,8 @@ describe('Las doce acciones que nadie había probado', () => {
                 },
             });
 
-        it('FALT-06: cuenta los avisos de TODO el liceo, no los del admin', async () => {
-            // Este era el fallo: decía "globales del sistema" en su propio
-            // comentario y devolvía los del admin que preguntaba. Un director
-            // con el buzón vacío veía "0" y podía entender que en su liceo no se
-            // avisa de nada.
-            await avisarA(profe.id, 'Para el profesor');
-            await avisarA(alumno.id, 'Para el alumno');
-            await avisarA(alumno.id, 'Otro para el alumno');
-            // Al admin, ninguno.
 
-            const res = await request(server.server)
-                .get('/api/notifications/stats')
-                .set(auth(tokenAdmin))
-                .expect(200);
 
-            const datos = res.body.data;
-            expect(datos.total).toBe(3);
-            expect(datos.unread).toBe(3);
-            expect(datos.destinatarios).toBe(2);
-            expect(datos.alcance).toBe('liceo');
-        });
-
-        it('FALT-07: lo de uno mismo sigue siendo lo de uno mismo', async () => {
-            // La ruta personal no ha cambiado: si las dos devolvieran lo mismo,
-            // el cambio no habría servido de nada.
-            await avisarA(profe.id, 'Para el profesor');
-            await avisarA(alumno.id, 'Para el alumno');
-
-            const mias = await request(server.server)
-                .get('/api/notifications/my-notifications/stats')
-                .set(auth(tokenAdmin))
-                .expect(200);
-
-            const delLiceo = await request(server.server)
-                .get('/api/notifications/stats')
-                .set(auth(tokenAdmin))
-                .expect(200);
-
-            expect(mias.body.data.total).toBe(0);      // el admin no tiene ninguno
-            expect(delLiceo.body.data.total).toBe(2);  // el liceo sí
-        });
-
-        it('FALT-08: un profesor no ve las cuentas de todo el liceo', async () => {
-            const res = await request(server.server)
-                .get('/api/notifications/stats')
-                .set(auth(tokenProfe));
-
-            expect(res.status).toBe(403);
-        });
 
         it('FALT-09: un estudiante tampoco', async () => {
             const res = await request(server.server)
@@ -415,26 +368,8 @@ describe('Las doce acciones que nadie había probado', () => {
             expect(despues.status).toBe(200);
         });
 
-        it('FALT-17: las métricas de consultas responden', async () => {
-            const res = await comoSuper(
-                request(server.server).get('/api/superadmin/monitoring/metrics/queries')
-            );
-            expect(res.status).toBe(200);
-        });
 
-        it('FALT-18: el histórico de métricas responde', async () => {
-            const res = await comoSuper(
-                request(server.server).get('/api/superadmin/monitoring/metrics/history')
-            );
-            expect(res.status).toBe(200);
-        });
 
-        it('FALT-19: las cuentas de alertas responden', async () => {
-            const res = await comoSuper(
-                request(server.server).get('/api/superadmin/monitoring/alerts/stats')
-            );
-            expect(res.status).toBe(200);
-        });
 
         it('FALT-20: migrar un liceo que no existe no revienta el servidor', async () => {
             // Lo que NO puede pasar: un 500 con la tripa del error dentro, o

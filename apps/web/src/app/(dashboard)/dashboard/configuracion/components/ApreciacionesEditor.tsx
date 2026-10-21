@@ -1,6 +1,7 @@
 'use client';
 
 import { Plus, X } from 'lucide-react';
+import { Grupo } from '@/components/configuracion/ajustes';
 
 export const APRECIACIONES_POR_DEFECTO = ['Consolidado', 'En proceso', 'Iniciado'];
 
@@ -26,53 +27,46 @@ export function ApreciacionesEditor({ valor, alCambiar }: { valor: string[]; alC
     const error = erroresDeApreciaciones(valor);
 
     return (
-        <fieldset className="rounded-xl border border-gray-200 p-4">
-            <legend className="px-1 text-sm font-medium text-gray-700">Apreciaciones (materias sin nota)</legend>
-            <p className="mb-3 text-xs text-gray-600">
-                Para las materias que se evalúan con apreciación, como Orientación o Grupos de Creación. De la mejor
-                a la peor. No entran en ningún promedio ni en la promoción.
-            </p>
-            <ol className="space-y-2">
-                {valor.map((v, i) => (
-                    <li key={i} className="flex items-center gap-2">
-                        <span className="w-6 text-right text-xs font-semibold text-gray-500">{i + 1}.</span>
-                        <input
-                            aria-label={`Apreciación ${i + 1}`}
-                            value={v}
-                            maxLength={40}
-                            onChange={(e) => cambiar(i, e.target.value)}
-                            className="min-h-[44px] flex-1 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-indigo-500"
-                        />
-                        <button
-                            type="button"
-                            onClick={() => quitar(i)}
-                            disabled={valor.length <= 2}
-                            aria-label={`Quitar ${v || 'esta apreciación'}`}
-                            className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-40"
-                        >
-                            <X className="h-4 w-4" aria-hidden />
-                        </button>
-                    </li>
-                ))}
-            </ol>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
+        <Grupo
+            id="apreciaciones"
+            titulo="Apreciaciones (materias sin nota)"
+            descripcion="Para las materias que se evalúan con apreciación, como Orientación o Grupos de Creación. De la mejor a la peor. No entran en ningún promedio ni en la promoción."
+            pie={error ? <span className="text-rose-700">{error}</span> : undefined}
+        >
+            {valor.map((v, i) => (
+                <div key={i} className="flex min-h-[56px] items-center gap-3 px-4 py-1">
+                    <span className="w-5 shrink-0 text-right text-sm font-semibold tabular-nums text-gray-500">{i + 1}</span>
+                    <input
+                        aria-label={`Apreciación ${i + 1}`}
+                        value={v}
+                        maxLength={40}
+                        onChange={(e) => cambiar(i, e.target.value)}
+                        className="min-h-[44px] min-w-0 flex-1 bg-transparent text-[15px] text-gray-900 outline-none"
+                    />
+                    <button
+                        type="button"
+                        onClick={() => quitar(i)}
+                        disabled={valor.length <= 2}
+                        aria-label={`Quitar ${v || 'esta apreciación'}`}
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-red-700 disabled:opacity-40"
+                    >
+                        <X className="h-[18px] w-[18px]" aria-hidden />
+                    </button>
+                </div>
+            ))}
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
                 <button
                     type="button"
                     onClick={() => alCambiar([...valor, ''])}
                     disabled={valor.length >= 10}
-                    className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-40"
+                    className="flex min-h-[44px] items-center gap-1.5 text-[15px] font-medium text-indigo-700 disabled:opacity-40"
                 >
                     <Plus className="h-4 w-4" aria-hidden /> Añadir
                 </button>
-                <button
-                    type="button"
-                    onClick={() => alCambiar([...APRECIACIONES_POR_DEFECTO])}
-                    className="min-h-[44px] rounded-lg px-3 text-sm font-semibold text-gray-700 hover:bg-gray-100"
-                >
+                <button type="button" onClick={() => alCambiar([...APRECIACIONES_POR_DEFECTO])} className="min-h-[44px] text-sm font-medium text-gray-600 hover:text-gray-900">
                     Volver a las del MPPE
                 </button>
-                {error && <p className="text-sm text-rose-700">{error}</p>}
             </div>
-        </fieldset>
+        </Grupo>
     );
 }

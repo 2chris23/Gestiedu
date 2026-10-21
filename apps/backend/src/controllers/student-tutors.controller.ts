@@ -5,6 +5,7 @@ import { sanitizeText } from '../utils/sanitize';
 import { RedisCache } from '../config/redis';
 import { conLiceo } from '../config/ambito-del-liceo';
 import { logger } from '../utils/logger';
+import { avisarSiFalla } from '../utils/sin-callar';
 
 /**
  * ASIGNAR REPRESENTANTES A UN ALUMNO
@@ -51,7 +52,7 @@ const DATOS_DEL_REPRESENTANTE = {
 async function olvidarLoGuardadoDe(instituteId: string, userIds: string[]) {
     await conLiceo(instituteId, () =>
         RedisCache.clearPatterns(userIds.map((id) => `cache:${instituteId}:*:${id}:*`))
-    ).catch(() => undefined);
+    ).catch(avisarSiFalla('student-tutors.controller'));
 }
 
 async function anotar(

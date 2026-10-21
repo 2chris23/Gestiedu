@@ -71,6 +71,23 @@ function vigilar(cliente: Redis, nombre: string) {
     }
     caido = true;
   });
+  /**
+   * CONECTADO CONSIGO MISMO (2026-10-06)
+   *
+   * Con Redis apagado en la misma máquina, reintentar contra 127.0.0.1:6379
+   * cada pocos segundos acaba un día eligiendo como puerto de salida el 6379:
+   * TCP conecta el puerto consigo mismo y el cliente «habla con Redis» oyendo
+   * su propio eco. Se dio por listo, cada `SCAN` devolvía basura sin fin y el
+   * proceso se quedó con 1,4 núcleos ocupados: la descarga del teléfono, cerrar
+   * sesión y renovarla se colgaban (visto en el túnel). Se corta y se reintenta.
+   */
+  cliente.on('connect', () => {
+    const s = (cliente as unknown as { stream?: { localPort?: number; remotePort?: number; localAddress?: string; remoteAddress?: string; destroy: () => void } }).stream;
+    if (s && s.localPort === s.remotePort && s.localAddress === s.remoteAddress) {
+      console.warn(`⚠️  Redis (${nombre}): conectado consigo mismo (puerto ${s.localPort}); se corta.`);
+      s.destroy();
+    }
+  });
   cliente.on('ready', () => {
     if (caido) console.log(`✅ Redis (${nombre}) volvió`);
     else if (nombre === 'principal') console.log('✅ Redis connected successfully');
@@ -111,18 +128,6 @@ export async function disconnectRedis(): Promise<void> {
     console.error('❌ Redis disconnection failed:', error);
   }
 }
-
-// Función para verificar el estado de Redis
-export async function checkRedisHealth(): Promise<boolean> {
-  try {
-    const result = await redis.ping();
-    return result === 'PONG';
-  } catch (error) {
-    console.error('Redis health check failed:', error);
-    return false;
-  }
-}
-
 // Utilidades para caché
 /**
  * Lo que varios patrones tienen en común antes de su primer comodín.
@@ -341,6 +346,29 @@ export class RedisCache {
     }
   }
 
+  /**
+   * Muchas de una vez (el precalentado de promedios: decenas de miles). Con
+   * Redis, en tandas por la misma conexión (`pipeline`): de una en una serían
+   * decenas de miles de idas y vueltas.
+   */
+  static async setMany(entradas: Array<[string, unknown]>, ttlSeconds: number): Promise<void> {
+    if (entradas.length === 0) return;
+    const conLlave = entradas.map(([k, v]) => [this.getKey(k), v] as const);
+    try {
+      if (this.isRedisReady()) {
+        for (let i = 0; i < conLlave.length; i += 1000) {
+          const tanda = redis.pipeline();
+          for (const [k, v] of conLlave.slice(i, i + 1000)) tanda.setex(k, ttlSeconds, JSON.stringify(v));
+          await tanda.exec();
+        }
+        return;
+      }
+    } catch {
+      /* sin Redis: a la memoria del proceso, abajo */
+    }
+    for (const [k, v] of conLlave) this.memorySet(k, v, ttlSeconds);
+  }
+
   // Obtener valor del caché
   static async get<T>(key: string): Promise<T | null> {
     const redisKey = this.getKey(key);
@@ -423,7 +451,8 @@ export class RedisCache {
           const [nextCursor, results] = await redis.scan(cursor, 'MATCH', redisPattern, 'COUNT', 1000);
           cursor = nextCursor;
           if (results && results.length) keysToDelete.push(...results);
-        } while (cursor !== '0');
+          // Un cursor que no es un número es una respuesta rota: sin esto, bucle sin fin.
+        } while (cursor !== '0' && /^\d+$/.test(String(cursor)));
         if (keysToDelete.length > 0) {
           await redis.del(...keysToDelete);
         }
@@ -468,7 +497,8 @@ export class RedisCache {
           for (const key of results || []) {
             if (coincideAlguno(key)) keysToDelete.push(key);
           }
-        } while (cursor !== '0');
+          // Un cursor que no es un número es una respuesta rota: sin esto, bucle sin fin.
+        } while (cursor !== '0' && /^\d+$/.test(String(cursor)));
         if (keysToDelete.length > 0) {
           await redis.del(...keysToDelete);
         }
@@ -533,11 +563,6 @@ export class RedisSession {
   // Guardar sesión
   static async saveSession(sessionId: string, sessionData: any, ttlSeconds: number): Promise<void> {
     await RedisCache.set(`${this.sessionPrefix}${sessionId}`, sessionData, ttlSeconds);
-  }
-
-  // Obtener sesión
-  static async getSession<T>(sessionId: string): Promise<T | null> {
-    return await RedisCache.get<T>(`${this.sessionPrefix}${sessionId}`);
   }
 
   // Eliminar sesión

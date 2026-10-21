@@ -10,7 +10,7 @@ import { lista, delAlumno, anotar, borrar } from '../controllers/labor-social.co
 const id = { type: 'string', minLength: 1, maxLength: 64 } as const;
 
 export async function laborSocialRoutes(fastify: FastifyInstance) {
-    fastify.get('/', { preHandler: [authenticate, requireTeacher] }, lista as any);
+    fastify.get('/', { schema: { querystring: { type: 'object', properties: { classroomId: id } } }, preHandler: [authenticate, requireTeacher] }, lista as any);
     fastify.get('/alumno/:studentId', { schema: { params: { type: 'object', properties: { studentId: id } } }, preHandler: [authenticate] }, delAlumno as any);
     fastify.post(
         '/actividades',

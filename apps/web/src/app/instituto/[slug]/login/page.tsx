@@ -1,5 +1,6 @@
 'use client';
 
+import { EnlacesLegales } from '@/components/legal/EnlacesLegales';
 import { useParams, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
@@ -91,6 +92,8 @@ export default function InstituteLoginPage() {
             // Ver `lib/credencial-en-memoria.ts`.
             guardarCredencial(data?.tokens?.accessToken || data?.accessToken);
 
+            // Lo que el enrutador guardó sin sesión ya no vale (ver el login principal).
+            router.refresh();
             router.push('/dashboard');
         } catch {
             setError('Error de conexión. Intenta nuevamente.');
@@ -311,6 +314,7 @@ export default function InstituteLoginPage() {
                 <p className="text-center text-gray-400 text-xs mt-5">
                     Sistema de Gestión Escolar · {institute?.name ?? slug}
                 </p>
+                <EnlacesLegales />
             </div>
         </div>
     );

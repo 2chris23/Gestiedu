@@ -19,18 +19,29 @@ import { CAJON_RESPUESTAS, abrirLaBase, conElCajon } from './base-del-telefono';
 import { MAXIMO_DE_DIAS } from './lo-guardado-en-el-telefono';
 
 /** Lo que no se guarda: la hora (sin conexión se cuenta aparte), sesiones y salud. */
-const NO_SE_GUARDA = [/^\/?auth\/(refresh|logout|sessions)/, /^\/?health/, /^\/?time\b/, /^\/?avisos\/telefonos/];
+// `legal`: si aceptó lo dice el servidor (y este teléfono, aparte): sin conexión no se pregunta.
+const NO_SE_GUARDA = [/^\/?auth\/(refresh|logout|sessions)/, /^\/?health/, /^\/?time\b/, /^\/?avisos\/telefonos/, /^\/?legal\//];
+
+/**
+ * Una respuesta guardada que fue un «no» del servidor (403, 404…): la precarga
+ * la apunta así para que sin conexión se conteste lo mismo (`lib/axios.ts`).
+ */
+export const ESTADO_GUARDADO = '__estadoGuardado';
 
 /** Una respuesta más grande no se guarda: llenaría el teléfono. */
 const TAMANO_MAXIMO = 2_000_000;
 
-export const TOPE_DE_RESPUESTAS = 1500;
+// La precarga del admin guarda todo el liceo (unas 30 lecturas por ficha y
+// 600 fichas): el tope está para que el teléfono no se llene sin fin, no para
+// recortar lo que se usa. Medido en `docs/mediciones/` (precarga).
+export const TOPE_DE_RESPUESTAS = 40000;
 
 interface Guardada {
     dueno: string;
     clave: string;
     cuando: number;
     datos: unknown;
+    crudo?: boolean;
 }
 
 /**
@@ -72,21 +83,293 @@ export async function guardarRespuesta(dueno: string | null, clave: string, dato
     if (++escrituras % 50 === 0) void recortarLasRespuestas();
 }
 
+/**
+ * MUCHAS DE UNA VEZ (la precarga: un bloque de 150)
+ *
+ * De una en una, cada respuesta abría la base del teléfono, hacía su
+ * transacción y la cerraba: 9.500 veces en la descarga del admin, y en un
+ * teléfono lento eso se notaba más que la red. Aquí, una sola transacción.
+ * Devuelve lo que ocupa lo guardado (el «X MB» de la descarga).
+ */
+export async function guardarRespuestas(
+    dueno: string | null,
+    filas: Array<[string, unknown]>,
+    tamanoTotal?: number
+): Promise<number> {
+    if (!dueno || filas.length === 0) return 0;
+    const cuando = Date.now();
+    const validas: Guardada[] = [];
+    let bytes = tamanoTotal ?? 0;
+    for (const [clave, datos] of filas) {
+        if (!seGuarda(clave)) continue;
+        if (tamanoTotal === undefined) {
+            let tamano = 0;
+            try {
+                tamano = JSON.stringify(datos)?.length ?? 0;
+            } catch {
+                continue;
+            }
+            if (tamano > TAMANO_MAXIMO) continue;
+            bytes += tamano;
+        }
+        validas.push({ dueno, clave, cuando, datos });
+    }
+    if (validas.length === 0) return bytes;
+    await conElCajon(CAJON_RESPUESTAS, 'readwrite', (c) => {
+        for (const fila of validas) c.put(fila, llave(dueno, fila.clave));
+    });
+    const antes = escrituras;
+    escrituras += validas.length;
+    if (Math.floor(antes / 5000) !== Math.floor(escrituras / 5000)) void recortarLasRespuestas();
+    return bytes;
+}
+
+interface InfoIndice {
+    cuando: number;
+    /** La lectura → su bloque (un número en el paquete de antes; «grupo:n» con cubos). */
+    mapa: Record<string, number | string>;
+}
+
+const indiceEnMemoria = new Map<string, InfoIndice>();
+const bloquesEnMemoria = new Map<string, Map<number | string, Record<string, string>>>();
+
+/**
+ * GUARDAR RESPUESTAS CRUDAS COMO TEXTO (Fase B, Punto 3)
+ *
+ * En vez de parsear 34 MB de JSON (9.513 objetos) y hacer clonado estructurado masivo en V8,
+ * o hacer 9.513 llamadas a store.put (que en LevelDB tardaban 8 s con CPU ×4),
+ * se agrupan en chunks de texto (~25 bloques) y un índice.
+ * Guardar 26 registros en IndexedDB tarda ~700 ms (meta ≤ 4 s con CPU ×4 cumplida holgadamente).
+ */
+export async function guardarRespuestasCrudas(
+    dueno: string | null,
+    filas: Array<{ clave: string; texto: string; bytes: number }>,
+    /** Con cubos (`lib/cubos.ts`): el cubo. Sus bloques se suman al índice; sin él, lo reemplazan. */
+    grupo?: string
+): Promise<number> {
+    if (!dueno || filas.length === 0) return 0;
+    if (grupo) return guardarUnGrupo(dueno, filas, grupo);
+    let bytes = 0;
+    const validas: Array<{ clave: string; texto: string; bytes: number }> = [];
+
+    for (let i = 0; i < filas.length; i++) {
+        const f = filas[i];
+        const k = f.clave;
+        const c0 = k.charCodeAt(0) === 47 ? k.slice(1) : k;
+        if (c0.startsWith('auth/') || c0.startsWith('health') || c0.startsWith('time') || c0.startsWith('avisos/telefonos')) {
+            continue;
+        }
+        if (f.bytes > TAMANO_MAXIMO) continue;
+        bytes += f.bytes;
+        validas.push(f);
+    }
+
+    if (validas.length === 0) return bytes;
+
+    const CHUNKS = 25;
+    const chunkSize = Math.ceil(validas.length / CHUNKS);
+    const indice: Record<string, number> = {};
+    const bloques: Record<number, Record<string, string>> = {};
+
+    for (let i = 0; i < validas.length; i++) {
+        const f = validas[i];
+        const bId = Math.floor(i / chunkSize);
+        indice[f.clave] = bId;
+        if (!bloques[bId]) bloques[bId] = {};
+        bloques[bId][f.clave] = f.texto;
+    }
+
+    const ahora = Date.now();
+    const infoIndice: InfoIndice = {
+        cuando: ahora,
+        mapa: indice,
+    };
+
+    await conElCajon(CAJON_RESPUESTAS, 'readwrite', (c) => {
+        c.put(JSON.stringify(infoIndice), `${dueno}|__indice__`);
+        for (let bId = 0; bId < CHUNKS; bId++) {
+            if (bloques[bId]) {
+                c.put(JSON.stringify(bloques[bId]), `${dueno}|__bloque_${bId}__`);
+            }
+        }
+    });
+
+    indiceEnMemoria.set(dueno, infoIndice);
+    let m = bloquesEnMemoria.get(dueno);
+    if (!m) {
+        m = new Map();
+        bloquesEnMemoria.set(dueno, m);
+    }
+    for (let bId = 0; bId < CHUNKS; bId++) {
+        if (bloques[bId]) {
+            m.set(bId, bloques[bId]);
+        }
+    }
+
+    escrituras += validas.length;
+    return bytes;
+}
+
+/**
+ * UN CUBO, SIN BORRAR LOS DEMÁS (18-oct-2026)
+ *
+ * Con un solo paquete, cada guardado reemplazaba el índice entero: con cubos
+ * (varios guardados, tres a la vez) solo sobrevivía el último y sin conexión
+ * faltaban pantallas. Cada cubo tiene SUS bloques (`__bloque_<cubo>:<n>__`)
+ * y su parte del índice; el índice se mezcla de uno en uno (`enFila`).
+ */
+let enFila: Promise<unknown> = Promise.resolve();
+const POR_BLOQUE = 400;
+
+async function guardarUnGrupo(dueno: string, filas: Array<{ clave: string; texto: string; bytes: number }>, grupo: string): Promise<number> {
+    let bytes = 0;
+    const validas = filas.filter((f) => {
+        const c0 = f.clave.charCodeAt(0) === 47 ? f.clave.slice(1) : f.clave;
+        if (c0.startsWith('auth/') || c0.startsWith('health') || c0.startsWith('time') || c0.startsWith('avisos/telefonos')) return false;
+        if (f.bytes > TAMANO_MAXIMO) return false;
+        bytes += f.bytes;
+        return true;
+    });
+    const bloques = new Map<string, Record<string, string>>();
+    validas.forEach((f, i) => {
+        const id = `${grupo}:${Math.floor(i / POR_BLOQUE)}`;
+        if (!bloques.has(id)) bloques.set(id, {});
+        bloques.get(id)![f.clave] = f.texto;
+    });
+    const tarea = enFila.then(async () => {
+        let indice = indiceEnMemoria.get(dueno);
+        if (!indice) {
+            const crudo = await conElCajon<any>(CAJON_RESPUESTAS, 'readonly', (c) => c.get(`${dueno}|__indice__`));
+            const parseado = crudo ? (typeof crudo === 'string' ? JSON.parse(crudo) : crudo) : null;
+            indice = parseado?.mapa ? (parseado as InfoIndice) : { cuando: Date.now(), mapa: {} };
+        }
+        const mapa = { ...indice.mapa };
+        const viejos = new Set<string>();
+        for (const [k, v] of Object.entries(mapa)) {
+            if (typeof v === 'string' && v.startsWith(`${grupo}:`)) {
+                viejos.add(v);
+                delete mapa[k];
+            }
+        }
+        for (const [id, b] of bloques) for (const k of Object.keys(b)) mapa[k] = id;
+        const nuevo: InfoIndice = { cuando: Date.now(), mapa };
+        await conElCajon(CAJON_RESPUESTAS, 'readwrite', (c) => {
+            for (const [id, b] of bloques) c.put(JSON.stringify(b), `${dueno}|__bloque_${id}__`);
+            for (const v of viejos) if (!bloques.has(v)) c.delete(`${dueno}|__bloque_${v}__`);
+            c.put(JSON.stringify(nuevo), `${dueno}|__indice__`);
+        });
+        indiceEnMemoria.set(dueno, nuevo);
+        let m = bloquesEnMemoria.get(dueno);
+        if (!m) bloquesEnMemoria.set(dueno, (m = new Map()));
+        for (const v of viejos) m.delete(v);
+        for (const [id, b] of bloques) m.set(id, b);
+    });
+    enFila = tarea.catch(() => undefined);
+    await tarea;
+    escrituras += validas.length;
+    return bytes;
+}
+
 export async function leerRespuesta(dueno: string | null, clave: string): Promise<{ datos: unknown; cuando: number } | null> {
     if (!dueno) return null;
-    const fila = await conElCajon<Guardada>(CAJON_RESPUESTAS, 'readonly', (c) => c.get(llave(dueno, clave)));
-    if (!fila || fila.dueno !== dueno) return null;
-    if (Date.now() - fila.cuando > MAXIMO_DE_DIAS * 24 * 60 * 60 * 1000) return null;
-    return { datos: fila.datos, cuando: fila.cuando };
+    const caducidadMs = MAXIMO_DE_DIAS * 24 * 60 * 60 * 1000;
+    const ahora = Date.now();
+
+    // 1. Mirar fila directa si existe
+    let respuestaDirecta: { datos: unknown; cuando: number } | null = null;
+    const directa = await conElCajon<any>(CAJON_RESPUESTAS, 'readonly', (c) => c.get(llave(dueno, clave)));
+    if (directa) {
+        if (typeof directa === 'string') {
+            try {
+                respuestaDirecta = { datos: JSON.parse(directa), cuando: ahora };
+            } catch {
+                respuestaDirecta = { datos: directa, cuando: ahora };
+            }
+        } else if (typeof directa === 'object') {
+            if (!directa.dueno || directa.dueno === dueno) {
+                const cuandoDirecta = directa.cuando || 0;
+                if (ahora - cuandoDirecta <= caducidadMs) {
+                    let datos = directa.datos;
+                    if (directa.crudo && typeof datos === 'string') {
+                        try {
+                            datos = JSON.parse(datos);
+                        } catch {}
+                    }
+                    respuestaDirecta = { datos, cuando: cuandoDirecta };
+                }
+            }
+        }
+    }
+
+    // 2. Mirar en el índice y bloques del paquete
+    let respuestaBloque: { datos: unknown; cuando: number } | null = null;
+    let indice = indiceEnMemoria.get(dueno);
+    if (!indice) {
+        const indiceRaw = await conElCajon<any>(CAJON_RESPUESTAS, 'readonly', (c) => c.get(`${dueno}|__indice__`));
+        if (indiceRaw) {
+            const parseado = typeof indiceRaw === 'string' ? JSON.parse(indiceRaw) : indiceRaw;
+            if (parseado && typeof parseado === 'object' && parseado.mapa && typeof parseado.cuando === 'number') {
+                indice = parseado as InfoIndice;
+            } else if (parseado && typeof parseado === 'object') {
+                indice = { cuando: ahora, mapa: parseado as Record<string, number> };
+            }
+            if (indice) indiceEnMemoria.set(dueno, indice);
+        }
+    }
+
+    // Punto 2: el paquete caduca a los 7 días
+    if (indice && ahora - (indice.cuando || 0) <= caducidadMs) {
+        const bId = indice.mapa[clave];
+        if (bId !== undefined) {
+            let m = bloquesEnMemoria.get(dueno);
+            if (!m) {
+                m = new Map();
+                bloquesEnMemoria.set(dueno, m);
+            }
+            let bloque = m.get(bId);
+            if (!bloque) {
+                const bloqueRaw = await conElCajon<any>(CAJON_RESPUESTAS, 'readonly', (c) => c.get(`${dueno}|__bloque_${bId}__`));
+                if (bloqueRaw) {
+                    bloque = typeof bloqueRaw === 'string' ? JSON.parse(bloqueRaw) : bloqueRaw;
+                    m.set(bId, bloque!);
+                }
+            }
+            const raw = bloque?.[clave];
+            if (raw !== undefined) {
+                let datosBloque: unknown = raw;
+                if (typeof raw === 'string') {
+                    try {
+                        datosBloque = JSON.parse(raw);
+                    } catch {}
+                }
+                respuestaBloque = { datos: datosBloque, cuando: indice.cuando };
+            }
+        }
+    }
+
+    // Punto 3: si existen ambas, gana la más nueva
+    if (respuestaDirecta && respuestaBloque) {
+        return respuestaDirecta.cuando >= respuestaBloque.cuando ? respuestaDirecta : respuestaBloque;
+    }
+
+    return respuestaDirecta ?? respuestaBloque ?? null;
 }
 
 /** Al cerrar sesión: todo. */
 export async function olvidarLasRespuestas(): Promise<void> {
+    indiceEnMemoria.clear();
+    bloquesEnMemoria.clear();
     await conElCajon(CAJON_RESPUESTAS, 'readwrite', (c) => c.clear());
 }
 
 /** Al entrar alguien: lo de cualquier otro dueño, fuera. */
 export async function olvidarLasRespuestasDeOtros(dueno: string): Promise<void> {
+    for (const d of indiceEnMemoria.keys()) {
+        if (d !== dueno) indiceEnMemoria.delete(d);
+    }
+    for (const d of bloquesEnMemoria.keys()) {
+        if (d !== dueno) bloquesEnMemoria.delete(d);
+    }
     const bd = await abrirLaBase();
     if (!bd) return;
     await new Promise<void>((resolver) => {
@@ -107,29 +390,51 @@ export async function olvidarLasRespuestasDeOtros(dueno: string): Promise<void> 
     bd.close();
 }
 
-/** Lo caducado fuera, y si pasa del tope, lo más viejo. */
-async function recortarLasRespuestas(): Promise<void> {
+/** Lo caducado fuera, y si pasa del tope, lo más viejo (Punto 4: sin tocar nunca índices ni bloques). */
+export async function recortarLasRespuestas(): Promise<void> {
     const bd = await abrirLaBase();
     if (!bd) return;
     await new Promise<void>((resolver) => {
         try {
             const t = bd.transaction(CAJON_RESPUESTAS, 'readwrite');
             const almacen = t.objectStore(CAJON_RESPUESTAS);
-            const contar = almacen.count();
-            contar.onsuccess = () => {
-                let sobran = contar.result - TOPE_DE_RESPUESTAS;
-                const viejo = Date.now() - MAXIMO_DE_DIAS * 24 * 60 * 60 * 1000;
-                const cursor = almacen.index('cuando').openCursor();
-                cursor.onsuccess = () => {
-                    const c = cursor.result;
-                    if (!c) return;
-                    const fila = c.value as Guardada;
-                    if (sobran > 0 || fila.cuando < viejo) {
-                        c.delete();
-                        sobran--;
-                        c.continue();
+            const esEspecial = (k: string) => k.includes('|__indice__') || k.includes('|__bloque_');
+            const viejo = Date.now() - MAXIMO_DE_DIAS * 24 * 60 * 60 * 1000;
+
+            const filasSueltas: Array<{ key: IDBValidKey; cuando: number }> = [];
+
+            const cursor = almacen.openCursor();
+            cursor.onsuccess = () => {
+                const c = cursor.result;
+                if (!c) {
+                    // Fin del recorrido: recortar por tope borrando las más viejas primero (Punto 4)
+                    const sobran = filasSueltas.length - TOPE_DE_RESPUESTAS;
+                    if (sobran > 0) {
+                        filasSueltas.sort((a, b) => a.cuando - b.cuando);
+                        for (let i = 0; i < sobran; i++) {
+                            almacen.delete(filasSueltas[i].key);
+                        }
                     }
-                };
+                    return;
+                }
+
+                const k = String(c.key);
+                if (esEspecial(k)) {
+                    // NUNCA tocar __indice__ ni __bloque_*__ (Punto 4)
+                    c.continue();
+                    return;
+                }
+
+                const fila = c.value as Guardada;
+                const cuando = typeof fila === 'object' && fila && typeof fila.cuando === 'number' ? fila.cuando : 0;
+
+                if (cuando > 0 && cuando < viejo) {
+                    // Caducada: borrar inmediatamente
+                    c.delete();
+                } else {
+                    filasSueltas.push({ key: c.key, cuando });
+                }
+                c.continue();
             };
             t.oncomplete = t.onerror = t.onabort = () => resolver();
         } catch {

@@ -49,6 +49,9 @@ interface Props {
 /** Lo que hay que bajar para que se esconda: menos que esto es un temblor. */
 const UMBRAL = 12;
 
+/** Que vuelva a verse (la pide el recorrido guiado). */
+export const MOSTRAR_LA_BARRA = 'gestiedu:mostrar-la-barra';
+
 export function BarraInferiorMovil({ destinos }: Props) {
     const pathname = usePathname();
     const [escondida, setEscondida] = React.useState(false);
@@ -81,18 +84,41 @@ export function BarraInferiorMovil({ destinos }: Props) {
     // Al cambiar de pantalla, la barra vuelve: se llega arriba del todo.
     React.useEffect(() => setEscondida(false), [pathname]);
 
+    // El recorrido guiado la enseña cuando la explica (escondida, el hueco
+    // iluminado caía fuera de la pantalla).
+    React.useEffect(() => {
+        const mostrar = () => setEscondida(false);
+        window.addEventListener(MOSTRAR_LA_BARRA, mostrar);
+        return () => window.removeEventListener(MOSTRAR_LA_BARRA, mostrar);
+    }, []);
+
     const esElActivo = (href: string) =>
         href === '/dashboard' ? pathname === '/dashboard' : pathname === href || pathname.startsWith(href + '/');
 
-    const mitad = Math.ceil(destinos.length / 2);
-    const izquierda = destinos.slice(0, mitad);
-    const derecha = destinos.slice(mitad);
+    let izquierda: DestinoDeLaBarra[];
+    let derecha: DestinoDeLaBarra[];
+
+    if (destinos.length === 1) {
+        // Si hay un solo destino (el representante con «Mi cuenta»), va a la derecha
+        // —igual que en el alumno y el profesor— y la izquierda se compensa con un
+        // hueco del mismo ancho para que Inicio quede perfectamente centrado.
+        izquierda = [];
+        derecha = destinos;
+    } else {
+        const mitad = Math.ceil(destinos.length / 2);
+        izquierda = destinos.slice(0, mitad);
+        derecha = destinos.slice(mitad);
+    }
+
+    const ranuras = Math.max(izquierda.length, derecha.length);
+    const faltanIzquierda = ranuras - izquierda.length;
+    const faltanDerecha = ranuras - derecha.length;
     const enInicio = pathname === '/dashboard';
 
     const clasesDelBoton = (activo: boolean) =>
         cn(
             'flex min-h-[52px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 text-xs font-semibold transition-colors',
-            activo ? 'text-indigo-700' : 'text-gray-600'
+            activo ? 'text-cabecera-tinta' : 'text-texto-gris'
         );
 
     const Boton = ({ destino }: { destino: DestinoDeLaBarra }) => {
@@ -121,14 +147,30 @@ export function BarraInferiorMovil({ destinos }: Props) {
     return (
         <nav
             aria-label="Navegación principal"
+            data-recorrido="menu"
             className="zona-segura-abajo fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white shadow-[0_-1px_8px_rgba(15,23,42,0.06)] transition-transform duration-200 ease-out lateral:hidden print:!hidden"
-            style={
-                escondida
-                    ? { transform: 'translateY(calc(100% - var(--zona-segura-abajo)))' }
-                    : undefined
-            }
+            style={{
+                // Tumbado, los botones de Android van a un lado: que no tapen la barra.
+                paddingLeft: 'var(--zona-segura-izquierda)',
+                paddingRight: 'var(--zona-segura-derecha)',
+                ...(escondida ? { transform: 'translateY(calc(100% - var(--zona-segura-abajo)))' } : {}),
+            }}
         >
+            {/* Lo de la pantalla se desvanece al llegar a la barra (como Rial),
+                en vez de cortarse en seco contra ella (Cristian, 14-oct-2026). */}
+            <div
+                aria-hidden
+                className={cn(
+                    'pointer-events-none absolute inset-x-0 bottom-full h-10 bg-gradient-to-t from-gray-50 to-transparent transition-opacity duration-200',
+                    // Escondida la barra, el difuminado se va con ella: si no, asomaba (MOVIL-02).
+                    escondida && 'opacity-0'
+                )}
+            />
             <div className="mx-auto flex max-w-xl items-end justify-between px-1">
+                {Array.from({ length: faltanIzquierda }).map((_, i) => (
+                    <div key={`spacer-izq-${i}`} className="min-h-[52px] min-w-0 flex-1" aria-hidden />
+                ))}
+
                 {izquierda.map((d) => (
                     <Boton key={d.name} destino={d} />
                 ))}
@@ -143,20 +185,25 @@ export function BarraInferiorMovil({ destinos }: Props) {
                 >
                     <span
                         className={cn(
-                            'flex h-14 w-14 items-center justify-center rounded-full shadow-lg ring-4 ring-white transition-[transform,opacity,background-color] duration-200 ease-out',
-                            enInicio ? 'bg-indigo-700' : 'bg-indigo-600',
+                            'flex h-14 w-14 items-center justify-center rounded-full shadow-lg ring-4 ring-white dark:ring-[#121212] transition-[transform,opacity,background-color] duration-200 ease-out',
+                            // El color que eligió quien mira (lib/tema-de-la-app.ts).
+                            'bg-[var(--acento)]',
                             // Sobresale 12 px por encima de la barra: escondida,
                             // baja con ella y se desvanece, o se queda asomando.
                             escondida ? 'translate-y-8 opacity-0' : '-translate-y-3 opacity-100'
                         )}
                     >
-                        <Home className="h-6 w-6 text-white" aria-hidden />
+                        <Home className="h-6 w-6 text-[var(--sobre-acento)]" aria-hidden />
                     </span>
                     <span className="-mt-2.5 text-xs font-semibold text-gray-800">Inicio</span>
                 </Link>
 
                 {derecha.map((d) => (
                     <Boton key={d.name} destino={d} />
+                ))}
+
+                {Array.from({ length: faltanDerecha }).map((_, i) => (
+                    <div key={`spacer-der-${i}`} className="min-h-[52px] min-w-0 flex-1" aria-hidden />
                 ))}
             </div>
         </nav>

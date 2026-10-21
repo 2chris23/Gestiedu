@@ -103,7 +103,7 @@ test.describe.serial('Pagos', () => {
         }
     });
 
-    test('PAGOS-UI-02: avisa cuántos deben, se cobra, se baja el comprobante y se anula', async ({ page }, testInfo) => {
+    test('PAGOS-UI-02: avisa cuántos deben, se cobra, se comparte el comprobante y se anula', async ({ page }, testInfo) => {
         try {
             await loginViaUI(page, 'admin@testing.edu.ve', '123456');
             await page.goto(`${WEB_BASE}/dashboard/pagos?vista=estudiantes`);
@@ -113,37 +113,46 @@ test.describe.serial('Pagos', () => {
             await page.getByPlaceholder('Buscar estudiante o cédula').fill(caso.student_id);
             await page.getByRole('button', { name: new RegExp(`${caso.last_name}, ${caso.first_name}`) }).click();
 
-            const dialogo = page.getByRole('dialog');
-            await expect(dialogo.getByRole('heading', { name: 'Cuotas' })).toBeVisible({ timeout: 15000 });
-            await dialogo.getByRole('button', { name: 'Las vencidas' }).click();
-            await dialogo.getByRole('radio', { name: 'Efectivo' }).click();
+            // La ficha solo enseña (cuotas, lo que debe, el historial); cobrar es
+            // «Registrar pago», que abre el Ingreso ya puesto con ese estudiante.
+            const dialogo = page.getByRole('dialog', { name: `${caso.first_name} ${caso.last_name}` });
+            await expect(dialogo.getByRole('list', { name: 'Cuotas del ciclo' })).toBeVisible({ timeout: 15000 });
             await page.screenshot({ path: path.join(EVIDENCIA, 'pagos-ficha.png') });
-            await dialogo.getByRole('button', { name: 'Registrar pago' }).click();
-            await expect(page.getByText(/Pago registrado · comprobante Nº/)).toBeVisible({ timeout: 15000 });
+            const cobrar = async () => {
+                await dialogo.getByRole('button', { name: 'Registrar pago' }).click();
+                const panel = page.getByRole('dialog', { name: 'Nuevo movimiento' });
+                await expect(panel.getByRole('button', { name: 'Cambiar', exact: true })).toBeVisible({ timeout: 15000 });
+                const calculadora = panel.getByRole('group', { name: 'Calculadora' });
+                for (const n of ['1', '00']) await calculadora.getByRole('button', { name: n, exact: true }).click();
+                await panel.getByRole('button', { name: 'Guardar el ingreso' }).click();
+                await expect(page.getByText(/Cobrado · comprobante Nº/).first()).toBeVisible({ timeout: 15000 });
+                await expect(panel).toHaveCount(0);
+            };
+            await cobrar();
 
             const [pago] = await queryTenantDb(`SELECT id, "amountBase" FROM payments WHERE "studentId" = $1 AND "annulledAt" IS NULL`, [caso.student_id]);
             expect(Number(pago.amountBase)).toBeGreaterThan(0);
 
-            const [descarga] = await Promise.all([
-                page.waitForEvent('download'),
-                dialogo.getByRole('button', { name: 'Comprobante en imagen' }).first().click(),
-            ]);
+            // Se toca el pago: la hoja con el monto y «Compartir», que en el ordenador baja la imagen.
+            await dialogo.getByRole('button', { name: /Comprobante Nº/ }).first().click();
+            const hoja = page.getByRole('dialog', { name: 'Pago recibido' });
+            await expect(hoja.getByText('Instituto', { exact: false }).first()).toBeVisible({ timeout: 15000 });
+            await page.screenshot({ path: path.join(EVIDENCIA, 'pagos-comprobante-hoja.png') });
+            const [descarga] = await Promise.all([page.waitForEvent('download'), hoja.getByRole('button', { name: 'Compartir' }).click()]);
             const archivo = path.join(EVIDENCIA, descarga.suggestedFilename());
             await descarga.saveAs(archivo);
             expect(fs.readFileSync(archivo).subarray(0, 4).toString('hex')).toBe('89504e47');
 
-            await dialogo.getByRole('button', { name: 'Anular pago' }).first().click();
-            await dialogo.getByPlaceholder('Motivo de la anulación').fill('Prueba automática');
-            await dialogo.getByRole('button', { name: 'Anular', exact: true }).click();
-            await expect(page.getByText('Pago anulado')).toBeVisible({ timeout: 15000 });
+            await hoja.getByRole('button', { name: 'Anular pago' }).click();
+            await hoja.getByPlaceholder('Motivo de la anulación').fill('Prueba automática');
+            await hoja.getByRole('button', { name: 'Anular', exact: true }).click();
+            await expect(page.getByText('Pago anulado').first()).toBeVisible({ timeout: 15000 });
+            await expect(hoja).toHaveCount(0);
             const [anulado] = await queryTenantDb(`SELECT "annulReason" FROM payments WHERE id = $1`, [pago.id]);
             expect(anulado.annulReason).toBe('Prueba automática');
 
             // Un segundo pago, que queda vigente para lo que ve el representante.
-            await dialogo.getByRole('button', { name: 'Las vencidas' }).click();
-            await dialogo.getByRole('radio', { name: 'Efectivo' }).click();
-            await dialogo.getByRole('button', { name: 'Registrar pago' }).click();
-            await expect(page.getByText(/Pago registrado · comprobante Nº/).first()).toBeVisible({ timeout: 15000 });
+            await cobrar();
         } catch (error) {
             await captureEvidence(testInfo, page, 'PAGOS-UI-02', 'Cobrar y anular', error);
             throw error;
@@ -160,7 +169,7 @@ test.describe.serial('Pagos', () => {
             await expect(seccion.getByRole('heading', { name: 'Historial de pagos' })).toBeVisible();
             await expect(seccion.getByRole('button', { name: 'Registrar pago' })).toHaveCount(0);
             await expect(seccion.getByRole('button', { name: 'Anular pago' })).toHaveCount(0);
-            await expect(seccion.getByRole('button', { name: 'Comprobante en imagen' }).first()).toBeVisible();
+            await expect(seccion.getByRole('button', { name: /Comprobante Nº/ }).first()).toBeVisible();
             await page.screenshot({ path: path.join(EVIDENCIA, 'pagos-representante.png'), fullPage: true });
 
             // Y no entra a la pantalla del admin.

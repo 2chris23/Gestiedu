@@ -1,6 +1,6 @@
 import { AppErrors, createError } from '../middleware/error.middleware';
 import { borrarGuardandoCopia } from '../utils/papelera';
-import { getAcademicConfig } from './promotion/close-cycle.service';
+import { getAcademicConfig } from './promotion/configuracion-academica';
 import { bulkSubjectAveragesConDatos } from './bulk-averages.service';
 import { redondearComoElMPPE } from './grades.service';
 import { datosDelPlantel, fechaLarga, gradoLegible } from './constancias.service';

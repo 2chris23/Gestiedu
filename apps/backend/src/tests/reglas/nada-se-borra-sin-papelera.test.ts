@@ -28,6 +28,8 @@ const SIN_COPIA: Record<string, string> = {
     suscripcionDeAviso: 'la dirección de un teléfono para los avisos: se quita al cerrar sesión o cuando el servicio dice que caducó (guardarla sería guardar a quién escribir)',
     systemAlert: 'avisos de sistema que caducan',
     registroBorrado: 'la propia papelera vaciando lo que caducó',
+    cambioRecibido: 'el registro técnico de qué cambios de los teléfonos ya llegaron (para no aplicarlos dos veces): el mantenimiento lo tira a los 90 días (MANT-01)',
+    paqueteDePrecarga: 'una copia de lo que el teléfono descarga, que se rehace sola: borrarla no pierde nada del liceo',
     institute: 'borrar un liceo es DROP DATABASE, con respaldo previo obligatorio',
 };
 

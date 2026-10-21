@@ -3,7 +3,15 @@
 SaaS de gestión escolar multi-liceo. Monorepo: `apps/backend` (Fastify 5 + Prisma 6 +
 PostgreSQL) y `apps/web` (Next.js 16 + React 19 + Tailwind).
 
-**Multi-tenant: una base de datos por liceo.** La BD de plataforma guarda la fila del
+**Multi-tenant: cada liceo, su esquema en una base compartida** (desde oct. 2026;
+los de antes pueden seguir en su base propia, esquema `public`). La fila de la
+plataforma dice dónde vive (`databaseName` + `databaseSchema`) y nada se adivina.
+**Con PgBouncer, una conexión pasa de un liceo a otro**: el SQL escrito a mano
+leía el esquema de OTRO liceo (medido: 359 de 400). Por eso el cliente de cada
+liceo mete cada consulta a mano y cada transacción en `SET LOCAL search_path`
+(`config/esquema-del-liceo.ts`; `npm run probar:aislamiento`, AISLA-*). Borrar
+un liceo borra **su esquema**, nunca la base compartida; su respaldo es su
+esquema y nada más (BASE-COMP-*). La BD de plataforma guarda la fila del
 instituto con sus credenciales; `getTenantPrisma` cachea hasta 250 clientes con
 PgBouncer (50 sin él; `CLIENTES_DE_LICEO`). El
 `instituteId` del token manda: si la petición nombra otro liceo (slug, cabecera,
@@ -11,6 +19,79 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
 
 ## Cómo se trabaja aquí
 
+0. **Lo único que puede frenar a una persona es su dispositivo o su internet.
+   Nunca, pero nunca, el sistema** (Cristian, 18-oct-2026). Gestiedu se hace
+   para todos los liceos privados del país a la vez —15.000 personas es el piso,
+   no el techo— y TODA lógica nueva o cambiada lo respeta:
+   - ninguna espera crece con cuánta gente usa la app a la vez;
+   - lo que es igual para muchos se calcula **una vez** y se reparte;
+   - nada pesado se calcula al pedirlo si puede estar listo antes;
+   - siempre en bloque (sin N+1), con topes globales y sin colas de uno en uno.
+
+   Se demuestra midiendo con mucha gente a la vez (`medir-muchos-a-la-vez`,
+   `medir:estres`, `medir:concurrencia`), no se supone. Lo que no lo cumple no
+   está terminado. Ejemplo medido: la precarga armaba el paquete de cada
+   persona al entrar, de uno en uno; 300 alumnos en frío esperaban hasta 83 s
+   (con 15.000, más de una hora) para bajar 27 KB cada uno.
+0-bis. **Claude es el programador jefe y dice cuándo está listo** (Cristian,
+   19-oct-2026). Cristian no busca liceo piloto hasta que Claude diga «listo»,
+   y solo se dice con las CUATRO puertas al 100 %, medidas:
+   1. **Cero errores** (jest y navegador enteros en verde, el panel de Salud sin
+      errores abiertos, el barrido de privacidad limpio, y **la misma cifra en
+      todas partes**: un alumno no tiene un promedio o una asistencia en una
+      pantalla y otro en otra);
+   2. **No se pierde nada** (lo hecho sin conexión sube, los respaldos se
+      recuperan, nada se borra sin copia, ningún cambio se pisa callado);
+   3. **Sigue siendo rápido con 100.000 personas** y **con más de 10.000 a la
+      vez responde en 100 ms o menos (p99)**, sin romperse (medido con carga,
+      no supuesto: ver 0-ter);
+   4. **Cada opción funciona** (crear un estudiante, poner un horario… cada
+      botón de cada rol, con su prueba de navegador).
+
+   El estado de cada puerta y la fecha estimada viven en
+   `docs/LISTO-PARA-EL-PILOTO.md`; se actualiza al cerrar cada tanda de
+   trabajo. Decir «listo» sin las cuatro es mentirle.
+0-ter. **Desarrollo primero; producción, solo al final** (Cristian,
+   19-oct-2026: «es algo serio trabajar con instituciones y tengo que entregar
+   algo de calidad»). **Ni dominio ni servidores** hasta estar 100 % seguros de
+   que el sistema aguanta el uso masivo; con ellos esperan la copia en Drive,
+   la revisión del abogado y el titular de lo legal. Desarrollo va por cinco
+   etapas:
+   1. implementación (secciones y funciones nuevas);
+   2. corrección de diseño;
+   3. revisar todo de pie a cabeza (código, archivos y arquitectura);
+   4. que todo funcione como debe;
+   5. estrés extremo: **más de 10.000 personas a la vez sin romperse ni ponerse
+      lento, 100 ms como máximo**.
+
+   Líneas rojas: nadie espera minutos a que algo cargue; nada tarda un minuto
+   en aparecer tras tocarlo; ninguna suma, promedio ni asistencia mal; **un
+   mismo dato, la misma cifra en cada pantalla** (una sola cuenta, en
+   `MAPA_DE_CALCULOS.md`).
+
+   **Cómo se mide sin servidor** (este PC no llega a 10.000 reales):
+   `medir:estres` sube por escalones (100 → 200 → 500 → 1.000 → … hasta donde
+   el PC aguante) y saca p50/p95/p99 de cada uno, **cuánto crece en % al
+   doblar la gente** y la proyección a 1.000, 10.000 y 100.000 con dos cuentas:
+   la de Cristian (el mismo % por cada doble) y el modelo de colas de Salud
+   calibrado con lo medido. Se dice cuál vale más y por qué: mientras sobra
+   máquina el crecimiento es casi plano; cerca del techo se dispara y no en
+   línea recta. La descarga de la primera vez se mide aparte (son MB y manda
+   la red), pero el servidor nunca la hace pasar de segundos.
+
+   **El código, ordenado**: ningún archivo pasa de ~800 líneas (uno grande se
+   parte por responsabilidad, no por número); lo obsoleto se borra con
+   evidencia de que nadie lo usa; las pruebas que vigilan algo que hoy
+   funciona se quedan siempre (son las que avisan si se rompe otra vez).
+   `TAMAÑO-01` vigila que **ninguno pase de 800** (desde el 20-oct-2026 no
+   queda ninguno) y `scripts/barrido-de-cifras.ts --exigir`, las cifras.
+   Una pantalla grande se parte en un gancho (lo que sabe y hace) y partes
+   que reciben `c`, lo que devuelve; un controlador, por tema en su carpeta.
+   **Una ruta sin pantalla que la use no se añade**: se quitaron 50 el
+   19-oct-2026 y las de notas, asistencia y actividades viejas el 20
+   (`docs/ARQUITECTURA.md`).
+0-quater. **En silencio hasta terminar** (Cristian, 19-oct-2026): mientras se
+   trabaja, ningún mensaje en el chat; solo el informe final, en español.
 1. **Evidencia antes de corregir.** Nada es un fallo ni "ya funciona" sin código, diff o
    prueba en vivo que lo demuestre. Medir, no deducir.
 2. **Las reglas de negocio son configurables por instituto**, nunca fijas en el código.
@@ -23,8 +104,8 @@ subdominio o dominio), se rechaza con 401 `TENANT_MISMATCH`. Falla cerrado, siem
 ```bash
 cd apps/backend && npm run dev      # API en :3001
 cd apps/web && npm run dev          # web en :3000
-cd apps/backend && npx jest         # 1217 pruebas en 154 archivos (integración + cálculo)
-npm run test:e2e                    # 309 pruebas de navegador (Playwright), con los dos servidores arriba
+cd apps/backend && npx jest         # 1332 pruebas en 192 archivos (integración + cálculo)
+npm run test:e2e                    # 316 pruebas de navegador (Playwright), con los dos servidores arriba
 cd apps/backend && npm run typecheck
 cd apps/backend && npm run migrate:plataforma        # la base de la plataforma
 cd apps/backend && npm run migrate:tenants[:status]   # migra todos los liceos
@@ -57,6 +138,9 @@ cierra, llega SIGPIPE y el proceso muere. Cuesta horas de pruebas falsas en rojo
 
 - **Next 16 usa `src/proxy.ts`, no `middleware.ts`.** Si existen los dos, la app no arranca.
   El guardián de pantallas por rol vive en `apps/web/src/proxy.ts`.
+- **Una migración nueva empieza con `SET lock_timeout = '10s';`** (MIGRA-01):
+  sin tope, un `ALTER` sobre una tabla en uso cuelga al liceo entero mientras
+  espera su candado. Un índice sobre una tabla grande, `CONCURRENTLY` y aparte.
 - **Migraciones: `prisma migrate deploy`, jamás `db push --accept-data-loss`.**
   `src/scripts/push-all-dbs.ts` es un tope que se niega a correr, a propósito.
 - Las migraciones necesitan conexión **directa**, no PgBouncer (el pooling por transacción
@@ -84,15 +168,16 @@ cierra, llega SIGPIPE y el proceso muere. Cuesta horas de pruebas falsas en rojo
 
 - **Una actividad "para la próxima clase" solo se anuncia en la clase donde se creó.**
   Así se sabe en qué clase se puso y no se acumulan varias en "próxima clase".
-  Está en `classSessions.controller.ts` con su comentario: no cambiar sin hablarlo.
+  Está en `controllers/clase-en-vivo/detalle-de-la-clase.controller.ts` con su comentario: no cambiar sin hablarlo.
 
 ## Permisos (lo que puede cada rol)
 
 - **Estudiante:** solo ve lo suyo — sus datos, sus clases, sus actividades, sus notas.
   No sube, no edita, no agrega nada. **Ni su propio perfil**: eso lo hace el admin.
 - **Tutor:** solo ve a los alumnos que tutela.
-- **Profesor:** pone notas, asistencia, plan de evaluación y observaciones **solo de las
-  clases que imparte**; ve los promedios solo de sus secciones guía. No edita datos
+- **Profesor:** pone notas, asistencia y plan de evaluación **solo de las
+  clases que imparte**; ve los promedios y todas las observaciones de sus secciones guía,
+  mientras que de las demás clases solo ve las observaciones que él mismo creó. No edita datos
   personales (ni correo, ni nombre, ni los suyos).
 - **Admin:** lo demás.
 
@@ -108,6 +193,16 @@ podía asomarse a una sección ajena con solo cambiar el id de la dirección. El
 de la casa; la de la caja fuerte es el servidor: aunque alguien falsee la cookie, la
 pantalla se abre vacía.
 
+**El barrido de privacidad** (`barrido-de-privacidad.test.ts`, 2026-10-11)
+recorre CADA `GET` de la API —también las que se añadan— como alumno y como
+representante, con ids de un compañero, de otra sección, de la actividad con
+notas… y se pone en rojo si una respuesta trae el id (la cédula) o el correo
+de otro alumno. Con el admin como control: si a él no le salen, el barrido no
+mira nada. Hecho también sobre `instituto-testing` (8.449 peticiones y el
+profesor): sin fugas del alumno ni del representante. Encontró que el profesor
+recibía los alumnos sin sección (`/students/available`, ahora solo el admin) y
+cinco 500 por filtros que no existían.
+
 **Dos preguntas, no una.** `authenticate` dice *quién eres*; `requireTeacher` /
 `requireAdmin`, *qué rol tienes*; y `assertClassroomScope` / `canSeeStudent`, *si eso
 es tuyo*. Una ruta de escritura que solo lleva `authenticate` está abierta: así
@@ -118,7 +213,27 @@ antes de que nadie haya preguntado quién llama, y responden 401 hasta al admin.
 
 ## Borrar
 
-**Nada se borra de verdad.** Todo borrado de información del liceo pasa por
+**Lo que el admin borra se borra de verdad, con un plazo para deshacer**
+(Cristian, 19-oct-2026). Borrar no puede dejar la información guardada para
+siempre en la base, pero un borrado sin querer (un alumno, una clase…) se
+tiene que poder devolver. Por eso:
+
+- lo borrado va primero a la **papelera** (`registros_borrados`), con su
+  cascada y en una sola **operación** (todo lo de una petición), y el admin lo
+  **restaura** entero en Configuración → Papelera (`services/papelera.service.ts`):
+  de padres a hijos, en una transacción; si ya existe otra vez o falta lo de
+  arriba, 409 `YA_EXISTE` / `FALTA_LO_DE_ARRIBA` y no se toca nada;
+- pasado el plazo del liceo (`papelera.dias`, de 7 a 90; 30 si no dice nada),
+  la tarea diaria lo **borra de la base para siempre**;
+- «Borrar para siempre» en la papelera lo quita al instante;
+- en los respaldos sigue hasta que caduca el último que lo contenía: eso se le
+  dice al admin, con la fecha.
+
+Restaurar a un **profesor** devuelve su cuenta, no sus clases: al borrarlo se
+reasignan (`updateMany`) y eso no pasa por la papelera. PAPELERA-01…04,
+PAPELERA-UI-01. Estudio de los respaldos: `docs/RESPALDOS-Y-PAPELERA.md`.
+
+Todo borrado de información del liceo pasa por
 `borrarGuardandoCopia()` (`src/utils/papelera.ts`), que guarda una copia completa
 de la fila en `registros_borrados` antes de tocarla. Si la copia no se puede
 guardar, el borrado no ocurre.
@@ -131,10 +246,53 @@ nueva queda cubierta el día que se añade. Si el borrado pasa de
 respaldo. Sección 52 de la auditoría.
 
 Excepciones a propósito: `refreshToken` (guardar sesiones es guardar llaves) y
-`notification` (no es información del liceo).
+`notification` (no es información del liceo). La tarea diaria de mantenimiento
+tira, con plazo configurable, la papelera vieja, los avisos leídos, las llaves
+caducadas y los `cambios_recibidos` viejos (MANT-*); nada del liceo.
 
 Borrar un liceo entero hace `DROP DATABASE`, que la papelera no alcanza: se
 respalda antes, y sin respaldo no se borra.
+
+## Lo legal (19-oct-2026)
+
+Pedido por Cristian. **Doce documentos, cada uno con su página pública**
+(`/legal` y `/legal/<id>`, estáticas; textos en `apps/web/src/lib/legal/documentos.ts`):
+términos, privacidad, datos de menores, condiciones para liceos, acuerdo de
+tratamiento de datos, uso aceptable, cookies, seguridad, conservación y
+borrado, derechos (habeas data), proveedores y aviso legal. Venezuela **no tiene
+ley general de datos**: el marco es la Constitución (arts. 28 y 60), la
+sentencia 1318/2011 del TSJ, la LOPNNA y las leyes de delitos informáticos,
+mensajes de datos e Infogobierno. **No son consejo legal: que los revise un
+abogado antes de los clientes.** El titular (nombre, RIF, correo, domicilio)
+lo ponen `NEXT_PUBLIC_LEGAL_*` al compilar (`lib/legal/titular.ts`); sin ellos
+dicen «el titular de Gestiedu».
+
+**En la app, la primera vez se aceptan** los términos y la privacidad (y, el
+estudiante y el representante, lo de los menores), leyéndolos dentro
+(`components/legal/AceptarLoLegal.tsx`, por encima de la descarga). La prueba
+queda en `aceptaciones_legales` (quién, versión, cuándo, dirección, aparato;
+`routes/legal.routes.ts`). **Al cambiar algo de fondo de lo que se acepta, sube
+`VERSION_LEGAL` en los dos lados** (LEGAL-01 lo vigila): todos aceptan otra vez.
+Sin conexión no bloquea; las pruebas de navegador no la ven salvo con
+`gestiedu:pedir-lo-legal`. Configuración → Información legal (todos los roles) y
+«Términos · Privacidad» al pie de las pantallas de entrar. Aceptar no es un
+cambio que avise al liceo (`avisar-cambios`: tampoco `mis-datos` ni `errores`).
+LEGAL-01…03, LEGAL-UI-01…03.
+
+## Los datos son del liceo: «Descargar todos los datos» (19-oct-2026)
+
+La garantía de Cristian: aunque Gestiedu deje de funcionar para siempre, el
+liceo se queda con todo lo suyo **sin pedírselo a nadie**. Configuración →
+«Descargar todos los datos» (solo el admin): el director elige una contraseña
+(no se guarda en ningún sitio), el servidor arma **de fondo** un ZIP con AES-256
+(`@zip.js/zip.js`; se abre con 7-Zip) con Excel por ciclo (estudiantes, notas
+de actividades y del plan, resumen final, asistencia, observaciones, finanzas),
+las personas, las fotos, las facturas y un LEEME, y se baja hasta 24 h
+después (`services/mis-datos.service.ts`, MISDATOS-01…03, MISDATOS-UI-01). Con
+varios procesos, `MIS_DATOS_DIR` va en un volumen compartido. **No es un
+respaldo para restaurar** (eso son los de abajo) ni la papelera (deshacer).
+Pendiente: la copia automática en el Drive del liceo y el aviso por correo
+(`docs/RESPALDOS-Y-PAPELERA.md`).
 
 ## Respaldos
 
@@ -143,6 +301,16 @@ qué base es de qué liceo y con qué llave) y luego cada liceo; con `BACKUP_S3_
 copia fuera del servidor (R2). `/health` dice si el último fue bien. Antes la
 plataforma no se respaldaba: perdido el disco, los archivos de los liceos no se
 podían volver a enganchar (RESP-07).
+
+**Simulacro del 2026-10-11** (`DESPLIEGUE.md` §8): cada respaldo se recuperó en
+bases nuevas y salió idéntico, tabla por tabla. Hubo que corregir dos cosas:
+- **En un servidor nuevo, el liceo no volvía.** Las extensiones de búsqueda no
+  van en el archivo de un esquema; `restaurarLiceo` las crea antes
+  (BASE-COMP-06).
+- **Los teléfonos no se enteraban de la restauración.** `restore:tenant`
+  apunta la restauración (`apuntarLaRestauracion`): los teléfonos lo bajan todo
+  otra vez y la numeración de los cambios no vuelve atrás (CAMBIOS-06). También
+  vacía la memoria rápida de ese liceo.
 
 ## Varios procesos y muchos liceos
 
@@ -226,9 +394,176 @@ responde 403. Reglas en `MAPA` §8b y §8g.
   admin lo confirma (y entonces se cobra con la cuenta de «Registrar pago»).
   Un aviso le recuerda la cuota N días antes (`jobs/recordatorio-de-cuotas.job.ts`),
   una sola vez por cuota aunque haya varios procesos.
-- **Reporte del mes** para imprimir: `/dashboard/pagos/reporte?mes=`.
+- **Reporte del mes** para imprimir: `/dashboard/pagos/reporte?mes=` (desde Movimientos).
+- **Diseño como Rial** (pedido por Cristian, 14-oct-2026): sin título ni
+  explicación arriba; el saldo grande con su ojo, las cuatro partes en
+  cuadros debajo (la forma de los accesos del Inicio), «Entró/Salió» del mes,
+  las cuentas del ciclo y **Movimientos** (cada entrada y salida, mes con
+  flechas). El selector de ciclo se quitó de arriba: irá en otro sitio (por
+  ahora, `?ciclo=`).
+- **El «+» solo tiene Ingreso y Egreso** (Cristian: «anotar un gasto y pagarle
+  al personal es lo mismo: se está descontando»). Abre **Nuevo movimiento**
+  (`components/finanzas/NuevoMovimiento.tsx`, como el de Rial): la fecha
+  arriba, el monto con su calculadora y luego de qué es, en un carril. Ingreso:
+  un estudiante (año → sección → tabla con su mensualidad y lo pagado, con
+  buscador), donación, otro ingreso o saldo inicial. Egreso: el personal (por
+  área) o una categoría de gasto. La descripción, de último y opcional.
+- **Áreas del personal**: Profesores siempre; las demás (Cocina, Limpieza…)
+  las crea el admin en Personal y se les añade gente con solo el nombre. El
+  área es el `cargo`; la lista vive en `payment_settings.areasDelPersonal`
+  (`PUT /finanzas/areas`, AREAS-01/02).
+- **La tasa del BCV se pone sola** (`services/tasa-del-dia.service.ts`,
+  `GET /finanzas/tasa`): tres servicios gratuitos sin clave, en orden
+  (ve.dolarapi.com, bcv.today, bcv-api-ashy.vercel.app); la primera que
+  conteste bien gana, una hora en la memoria rápida (`platform:`). Si ninguna
+  contesta, la última buena «vieja» (30 días) y 5 min sin volver a preguntar;
+  si nunca hubo, se escribe a mano. Ninguna es del BCV: leen lo que publica.
+- **Recurrentes**: plantillas de ingreso o egreso (el internet, el sueldo de
+  la cocinera) en `payment_settings.recurrentes`; se guardan desde el panel
+  («Guardar como recurrente») y se usan de un toque (RECUR-01/02, FIN-UI-05).
+  El panel pide también la **referencia** (salvo efectivo) y la **foto de la
+  factura** en los gastos.
 - Sin conexión solo se anotan fondos y gastos (sin la foto); pagar al personal
   y confirmar pagos piden servidor: es dinero y llevan recibo correlativo.
+- **Ninguna lista de más de 20 filas de golpe** (Cristian, 14-oct-2026: con
+  599 alumnos «la app parece interminable»). Estudiantes va por años →
+  secciones → alumnos (con búsqueda o filtro, lista plana de 20 en 20,
+  `components/pagos/listas-de-finanzas.tsx`, `VerMas`); un mes abierto enseña quién debe
+  **por sección** (`MesAbierto`; los días, detrás de «Por días»). Personal:
+  «sin sueldo» es una fila que abre una hoja (`PonerSueldo`). FIN-UI-06.
+- **El comprobante es como un Pago Móvil**: se toca un pago y sale una hoja
+  con el monto y los datos, «Compartir» (la imagen al compartir del teléfono;
+  en el ordenador se baja) y «Cerrar»; anular va dentro. Sin PDF. Vive una vez
+  en el armazón (`HojaDeComprobante`, se abre con `abrirComprobante()` de
+  `lib/comprobante-abierto.ts`) y su imagen sale de `lib/comprobante-de-pago.ts`.
+  Los datos van a la izquierda, uno debajo de otro (como el de Bancamiga), y
+  **cada movimiento se toca**: un cobro o un pago al personal abre su recibo;
+  un fondo o un gasto, su hoja sin número (`tipo: 'movimiento'` con sus datos).
+- **Las fichas solo enseñan; cobrar y pagar van por «Nuevo movimiento»**
+  (Cristian, 15-oct-2026). La del estudiante (`FichaDelAlumno`) y la de la
+  persona tienen la forma del panel de Ingreso/Egreso (`PanelDeFicha`): lo que
+  debe, las cuotas en filas, el historial y, abajo, «Registrar pago», que abre
+  el Ingreso o el Egreso ya puesto con esa persona (`abrirMovimiento()`). Lo
+  pagado se reparte **empezando por lo más viejo** (`loQueCubre`): si debe 40
+  del mes pasado y 40 de este y paga 20, se abona al mes pasado. El
+  representante sigue en `FichaDePagos` (ahí reporta lo que pagó).
+- Los meses son **un gráfico** (`GraficoDeMeses`): doce barras en dos filas,
+  verde lo cobrado y rojo lo que quedó sin cobrar de los meses vencidos. Los
+  filtros de Estudiantes, una barra segmentada de cuatro (sin arrastrar).
+
+## La sección y la materia (16-oct-2026)
+
+Pedido por Cristian. **Cabecera en una línea** (`components/academic/CabezaDeLaClase.tsx`):
+la flecha, el título con el año (o la sección y las horas) en gris, el lapso y
+**UN botón de documentos** que abre su ventana (Resumen final, Consejo de
+sección, Carnets): Cristian prefiere siempre un botón con ventana a un botón
+por documento. Sin miga de pan (repetía el título) ni «20 Estudiantes» (contaba
+solo la primera página). Las pestañas son **cuadros como los de Finanzas**
+(`PartesDeLaPantalla`); la sección ya no tiene «Calificaciones»: el plan vive
+en cada materia. La tabla de alumnos de la materia es la misma que la de la
+sección (`compacta`), y el buscador lleva al lado el botón de inscribir (solo
+el icono). El horario en vivo de la materia es un carril de lado, como el de la
+sección. El rol de los botones lo dice `useQuienSoy`, no `auth.store`.
+**El profesor (o el guía) va en la cabecera** (`profesor` de
+`CabezaDeLaClase`), no en una fila suya: en el ordenador, su foto y nombre
+junto al lapso; en el teléfono, una línea gris bajo el año (la foto le quitaba
+el ancho al título). El admin lo toca para cambiarlo. El carril del horario
+deja aire en sus orillas: recortaba el filo de la primera tarjeta.
+
+**Materias, con las mismas piezas** (18-oct-2026). El catálogo: «Materias» con
+cuántas, el año (`components/subject/ElegirCiclo.tsx`) y «+»; cada materia una
+fila con su círculo de color (`CirculoDeMateria`) y un ⋯ que abre Editar /
+Eliminar; todas de una vez (`limit` 100: con 20, la 21.ª se perdía en otra
+página). La materia por dentro: la cabecera de la sección, tres cifras, las
+secciones por año en filas (el profesor sin correo, h/sem, el promedio; tocar
+abre la clase) y el **equipo docente con el promedio y la asistencia de cada
+profesor en la materia** (`MAPA` §1d). Sin el número de estudiantes. **Abría
+lento** (1,75 s): calculaba el promedio alumno por alumno; ahora en bloque
+(`promediosDeLaSeccion`), 0,26 s y los mismos números en las 21 materias.
+
+**El plan de evaluación en la pantalla no es el papel** (`PlanEnFilas`): arriba,
+los puntos repartidos y cuatro accesos (Ver todo · Descargar · Copiar ·
+Editar); debajo, cada semana es una fila como los Movimientos y al tocarla se
+abre con todo lo suyo (lo unido de arriba se repite en cada semana). «Ver
+todo» enseña la hoja con su membrete a pantalla completa. **Eso es el
+teléfono**: en el ordenador (`lateral:`) sale la hoja entera, sin «Ver todo». Sin «¿Cómo
+funciona?»: está el «?» de arriba. Arriba ya no van los puntos (se ven en cada
+semana) sino **las actividades del lapso: creadas y realizadas** (`isDone`,
+con el mismo filtro de lapso que la pestaña Actividades). **Instrumentos** es
+un quinto acceso que abre su ventana (`InstrumentosDelPlan`, ya no una caja
+debajo del plan): el acta, «Imprimir todos» y cada evaluación en una fila que
+abre el editor (17-oct-2026).
+
+**De pie siempre** (`lib/girar-la-pantalla.ts`, `DePie`): la APK y la app
+instalada no giran, salvo al **editar el horario** y en el **plan de
+evaluación** (ver todo y editar), que lo piden con `useDejarGirar()`. En una
+pestaña normal del navegador no se puede fijar. El manifiesto dice `portrait`.
+
+**Compartir en la APK** (`CompartirPlugin.java`): el WebView no trae
+`navigator.share` ni baja un `blob:`; el complemento deja el archivo en la
+caché y abre el selector de Android. Una APK anterior dice «actualiza la app».
+
+## Profesores, y dónde se da cada materia (18-oct-2026)
+
+Pedido por Cristian: «no sé cuántas horas lleva el profesor y en qué secciones
+con qué materia». Cada cosa en su sitio:
+
+- **Profesores** (`/dashboard/profesores`, solo el admin, en el menú tras
+  Materias): cada uno con su barra de horas frente a **las de su cargo**
+  (`users.horasDelCargo`, que fija el admin; sin ellas, el máximo del liceo),
+  su promedio y sus clases; arriba, «N clases sin profesor». Su ficha: horas,
+  promedio, asistencia, sus clases por año (⋯: cambiar bloques, quitarle la
+  clase), por materia, y UN botón con lo suyo (horas del cargo, asignar clase,
+  horario, carga horaria, constancia, su ficha). `services/profesores.service.ts`,
+  PROF-01…08, PROF-UI-01.
+- **La carga es una sola cuenta** (`personal.service → cargaDeLosProfesores`,
+  `MAPA` §1e): el año activo y la hora de clase del turno de cada sección.
+  Antes la lista, el modal y el servidor contaban 45 min por bloque y sumaban
+  los años pasados; el modal decía «30–40 h» fijo.
+- **Dónde se da una materia se decide en Materias** («Dónde se da»: por año,
+  todas sus secciones de un toque, cada una desmarcable, con sus bloques;
+  `services/secciones-de-la-materia.service.ts`, SECC-MAT-01…05,
+  SECC-MAT-UI-01). La clase nace sin profesor. Quitarla con notas, actividades,
+  plan o apreciaciones: 409 `CLASE_CON_TRABAJO` y no se quita nada. Al crear
+  una materia se abre con esa hoja. **Una sección nueva recibe las materias de
+  su año** (las de sus hermanas), sin profesor.
+- **La sección ya no edita sus materias ni su profesor**: «Cambiar en
+  Materias», y tocar el profesor lleva a su ficha en Profesores. El profesor
+  se asigna en Profesores o en las filas de la materia (el mismo modal).
+
+## Los grupos estables (octubre 2026, en curso)
+
+Pedido por Cristian: a una hora común de la semana cada alumno va a SU grupo
+(fútbol, costura, lectura…), de cualquier sección y año: los **Grupos de
+Creación, Recreación y Producción** del MPPE (antes «grupos estables»),
+requisito para el título (Res. 143, G.O. 41.044, art. 12; 4 o 6 h según el
+turno; cuatro áreas). El GCRP de UNA sección sigue siendo una materia normal.
+
+- **La materia «por grupos»** (`Subject.porGrupos`, solo con apreciación,
+  400 `GRUPOS_SOLO_APRECIACION`) es la de siempre en el horario, la boleta y el
+  resumen final; los grupos son una capa encima. La apreciación del grupo se
+  guardará en `Apreciacion` de la materia con la sección del alumno: nada de
+  abajo cambia.
+- **Grupos** (`grupos_estables`: profesor, cupo, turno, área), **solicitudes**
+  (`solicitudes_de_grupo`, PENDIENTE/ACEPTADA/RECHAZADA/RETIRADA) y
+  **asistencia** propia (`asistencia_de_grupo`). El alumno pide un grupo de su
+  turno con cupo (no ve quién está); el profesor de ESE grupo acepta o
+  rechaza; rechazado, pide otro o el mismo. **Una sola solicitud viva** por
+  alumno, materia y momento (índice parcial en la migración: `deriva-del-esquema`
+  lo enseña porque Prisma no sabe decirlo, y no es deriva). El cupo se cuenta
+  con la fila del grupo bloqueada. «Sin grupo»: el admin lo ve y asigna.
+- Elegir una vez al año o en cada lapso, y abierta o no:
+  `academicConfig.gruposEstables`. Pedir, aceptar y asignar **necesitan
+  servidor** (es un cupo).
+- Hecho: la base y el servidor (`services/grupos-estables.service.ts`,
+  `/api/grupos-estables`, GRUPO-01…07, `MAPA` §8i) y **el admin**: el
+  interruptor «Los estudiantes eligen grupo» en la ventana de la materia (solo
+  con apreciación) y, en la materia, Secciones · Grupos · Sin grupo
+  (`components/subject/GruposDeLaMateria.tsx`, `lib/grupos-estables.ts`); sus
+  cifras son grupos, sin grupo y secciones (no hay promedio sobre 20); «Sin
+  grupo» va por secciones que se abren, de 20 en 20 (GRUPO-UI-01). **Falta:**
+  el alumno, el profesor del grupo, la apreciación y la asistencia del grupo, y
+  la hora común en el horario (bloque `GRUPO` del profesor). Plan en `~/.claude/plans/zesty-scribbling-bee.md` (parte B).
 
 ## Asistencia por QR
 
@@ -421,7 +756,8 @@ certificación junta de 1.º a 5.º, con los años de otro plantel cargados a ma
   inscripciones activas; las notas se toman de los lapsos del año que se cierra,
   no de «la inscripción activa» (CIERRE-10 salía en rojo una de cada tantas).
 - **Revisión y materia pendiente las pone el profesor de la materia**; la
-  pendiente va por momentos y con acta de compromiso (`materias-pendientes.service.ts`).
+  pendiente va por momentos con 1ª y 2ª opción, su plan, sus encuentros y sus
+  actas (ver «La materia pendiente como una clase»).
 - **Labor social**: la anotan el admin y el profesor guía; cuenta para egresar
   según el liceo (bloquea, avisa o nada; `MAPA` §8d).
 
@@ -491,7 +827,11 @@ socialización y los instrumentos tienen su propia hoja.
   se escriben a mano; esto compara la base migrada con `schema.prisma` y enseña
   el SQL que faltaría. PostgreSQL corta los nombres a 63 letras: un índice de
   nombre largo sale como deriva. Queda una deriva vieja, no de estas funciones:
-  `institutes.email` y `users.status`/`archivedAt`.
+  `institutes.email` y `users.status`/`archivedAt`. Con un liceo de la base
+  compartida pasa `DATABASE_URL` con SU esquema: si no, salía TODO como deriva.
+- **Un liceo nuevo nace migrado, nunca empujado** (`migrate deploy`, no
+  `db push`): sin `_prisma_migrations`, la migración siguiente le fallaba para
+  siempre (BASE-COMP-05).
 
 ## Carga diferida
 
@@ -542,6 +882,13 @@ siempre al logo que subía el liceo (FAV-01/02).
   anulados en la memoria rápida), no a los quince minutos.
 - Cada token de acceso lleva su propio número de serie (`jwtid`): dos sesiones
   abiertas en el mismo segundo ya no salen idénticas letra por letra.
+- **Quien perdió su contraseña**: el admin le pone una nueva en su ficha
+  («Cambiar contraseña», con «Generar una» fácil de dictar), `PUT
+  /users/:id/contrasena`. Cierra todas sus sesiones y anula la huella de sus
+  teléfonos; queda en el registro (sin la contraseña) y se le avisa. La suya,
+  el admin la cambia en «Mi cuenta» (pide la actual). Editar el usuario con
+  `password` responde 400 `CONTRASENA_EN_OTRO_SITIO`: antes se descartaba
+  callado y parecía cambiada (CONTRA-01…06, CONTRA-UI-01).
 
 ## En el teléfono
 
@@ -635,8 +982,8 @@ Y tres cosas más que ya estaban y siguen valiendo:
 
 Cambió el 2026-09-30 (antes era «sin señal se mira, no se toca»): en Venezuela
 se va la luz y el liceo se queda sin internet. **La app no se queda nunca en
-blanco**, **se baja sola** lo de cada rol (también lo que no se ha abierto,
-`lib/lo-que-se-baja-solo.ts`, cada 30 min y al volver la conexión) y **se
+blanco**, **se baja TODO** lo de cada persona la primera vez (también lo que
+no se ha abierto: la precarga, más abajo) y luego solo lo que cambia, y **se
 pone al día sola** (el ayudante baja la compilación nueva en segundo plano; la
 APK nueva se baja sola con wifi y pide un toque para instalarse).
 
@@ -751,11 +1098,23 @@ desde el repositorio: es la identidad del liceo en Google Play. Todo en
 **Una versión nueva de la APK se baja desde la propia app.** `npm run
 publicar` (en `apps/movil`) sube el número, compila y deja la APK con su
 huella en `APP_MOVIL_DIR`; al abrirse, la app pregunta a
-`/api/app-movil/<paquete>/version` y ofrece «Descargar e instalar»: la baja
-dentro, comprueba la huella y abre el instalador de Android, que exige la
-misma firma (`ActualizarLaApp.tsx`, `ActualizarAppPlugin.java`). **No vale
-para Google Play**: allí se actualiza por Play y sin el permiso
-`REQUEST_INSTALL_PACKAGES`.
+`/api/app-movil/<paquete>/version` y saca la ventana «Actualización de
+versión» (diseño de Cristian: lo nuevo numerado, «Actualizar», el enlace y la
+versión actual): la baja dentro, comprueba la huella y abre el instalador de
+Android, que exige la misma firma (`ActualizarLaApp.tsx`,
+`ActualizarAppPlugin.java`). **No vale para Google Play**: allí se actualiza
+por Play y sin el permiso `REQUEST_INSTALL_PACKAGES`.
+
+**Sin Google Play por ahora (decidido):** en el navegador de un Android, al
+entrar sale «Descarga la app» con la última APK de su liceo
+(`DescargarLaApp.tsx`, `GET /api/app-movil/del-liceo/:slug`; APPDESC-UI-*).
+
+**En la APK, `addListener` de Capacitor NO devuelve una promesa.** Un `.then`
+a pelo tumbó la 1.10 entera al abrir («This page couldn't load»), y las
+pruebas pasaban porque en el navegador no hay Capacitor. Siempre
+`Promise.resolve(...)`; BLOQUEO-UI-06 imita el Capacitor de verdad. Si algo
+tumba la app, `app/global-error.tsx` lo dice en español. Y el login sin
+conexión dice «Sin conexión», no «Instituto no encontrado».
 
 Tres cosas de la APK que el navegador no enseña nunca (medidas en el
 emulador; `MainActivity.java` y `styles.xml`):
@@ -803,9 +1162,363 @@ puntos daba cuatro trozos y el primero se leía como el liceo: «el instituto 19
 no está registrado». La cuenta vive ahora en un solo sitio,
 `lib/el-liceo-de-la-direccion.ts`, y estaba copiada en tres.
 
+## El cuadro de honor (octubre 2026)
+
+Por lapso y por ciclo completo, con **una foto cada sábado** (tabla
+`cuadro_de_honor`, única por alumno, alcance y fecha; la tarea se pone al día al
+arrancar si el sábado no se sacó). El promedio es **el de la boleta**; la
+asistencia y las observaciones, solo las del período, y una felicitación
+(`POSITIVE`…) no resta. Pesos del liceo en Configuración → Académica (80/20/5
+por defecto; `MAPA` §8h). El admin ve el liceo o un año; **el alumno y su
+representante ven su puntaje, cuántos puestos subió y su puesto solo si es
+≤ 10 (en su año o en el liceo)** —a nadie más: el servidor no lo manda—;
+el profesor, 403. CUADRO-01…09, CUADRO-UI-01/02.
+
+## El recorrido guiado (como la app rial)
+
+El «?» de la cabecera oscurece la pantalla, ilumina **el botón de verdad** y un
+globo explica qué hace, con «Atrás» y «Siguiente»; la pantalla baja sola. La
+primera vez en cada pantalla se **ofrece** una sola vez. Los pasos van en
+`lib/recorridos.ts` y apuntan a `data-recorrido="…"` (el título y las acciones
+de `EncabezadoDePantalla` ya lo llevan); lo que ese rol no ve se salta.
+**Al renombrar o quitar un botón con `data-recorrido`, RECORRIDO-01 se pone en
+rojo**: es a propósito (un paso sin su marca se saltaría callado). Las pruebas
+de navegador no ven la oferta (la tapa `navigator.webdriver`) salvo que pongan
+`gestiedu:ofrecer-recorridos`. RECORRIDO-UI-01…04.
+
+## Robustez (octubre 2026)
+
+- **Azar en toda espera** (`lib/azar.ts`): vuelve la luz y cientos de teléfonos
+  reintentan a la vez. Medido (`npm run medir:vuelve-la-luz`): p95 de 6–7 s
+  todos juntos, 60 ms con el azar.
+- **Renovar la sesión y `/health` tienen el cupo de un liceo entero** por
+  dirección (un liceo sale por una sola): con el de una persona, 150 de 200
+  teléfonos se quedaban con 429. Y la web reenvía la dirección al renovar; si
+  no, en producción eran todos los liceos en un cupo (CUPO-REN-01).
+- **429 y 503 son «ahora no», no «no se pudo»**: lo pendiente espera lo que
+  pide el servidor; un 400 pasa a «no se pudo» sin atascar lo de detrás
+  (SINCON-13). La base saturada responde 503, no 500 (`esUnAhoraNoDeLaBase`).
+- **Teléfono lleno**: lo pendiente no se pierde callado; se tira lo que se
+  vuelve a bajar y, si aun así no cabe, la pantalla lo dice (GUARDA-01).
+- **Nada falla callado**: las tareas laten y el inicio del superadmin enseña su
+  salud, los respaldos y el disco; los `.catch` vacíos se apuntan
+  (`avisarSiFalla`). Lo que crecía sin límite se tira a diario con plazo
+  configurable (MANT-*). Detalle en `docs/DESPLIEGUE.md` §10.
+- **Datos de menores**: la copia de fuera de los respaldos sale cifrada con la
+  llave PÚBLICA del dueño (`RESPALDO_LLAVE_PUBLICA`; sin ella no sale) y los
+  registros no guardan cédulas ni correos (`utils/datos-en-registros.ts`).
+- **Las listas no consultan por alumno**: N1-* cuenta las consultas de 16
+  pantallas con 3 y con 15 alumnos; las estadísticas van en bloque
+  (`promediosDeLaSeccion`).
+- **El bolívar pierde ceros**: `npm run reconvertir` (RECONV-*, `MAPA` §8b).
+
 ## Dónde se anota lo que se hace
 
+- `docs/antigravity/` — lo que dejó Antigravity (oct. 2026): el mapa de la arquitectura,
+  su plan de optimización y su traspaso. **Revisado, no es ley**: su informe decía
+  «100 % en verde» y fallaban 10 pruebas; ver auditoría §64.
+- `docs/ARQUITECTURA.md` — cómo está hecho, qué se limpió (19-oct-2026) y qué falta ordenar.
 - `docs/AUDITORIA-FUNCIONAL.md` — auditoría funcional y el porcentaje de avance.
+- `docs/AUDITORIA-RENDIMIENTO.md` — los cinco pilares (20-oct-2026): lo medido
+  por pantalla, lo fijo frente a lo que cambia y por qué no hay caché de un
+  solo proceso. **La tabla vieja `grades` no la escribe nada y la leen diez
+  cuentas**: en los liceos sembrados es casi todo el tiempo (25 s el resumen
+  del ciclo con 15.000), y ensucia lo que mide `test-load-5k`.
 - `docs/MAPA_DE_CALCULOS.md` — toda regla de cálculo.
 - `docs/DESPLIEGUE.md` — despliegue y operación.
 - `docs/APP-MOVIL.md` — la app del teléfono: PWA y APK.
+
+## Configuración, como la de Rial (14-oct-2026)
+
+Pedido por Cristian. **La ficha de Mi cuenta** (el teléfono) y **el menú de tu
+nombre** (el ordenador) traen solo Configuración y Cerrar sesión. Todo lo demás
+vive en **`/dashboard/configuracion`, que ahora es de TODOS los roles**: un
+buscador, el título y filas agrupadas — «Tu cuenta» (Contraseña y acceso: la
+contraseña, la huella, el bloqueo y las sesiones,
+`components/configuracion/ContrasenaYAcceso.tsx`; Color y modo) y, solo para
+el admin, «El liceo» (los nueve apartados de siempre). Al tocar uno se ve solo
+(`?seccion=`); en el ordenador, la lista a la izquierda y el apartado a la
+derecha. Lo del liceo lo sigue negando el servidor a los demás (ROL-03).
+La equis de las ventanas ya no enseña el anillo del foco al tocar (solo con
+teclado, `focus-visible`). **La flecha de un apartado hace «atrás»** si se
+llegó desde la lista (si empujara la lista, la flecha de la lista volvía al
+apartado; CONFIG-VOLVER-01); en el ordenador, cambiar de apartado no deja
+rastro en el historial.
+
+**Cada apartado con el mismo juego de piezas** (`components/configuracion/ajustes.tsx`):
+`Grupo` (título pequeño y una caja blanca con filas), `FilaCampo` (el rótulo
+a la izquierda y el valor a la derecha, sin caja), `FilaInterruptor`, `Fila`,
+`Opciones` (segmentado) y `BotonGuardar`. Un apartado nuevo se arma con ellas,
+no con tarjetas propias. Los campos numéricos llevan `!` en sus clases: la red
+de seguridad de `globals.css` les pone borde y fondo. Las sesiones abiertas
+(«Cerrar», «Cerrar las demás») viven en Contraseña y acceso (`MisSesiones`),
+ya no en Seguridad del liceo; el color y el modo, en `ColorYModo` (miniaturas
+de claro, oscuro y «como el teléfono»).
+
+## El color de la app y el Inicio del admin en el teléfono (octubre 2026)
+
+Diseño de Cristian («Panel Admin — App móvil»). **El color lo elige cada
+persona** en Mi cuenta (o en el menú de su nombre, en el ordenador): Azul (el
+de siempre, por defecto), Turquesa, Violeta, Amarillo o Coral. Es del
+aparato, no del liceo. Desde el 13-oct-2026 cambia **la cabecera entera** (barra
+lateral, franja del Inicio, cabecera del teléfono, la franja del reloj) **y
+todo `indigo-*`** (lo que se pulsa); el amarillo lleva la letra oscura en la
+barra. Y hay **modo oscuro a lo Spotify** (Claro · Oscuro · Como el teléfono;
+la primera vez, Claro): fondo negro, cajas #121212.
+
+- **No se pinta pantalla por pantalla**: `apps/web/paleta-de-colores.js` hace
+  que las clases de siempre (`bg-white`, `text-gray-900`, `bg-indigo-600`…)
+  lean variables que cambian con `<html data-acento>` y la clase `dark`. Cada
+  familia lleva tres juegos (fondo `-f`, letra `-t`, borde `-b`): `gray-900`
+  como letra se aclara, como fondo de un globo sigue oscuro. En claro son los
+  colores de Tailwind de siempre, **salvo el Azul**: su `indigo-*` es la
+  familia del azul de la cabecera (#1565C0 el botón, #0D47A1 la letra). El
+  índigo de Tailwind salía morado (Cristian, 18-oct-2026). Y los tokens con
+  nombre (`bg-indigo`, `primary`, `accent`: el `Button` de shadcn) también
+  salen de la paleta (`indigoConNombre`); en globals.css eran morado fijo.
+- **Lo escrito a mano del diseño** va con nombre: `cabecera-*` (fondo, texto,
+  suave, celeste, sobreceleste, claro, tinta), `texto-*`, `superficie-*`,
+  `borde-*`. Un `#0D47A1` o un `text-white` sobre la cabecera NO cambia con el
+  color: usa `bg-cabecera` / `text-cabecera-texto`.
+- **El papel nunca sale oscuro**: lo oscuro va en `@media screen` y
+  `.modo-claro` lo devuelve a claro (los documentos, el login, la pantalla de
+  bloqueo, el libro de la precarga, la baldosa del logo).
+- Guiones del `<head>` antes de pintar: `COLOR_ANTES_DE_PINTAR` y
+  `MODO_ANTES_DE_PINTAR` (sin fogonazo blanco). `SeguirElModo` sigue al
+  teléfono si cambia con la app abierta.
+- Pruebas: TEMA-01…07 (4,5:1 de cada color y de lo oscuro), TEMA-UI-01, y
+  `contraste.spec.ts` mide claro, oscuro y cada color.
+
+El Inicio del admin en el teléfono es
+`InicioDelAdminMovil` (`lateral:hidden`; en el ordenador sigue el de siempre):
+promedio del liceo con ojo para ocultarlo, luces que flotan (quietas con
+«reducir movimiento»), los accesos en un **carrusel sin fin** (`Carril` con
+`bucle`) y su propio esqueleto azul mientras carga.
+
+## El ordenador: cajas, la barra que se recoge y tu nombre abajo (octubre 2026)
+
+Pedido y elegido por Cristian. En el ordenador (`lateral:`) la pantalla son
+**cajas redondeadas**, como Spotify: la barra lateral azul y, en el Inicio, la
+franja del promedio; el contenido va sobre el fondo claro. Ya no hay franja
+arriba en las demás pantallas («horrible», Cristian): el «?» y la campana
+viven abajo en la barra, junto al botón de recogerla. La barra de desplazamiento
+tiene su estilo (globals.css). El teléfono no cambia.
+
+- **La barra se recoge en iconos** (264 → 76 px) con su botón de abajo o
+  Ctrl+B (que no hace nada escribiendo: ahí es la negrita, y por teclado no se
+  anima). El estado vive en `<html data-lateral>` y lo pone un guion del
+  `<head>` antes de pintar (`lib/barra-lateral.ts`, `--ancho-lateral`, variante
+  `recogida:`). **Ese archivo no lleva React**: lo importa `app/layout.tsx`, que
+  es del servidor, y un gancho en el mismo archivo tumbó la app entera; el
+  gancho está en `hooks/useBarraRecogida.ts`. Recogida, cada icono dice su
+  nombre en un globo propio (fijo: la lista se desplaza y lo recortaría).
+- **La pastilla de la página activa se desliza** con `transform`; sin
+  framer-motion, que solo carga la portada (CARGA-01).
+- **Tu nombre, abajo** (`MiNombreYMenu`): el primer nombre y el rol; su menú
+  trae tu cuenta (la ficha del teléfono, desde la derecha: antes en el
+  ordenador no había cómo cambiar la contraseña), el color de la app, la
+  configuración (solo el admin) y cerrar sesión; el menú no se sale del ancho
+  de la barra. El logo del liceo va grande y sin nombre; en una pantalla de
+  poca altura (≤ 820 px), menor (`--logo-cabecera`, `--logo-baldosa`).
+- **El Inicio, como el del teléfono, sin «Ir a» (repetía la barra) y en una
+  sola pantalla, sin bajar.** El calendario tiene filas de alto fijo y debajo
+  lo del día elegido (estirado a toda la tarjeta, cada semana medía 100 px); el
+  cuadro de honor enseña cinco filas con altura de sobra (`alta:`) y tres en un
+  portátil. El
+  promedio y las tarjetas van en la franja azul y los pinta el ARMAZÓN
+  (`FranjaDelInicio`, solo en `/dashboard`), no la página: salirse de la hoja
+  pedía `container-type`, que encierra las ventanas `fixed` dentro de ella, y
+  un portal dejaba la franja vacía en el HTML del servidor. Las consultas son
+  las de la página (`hooks/useInicio.ts`, misma llave: una petición) y **las
+  cifras se cuentan una vez para el teléfono y el ordenador**
+  (`components/dashboard/cifras-del-inicio.tsx`).
+- **La hoja no lleva `overflow`**: las cabeceras pegadas de las tablas dejarían
+  de pegarse.
+- LATERAL-01…03, PERFIL-UI-01, INICIO-ESC-01/02 (`barra-lateral.spec.ts`);
+  BOTON-06 sale por el menú; DISENO-04 exige que el Panel del ordenador no
+  lleve «Ir a».
+
+## La materia pendiente como una clase y la labor social en la sección (octubre 2026)
+
+Pedido por Cristian tras investigar cómo se trabaja en los liceos (circulares
+0007, 006696 y 000004 del MPPE; su papá es profesor). **Ninguna de las dos es ya
+una pantalla del menú**: con el liceo lleno eran listas sin fin. Los enlaces
+viejos (`/dashboard/materias-pendientes`, `/dashboard/labor-social`) van a
+Académico. Sus reglas, en Configuración → Académica; lo del MPPE es solo lo de
+primeras (MAPA §8c-bis y §8d).
+
+- **La pendiente se trabaja en una CLASE** (`MateriaPendiente.claseId`: la
+  materia de una sección del grado de origen, ese año). La evalúa su profesor
+  en la pestaña «Pendientes» de la materia; el guía y el admin la siguen en la
+  pestaña «Pendientes» de la sección del alumno. Sin clase al nacer, se le
+  busca sola (`promotion/clase-de-la-pendiente.ts`, la usan el cierre y la
+  pendiente sin importarse entre sí). El admin la pasa a otra clase de la misma
+  materia y grado; `profesorId` solo si se puso a mano (manda).
+- **Cada momento tiene 1ª y 2ª opción** (`OpcionDePendiente`; el «112»):
+  SIEMPRE, SI_REPRUEBA_30 (el artículo al pie de la letra) o NO. Faltar sin
+  justificar cuenta como presentada sin nota («IN»). La nota del momento
+  (`EvaluacionDePendiente`, ahora puede ir vacía) sale de sus opciones;
+  la forma de antes (`PUT /momentos/:n`, la nota directa) sigue valiendo.
+- **Como una clase** (`plan-de-pendientes.service.ts`): el plan de cada momento
+  con pesos e instrumentos (el editor de la clase, con `local`), las notas del
+  plan (con todas las del momento, la nota de la opción sale sola; lo puesto a
+  mano manda), los encuentros (tutorías y evaluaciones) con asistencia, y las
+  actas de presentación y de calificaciones (`/dashboard/pendientes/...`).
+- **El cronograma** de cada año (`MomentoDePendiente`): sin guardar, el de la
+  circular 0007 (octubre, diciembre, enero, junio; la 2ª una semana después).
+- **La labor social**: pestaña de la sección (si el grado la hace); quién anota
+  lo dice el liceo (`quienAnota`); las horas se suman de todos los años.
+- PEND-09…20, LABOR-08…10, PEND-UI-01, LABOR-UI-01. **El menú está copiado en
+  el servidor** (`elMenuDelRol`, MENU-PARIDAD): quitar una entrada es en los dos.
+
+## La descarga en cubos (18-oct-2026): nunca se arma al entrar
+
+**Manda sobre lo de la sección de abajo donde choquen.** Medido antes: el
+servidor armaba la descarga de cada persona AL ENTRAR, de uno en uno por
+proceso; 300 alumnos en frío esperaban hasta 83 s (con 15.000, horas) para
+bajar 27 KB, y el admin 122 s, de los que 117 eran esperar al servidor (REA
+leyó la captura de red: 3,5 MB bajaron en 0,3 s). Ahora
+(`services/cubos-de-precarga.service.ts`, `lib/cubos.ts`), con la lógica de
+PowerSync, ElectricSQL y Linear sobre el árbol del liceo que pensó Cristian:
+
+- **Cubos** ya comprimidos: `liceo:ROL` y `seccion:ROL:<id>` (compartidos,
+  SOLO lo comprobado idéntico: `DEL_LICEO`, `DE_LA_SECCION`, CUBO-02) y
+  `persona:<id>:<n>` (lo suyo, en trozos para rehacer solo lo que cambia).
+  Ver no es lo mismo para todos: ante la duda, personal.
+- **Todo se arma antes**: de noche para todo el liceo (también quien nunca
+  entró, `laNocheDeLosCubos`), al crear una cuenta (`encargarElPaquete` ya solo
+  pone en la cola) y, por cada cambio, solo los cubos que toca
+  (`ensuciarPorLosCambios`: por ids y destinatarios, como `loQueCambioDesde`).
+- **La cola vive en la base** (`FOR UPDATE SKIP LOCKED`): varios procesos sin
+  Redis, nadie arma dos veces lo mismo (CUBO-06), y cede si el proceso va
+  retrasado. `PRECARGA_TRABAJADORES` (2 por proceso).
+- **Al entrar**: `POST /precarga/indice` (una consulta; sin índice, 202 con
+  cuántos van delante y se pide con prioridad) y `GET /precarga/cubo/:clave`
+  (solo si es de su índice, 403 si no; ETag y `Range`). La barra: bytes frente
+  al total exacto, nunca baja. Ponerse al día = otro índice y bajar solo los
+  cubos con otra huella.
+- **En el teléfono, cada cubo guarda SUS bloques** (`guardarRespuestasCrudas`
+  con grupo): el de antes reemplazaba el índice entero y con varios cubos solo
+  quedaba el último.
+- Medido después: 300 alumnos a la vez, el último con todo en 2,2 s, ninguno en
+  cola; 100 cuentas sin índice, 3,7 s; el admin, 6,5 s; profesor, 2 s.
+- El paquete por persona (`/precarga/paquete`, plan y bloques) queda para la
+  web de antes. Mediciones: `medir-muchos-a-la-vez`, `medir-primera-entrada`,
+  `medir-armado` (`tests/e2e`, con `MEDIR=1`).
+
+## La salud del sistema (18-oct-2026, superadmin → Salud)
+
+Cristian: «saber sin siquiera entrar a un instituto que algo esté fallando».
+`/superadmin/salud`: cada botón (ruta molde con su nombre humano,
+`utils/nombres-de-las-rutas.ts`) con veces, p50/p95/p99, errores, rechazos y
+sus códigos; cada liceo con semáforo; el login aparte; los **errores agrupados
+por huella** como Sentry (servidor y pantalla, `lib/reportar-fallo.ts`; sin
+datos personales; un resuelto que vuelve sale «Volvió»); el **pronóstico con
+miles de usuarios** (Erlang C con lo medido, dice dónde se dobla y dónde se
+cae, y cuánto se equivoca contra lo ya pasado) y **el robot** que cada 5 min
+recorre un liceo de muestra como cada rol (`SALUD_LICEO_DE_MUESTRA`; nunca uno
+de clientes). Medir cuesta < 0,05 ms por petición; se vuelca cada minuto a la
+base de la plataforma, sumando entre procesos. SALUD-01…08.
+
+**Reportar un problema** (Configuración, todos los roles): le llega al admin
+de su liceo (aviso y «Problemas reportados») con las huellas de los fallos de
+esa pantalla; la respuesta del admin le llega al autor. REPORTE-01…04.
+
+## La precarga: sin conexión, todo (octubre 2026)
+
+La primera vez que alguien entra en un teléfono se baja **todo lo suyo**, como
+WhatsApp al restaurar: el libro que se abre con «12,4 de 31 MB»
+(`components/arranque/PrecargaAlEntrar.tsx`). **Solo esa vez**, y no se puede
+saltar: sin conexión dice «Esperando para seguir descargando…», sin botón para
+seguir (solo «Cerrar sesión»), y sigue sola donde quedó (decidido por Cristian).
+
+- **El diseño va dentro de la APK** (`CascaraDeLaApk.java`; `npm run publicar`
+  copia `apps/web/.next/static` a `assets/cascara`). Lo nuevo del servidor baja
+  por la red; los datos del liceo **nunca** van en la APK (es la misma para todos).
+- **Los datos, en un paquete** (`services/precarga.service.ts`,
+  `routes/precarga.routes.ts`): `POST /precarga/plan` dice qué bajar y
+  `POST /precarga/bloque` lo entrega de 150 en 150. **Cada lectura se hace como
+  esa persona** (`server.inject` con su credencial): lo que daría 403 a mano no
+  va (PAQUETE-01…05). Las lecturas internas no gastan su cupo (marca del proceso).
+- **Qué lee cada pantalla no se escribe a mano**: lo graba
+  `tests/e2e/grabar-lecturas.spec.ts` en `precarga/lecturas-por-pantalla.json`
+  (por rol, molde y variante: la ficha de un alumno no es la de un profesor).
+  **PRECARGA-MAPA se pone en rojo si una pantalla pide algo que no está en el
+  mapa, o un id que el contexto no explica**: `GRABAR=1` lo reescribe; un dato
+  nuevo se le da al contexto en `precarga.service.ts`. **Al cambiar lo que pide
+  una pantalla, vuelve a grabar.**
+- **Una página por tipo de pantalla**: el ayudante sirve la ficha de un alumno
+  para las demás con el trozo de la dirección cambiado (`laPlantilla` en
+  `sw.js`, PLANTILLA-01). Una lectura con `fetch` a mano no se guarda: van por `api`.
+- **Después, solo lo que cambió**: cada escritura se apunta en
+  `cambios_del_liceo` (`plugins/avisar-cambios.ts`; 30 días) y el teléfono
+  pregunta `POST /precarga/cambios {desde}` al abrir, al volver la conexión, al
+  avisar el tiempo real, al llegar el **toque silencioso de Firebase** (APK
+  abierta o en segundo plano; cerrada del todo, al abrirla; NOTI-07) y cada
+  30 min (`DescargaEnSegundoPlano`). Los POST de
+  `precarga` NO son cambios (si no, bucle). Una vez al día, la pasada entera de
+  fondo (lo nuevo, como un alumno nuevo, llega ahí). CAMBIOS-01…05.
+- PRECARGA-01…06 (navegador) miden por rol el tiempo y los MB. PRECARGA-07: la primera vez el libro sale ANTES que el esqueleto del Inicio (lo decide lo guardado en el teléfono, no esperar al servidor).
+- **Lo que tarda es preparar, no la red** (medido 2026-10-06, admin, 9.513
+  lecturas): 34 MB guardados viajan comprimidos en ~2,2 MB. En frío tardaba
+  153 s en el servidor: 101 s eran el cierre del año (`prepareClose`, ahora en
+  bloque) y casi todo lo demás, promedios alumno por alumno. Ahora: el plan
+  **precalienta los promedios del año en bloque** (`precalentar-promedios.service.ts`,
+  misma llave que `promedioDelLapso`; paridad 26.955/26.955) y el teléfono pide
+  **3 bloques a la vez** y guarda cada bloque **en una sola transacción**
+  (antes abría la base 9.500 veces): 47 s en frío. Un alumno o un representante,
+  segundos.
+- **El total no baila**: las lecturas van **barajadas** por su huella (el plan
+  empezaba por lo grande: 104,9 → 33,2 MB) y el servidor **aprende cuánto pesa
+  cada tipo de lectura** en cada liceo y lo dice por bloque (`estimadoPorBloque`,
+  PAQUETE-06). El % va por lecturas, exacto. Debajo, el ritmo y **los datos de
+  internet de verdad** (`encodedBodySize`; con la API en otro origen, el bloque
+  manda `Timing-Allow-Origin`).
+- **El libro, una sola hoja** que pasa siempre por encima (con cuatro en bucle,
+  la de abajo caía bajo la de la izquierda y «desaparecía»). Su cara de atrás
+  lleva redondas las esquinas de la izquierda, como la página fija que tapa.
+- **Cerrar la app con la descarga a medias devuelve al login** (decidido por
+  Cristian), nunca al Inicio: `ArranqueYCandado` cierra la sesión al abrir si
+  `estaCompleta` es falso (BLOQUEO-UI-09). El plan y los bloques esperan 120 s
+  (`LENTO`): con el tope de 20 s, un servidor lento se tomaba por «sin conexión».
+- **Redis conectado consigo mismo.** Con Redis apagado en la misma máquina, un
+  reintento puede salir por el puerto 6379 y TCP lo conecta consigo mismo: el
+  cliente oía su eco, se daba por listo y cada `SCAN` era un bucle sin fin
+  (plan, cerrar sesión y renovar colgados; visto en el túnel). `vigilar` lo
+  corta y el `SCAN` para con un cursor que no es un número. Y si renovar da
+  401, la ruta borra las cookies: si no, el guardián devolvía del login al
+  Inicio sin fin (el esqueleto que no se iba).
+
+## El arranque y el candado (octubre 2026)
+
+Al abrir la APK: el icono → con sesión, el logo del liceo y **la pantalla de
+bloqueo** (como Zinli o el banco); sin sesión, **el login, ya entero** (el
+icono de Android se queda hasta que el login tiene su liceo, y el liceo de la
+última vez se recuerda: ni libro, ni «Gestiedu», ni esqueleto; BLOQUEO-UI-08).
+**El libro es solo la descarga de la primera vez**, después de entrar
+(decidido por Cristian). «Ingresar» pide la huella o el bloqueo del teléfono;
+sin bloqueo, un **PIN de 4 de la app** que crea la persona una vez y **solo un
+admin** cambia o resetea desde la ficha (PIN-01…07). Al volver a la app pasado
+el tiempo de «Mi cuenta» (1 min por defecto), otra vez. **Antes de pintar no se
+ve nada**: la página llega pintada del servidor y el candado sale cuando arranca
+React, así que en la app un guion del `<head>` pone una cortina
+(`lib/cortina-del-arranque.ts`, `data-arrancando`) que quitan el candado o el
+login; sin ella se veía el esqueleto del Inicio 2–3 s (BLOQUEO-UI-07). Mientras
+la descarga, el logo o el bloqueo ocupan la pantalla, **ninguna oferta sale
+encima** (`useOcuparLaPantalla`, `lib/turno-de-ofrecer.ts`). Es la puerta de la
+casa; la caja fuerte sigue siendo el servidor. **La APK abre en `/login`**: con
+alguien dentro, el login manda al Inicio él mismo; pasados los 15 min de la
+llave corta, el guardián ya no lo hacía y tras la huella salía el formulario
+(BLOQUEO-UI-10). Código en `components/arranque/`,
+`lib/el-candado.ts`, `lib/pin-de-la-app.ts`; BLOQUEO-UI-01…08.
+
+## Probar desde cualquier teléfono: el túnel
+
+`npm run tunel` compila la web, levanta los dos servidores y la publica con
+**Tailscale Funnel** en `https://<pc>.<tailnet>.ts.net` (la de Cristian:
+`desktop-o5indos.taile320b0.ts.net`), mientras la PC esté prendida. Las
+pantallas en el 3100 (no el 3000: `funnel --bg` sobrevive al proceso),
+`/api` lo reenvía Next (`API_DEL_SERVIDOR`), `/socket.io` va directo al 3001.
+CORS: `ORIGEN_DEL_TUNEL` (ningún `.env` la trae). `*.ts.net` no nombra un liceo.
+**Con TunnelBear, Tailscale va excluido en SplitBear**; si no, sale «offline».
+`npm run tunel -- --apagar` cierra el túnel.

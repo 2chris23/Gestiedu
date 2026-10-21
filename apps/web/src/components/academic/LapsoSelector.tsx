@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { CalendarRange } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export interface PeriodOption {
@@ -35,13 +34,8 @@ export default function LapsoSelector({ periods, value, onChange, compact = fals
         <Select value={value || TODO} onValueChange={(v) => onChange(v === TODO ? undefined : v)}>
             <SelectTrigger
                 aria-label="Selector de lapso / momento"
-                className={`h-auto min-h-11 w-auto gap-1.5 rounded-xl border-gray-200 bg-white text-xs font-bold text-gray-700 shadow-2xs focus:ring-2 focus:ring-indigo-500 ${
-                    compact ? 'px-2.5 sm:px-3' : 'px-3'
-                }`}
+                className={`h-auto min-h-11 w-auto gap-2 rounded-xl border-gray-200 bg-white px-3.5 text-xs font-bold text-gray-700 shadow-2xs focus:ring-2 focus:ring-indigo-500`}
             >
-                <CalendarRange className={`h-4 w-4 shrink-0 text-indigo-600 ${compact ? 'hidden sm:block' : ''}`} aria-hidden />
-                {/* «Todo el ciclo» suelto no decía qué cambiaba: son las cifras de abajo. */}
-                <span className={`font-medium text-gray-500 ${compact ? 'hidden sm:inline' : ''}`}>Ver:</span>
                 <SelectValue />
             </SelectTrigger>
             <SelectContent position="popper" align="end" className="min-w-[11rem] rounded-xl border-gray-200 bg-white p-1 shadow-lg">

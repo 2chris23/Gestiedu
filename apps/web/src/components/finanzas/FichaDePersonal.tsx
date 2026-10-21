@@ -2,22 +2,20 @@
 
 import * as React from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, Ban, Check, CheckCircle2, Clock3, Download, FileText, Gift, Loader2, Lock, Palmtree, Receipt, Save, Wallet } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock3, Gift, Loader2, Lock, Palmtree, Receipt, Save, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { CampoDeDinero, campo, type Dinero } from '@/components/finanzas/CampoDeDinero';
+import { campo } from '@/components/finanzas/CampoDeDinero';
 import {
     ESTADO_DE_PAGO_AL_PERSONAL,
     FRECUENCIA,
-    useAnularPagoAlPersonal,
     useEditarPersona,
     useGuardarAcuerdo,
-    usePagarAlPersonal,
     type FichaDePersonal as Ficha,
     type FrecuenciaDelPersonal,
 } from '@/hooks/useFinanzas';
 import { dinero, errorDe, type Moneda } from '@/hooks/usePagos';
-import { useSchoolToday } from '@/hooks/useSchoolTime';
-import { descargarReciboDelPersonal } from '@/lib/comprobante-de-pago';
+
+import { abrirComprobante } from '@/lib/comprobante-abierto';
 import { nombreDelMes } from '@/lib/calendario-del-ciclo';
 import { cn } from '@/lib/utils';
 
@@ -37,13 +35,10 @@ export function FichaDePersonal({ ficha, ciclo }: { ficha: Ficha; ciclo: string 
     const cerrado = ficha.closed;
     const base = ficha.currency;
     const fmt = (n: string | number) => dinero(n, base);
-    const [elegidos, setElegidos] = React.useState<Set<string>>(new Set());
-    React.useEffect(() => setElegidos(new Set()), [ficha.persona.id]);
-    const pendientes = ficha.debidos.filter((d) => aCent(d.pendiente) > 0);
     const r = ficha.persona.resumen;
 
     return (
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
             {cerrado && (
                 <p className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
                     <Lock className="h-4 w-4 shrink-0 text-gray-600" aria-hidden />
@@ -74,92 +69,44 @@ export function FichaDePersonal({ ficha, ciclo }: { ficha: Ficha; ciclo: string 
 
             {ficha.persona.acuerdo && (
                 <section>
-                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                        <h3 className="text-sm font-bold uppercase tracking-wide text-gray-700">Sus pagos del ciclo</h3>
-                        {!cerrado && pendientes.length > 0 && (
-                            <div className="flex gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setElegidos(new Set(pendientes.filter((d) => d.estado === 'VENCIDO').map((d) => d.clave)))}
-                                    className="min-h-[44px] rounded-lg border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-800 hover:bg-gray-50"
-                                >
-                                    Los atrasados
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setElegidos(new Set(pendientes.slice(0, 1).map((d) => d.clave)))}
-                                    className="min-h-[44px] rounded-lg border border-indigo-300 bg-indigo-50 px-3 text-xs font-semibold text-indigo-800 hover:bg-indigo-100"
-                                >
-                                    El próximo
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                    {!cerrado && pendientes.length > 0 && <p className="mb-2 text-xs text-gray-600">Toca lo que se le paga para elegirlo.</p>}
-                    <ol className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Pagos del ciclo">
+                    <h3 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-600">Lo del ciclo</h3>
+                    {/* Solo se mira: pagar va por «Registrar pago» (Nuevo movimiento), que
+                        empieza por lo más viejo que se le debe. */}
+                    <ul aria-label="Pagos del ciclo" className="divide-y divide-gray-100 overflow-hidden rounded-[22px] bg-white ring-1 ring-gray-200">
                         {ficha.debidos.map((d) => {
                             const e = ESTADO_DE_PAGO_AL_PERSONAL[d.estado];
-                            const sePuede = !cerrado && aCent(d.pendiente) > 0;
-                            const elegido = elegidos.has(d.clave);
                             const Icono = d.tipo === 'BONO' ? Gift : d.estado === 'PAGADO' ? CheckCircle2 : d.estado === 'VENCIDO' ? AlertTriangle : Clock3;
-                            const contenido = (
-                                <>
-                                    <span className="flex items-start justify-between gap-1">
-                                        <span className="min-w-0 break-words text-sm font-bold leading-tight text-gray-900">{d.etiqueta}</span>
-                                        {elegido && <Check className="h-4 w-4 shrink-0 text-indigo-700" aria-hidden />}
-                                    </span>
-                                    <span className="text-sm font-semibold tabular-nums text-gray-900">{fmt(d.monto)}</span>
-                                    <span className={cn('inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold', e.clases)}>
-                                        <Icono className="h-3.5 w-3.5" aria-hidden />
-                                        {e.texto}
-                                    </span>
-                                    <span className="text-xs text-gray-600">
-                                        {d.estado === 'ABONADO' ? `Abonado ${fmt(d.pagado)}` : `Se paga el ${fechaCorta(d.fecha)}`}
-                                        {d.vacaciones && d.tipo === 'SUELDO' ? ' · vacaciones' : ''}
-                                    </span>
-                                </>
-                            );
-                            const clases = cn(
-                                'flex h-full min-h-[44px] w-full flex-col gap-1 rounded-xl border p-2 text-left',
-                                elegido ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200' : 'border-gray-200 bg-white',
-                                sePuede && !elegido && 'hover:bg-gray-50'
-                            );
                             return (
-                                <li key={d.clave}>
-                                    {sePuede ? (
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                setElegidos((s) => {
-                                                    const n = new Set(s);
-                                                    n.has(d.clave) ? n.delete(d.clave) : n.add(d.clave);
-                                                    return n;
-                                                })
-                                            }
-                                            aria-pressed={elegido}
-                                            aria-label={`${d.etiqueta}, ${e.texto}, ${fmt(d.pendiente)} por pagar. ${elegido ? 'Elegido' : 'Tocar para elegirlo'}`}
-                                            className={clases}
-                                        >
-                                            {contenido}
-                                        </button>
-                                    ) : (
-                                        <div className={cn(clases, 'bg-gray-50/60')}>{contenido}</div>
-                                    )}
+                                <li key={d.clave} className="flex min-h-[60px] items-center gap-3 px-4 py-2.5">
+                                    <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', e.clases)}>
+                                        <Icono className="h-4 w-4" aria-hidden />
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block text-[15px] text-gray-900">{d.etiqueta}</span>
+                                        <span className="block text-sm text-gray-600">
+                                            {d.estado === 'ABONADO' ? `Abonado ${fmt(d.pagado)}` : `Se paga el ${fechaCorta(d.fecha)}`}
+                                            {d.vacaciones && d.tipo === 'SUELDO' ? ' · vacaciones' : ''}
+                                        </span>
+                                    </span>
+                                    <span className="shrink-0 text-right">
+                                        <span className="block text-[15px] font-semibold tabular-nums text-gray-900">{fmt(d.monto)}</span>
+                                        <span className={cn('block text-xs font-semibold', d.estado === 'VENCIDO' ? 'text-red-700' : d.estado === 'PAGADO' ? 'text-emerald-700' : 'text-gray-600')}>
+                                            {e.texto}
+                                        </span>
+                                    </span>
                                 </li>
                             );
                         })}
-                    </ol>
+                    </ul>
                 </section>
             )}
 
-            {!cerrado && elegidos.size > 0 && <Pagar ficha={ficha} ciclo={ciclo} elegidos={[...elegidos]} alTerminar={() => setElegidos(new Set())} />}
-
             <section>
-                <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-gray-700">Pagos hechos</h3>
+                <h3 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-600">Pagos hechos</h3>
                 {ficha.pagos.length === 0 ? (
                     <p className="text-sm text-gray-600">Todavía no se le ha pagado nada en este ciclo.</p>
                 ) : (
-                    <ul className="space-y-2">
+                    <ul className="divide-y divide-gray-100 overflow-hidden rounded-[22px] bg-white ring-1 ring-gray-200">
                         {ficha.pagos.map((p) => (
                             <PagoHecho key={p.id} pago={p} base={base} editable={!cerrado} />
                         ))}
@@ -313,157 +260,31 @@ function Acordado({ ficha, ciclo }: { ficha: Ficha; ciclo: string | null }) {
 
 // ─── Pagar ──────────────────────────────────────────────────────────────────
 
-function Pagar({ ficha, ciclo, elegidos, alTerminar }: { ficha: Ficha; ciclo: string | null; elegidos: string[]; alTerminar: () => void }) {
-    const hoy = useSchoolToday();
-    const pagar = usePagarAlPersonal(ciclo);
-    const base = ficha.currency;
-    const monedas: Moneda[] = ficha.acceptedCurrencies === 'BOTH' ? ['USD', 'VES'] : [ficha.acceptedCurrencies];
-    const falta = ficha.debidos.filter((d) => elegidos.includes(d.clave)).reduce((t, d) => t + aCent(d.pendiente), 0);
-    const [d, setD] = React.useState<Dinero>({ monto: (falta / 100).toFixed(2), moneda: base, tasa: '' });
-    const [metodo, setMetodo] = React.useState(ficha.methods[0] ?? '');
-    const [fecha, setFecha] = React.useState(hoy);
-    const [referencia, setReferencia] = React.useState('');
-    const [problema, setProblema] = React.useState<string | null>(null);
-    React.useEffect(() => setD((x) => (x.moneda === base ? { ...x, monto: (falta / 100).toFixed(2) } : x)), [falta, base]);
-
-    const enviar = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setProblema(null);
-        try {
-            const pago = await pagar.mutateAsync({
-                id: ficha.persona.id,
-                claves: elegidos,
-                monto: d.monto,
-                moneda: d.moneda,
-                tasa: d.moneda === base ? null : d.tasa,
-                metodo,
-                fecha,
-                referencia: referencia || null,
-            });
-            toast.success(`Pago registrado · recibo Nº ${String(pago.numero).padStart(6, '0')}`, {
-                action: { label: 'Descargar', onClick: () => descargarReciboDelPersonal(pago.id, 'png') },
-            });
-            alTerminar();
-        } catch (err) {
-            setProblema(errorDe(err, 'No se pudo registrar el pago'));
-        }
-    };
-
+function PagoHecho({ pago, editable }: { pago: Ficha['pagos'][number]; base: Moneda; editable: boolean }) {
+    const concepto = pago.asignaciones.map((a) => a.etiqueta).join(', ');
     return (
-        <form onSubmit={enviar} className="space-y-4 rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
-            <p className="text-sm text-gray-800">
-                {elegidos.length} {elegidos.length === 1 ? 'pago elegido' : 'pagos elegidos'} · falta <strong>{dinero(falta / 100, base)}</strong>
-            </p>
-            <CampoDeDinero valor={d} alCambiar={setD} base={base} monedas={monedas} rotulo="Cuánto se le paga" ayuda="Si es menos, queda como abono." />
-            <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-sm font-medium text-gray-800">
-                    Fecha del pago
-                    <input required type="date" max={hoy} value={fecha} onChange={(e) => setFecha(e.target.value)} className={campo} />
-                </label>
-                <label className="text-sm font-medium text-gray-800">
-                    Referencia (opcional)
-                    <input maxLength={60} value={referencia} onChange={(e) => setReferencia(e.target.value)} className={campo} />
-                </label>
-            </div>
-            <div>
-                <span className="text-sm font-medium text-gray-800">Método</span>
-                <div className="mt-1 flex flex-wrap gap-2" role="radiogroup" aria-label="Método de pago">
-                    {ficha.methods.map((m) => (
-                        <button
-                            key={m}
-                            type="button"
-                            role="radio"
-                            aria-checked={metodo === m}
-                            onClick={() => setMetodo(m)}
-                            className={cn('min-h-[44px] rounded-lg border px-3 text-sm', metodo === m ? 'border-indigo-600 bg-indigo-600 font-semibold text-white' : 'border-gray-300 bg-white text-gray-800')}
-                        >
-                            {m}
-                        </button>
-                    ))}
-                </div>
-            </div>
-            {problema && (
-                <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                    {problema}
-                </p>
-            )}
-            <div className="flex justify-end">
-                <Button type="submit" disabled={pagar.isPending || !metodo || !d.monto}>
-                    {pagar.isPending ? <Loader2 className="animate-spin" aria-hidden /> : <CheckCircle2 aria-hidden />}
-                    Registrar pago
-                </Button>
-            </div>
-        </form>
-    );
-}
-
-function PagoHecho({ pago, base, editable }: { pago: Ficha['pagos'][number]; base: Moneda; editable: boolean }) {
-    const anular = useAnularPagoAlPersonal();
-    const [anulando, setAnulando] = React.useState(false);
-    const [motivo, setMotivo] = React.useState('');
-    const [bajando, setBajando] = React.useState<null | 'png' | 'pdf'>(null);
-    const bajar = async (f: 'png' | 'pdf') => {
-        setBajando(f);
-        try {
-            await descargarReciboDelPersonal(pago.id, f);
-        } catch (e) {
-            toast.error(errorDe(e, 'No se pudo generar el recibo'));
-        } finally {
-            setBajando(null);
-        }
-    };
-    return (
-        <li className={cn('rounded-xl border px-3 py-2.5', pago.anulado ? 'border-gray-200 bg-gray-50' : 'border-gray-200 bg-white')}>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <Receipt size={16} className="text-gray-500" aria-hidden />
-                <span className={cn('text-sm font-semibold', pago.anulado ? 'text-gray-500 line-through' : 'text-gray-900')}>
-                    {dinero(pago.monto, pago.moneda)}
-                    {pago.moneda !== base && <span className="font-normal text-gray-600"> ({dinero(pago.montoBase, base)})</span>}
+        <li>
+            <button
+                type="button"
+                onClick={() => abrirComprobante({ tipo: 'personal', id: pago.id, editable })}
+                aria-label={`Comprobante Nº ${String(pago.numero).padStart(6, '0')}`}
+                className={cn('flex min-h-[64px] w-full items-center gap-3 px-4 py-2.5 text-left active:bg-gray-100', pago.anulado && 'opacity-70')}
+            >
+                <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-full', pago.anulado ? 'bg-gray-100 text-gray-500' : 'bg-emerald-50 text-emerald-700')}>
+                    <Receipt className="h-5 w-5" aria-hidden />
                 </span>
-                <span className="text-sm text-gray-700">
-                    {fechaCorta(pago.fecha)} · {pago.metodo}
-                    {pago.referencia ? ` · Ref. ${pago.referencia}` : ''}
+                <span className="min-w-0 flex-1">
+                    <span className={cn('block text-[15px] font-semibold tabular-nums', pago.anulado ? 'text-gray-500 line-through' : 'text-gray-900')}>
+                        {dinero(pago.monto, pago.moneda)} <span className="font-normal text-gray-600">· {pago.metodo}</span>
+                    </span>
+                    <span className="block truncate text-sm text-gray-600">
+                        {fechaCorta(pago.fecha)}{concepto ? ` · ${concepto}` : ''}
+                    </span>
                 </span>
-                <span className="text-xs text-gray-600">Nº {String(pago.numero).padStart(6, '0')}</span>
-                {pago.anulado && <span className="rounded-md bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-800">Anulado: {pago.motivoAnulacion}</span>}
-                <span className="ml-auto flex gap-1">
-                    <button type="button" onClick={() => bajar('png')} disabled={!!bajando} aria-label="Recibo en imagen" title="Recibo en imagen" className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100">
-                        {bajando === 'png' ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                    </button>
-                    <button type="button" onClick={() => bajar('pdf')} disabled={!!bajando} aria-label="Recibo en PDF" title="Recibo en PDF" className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100">
-                        {bajando === 'pdf' ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
-                    </button>
-                    {editable && !pago.anulado && (
-                        <button type="button" onClick={() => setAnulando((v) => !v)} aria-label="Anular pago" title="Anular pago" className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-red-700 hover:bg-red-50">
-                            <Ban size={16} />
-                        </button>
-                    )}
+                <span className="shrink-0 text-right text-xs text-gray-500">
+                    {pago.anulado ? <span className="font-semibold text-red-700">Anulado</span> : `Nº ${String(pago.numero).padStart(6, '0')}`}
                 </span>
-            </div>
-            <p className="mt-1 text-xs text-gray-600">{pago.asignaciones.map((a) => `${a.etiqueta} (${dinero(a.monto, base)})`).join(' · ')}</p>
-            {anulando && (
-                <form
-                    onSubmit={async (e) => {
-                        e.preventDefault();
-                        try {
-                            await anular.mutateAsync({ id: pago.id, motivo });
-                            toast.success('Pago anulado: vuelve a los fondos');
-                            setAnulando(false);
-                        } catch (err) {
-                            toast.error(errorDe(err, 'No se pudo anular'));
-                        }
-                    }}
-                    className="mt-2 flex flex-wrap gap-2"
-                >
-                    <label className="min-w-[12rem] flex-1 text-xs font-medium text-gray-700">
-                        Motivo de la anulación (queda a la vista)
-                        <input autoFocus required minLength={3} maxLength={200} value={motivo} onChange={(e) => setMotivo(e.target.value)} className={cn(campo, 'mt-0.5')} />
-                    </label>
-                    <button type="submit" disabled={anular.isPending} className="min-h-[44px] self-end rounded-lg bg-red-700 px-3 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-60">
-                        Anular
-                    </button>
-                </form>
-            )}
+            </button>
         </li>
     );
 }

@@ -19,28 +19,8 @@ export async function monitoringRoutes(fastify: FastifyInstance) {
         preHandler: superAdminAuthMiddleware,
     }, monitoringController.healthCheck.bind(monitoringController));
 
-    // Métricas de queries en tiempo real
-    fastify.get('/metrics/queries', {
-        preHandler: superAdminAuthMiddleware,
-    }, monitoringController.getQueryMetrics.bind(monitoringController));
 
-    // Histórico de métricas
-    fastify.get('/metrics/history', {
-        preHandler: superAdminAuthMiddleware,
-    }, monitoringController.getMetricsHistory.bind(monitoringController) as any);
 
-    // Alertas activas
-    fastify.get('/alerts', {
-        preHandler: superAdminAuthMiddleware,
-    }, monitoringController.getAlerts.bind(monitoringController));
 
-    // Estadísticas de alertas
-    fastify.get('/alerts/stats', {
-        preHandler: superAdminAuthMiddleware,
-    }, monitoringController.getAlertStats.bind(monitoringController));
 
-    // Resolver alerta
-    fastify.patch('/alerts/:id/resolve', {
-        preHandler: superAdminAuthMiddleware,
-    }, monitoringController.resolveAlert.bind(monitoringController) as any);
 }

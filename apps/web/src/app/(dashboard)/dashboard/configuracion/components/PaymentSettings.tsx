@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Plus, Save, X, Wallet } from 'lucide-react';
+import { Plus, X, Wallet } from 'lucide-react';
+import { Ajustes, BotonGuardar, CargandoAjustes, Fila, FilaCampo, FilaInterruptor, Grupo, Opciones } from '@/components/configuracion/ajustes';
 import { ConfiguracionDePagos, errorDe, useGuardarConfiguracionDePagos, usePagosActivos } from '@/hooks/usePagos';
-import { cn } from '@/lib/utils';
 
 /**
  * CONFIGURACIÓN DE PAGOS
@@ -32,31 +32,11 @@ const inicial: ConfiguracionDePagos = {
     recordatorioDiasAntes: 3,
 };
 
-const campo = 'mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100';
-const rotulo = 'block text-sm font-medium text-gray-800';
-const ayuda = 'mt-1 text-xs text-gray-600';
-
-function Opciones<T extends string>({ valor, opciones, alCambiar }: { valor: T; opciones: Array<{ valor: T; texto: string }>; alCambiar: (v: T) => void }) {
-    return (
-        <div className="mt-1 flex flex-wrap gap-2" role="radiogroup">
-            {opciones.map((o) => (
-                <button
-                    key={o.valor}
-                    type="button"
-                    role="radio"
-                    aria-checked={valor === o.valor}
-                    onClick={() => alCambiar(o.valor)}
-                    className={cn(
-                        'rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
-                        valor === o.valor ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
-                    )}
-                >
-                    {o.texto}
-                </button>
-            ))}
-        </div>
-    );
-}
+const DE_LA_FRECUENCIA: Record<ConfiguracionDePagos['frequency'], string> = {
+    MONTHLY: 'Una cuota por mes, del mes en que empieza el ciclo al mes en que termina.',
+    BIWEEKLY: 'Dos cuotas por mes: el día de pago y 15 días después.',
+    PER_PERIOD: 'Una cuota por lapso, que vence al empezar el lapso.',
+};
 
 export function PaymentSettings() {
     const { data, isLoading } = usePagosActivos();
@@ -92,89 +72,97 @@ export function PaymentSettings() {
         }
     };
 
-    if (isLoading) {
-        return (
-            <div className="flex justify-center py-10">
-                <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
-            </div>
-        );
-    }
+    if (isLoading) return <CargandoAjustes />;
+
+    const numero = (k: 'dueDay' | 'graceDays' | 'descuentoHermanosPct' | 'moraDiasDespues' | 'recordatorioDiasAntes') => (e: React.ChangeEvent<HTMLInputElement>) =>
+        cambiar(k, Number(e.target.value));
 
     return (
-        <div className="max-w-3xl space-y-8">
-            <label className="flex cursor-pointer items-start gap-4 rounded-xl border border-gray-200 p-4">
-                <input
-                    type="checkbox"
+        <Ajustes>
+            <Grupo id="pagos-activos">
+                <FilaInterruptor
+                    icono={Wallet}
+                    titulo="Control de pagos"
+                    descripcion="Aparece «Finanzas» en el menú. Los representantes ven lo que deben sus representados."
                     checked={c.enabled}
-                    onChange={(e) => cambiar('enabled', e.target.checked)}
-                    className="mt-1 h-5 w-5 accent-indigo-600"
+                    onChange={(v) => cambiar('enabled', v)}
                 />
-                <span>
-                    <span className="flex items-center gap-2 text-base font-semibold text-gray-900">
-                        <Wallet size={18} /> Activar control de pagos
-                    </span>
-                    <span className={ayuda}>
-                        Aparece «Pagos» en el menú del administrador, con los estudiantes del ciclo actual. Los representantes ven el estado de pago de sus representados.
-                    </span>
-                </span>
-            </label>
+            </Grupo>
 
-            <fieldset disabled={!c.enabled} className="space-y-6 disabled:opacity-60">
-                <div>
-                    <span className={rotulo}>¿Cada cuánto se cobra?</span>
-                    <Opciones
-                        valor={c.frequency}
-                        alCambiar={(v) => cambiar('frequency', v)}
-                        opciones={[
-                            { valor: 'MONTHLY', texto: 'Mensual' },
-                            { valor: 'BIWEEKLY', texto: 'Quincenal' },
-                            { valor: 'PER_PERIOD', texto: 'Por lapso' },
-                        ]}
-                    />
-                    <p className={ayuda}>
-                        {c.frequency === 'MONTHLY' && 'Una cuota por mes, del mes en que empieza el ciclo al mes en que termina.'}
-                        {c.frequency === 'BIWEEKLY' && 'Dos cuotas por mes: el día de pago y 15 días después.'}
-                        {c.frequency === 'PER_PERIOD' && 'Una cuota por lapso, que vence al empezar el lapso.'}
-                    </p>
-                </div>
-
-                {c.frequency !== 'PER_PERIOD' && (
-                    <div>
-                        <span className={rotulo}>¿Qué día se paga?</span>
+            <fieldset disabled={!c.enabled} className="min-w-0 space-y-7 disabled:opacity-60">
+                <Grupo id="cuotas" titulo="Las cuotas" pie={DE_LA_FRECUENCIA[c.frequency]}>
+                    <Fila etiqueta="¿Cada cuánto se cobra?" apilada>
                         <Opciones
-                            valor={c.dueMode}
-                            alCambiar={(v) => cambiar('dueMode', v)}
+                            etiqueta="¿Cada cuánto se cobra?"
+                            valor={c.frequency}
+                            alCambiar={(v) => cambiar('frequency', v)}
                             opciones={[
-                                { valor: 'SAME_DAY', texto: 'Todos el mismo día' },
-                                { valor: 'PER_STUDENT', texto: 'Cada estudiante su día' },
+                                { valor: 'MONTHLY', texto: 'Mensual' },
+                                { valor: 'BIWEEKLY', texto: 'Quincenal' },
+                                { valor: 'PER_PERIOD', texto: 'Por lapso' },
                             ]}
                         />
-                        <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                            <label className={rotulo}>
-                                {c.dueMode === 'SAME_DAY' ? 'Día del mes' : 'Día por defecto (se cambia en cada estudiante)'}
-                                <input type="number" min={1} max={28} value={c.dueDay} onChange={(e) => cambiar('dueDay', Number(e.target.value))} className={campo} />
-                            </label>
-                            <label className={rotulo}>
-                                Días de gracia
-                                <input type="number" min={0} max={60} value={c.graceDays} onChange={(e) => cambiar('graceDays', Number(e.target.value))} className={campo} />
-                                <span className={ayuda}>Días después del vencimiento antes de contar como deuda.</span>
-                            </label>
-                        </div>
-                    </div>
-                )}
+                    </Fila>
+                    {c.frequency !== 'PER_PERIOD' && (
+                        <Fila etiqueta="¿Qué día se paga?" apilada>
+                            <Opciones
+                                etiqueta="¿Qué día se paga?"
+                                valor={c.dueMode}
+                                alCambiar={(v) => cambiar('dueMode', v)}
+                                opciones={[
+                                    { valor: 'SAME_DAY', texto: 'Todos el mismo día' },
+                                    { valor: 'PER_STUDENT', texto: 'Cada uno su día' },
+                                ]}
+                            />
+                        </Fila>
+                    )}
+                    {c.frequency !== 'PER_PERIOD' && (
+                        <FilaCampo
+                            etiqueta={c.dueMode === 'SAME_DAY' ? 'Día del mes' : 'Día por defecto'}
+                            ayuda={c.dueMode === 'SAME_DAY' ? undefined : 'Se cambia en la ficha de cada estudiante.'}
+                            type="number"
+                            min={1}
+                            max={28}
+                            value={c.dueDay}
+                            onChange={numero('dueDay')}
+                        />
+                    )}
+                    <FilaCampo
+                        etiqueta="Días de gracia"
+                        ayuda={c.frequency === 'PER_PERIOD' ? 'Desde que empieza el lapso, antes de contar como deuda.' : 'Desde el vencimiento, antes de contar como deuda.'}
+                        type="number"
+                        min={0}
+                        max={60}
+                        value={c.graceDays}
+                        onChange={numero('graceDays')}
+                    />
+                    <FilaCampo
+                        etiqueta={`Monto de cada cuota (${simbolo})`}
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        inputMode="decimal"
+                        value={c.feeAmount}
+                        onChange={(e) => cambiar('feeAmount', e.target.value)}
+                    />
+                    <FilaInterruptor titulo="Cobrar inscripción" checked={c.enrollmentEnabled} onChange={(v) => cambiar('enrollmentEnabled', v)} />
+                    {c.enrollmentEnabled && (
+                        <FilaCampo
+                            etiqueta={`Monto de la inscripción (${simbolo})`}
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            inputMode="decimal"
+                            value={c.enrollmentAmount}
+                            onChange={(e) => cambiar('enrollmentAmount', e.target.value)}
+                        />
+                    )}
+                </Grupo>
 
-                {c.frequency === 'PER_PERIOD' && (
-                    <label className={cn(rotulo, 'max-w-xs')}>
-                        Días de gracia
-                        <input type="number" min={0} max={60} value={c.graceDays} onChange={(e) => cambiar('graceDays', Number(e.target.value))} className={campo} />
-                        <span className={ayuda}>Días después de empezar el lapso antes de contar como deuda.</span>
-                    </label>
-                )}
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                        <span className={rotulo}>Moneda de las cuotas</span>
+                <Grupo id="monedas" titulo="Monedas" pie={c.acceptedCurrencies === 'BOTH' ? 'Al cobrar en la otra moneda se pone la tasa del BCV del día.' : undefined}>
+                    <Fila etiqueta="Moneda de las cuotas" apilada>
                         <Opciones
+                            etiqueta="Moneda de las cuotas"
                             valor={c.baseCurrency}
                             alCambiar={(v) => setC((x) => ({ ...x, baseCurrency: v, acceptedCurrencies: x.acceptedCurrencies === 'BOTH' ? 'BOTH' : v }))}
                             opciones={[
@@ -182,10 +170,10 @@ export function PaymentSettings() {
                                 { valor: 'VES', texto: 'Bolívares (Bs)' },
                             ]}
                         />
-                    </div>
-                    <div>
-                        <span className={rotulo}>Se aceptan pagos en</span>
+                    </Fila>
+                    <Fila etiqueta="Se aceptan pagos en" apilada>
                         <Opciones
+                            etiqueta="Se aceptan pagos en"
                             valor={c.acceptedCurrencies}
                             alCambiar={(v) => cambiar('acceptedCurrencies', v)}
                             opciones={[
@@ -193,135 +181,94 @@ export function PaymentSettings() {
                                 { valor: 'BOTH', texto: 'Ambas' },
                             ]}
                         />
-                        {c.acceptedCurrencies === 'BOTH' && <p className={ayuda}>Al cobrar en la otra moneda se pide la tasa del día.</p>}
-                    </div>
-                </div>
+                    </Fila>
+                </Grupo>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                    <label className={rotulo}>
-                        Monto de cada cuota ({simbolo})
-                        <input type="number" min={0} step="0.01" inputMode="decimal" value={c.feeAmount} onChange={(e) => cambiar('feeAmount', e.target.value)} className={campo} />
-                    </label>
-                    <div>
-                        <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
-                            <input type="checkbox" checked={c.enrollmentEnabled} onChange={(e) => cambiar('enrollmentEnabled', e.target.checked)} className="h-4 w-4 accent-indigo-600" />
-                            Cobrar inscripción
-                        </label>
-                        <input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            inputMode="decimal"
-                            aria-label={`Monto de la inscripción (${simbolo})`}
-                            disabled={!c.enrollmentEnabled}
-                            value={c.enrollmentAmount}
-                            onChange={(e) => cambiar('enrollmentAmount', e.target.value)}
-                            className={campo}
-                        />
-                    </div>
-                </div>
-
-                {/* Becas, mora y recordatorio (2026-10-01): lo eligió Cristian. */}
-                <div className="space-y-4 rounded-xl border border-gray-200 p-4">
-                    <div>
-                        <label className={rotulo}>
-                            Descuento por hermanos (%)
-                            <input
-                                type="number"
-                                min={0}
-                                max={100}
-                                value={c.descuentoHermanosPct ?? 0}
-                                onChange={(e) => cambiar('descuentoHermanosPct', Number(e.target.value))}
-                                className={cn(campo, 'max-w-[8rem]')}
-                            />
-                        </label>
-                        <p className={ayuda}>Desde el 2.º hijo del mismo representante. 0 = sin descuento. Las becas de cada estudiante se ponen en su ficha.</p>
-                    </div>
-                    <div>
-                        <span className={rotulo}>Recargo por mora</span>
+                <Grupo id="descuentos" titulo="Descuentos, mora y recordatorio" pie="Las becas de cada estudiante se ponen en su ficha. El descuento es el mayor entre la beca y el de hermanos, nunca la suma.">
+                    <FilaCampo
+                        etiqueta="Descuento por hermanos"
+                        ayuda="Desde el 2.º hijo del mismo representante. 0 = sin descuento."
+                        sufijo="%"
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={c.descuentoHermanosPct ?? 0}
+                        onChange={numero('descuentoHermanosPct')}
+                    />
+                    <Fila etiqueta="Recargo por mora" descripcion="Una vez por cuota no completada a tiempo, pasados los días de gracia. Al exonerado, nunca." apilada>
                         <Opciones
+                            etiqueta="Recargo por mora"
                             valor={(c.moraTipo ?? 'NINGUNA') as 'NINGUNA' | 'FIJA' | 'PORCENTAJE'}
                             opciones={[
                                 { valor: 'NINGUNA', texto: 'Sin recargo' },
-                                { valor: 'FIJA', texto: 'Un monto fijo' },
-                                { valor: 'PORCENTAJE', texto: 'Un porcentaje' },
+                                { valor: 'FIJA', texto: 'Monto fijo' },
+                                { valor: 'PORCENTAJE', texto: 'Porcentaje' },
                             ]}
                             alCambiar={(v) => cambiar('moraTipo', v)}
                         />
-                        {c.moraTipo && c.moraTipo !== 'NINGUNA' && (
-                            <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                                <label className={rotulo}>
-                                    {c.moraTipo === 'FIJA' ? `Cuánto (${simbolo})` : 'Qué porcentaje (%)'}
-                                    <input type="number" min={0} step="0.01" inputMode="decimal" value={c.moraValor ?? ''} onChange={(e) => cambiar('moraValor', e.target.value)} className={campo} />
-                                </label>
-                                <label className={rotulo}>
-                                    Días después del vencimiento
-                                    <input type="number" min={0} max={90} value={c.moraDiasDespues ?? 0} onChange={(e) => cambiar('moraDiasDespues', Number(e.target.value))} className={campo} />
-                                </label>
-                            </div>
-                        )}
-                        <p className={ayuda}>Se suma una vez a cada cuota que no se completó a tiempo (después de los días de gracia). Al exonerado, nunca.</p>
-                    </div>
-                    <div>
-                        <label className={rotulo}>
-                            Recordar al representante (días antes del vencimiento)
-                            <input
+                    </Fila>
+                    {c.moraTipo && c.moraTipo !== 'NINGUNA' && (
+                        <>
+                            <FilaCampo
+                                etiqueta={c.moraTipo === 'FIJA' ? 'Cuánto' : 'Qué porcentaje'}
+                                sufijo={c.moraTipo === 'FIJA' ? simbolo : '%'}
                                 type="number"
                                 min={0}
-                                max={15}
-                                value={c.recordatorioDiasAntes ?? 3}
-                                onChange={(e) => cambiar('recordatorioDiasAntes', Number(e.target.value))}
-                                className={cn(campo, 'max-w-[8rem]')}
+                                step="0.01"
+                                inputMode="decimal"
+                                value={c.moraValor ?? ''}
+                                onChange={(e) => cambiar('moraValor', e.target.value)}
                             />
-                        </label>
-                        <p className={ayuda}>Le llega un aviso al teléfono. 0 = no recordar.</p>
-                    </div>
-                </div>
+                            <FilaCampo etiqueta="Días después del vencimiento" type="number" min={0} max={90} value={c.moraDiasDespues ?? 0} onChange={numero('moraDiasDespues')} />
+                        </>
+                    )}
+                    <FilaCampo
+                        etiqueta="Recordar al representante"
+                        ayuda="Días antes del vencimiento; le llega un aviso al teléfono. 0 = no recordar."
+                        sufijo="días antes"
+                        type="number"
+                        min={0}
+                        max={15}
+                        value={c.recordatorioDiasAntes ?? 3}
+                        onChange={numero('recordatorioDiasAntes')}
+                    />
+                </Grupo>
 
-                <div>
-                    <span className={rotulo}>Métodos de pago</span>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                        {c.methods.map((m) => (
-                            <span key={m} className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-gray-50 py-1 pl-3 pr-1 text-sm text-gray-800">
-                                {m}
-                                <button
-                                    type="button"
-                                    aria-label={`Quitar ${m}`}
-                                    onClick={() => cambiar('methods', c.methods.filter((x) => x !== m))}
-                                    className="rounded-full p-1 text-gray-600 hover:bg-gray-200"
-                                >
-                                    <X size={12} />
-                                </button>
-                            </span>
-                        ))}
-                    </div>
-                    <div className="mt-2 flex gap-2">
+                <Grupo id="metodos" titulo="Métodos de pago">
+                    {c.methods.map((m) => (
+                        <Fila key={m} etiqueta={m}>
+                            <button
+                                type="button"
+                                aria-label={`Quitar ${m}`}
+                                onClick={() => cambiar('methods', c.methods.filter((x) => x !== m))}
+                                className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-red-700"
+                            >
+                                <X size={18} />
+                            </button>
+                        </Fila>
+                    ))}
+                    <div className="flex min-h-[56px] items-center gap-2 px-4 py-1.5">
                         <input
                             value={nuevoMetodo}
                             maxLength={30}
                             onChange={(e) => setNuevoMetodo(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), agregarMetodo())}
                             placeholder="Otro método (ej.: Binance)"
-                            className={cn(campo, 'mt-0')}
+                            aria-label="Otro método de pago"
+                            className="min-h-[44px] min-w-0 flex-1 bg-transparent text-[15px] text-gray-900 outline-none placeholder:text-gray-400"
                         />
-                        <button type="button" onClick={agregarMetodo} className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-800 hover:bg-gray-50">
+                        <button
+                            type="button"
+                            onClick={agregarMetodo}
+                            className="flex min-h-[40px] items-center gap-1 rounded-full bg-gray-100 px-4 text-sm font-medium text-gray-800 hover:bg-gray-200"
+                        >
                             <Plus size={14} /> Añadir
                         </button>
                     </div>
-                </div>
+                </Grupo>
             </fieldset>
 
-            <div className="flex justify-end border-t border-gray-200 pt-4">
-                <button
-                    type="button"
-                    onClick={enviar}
-                    disabled={guardar.isPending}
-                    className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
-                >
-                    {guardar.isPending ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                    Guardar
-                </button>
-            </div>
-        </div>
+            <BotonGuardar type="button" texto="Guardar" onClick={enviar} guardando={guardar.isPending} />
+        </Ajustes>
     );
 }

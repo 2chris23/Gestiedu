@@ -1,30 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
-import {
-    anularFondo,
-    anularGasto,
-    anularPagoAlPersonal,
-    aplicarATodos,
-    crearFondo,
-    crearGasto,
-    crearPersona,
-    editarPersona,
-    getComprobante,
-    getFondos,
-    getGastos,
-    getMes,
-    getReporteDelMes,
-    getMisPagos,
-    getPersona,
-    getPersonal,
-    getReciboDelPersonal,
-    getResumen,
-    guardarAcuerdo,
-    guardarCategorias,
-    guardarNomina,
-    pagarAlPersonal,
-    subirComprobante,
-} from '../controllers/finanzas.controller';
+import { anularFondo, anularGasto, crearFondo, crearGasto, getComprobante, getFondos, getGastos, guardarCategorias, subirComprobante } from '../controllers/finanzas/fondos-y-gastos.controller';
+import { anularPagoAlPersonal, aplicarATodos, crearPersona, editarPersona, getMisPagos, getPersona, getPersonal, getReciboDelPersonal, guardarAcuerdo, guardarAreas, guardarNomina, pagarAlPersonal } from '../controllers/finanzas/personal.controller';
+import { getMes, getReporteDelMes, getResumen } from '../controllers/finanzas/resumen-y-mes.controller';
+import { getRecurrentes, getTasa, guardarRecurrentes } from '../controllers/finanzas/recurrentes.controller';
 
 /**
  * LAS FINANZAS DEL LICEO (2026-10-01). Todo del admin, salvo `mis-pagos` (cada
@@ -97,6 +76,29 @@ export async function finanzasRoutes(fastify: FastifyInstance) {
         guardarCategorias as any
     );
 
+    // La tasa la puede pedir cualquiera con sesión: también el representante que reporta un pago.
+    fastify.get('/tasa', { preHandler: [authenticate] }, getTasa as any);
+    fastify.get('/recurrentes', admin, getRecurrentes as any);
+    fastify.put(
+        '/recurrentes',
+        {
+            ...admin,
+            schema: {
+                body: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['recurrentes'],
+                    properties: { recurrentes: { type: 'array', maxItems: 40, items: { type: 'object' } } },
+                },
+            },
+        },
+        guardarRecurrentes as any
+    );
+    fastify.put(
+        '/areas',
+        { ...admin, schema: { body: { type: 'object', additionalProperties: false, required: ['areas'], properties: { areas: { type: 'array', maxItems: 40, items: { type: 'string', maxLength: 40 } } } } } },
+        guardarAreas as any
+    );
     fastify.post('/comprobantes', admin, subirComprobante as any);
     fastify.get('/comprobantes/:id', { ...admin, schema: { params: conId } }, getComprobante as any);
 

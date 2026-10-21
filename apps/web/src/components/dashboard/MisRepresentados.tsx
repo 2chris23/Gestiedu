@@ -1,5 +1,6 @@
 'use client';
 
+import { PuntajeDelAlumno } from '@/components/profile/PuntajeDelAlumno';
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -24,6 +25,7 @@ interface Representado {
     avatar: string | null;
     classroom: string | null;
     average: number;
+    hasGrades?: boolean;
     attendancePercentage: number;
     relationship: string;
 }
@@ -111,8 +113,8 @@ export function MisRepresentados() {
                                     tiene; pintarla con el 10 fijo mentiría en los
                                     liceos que aprueban con otra. */}
                                 <dd className="text-lg font-bold text-gray-900">
-                                    {hijo.average > 0 ? hijo.average.toFixed(1) : '—'}
-                                    {hijo.average <= 0 && <span className="ml-1 text-xs font-normal text-gray-600">sin notas aún</span>}
+                                    {(hijo.hasGrades !== undefined ? hijo.hasGrades : hijo.average > 0) ? hijo.average.toFixed(1) : '—'}
+                                    {!(hijo.hasGrades !== undefined ? hijo.hasGrades : hijo.average > 0) && <span className="ml-1 text-xs font-normal text-gray-600">sin notas aún</span>}
                                 </dd>
                             </div>
                             <div className="rounded-xl bg-gray-50 px-3 py-2">
@@ -122,6 +124,8 @@ export function MisRepresentados() {
                         </dl>
                         {desplegado && (
                             <div className="space-y-3 px-4 pb-4">
+                                {/* Su puntaje del cuadro de honor y cuántos puestos subió. */}
+                                <PuntajeDelAlumno studentId={hijo.id} />
                                 <Link
                                     href={`/dashboard/boleta/${encodeURIComponent(hijo.id)}`}
                                     className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"

@@ -79,8 +79,13 @@ export class SuperAdminAuthService {
      * Refresh token del SuperAdmin
      */
     async refreshToken(refreshToken: string) {
-        // Verificar el refresh token JWT
-        const decoded = verifySuperAdminRefreshToken(refreshToken);
+        // Verificar el refresh token JWT. Una llave mal hecha o de otra firma es un
+        // 401, no un 500 con el mensaje de la librería (SA-RENOVAR-01).
+        try {
+            verifySuperAdminRefreshToken(refreshToken);
+        } catch {
+            throw { statusCode: 401, message: 'Token de actualización inválido o expirado' };
+        }
 
         // Buscar el token en DB
         const storedToken = await prisma.superAdminRefreshToken.findUnique({
@@ -88,7 +93,8 @@ export class SuperAdminAuthService {
             include: { superAdmin: true }
         });
 
-        if (!storedToken || storedToken.expiresAt < new Date()) {
+        // Una cuenta desactivada no renueva: si no, su sesión duraba para siempre (SA-RENOVAR-01).
+        if (!storedToken || storedToken.expiresAt < new Date() || !storedToken.superAdmin.isActive) {
             // Limpiar token expirado si existe
             if (storedToken) {
                 await prisma.superAdminRefreshToken.delete({ where: { id: storedToken.id } });

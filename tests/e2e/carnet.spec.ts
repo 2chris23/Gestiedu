@@ -16,7 +16,9 @@ test('CARNET-UI-01: los carnets de una sección', async ({ page }, testInfo) => 
         const admin = await loginApi('admin@testing.edu.ve', '123456');
         await injectSessionCookies(page, admin);
         await page.goto(`${WEB_BASE}/dashboard/academico/${s.ciclo}/${s.slug}`);
-        await page.getByRole('link', { name: 'Carnets de la sección' }).click({ timeout: 60000 });
+        // Los documentos de la sección van en UNA ventana (un solo botón).
+        await page.getByRole('button', { name: 'Documentos de la sección' }).click({ timeout: 60000 });
+        await page.getByRole('link', { name: /^Carnets/ }).click();
         const lista = page.getByRole('list', { name: 'Carnets' });
         await expect(lista.getByRole('listitem').first()).toContainText('Carnet estudiantil', { timeout: 60000 });
         expect(await lista.getByRole('listitem').count()).toBeGreaterThan(0);

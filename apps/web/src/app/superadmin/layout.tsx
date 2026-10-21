@@ -53,6 +53,7 @@ export default function SuperAdminLayout({ children }: SuperAdminLayoutProps) {
 
     const navItems = [
         { href: '/superadmin/dashboard', label: 'Dashboard', icon: '📊' },
+        { href: '/superadmin/salud', label: 'Salud', icon: '🩺' },
         { href: '/superadmin/institutes', label: 'Institutos', icon: '🏫' },
         { href: '/superadmin/plans', label: 'Planes y Tarifas', icon: '💎' },
         { href: '/superadmin/metrics', label: 'Métricas de Caché', icon: '⚡' },

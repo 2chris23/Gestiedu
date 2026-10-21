@@ -19,6 +19,7 @@ import { diferido } from '@/components/common/Diferido';
 
 // Lo que se abre al pulsar baja al pulsarlo, no con la pantalla (carga diferida).
 const UserForm = diferido(() => import('@/components/users/UserForm').then((m) => ({ default: m.UserForm })), { alto: 420 });
+import CargandoUsuarios from './loading';
 
 export default function UsersPage() {
     const queryClient = useQueryClient();
@@ -211,6 +212,10 @@ export default function UsersPage() {
         router.push(`/dashboard/usuarios/${user.id}`);
     };
 
+    if (isLoading && !lista.data) {
+        return <CargandoUsuarios />;
+    }
+
     return (
         <div className="space-y-6">
             {/* Header con botón de carpeta para Usuarios Archivados */}
@@ -242,6 +247,7 @@ export default function UsersPage() {
                         <Button
                             variant="outline"
                             onClick={() => { setViewMode('archived'); setPage(1); }}
+                            data-recorrido="usuarios-archivados"
                             className="inline-flex items-center gap-2 border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100 transition-colors shadow-sm"
                             title="Abrir carpeta de usuarios archivados"
                         >
@@ -266,13 +272,14 @@ export default function UsersPage() {
                     {viewMode === 'active' && (
                         <Link
                             href="/dashboard/importar-alumno"
+                            data-recorrido="usuarios-importar"
                             className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                         >
                             <FileUp className="h-4 w-4" aria-hidden /> Importar alumno
                         </Link>
                     )}
                     {viewMode === 'active' && (
-                        <Button onClick={() => { setEditingUser(null); setIsModalOpen(true); }} className="w-auto">
+                        <Button onClick={() => { setEditingUser(null); setIsModalOpen(true); }} className="w-auto" data-recorrido="usuarios-nuevo">
                             <Plus aria-hidden />
                             Nuevo Usuario
                         </Button>
@@ -282,7 +289,7 @@ export default function UsersPage() {
 
             {/* Filters */}
             <div className="flex flex-col sm:flex-row gap-4 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                <div className="relative flex-1">
+                <div className="relative flex-1" data-recorrido="usuarios-buscar">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <Search className="h-5 w-5 text-gray-400" />
                     </div>
@@ -294,7 +301,7 @@ export default function UsersPage() {
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </div>
-                <div className="w-full sm:w-64">
+                <div className="w-full sm:w-64" data-recorrido="usuarios-rol">
                     <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <Filter className="h-4 w-4 text-gray-400" />
@@ -317,6 +324,7 @@ export default function UsersPage() {
                 </div>
             </div>
 
+            <div data-recorrido="usuarios-lista">
             <UsersTable
                 users={sortedUsers}
                 isLoading={isLoading}
@@ -330,6 +338,7 @@ export default function UsersPage() {
                 onSort={handleSort}
                 viewMode={viewMode}
             />
+            </div>
 
             {/* Pagination */}
             {!isLoading && users.length > 0 && (

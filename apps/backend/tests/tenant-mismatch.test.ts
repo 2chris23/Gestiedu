@@ -64,6 +64,9 @@ describe('Tenant mismatch — claim instituteId del JWT', () => {
             update: {
                 status: 'ACTIVE',
                 databaseName: TENANT_DB_B,
+                // Su base propia, no un esquema de la compartida (la fila pudo
+                // quedar apuntando a uno: el esquema manda si está puesto).
+                databaseSchema: null,
                 databaseHost: creds.host,
                 databasePort: creds.port,
                 databaseUser: creds.user,

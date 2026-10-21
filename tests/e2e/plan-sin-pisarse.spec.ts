@@ -61,14 +61,14 @@ test.describe('El plan no se pisa', () => {
             await loginViaUI(page, PROFE, '123456');
             const lectura = page.waitForResponse((r) => r.url().includes('/evaluation-plan/rows') && r.request().method() === 'GET');
             await page.goto(`${WEB_BASE}/dashboard/academico/${ciclo}/${seccion}/${MATERIA}`);
-            await page.getByRole('button', { name: /Plan de Evaluaci.n \/ Calificaciones/i }).click();
+            await page.getByRole('button', { name: 'Plan de evaluación' }).click();
             lapso = new URL((await lectura).url()).searchParams.get('lapso') || '1';
 
             const antes = (await api().get('/evaluation-plan/rows', { params: { classroomId, subjectId, lapso } })).data;
             original = antes.rows ?? [];
 
             // El profesor abre el editor.
-            await page.getByRole('button', { name: /Editar Plan/i }).click();
+            await page.getByRole('button', { name: 'Editar el plan' }).click();
             await expect(page.getByRole('button', { name: /Guardar y Cerrar/i })).toBeVisible({ timeout: 20000 });
 
             // «Otra pestaña» guarda: un criterio que dice de dónde viene.
@@ -99,7 +99,7 @@ test.describe('El plan no se pisa', () => {
 
             // Elige cargar lo guardado, y lo ve.
             await page.getByRole('button', { name: /cargar lo guardado/i }).click();
-            await expect(page.getByText(marca).first()).toBeVisible({ timeout: 20000 });
+            await expect(page.getByText(marca).filter({ visible: true }).first()).toBeVisible({ timeout: 20000 });
         } catch (error) {
             await captureEvidence(testInfo, page, 'PLANUI-01', 'El plan no se pisa', error);
             throw error;
